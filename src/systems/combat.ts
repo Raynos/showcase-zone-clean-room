@@ -847,4 +847,6 @@ export class Combat {
     return '';
   }
   get overcharged() { return this.overcharge > 0; }
+  /** seconds of Overcharge left (the next rifle shot hits three times as hard) */
+  get overchargeT() { return Math.max(0, this.overcharge); }
 }

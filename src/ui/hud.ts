@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Btn } from '../core/input';
 import { clamp, clamp01, fmtNum } from '../core/util';
 import type { Game } from '../game';
+import { BLAST_WALL } from '../world/layout';
 import { icon } from './icons';
 import './style.css';
 
@@ -219,6 +220,21 @@ export class Hud {
     const q = Math.round(info.frac * 200);
     if (q !== this.tLast) { this.tLast = q; const s = `scaleX(${clamp01(info.frac)})`; this.tFill.style.transform = s; this.tLag.style.transform = s; }
   }
+  private buffT = 0; private buffList: Array<{ icon: string; t?: number; bad?: boolean }> = [];
+  /** The buff row: every timed effect and standing condition acting on the player right now. */
+  private feedBuffs() {
+    const g = this.game, c = g.combat, pl = g.player, L = this.buffList;
+    L.length = 0;
+    if (c.perfectT > 0) L.push({ icon: 'dodge', t: c.perfectT });                                // perfect-dodge window
+    if (c.overchargeT > 0) L.push({ icon: 'charge', t: c.overchargeT });                         // next rifle shot x3
+    if (pl.invuln > 0.45 && !pl.rolling && !pl.dead) L.push({ icon: 'shield', t: pl.invuln });   // arrival / respawn grace
+    if (pl.mode?.name === 'ride') L.push({ icon: 'horse' });
+    if (!g.interior) {
+      if (g.state.flag('storm') === 1) L.push({ icon: 'storm', bad: true });                     // Storm Hour is on
+      if (g.env.isNight() && pl.pos.x > BLAST_WALL.x1) L.push({ icon: 'moon', bad: true });      // night shift: tougher robots out east
+    }
+    this.setBuffs(L);
+  }
   setBuffs(list: Array<{ icon: string; t?: number; bad?: boolean }>) {
     const sig = list.map((b) => b.icon + (b.t !== undefined ? Math.ceil(b.t) : '') + (b.bad ? '!' : '')).join(',');
     if (this.buffs.dataset.sig === sig) return;
@@ -321,6 +337,7 @@ export class Hud {
     this.miniT -= dt;
     if (this.miniT <= 0 && this.drawMini) { this.miniT = 1 / 15; this.drawMini(this.mini.getContext('2d')!, 208); }
     if (this.timerT > 0) { this.timerT -= dt; if (this.timerT <= 0) this.timerEl.classList.remove('on'); }
+    if ((this.buffT -= dt) <= 0) { this.buffT = 0.1; this.feedBuffs(); }
     // banners
     this.bannerT -= dt;
     if (this.bannerT <= 0 && this.bannerQueue.length) {
