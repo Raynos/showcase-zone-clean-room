@@ -32,6 +32,8 @@
     try {
       const w = await import(/* @vite-ignore */ new URL('src/data/weapons.ts', document.baseURI).href);
       if (w && w.WEAPONS) { const d = {}; for (const id in w.WEAPONS) { const x = w.WEAPONS[id]; d[id] = [x.kind, x.level, x.price, x.power]; } B._wd = d; }
+      const bal = await import(/* @vite-ignore */ new URL('src/data/balance.ts', document.baseURI).href);
+      if (bal && bal.xpToNext) B._xpToNext = bal.xpToNext;
       const q = await import(/* @vite-ignore */ new URL('src/data/quests.ts', document.baseURI).href);
       if (q && q.QUESTS) { B.questNames = {}; for (const x of q.QUESTS) B.questNames[x.id] = x.name; }
     } catch { /* production build: fall back to the tables in 30-ui.js */ }

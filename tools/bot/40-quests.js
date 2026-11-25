@@ -141,7 +141,12 @@
       if (type === 'kill' && key === 'dummy') return job(() => B.doDummies());
       if (type === 'kill' && key === 'warden') return B.bandOpen(4) ? job(() => B.enterVault()) : B.gateJob(4, goalKey);
       if (type === 'kill' && key === 'titan') return job(() => B.enterArena());
-      if (type === 'kill' && key === 'any:night') { if (!g.env.isNight()) continue; return job(() => B.huntOnce({ xp: true, label })); }
+      if (type === 'kill' && key === 'any:night') {
+        // by day: the plaza bench runs the clock on to dusk (the quest says so)
+        if (!g.env.isNight()) return B.interactable('dusk_bench').length ? job(() => B.waitForDusk()) : null;
+        return job(() => B.huntOnce({ xp: true, label, night: true }));
+      }
+      if (type === 'course' && key === 'riding') return job(() => B.doRiding());
       if (type === 'kill') {
         const slot = g.mobs.elites.find((e) => e.def.id === key);
         if (slot) {
@@ -195,7 +200,8 @@
       B.look(d.pos.x, d.pos.z);
       if (dist > 2.3) B.moveTo(d.pos.x, d.pos.z, 0.6); else B.stop();
       if (g.combat.target !== d && B.now() - (B.lastTab || 0) > 0.3) { B.lastTab = B.now(); B.tapBtn('target', 0.05); }
-      B.setAttack(dist < 3.4);
+      // tap the light string; holding the button would only charge one heavy and stop
+      if (dist < 3.4 && B.now() - (B.lastTapAtk || 0) > 0.22) { B.lastTapAtk = B.now(); B.tapBtn('attack', 0.07); }
       await B.tick();
     }
     B.setAttack(false);
@@ -208,6 +214,58 @@
       .sort((a, b) => B.d2(a.pos, p) - B.d2(b.pos, p));
     if (!open.length) { B.note('no storm beacon is reachable yet'); B.mem.needLevel = B.mem.needLevel || {}; B.mem.needLevel['q_storm:use:beacon'] = g.state.d.level + 1; return; }
     if (!(await B.goUse(open[0].id))) { B.note(`could not light ${open[0].id}`); await B.sleep(2); }
+  };
+
+  /** Night Shift by day: sit on the plaza bench until dusk. */
+  B.waitForDusk = async () => {
+    const g = G();
+    if (!(await B.goUse('dusk_bench', { fight: true }))) { B.note('could not use the plaza bench to wait for dusk'); await B.sleep(3); return; }
+    B.tool('dusk bench');
+    await B.until(() => g.env.isNight(), 20);
+    if (!g.env.isNight()) B.note('sat on the plaza bench but night did not come');
+  };
+
+  // ---------------------------------------------------------------- riding course
+  let KB = null;
+  const kitB = async () => KB || (KB = await import(/* @vite-ignore */ new URL('src/world/west/kitB.ts', document.baseURI).href));
+  /** Borrowed Hooves: mount the loaner horse and ride one lap of the lake track, jumping the jump rings. */
+  B.doRiding = async () => {
+    const g = G(), pl = g.player, st = g.state;
+    let K; try { K = await kitB(); } catch (e) { B.note('could not load the riding track: ' + e.message); B.mem.dropped = { ...(B.mem.dropped || {}), q_horse: 1 }; return; }
+    const M = () => (K.B.mounts ? K.B.mounts.state() : 'none'), N = K.TRACK_LEN, H = K.HORSE_HOME;
+    if (M() !== 'horse') {
+      const r = await B.goTo(H.x, H.z, { r: 2.4, partialOk: 3, fight: true });
+      if (r === 'combat') { await B.fight(); return; }
+      if (!(await B.use('horse_mount', 4))) { B.note(`could not mount the loaner horse at (${Math.round(H.x)}, ${Math.round(H.z)}): ${r}`); B.mem.ridingFail = (B.mem.ridingFail || 0) + 1; if (B.mem.ridingFail > 3) B.mem.dropped = { ...(B.mem.dropped || {}), q_horse: 1 }; await B.sleep(2); return; }
+      if (!(await B.until(() => M() === 'horse', 4))) { B.note('pressed mount but not in the saddle'); return; }
+    }
+    // the jump rings (every third, from the course layout in src/world/west/riding.ts)
+    const gap = (N - 44) / 12, jumps = [2, 5, 8, 11].map((i) => Math.round(8 + 26 + i * gap));
+    const nearest = () => { let bi = 0, bd = 1e9; for (let s = 0; s < N; s++) { const q = K.trackAt(s), d = Math.hypot(q.x - pl.pos.x, q.z - pl.pos.z); if (d < bd) { bd = d; bi = s; } } return bi; };
+    const done0 = st.d.pbs.riding, t0 = B.now();
+    let s = nearest(), started = false, travelled = 0, lastS = s, jumped = -1;
+    if (s > 7 && s < N - 30) { B.note('riding: not at the start, riding to it first'); }
+    B.setGoal('Borrowed Hooves: one lap of the riding course');
+    await B.withXpSrc('course', async () => {
+      while (B.now() - t0 < 240) {
+        if (st.d.pbs.riding !== done0 && st.d.pbs.riding !== undefined) break;
+        if (M() !== 'horse') { B.note('thrown from the horse mid-lap'); return; }
+        // progress along the loop, by the nearest track point near where we were
+        let bi = lastS, bd = 1e9;
+        for (let k = -15; k <= 15; k++) { const q = K.trackAt(lastS + k), d = Math.hypot(q.x - pl.pos.x, q.z - pl.pos.z); if (d < bd) { bd = d; bi = lastS + k; } }
+        let ds = bi - lastS; travelled += ds; lastS = ((bi % N) + N) % N;
+        if (g.activeCourse && g.activeCourse.id === 'riding') started = true;
+        const aim = K.trackAt(lastS + (started ? 9 : (lastS > N - 30 || lastS < 8 ? 9 : -6)));
+        B.moveTo(aim.x, aim.z, 1, true); B.look(aim.x, aim.z);
+        for (const js of jumps) { const ahead = ((js - lastS) % N + N) % N; if (ahead >= 3 && ahead <= 6 && jumped !== js && started) { jumped = js; B.tapBtn('jump', 0.15); } }
+        await B.tick();
+      }
+    });
+    B.stop();
+    if (st.d.pbs.riding !== undefined && st.d.pbs.riding !== done0) { B.note(`riding course lap done in ${Math.round(st.d.pbs.riding)} s`); B.tool('riding lap'); }
+    else B.note(`riding course: no lap after ${Math.round(B.now() - t0)} s (travelled ${travelled} m, started ${started})`);
+    // off the horse to fight again
+    if (M() === 'horse') { B.tapBtn('mount', 0.1); await B.sleep(1.2); }
   };
 
   // ---------------------------------------------------------------- town
@@ -258,6 +316,7 @@
     }
     if (g.east.gState && g.east.gState !== 'idle') return B.runGauntlet();
     await B.rest(0.6, 25);
+    if (st.perksFree > 0 && !B.careless() && B.nextPerk() && !B.threatened(25) && B.now() - (B.lastPerkTry || -99) > 60) { B.lastPerkTry = B.now(); await B.learnPerks(); }
 
     const w = B.townWork();
     if (w.urgent || (B.inTown() && w.any)) {

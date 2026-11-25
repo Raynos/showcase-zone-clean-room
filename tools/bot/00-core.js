@@ -33,7 +33,7 @@
   const BANDS = ['1-3', '4-6', '7-9', '10-12', '13-15', '16-18', '19-20'];
   B.bandOf = (lvl) => BANDS[Math.min(6, Math.floor((lvl - 1) / 3))];
   B.newReport = (cfg) => ({
-    v: 1, runId: cfg.runId, url: location.href.replace(/[?&]dev\b/, ''), startMode: cfg.from === 'fresh' ? 'fresh' : cfg.from === 'resume' ? 'resume' : 'checkpoint', checkpoint: cfg.from === 'fresh' || cfg.from === 'resume' ? null : cfg.from,
+    v: 1, runId: cfg.runId, style: cfg.style || 'competent', url: location.href.replace(/[?&]dev\b/, ''), startMode: cfg.from === 'fresh' ? 'fresh' : cfg.from === 'resume' ? 'resume' : 'checkpoint', checkpoint: cfg.from === 'fresh' || cfg.from === 'resume' ? null : cfg.from,
     startedAt: new Date().toISOString(), startLevel: B.G().state.d.level, startPlayTime: B.playTime(),
     wallSec: 0, gameSec: 0, reloads: 0, restores: 0,
     levels: { [B.G().state.d.level]: { wall: 0, game: 0 } },
@@ -48,6 +48,40 @@
     return (b[k] = b[k] || { wallSec: 0, gameSec: 0, kills: 0, deaths: 0, damageTaken: 0, kitsUsed: 0 });
   };
   B.stamp = () => ({ wall: Math.round(B.rep.wallSec), game: Math.round(B.rep.gameSec) });
+  /** Per-level pacing: seconds, damage taken, kits, deaths, kills and where the XP came from. */
+  B.lvl = (l) => { const r = (B.rep.perLevel = B.rep.perLevel || {}); return (r[l] = r[l] || { sec: 0, dmg: 0, kits: 0, deaths: 0, kills: 0, xp: {}, maxHp: B.G().state.maxHp }); };
+  B.xpToNext = (l) => (B._xpToNext ? B._xpToNext(l) : l >= 20 ? Infinity : Math.round(9 * Math.pow(l, 1.9)) * 10);
+  B.xpTotal = () => { const d = B.G().state.d; let n = d.xp; for (let l = 1; l < d.level; l++) n += B.xpToNext(l); return n; };
+  /** Run fn with every XP gain inside it put down to `src` (quest, contract, course). */
+  B.withXpSrc = async (src, fn) => { const prev = B.xpSrc; B.xpSrc = src; try { return await fn(); } finally { await B.rawTick(); B.xpSrc = prev; } };
+  /**
+   * Elite and boss fights, logged one by one: how long, how much it hurt, kits, deaths, the lowest health
+   * reached, how it ended and which tools the bot used. Opens when one of them is after us within 45 m.
+   */
+  B.trackFight = (dg) => {
+    const g = B.G(), st = g.state, pl = g.player, p = pl.pos;
+    let fr = B.fightRec;
+    if (!fr) {
+      for (const m of g.mobs.list) {
+        if (!m.alive || !m.aggro || !(m.cls === 'elite' || m.isBoss) || m.summoner) continue;
+        if (Math.hypot(m.pos.x - p.x, m.pos.z - p.z) > 45) continue;
+        fr = B.fightRec = { mob: m, name: m.name, mobLevel: m.level, level: st.d.level, sec: 0, dmg: 0, kits: 0, deaths: 0, minHp: st.d.hp / st.maxHp, tools0: { ...(B.rep.tools || {}) }, at: B.stamp(), style: B.cfg.style || 'competent', away: 0 };
+        break;
+      }
+      return;
+    }
+    fr.sec += dg;
+    const m = fr.mob, gone = !m.alive || m.state === 'dead';
+    fr.away = (m.aggro && m.state !== 'return' && !pl.dead) ? 0 : fr.away + dg;
+    if (gone || fr.away > 6) {
+      const tools = {};
+      for (const k in B.rep.tools || {}) { const n = B.rep.tools[k] - (fr.tools0[k] || 0); if (n) tools[k] = n; }
+      const out = { name: fr.name, mobLevel: fr.mobLevel, level: fr.level, style: fr.style, at: fr.at, sec: Math.round(fr.sec), dmg: Math.round(fr.dmg), kits: fr.kits, deaths: fr.deaths, minHp: Math.round(fr.minHp * 100) / 100, result: gone ? 'killed' : fr.deaths ? 'died' : 'reset', tools };
+      (B.rep.fights = B.rep.fights || []).push(out);
+      console.log('[bot] fight: ' + JSON.stringify(out));
+      B.fightRec = null;
+    }
+  };
   B.note = (text) => {
     const n = B.rep.notes, last = n[n.length - 1];
     if (last && last.text === text) { last.n = (last.n || 1) + 1; return; }
@@ -67,10 +101,12 @@
     ev.on('levelUp', (e) => { if (!B.rep) return; B.rep.levels[e.level] = B.stamp(); B.lastHp = g.state.maxHp; B.progress('level'); });
     ev.on('kill', (k) => {
       if (!B.rep) return;
-      B.rep.kills++; B.band().kills++; B.progress('kill');
+      B.rep.kills++; B.band().kills++; B.lvl(g.state.d.level).kills++; B.lastKillT = g.time; B.progress('kill');
       if (k.kind === 'titan') { B.rep.outcome.titanDead = true; B.rep.outcome.titanAt = B.stamp(); B.note('Crate Titan destroyed'); }
     });
     ev.on('questUpdate', () => { if (B.rep) B.progress('quest'); });
+    ev.on('mobBreak', (e) => { if (B.rep && B.started) B.tool(e.boss ? 'break boss' : e.elite ? 'break elite' : 'break'); });
+    ev.on('finisher', () => { if (B.rep && B.started) B.tool('finisher landed'); });
     ev.on('respawn', () => { B.lastHp = g.state.d.hp; });
     window.addEventListener('pagehide', () => B.save());
   };
@@ -123,7 +159,7 @@
   B.releaseAll = () => {
     const g = B.G(); if (!g) return;
     B.stop(); B.want.lookX = null;
-    for (const b of ['attack', 'skill1', 'skill2', 'dodge', 'jump', 'interact', 'swap', 'sprint', 'potion', 'target', 'mount']) g.input.release(b);
+    for (const b of ['attack', 'skill1', 'skill2', 'skill3', 'overdrive', 'dodge', 'jump', 'interact', 'swap', 'sprint', 'potion', 'target', 'mount']) g.input.release(b);
     held.clear(); B.sprintHeld = false;
     g.input.stick.active = false; g.input.stick.x = 0; g.input.stick.y = 0;
   };
@@ -157,16 +193,33 @@
       rep.wallSec += dw; rep.gameSec += dg;
       const b = B.band(); b.wallSec += dw; b.gameSec += dg;
       // damage taken: every downward step in health that is not a respawn
-      const hp = st.d.hp;
-      if (B.lastHp !== undefined && hp < B.lastHp - 0.01 && !pl.dead) { b.damageTaken += B.lastHp - hp; B.lastHurt = { t, by: B.blame ? B.blame() : '' }; }
+      const hp = st.d.hp, L = B.lvl(st.d.level), fr = B.fightRec;
+      L.sec += dg;
+      if (B.lastHp !== undefined && hp < B.lastHp - 0.01 && !pl.dead) {
+        const dd = B.lastHp - hp;
+        b.damageTaken += dd; L.dmg += dd; if (fr) fr.dmg += dd;
+        B.lastHurt = { t, by: B.blame ? B.blame() : '' };
+      }
+      // (a death drops the bar to zero in one step: that step is counted too)
+      if (B.lastHp !== undefined && pl.dead && !B.wasDead && B.lastHp > 0) { b.damageTaken += B.lastHp; L.dmg += B.lastHp; if (fr) fr.dmg += B.lastHp; }
+      if (fr) fr.minHp = Math.min(fr.minHp, hp / st.maxHp);
       B.lastHp = hp;
       // kits: the count drops while the kit cooldown restarts
       const kits = st.count('kit');
-      if (B.lastKits !== undefined && kits === B.lastKits - 1 && g.combat.potionCd > 10 * (1 - 0.1 * st.up('kitcap'))) b.kitsUsed++;
+      if (B.lastKits !== undefined && kits === B.lastKits - 1 && g.combat.potionCd > 5) { b.kitsUsed++; L.kits++; if (fr) fr.kits++; }
       B.lastKits = kits;
+      // where the XP came from: quest hand-ins, contracts, courses, or kills
+      const xt = B.xpTotal();
+      if (B.lastXp !== undefined && xt > B.lastXp) {
+        const src = B.xpSrc || (t - (B.lastKillT || -9) < 1.5 ? 'kill' : 'other');
+        const lv = B.lvl(B.xpLevel || st.d.level);
+        lv.xp[src] = (lv.xp[src] || 0) + (xt - B.lastXp);
+      }
+      B.lastXp = xt; B.xpLevel = st.d.level;
+      B.trackFight(dg);
       // deaths
       if (pl.dead && !B.wasDead) {
-        b.deaths++;
+        b.deaths++; L.deaths++; if (fr) fr.deaths++;
         const by = (B.lastHurt && t - B.lastHurt.t < 3 && B.lastHurt.by) || (B.blame ? B.blame() : '') || 'unknown';
         rep.deaths.push({ ...B.stamp(), level: st.d.level, where: B.where(), pos: B.pos(), killer: by, goal: B.goal });
         console.log('[bot] died to ' + by + ' at ' + B.where());

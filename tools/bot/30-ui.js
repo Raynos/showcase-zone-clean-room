@@ -104,7 +104,7 @@
     return true;
   };
   /** Quests the bot will not take, with the reason it gives in the report. */
-  B.SKIP = { q_horse: 'riding course not automated' };
+  B.SKIP = {};
   B.wantOffer = (q) => {
     const g = G(), st = g.state;
     if (B.SKIP[q.id] || (B.mem.dropped && B.mem.dropped[q.id])) return false;
@@ -123,7 +123,7 @@
     try {
       for (let i = 0; i < 12; i++) {
         const w = B.giverWork(id);
-        if (w.ready.length) { const q = w.ready[0]; if (!(await B.questFlow('turnin', q.id))) break; B.progress('turn-in'); B.note(`turned in ${q.name}`); }
+        if (w.ready.length) { const q = w.ready[0]; if (!(await B.withXpSrc('quest', () => B.questFlow('turnin', q.id)))) break; B.progress('turn-in'); B.note(`turned in ${q.name}`); }
         else if (w.offer.length) { const q = w.offer[0]; if (!(await B.questFlow('offer', q.id))) break; B.progress('accept'); B.note(`accepted ${q.name}`); }
         else break;
         B.scanQuests();
@@ -219,6 +219,31 @@
     for (const p of plan) { const s0 = st.d.scrip; if (await B.act('buy', p.id)) { B.rep.purchases.push({ ...B.stamp(), level: st.d.level, what: `${p.id} ${p.tier}`, scrip: s0 - st.d.scrip }); B.note(`upgrade ${p.id} tier ${p.tier}`); } }
     await B.act('back', undefined, 1);
   };
+  // ---------------------------------------------------------------- perks
+  /** The order a melee-first player spends points in; the first one the trees allow is taken. */
+  const PERK_ORDER = ['breakpoint', 'breakpoint', 'riposte', 'shoulder', 'second_wind', 'iron', 'capacitor', 'capacitor', 'triage', 'overclock', 'last_stand',
+    'jury_rig', 'salvager', 'hot_swap', 'hot_swap', 'deadeye', 'deadeye', 'long_fuse', 'conductor', 'glue', 'volatile', 'quickdraw'];
+  B.nextPerk = () => { const st = G().state; for (const id of PERK_ORDER) if (st.canLearn(id)) return id; return null; };
+  /** Character, Perks: spend every free point (a careless player never opens the tab). */
+  B.learnPerks = async () => {
+    const g = G(), st = g.state;
+    if (B.careless() || !st.perksFree || !B.nextPerk()) return false;
+    B.stop();
+    B.tapBtn('char', 0.08);
+    if (!(await B.rawUntil(() => g.panels.current === 'char', 3))) { B.note('could not open the Character panel'); return false; }
+    try {
+      if (!(await B.act('tab', 'perks'))) { B.note('could not open the Perks tab'); return false; }
+      for (let i = 0; i < 20 && st.perksFree > 0; i++) {
+        const id = B.nextPerk(); if (!id) break;
+        const r0 = st.perk(id);
+        if (!(await B.act('perk', id))) { B.note('could not tap perk ' + id); break; }
+        if (st.perk(id) > r0) { B.note(`learned perk ${id} (rank ${st.perk(id)})`); (B.rep.perks = B.rep.perks || []).push({ ...B.stamp(), level: st.d.level, id }); }
+        else { B.note('perk tap did nothing: ' + id); break; }
+      }
+    } finally { await B.closeUi(); await B.rawUntil(() => !g.input.uiCapture, 3); }
+    return true;
+  };
+
   /** Contract board: claim everything that is claimable. */
   B.doBoard = async () => {
     const g = G();
@@ -228,7 +253,7 @@
     try {
       for (const tab of ['hunts', 'wanted']) {
         await B.act('tab', tab, 1.5);
-        for (let i = 0; i < 30; i++) { const e = document.querySelector('.pn.show [data-a="claim"]:not(.off)'); if (!e) break; e.scrollIntoView({ block: 'center' }); await B.rawSleep(0.12); B.tapEl(e); await B.rawSleep(0.3); B.progress('contract'); }
+        for (let i = 0; i < 30; i++) { const e = document.querySelector('.pn.show [data-a="claim"]:not(.off)'); if (!e) break; e.scrollIntoView({ block: 'center' }); await B.rawSleep(0.12); await B.withXpSrc('contract', async () => { B.tapEl(e); await B.rawSleep(0.3); }); B.progress('contract'); }
       }
     } finally { await B.closeUi(); await B.rawUntil(() => !g.input.uiCapture, 3); }
     return true;

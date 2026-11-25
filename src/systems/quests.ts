@@ -1,4 +1,6 @@
+import * as THREE from 'three';
 import { ELITES, ENEMIES } from '../data/enemies';
+import { TOWN } from '../world/layout';
 import { CONTRACTS, QUESTS, QUEST_BY_ID, type ContractDef, type Objective, type QuestDef } from '../data/quests';
 import { ITEMS } from '../data/items';
 import { WEAPONS } from '../data/weapons';
@@ -30,6 +32,29 @@ export class Quests {
     ev.on('flag', (f) => this.bump('flag:' + f.key));
     // saves made before accept() credited flags and one-off kills may hold a quest that can no longer progress
     for (const id in game.state.d.quests) { const q = QUEST_BY_ID[id], s = game.state.d.quests[id]; if (q && s.state !== 'done' && this.credit(q, s.prog)) game.state.touch(); }
+    this.duskBench();
+  }
+
+  /**
+   * The plaza bench Night Shift points the player at: sit on it by day and the clock runs on to dusk,
+   * so a phone player is never left waiting out a twenty-four-minute day for the night-shift robots.
+   */
+  private duskBench() {
+    const g = this.game, a = (122 * Math.PI) / 180, DUSK = 20.6;
+    const x = TOWN.plazaX + Math.cos(a) * 14.3, z = TOWN.plazaZ + Math.sin(a) * 14.3;
+    let waiting = false;
+    g.interact.add({
+      id: 'dusk_bench', pos: new THREE.Vector3(x, g.terrain.h(x, z) + 0.6, z), radius: 2.4, icon: 'sun', priority: 1,
+      label: 'Sit and wait for dusk',
+      enabled: () => !waiting && !g.env.isNight() && g.env.forcedHour === null && !g.interior && !g.combat.inCombat,
+      onUse: () => { waiting = true; g.env.forcedHour = DUSK; g.hud.toast('Waiting for dusk', 'info', 'The night shift clocks on at 20:00'); },
+    });
+    g.addSystem({
+      update: () => {
+        // the clock glides to dusk, then runs on by itself (a held forced hour would stop the day for good)
+        if (waiting && (Math.abs(g.env.hour - DUSK) < 0.05 || g.env.forcedHour !== DUSK)) { waiting = false; if (g.env.forcedHour === DUSK) g.env.forcedHour = null; }
+      },
+    });
   }
 
   /**

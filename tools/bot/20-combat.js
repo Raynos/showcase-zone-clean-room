@@ -84,6 +84,14 @@
     } else out.push({ tti, ex: dx / (d || 1), ez: dz / (d || 1), need: radial, tag });
   };
 
+  /**
+   * A human player is not frame-perfect: a wind-up, shell or shot is only seen once it has been on screen
+   * for RT seconds, and one attack in LAPSE goes unread altogether (each attack rolls once). Without this
+   * the bot read every telegraph the frame it began and took no damage at all, which says nothing about
+   * how the fights feel to a person.
+   */
+  B.RT = 0.28; B.LAPSE = 0.12;
+  const lapse = (o) => { if (o.__lapse === undefined) o.__lapse = Math.random() < B.LAPSE; return o.__lapse; };
   /** Everything that is about to hurt where we are standing. */
   B.threats = () => {
     const g = G(), pl = g.player, p = pl.pos, out = [];
@@ -94,6 +102,10 @@
       const haste = m.variant === 'night' || m.variant === 'nightElite' ? 0.9 : 1;
       const wind = m.state === 'windup', act = m.state === 'active';
       if (!wind && !act) continue;
+      // a new wind-up is a new attack: roll whether this one is read at all, and wait out the reaction time
+      if (wind && (m.__lapseAtk !== a || m.stT < (m.__lapseT ?? 0))) { m.__lapseAtk = a; m.__lapseRoll = Math.random() < B.LAPSE; }
+      if (wind) m.__lapseT = m.stT;
+      if (m.__lapseRoll || (wind && m.stT < B.RT)) continue;
       const remW = wind ? Math.max(0, a.windup * haste - m.stT) : 0;
       const away = { x: Math.sin(m.yaw + 1.6), z: Math.cos(m.yaw + 1.6) };
       switch (a.type) {
@@ -115,6 +127,12 @@
           if (act && m.fired >= 1) break;
           const t = rect(out, m.pos.x, m.pos.z, yaw, act ? a.length : a.length + 1, a.width / 2 + 0.3 + (m.locked || act ? 0 : 1.2), 0, a.id);
           if (t) t.tti = remW + Math.max(0, t.along - m.radius - 1.2) / sp;
+          // the ram of a robot whose answer is a counter: the bot rolls into it rather than out of the way
+          if (t && a.id === 'ram' && m.mech && m.mech.kind === 'ram' && (m.locked || act) && !B.careless()) { t.counterable = true; t.towardX = m.pos.x - p.x; t.towardZ = m.pos.z - p.z; }
+          break;
+        }
+        case 'channel': {
+          // Plumb Line Prime's laser: only cover stops it, and B.coverFrom handles that in the fight loop
           break;
         }
         case 'beam': {
@@ -133,10 +151,10 @@
       }
     }
     // falling shells, lightning and crates
-    for (const s of g.combat.strikes || []) circle(out, s.pos.x, s.pos.z, s.radius + 0.25, Math.max(0, s.dur - s.t), 'strike', null);
+    for (const s of g.combat.strikes || []) if (s.t >= B.RT && !lapse(s)) circle(out, s.pos.x, s.pos.z, s.radius + 0.25, Math.max(0, s.dur - s.t), 'strike', null);
     // projectiles on a line through us
     for (const s of g.combat.shots || []) {
-      if (!s.enemy) continue;
+      if (!s.enemy || 3 - s.life < B.RT * 0.7 || lapse(s)) continue;
       const sp = Math.hypot(s.vx, s.vz); if (sp < 1) continue;
       const ux = s.vx / sp, uz = s.vz / sp, dx = p.x - s.x, dz = p.z - s.z;
       const along = dx * ux + dz * uz, side = dx * uz - dz * ux;
@@ -184,17 +202,34 @@
    * Defensive reflexes, run every think tick from whatever behaviour is active.
    * Sets B.evading while it has taken over the stick.
    */
+  B.careless = () => B.cfg && B.cfg.style === 'careless';
+  B.tool = (k) => { const t = (B.rep.tools = B.rep.tools || {}); t[k] = (t[k] || 0) + 1; };
   B.reflex = (travel) => {
-    const g = G(), pl = g.player, st = g.state;
+    const g = G(), pl = g.player, st = g.state, c = g.combat;
     B.evading = false; B.noAttack = false;
     if (pl.dead || !pl.controllable || g.input.uiCapture) return;
-    // repair kit
+    // repair kit (a careless player still drinks one, just later)
     const frac = st.d.hp / st.maxHp;
-    if (frac < 0.45 && st.count('kit') > 0 && g.combat.potionCd <= 0 && B.now() - (B.lastKitTap || 0) > 0.6) { B.lastKitTap = B.now(); B.tapBtn('potion'); }
+    if (frac < (B.careless() ? 0.3 : 0.45) && st.count('kit') > 0 && c.potionCd <= 0 && B.now() - (B.lastKitTap || 0) > 0.6) { B.lastKitTap = B.now(); B.tapBtn('potion'); }
+    if (B.careless()) return;
+    // a perfect dodge just opened the counter window: take it
+    if (c.counterT > 0 && !B.counterArmed) { B.counterArmed = true; B.tool('perfect dodge'); }
+    if (c.counterT > 0 && B.now() - (B.lastCounter || 0) > 0.5 && !pl.rolling && B.hostiles(9).length) {
+      B.lastCounter = B.now(); B.setAttack(false); B.heavyUntil = 0; B.tapBtn('attack', 0.06); B.tool('counter');
+    }
+    if (c.counterT <= 0) B.counterArmed = false;
     B.ringJump();
     const th = B.threats();
     if (!th.length) return;
     th.sort((a, b) => a.tti - b.tti);
+    // Big Pallet's ram: roll through it at the last moment for the perfect dodge, then counter
+    const ram = th.find((t) => t.counterable && t.tti < 0.22);
+    if (ram && pl.rollCd <= 0 && pl.grounded && !pl.rolling && B.now() - (B.lastRoll || 0) > 0.3) {
+      B.move(ram.towardX, ram.towardZ, 1, false); B.evading = true; B.noAttack = true;
+      B.lastRoll = B.now(); B.tapBtn('dodge'); B.tool('roll into ram');
+      return;
+    }
+    if (ram || th.some((t) => t.counterable && t.tti < 0.9)) { B.noAttack = true; B.evading = true; B.stop(); return; }
     const speed = 6.4 * Math.max(0.25, pl.actionSlow) * st.moveMult;
     let ex = 0, ez = 0, urgent = null, hold = false;
     for (const t of th) {
@@ -215,6 +250,56 @@
     const canRoll = pl.rollCd <= 0 && pl.grounded && !pl.rolling;
     const rollNow = (urgent.cont && urgent.need > 2.2) || (urgent.tti < 0.3 && (walk > urgent.tti - 0.05 || urgent.shot));
     if (rollNow && canRoll && pl.invuln < urgent.tti + 0.05 && B.now() - (B.lastRoll || 0) > 0.3) { B.lastRoll = B.now(); B.tapBtn('dodge'); }
+  };
+
+  // ---------------------------------------------------------------- cover
+  /**
+   * A tracking laser (Plumb Line Prime's channel) is winding up or burning: put something solid between
+   * the emitter and us. Returns true while it has taken over the stick (moving to cover or holding it).
+   */
+  B.coverFrom = () => {
+    const g = G(), pl = g.player, p = pl.pos;
+    let mob = null;
+    for (const m of g.mobs.list) {
+      if (!m.alive || !m.atk || m.atk.type !== 'channel' || (m.state !== 'windup' && m.state !== 'active')) continue;
+      if (B.d2(m.pos, p) > 40) continue;
+      mob = m; break;
+    }
+    if (!mob) { B.inCover = false; B.coverPt = null; return false; }
+    const sock = mob.rig.sockets.muzzle || mob.rig.sockets.core, s = sock.getWorldPosition(mob.pos.clone());
+    const blocked = (x, y, z) => {
+      const dx = x - s.x, dy = y - s.y, dz = z - s.z, l = Math.hypot(dx, dy, dz);
+      const h = g.physics.raycast({ x: s.x, y: s.y, z: s.z }, { x: dx / l, y: dy / l, z: dz / l }, l);
+      return !!h && h.dist < l - 0.5;
+    };
+    if (blocked(p.x, p.y + 1.1, p.z)) {
+      if (!B.inCover) { B.inCover = true; B.tool('cover from laser'); }
+      B.evading = true; B.noAttack = true; B.stop();
+      return true;
+    }
+    B.inCover = false;
+    if (!B.coverPt || B.now() - B.coverAt > 0.6) {
+      B.coverAt = B.now(); B.coverPt = null;
+      for (let r = 1.5; r <= 16 && !B.coverPt; r += 1.5) {
+        let best = 1e9;
+        for (let k = 0; k < 24; k++) {
+          const a = (k / 24) * Math.PI * 2, x = p.x + Math.sin(a) * r, z = p.z + Math.cos(a) * r, y = B.nav.ground(x, z);
+          if (Math.abs(y - p.y) > 2.5 || !blocked(x, y + 1.1, z) || !B.nav.clear(p.x, p.z, x, z)) continue;
+          // of the spots at this distance, the one deepest in the shadow (further from the emitter)
+          const sc = -Math.hypot(x - s.x, z - s.z);
+          if (sc < best) { best = sc; B.coverPt = { x, z }; }
+        }
+      }
+    }
+    if (!B.coverPt) {
+      // nothing solid within reach: roll through the ticks and keep fighting
+      if (mob.state === 'active' && pl.rollCd <= 0 && pl.grounded && !pl.rolling) { B.lastRoll = B.now(); B.tapBtn('dodge'); }
+      if (!B.mem.noCover || B.now() - B.mem.noCover > 30) { B.mem.noCover = B.now(); B.note(`no cover from ${mob.name}'s laser within 16 m of (${Math.round(p.x)}, ${Math.round(p.z)})`); }
+      return false;
+    }
+    B.moveTo(B.coverPt.x, B.coverPt.z, 1, false); B.look(mob.pos.x, mob.pos.z);
+    B.evading = true; B.noAttack = true;
+    return true;
   };
 
   // ---------------------------------------------------------------- offence
@@ -243,12 +328,17 @@
     if (cur && B.now() - (B.lockSince || 0) < 0.5) return;
     if (B.now() - (B.lastTab || 0) > 0.16) { B.lastTab = B.now(); B.tapBtn('target', 0.05); }
   };
+  const K3 = { sword: 4, spear: 6, bow: 20, crossbow: 18, rifle: 24 };
   B.useSkills = (m, d, nClose) => {
     const g = G(), c = g.combat, st = g.state, k = c.kind, sk = c.skills, e = st.d.energy;
     if (B.now() - (B.lastSkill || 0) < 0.5 || B.noAttack || g.player.rolling) return;
     const can = (i) => (i === 0 ? c.cd1 : c.cd2) <= 0 && e >= sk[i].energy;
     const fire = (i) => { B.lastSkill = B.now(); B.tapBtn(i === 0 ? 'skill1' : 'skill2'); };
     const near = d - m.radius;
+    // Overdrive on something that deserves it; the third slot whenever it is ready and we are in reach
+    if (c.od >= 100 && (m.isBoss || m.cls === 'elite' || nClose >= 3) && st.d.level >= 10) { B.lastSkill = B.now(); B.tapBtn('overdrive'); B.tool('overdrive'); return; }
+    const s3 = c.skillSlots && c.skillSlots[2];
+    if (s3 && c.cd3 <= 0 && e >= s3.energy + 15 && near < (K3[k] || 4) && B.now() - (B.lastS3 || 0) > 1) { B.lastS3 = B.lastSkill = B.now(); B.tapBtn('skill3'); B.tool('skill 3'); return; }
     if (k === 'sword') {
       if (can(0) && (nClose >= 2 || near < 3.4)) return fire(0);
       if (can(1) && near < 8 && near > 1) return fire(1);
@@ -283,14 +373,29 @@
     B.pickWeapon(m);
     const nClose = B.hostiles(5.5).length;
     let attack = false;
+    const care = B.careless();
+    // Plumb Line Prime's laser: get something solid between us and it, and wait it out there
+    if (!care && B.coverFrom()) { B.setAttack(false); return; }
     if (K.melee) {
       const reach = K.range - 0.7;
-      if (!B.evading) {
+      // Old Reliable's riveted front: work round to its flank or back and only swing from there
+      const bulwark = !care && m.mech && m.mech.kind === 'bulwark' && m.state !== 'broken';
+      let front = false;
+      if (bulwark) {
+        const ang = Math.atan2(p.x - m.pos.x, p.z - m.pos.z), da = B.adiff(m.yaw, ang);
+        front = Math.abs(da) < 1.35;
+        if (front && !B.evading) {
+          const s = da >= 0 ? 1 : -1, R = m.radius + reach, a2 = ang + s * 0.9;
+          B.moveTo(m.pos.x + Math.sin(a2) * R, m.pos.z + Math.cos(a2) * R, 1, false);
+          if (B.now() - (B.lastFlankNote || 0) > 3) { B.lastFlankNote = B.now(); B.tool('flank move'); }
+        }
+      }
+      if (!B.evading && !front) {
         if (near > reach) B.move(dx, dz, 1, false);
-        else if (near < Math.min(0.9, reach - 1.6)) B.move(-dx, -dz, 0.6, false);
+        else if (near < Math.min(0.9, reach - 1.6) && !care) B.move(-dx, -dz, 0.6, false);
         else B.stop();
       }
-      attack = near < K.range + 3.2;
+      attack = near < K.range + 3.2 && !front;
     } else {
       // ranged: hold a band, circle while the shot charges
       if (!B.evading) {
@@ -302,9 +407,19 @@
       attack = d < K.far + 14;
     }
     if (B.noAttack || pl.rolling) attack = false;
+    // a broken elite under a quarter of its health: take the finisher the prompt offers
+    if (!care && g.interact.current && g.interact.current.id === 'finisher' && B.now() - (B.lastFinish || 0) > 1) {
+      B.lastFinish = B.now(); B.setAttack(false); B.tapBtn('interact', 0.1); B.tool('finisher'); return;
+    }
     // attack button: bows and rifles hold to full draw, then loose. Melee taps for the light string (holding
     // charges a heavy); against something big, or one about to break, the second light is held into a breaker.
     const kind = c.kind;
+    if (care) {
+      // attack only: tap, whatever the weapon
+      if (B.attackHeld) B.setAttack(false);
+      else if (attack && B.now() - (B.lastTapAtk || 0) > 0.2) { B.lastTapAtk = B.now(); B.tapBtn('attack', 0.07); }
+      return;
+    }
     if (kind === 'bow' || kind === 'rifle') {
       const charging = kind === 'bow' ? c.drawing : c.aiming;
       if (charging) { if (c.draw >= 1 || !attack) B.setAttack(false); }
@@ -323,8 +438,15 @@
     if (!attack) { B.setAttack(false); return; }
     const big = m.isBoss || m.cls === 'elite' || m.maxHp > 2.2 * g.state.attackPower * 4;
     const breaking = (m.staggerFrac || 0) > 0.55 && m.state !== 'stagger' && m.state !== 'broken';
-    const want = (big || breaking) && now - (B.lastHeavy || 0) > (breaking ? 1.5 : 3) && c.combo === 2 && !c.charging;
-    if (want) { B.heavyUntil = now + 0.75; B.setAttack(true); return; }
+    // Shift Boss Slag's plate: nothing but a breaker gets through it, so every string ends in one
+    const plated = m.mech && m.mech.kind === 'plate' && m.mech.plated;
+    const want = (plated || ((big || breaking) && now - (B.lastHeavy || 0) > (breaking ? 1.5 : 3))) && c.combo === 2 && !c.charging;
+    if (want) { B.heavyUntil = now + 0.75; B.setAttack(true); B.tool(plated ? 'breaker on plate' : 'breaker'); return; }
+    // two or more robots in reach (the Gatecrasher's larvae, a pack): the sweep after the first light clears them
+    const p = g.player.pos;
+    let around = 0;
+    for (const o of g.mobs.list) if (o.alive && o.targetable && o.state !== 'dead' && Math.hypot(o.pos.x - p.x, o.pos.z - p.z) - o.radius < 3.3) around++;
+    if (around >= 2 && c.combo === 1 && !c.charging && now - (B.lastHeavy || 0) > 1.2) { B.heavyUntil = now + 0.5; B.setAttack(true); B.tool(m.mech && m.mech.kind === 'brood' || m.summoner ? 'sweep on larvae' : 'sweep'); return; }
     // tap: a fresh press each time the string can take one (the game buffers 0.2 s)
     if (B.attackHeld) { B.setAttack(false); return; }
     if (now - (B.lastTapAtk || 0) > 0.2) { B.lastTapAtk = now; B.tapBtn('attack', 0.07); }
@@ -360,7 +482,7 @@
         }
         quiet = B.now();
         const frac = st.d.hp / st.maxHp;
-        if (!opts.noFlee && hs.length && (st.count('kit') === 0 || g.combat.potionCd > 2.5) && frac < (hs.length >= 4 ? 0.4 : 0.27)) { B.setAttack(false); await B.flee(); return 'fled'; }
+        if (!opts.noFlee && !B.careless() && hs.length && (st.count('kit') === 0 || g.combat.potionCd > 2.5) && frac < (hs.length >= 4 ? 0.4 : 0.27)) { B.setAttack(false); await B.flee(); return 'fled'; }
         B.engage(m);
         // cannot get to it (terrain, a wall)? walk a planned path for a moment
         const near = m.__d - m.radius;
