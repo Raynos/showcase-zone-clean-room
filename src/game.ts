@@ -9,7 +9,7 @@ import type { RobotKind, RobotLook, RobotRig } from './entities/robots/types';
 import { FX, SP } from './gfx/fx';
 import { GU, installFog } from './gfx/material';
 import { QUALITY, Renderer } from './gfx/renderer';
-import { buildNoiseTexture, buildTextureArrays } from './gfx/textures';
+import { buildNoiseTexture, buildTextureArrays, loadPaintedArrays } from './gfx/textures';
 import { Combat } from './systems/combat';
 import { Interact } from './systems/interact';
 import { Loot } from './systems/loot';
@@ -90,6 +90,8 @@ export class Game {
     progress(0.25, 'RAISING THE YARD');
     await tick();
     this.physics = await Physics.init();
+    // painted surfaces download while the world is built; whatever is late swaps in during play
+    const painted = loadPaintedArrays(tex, this.renderer.quality.name === 'low' ? 256 : 512, (t) => { GU.uTexA.value = t.albedo; GU.uTexN.value = t.normal; });
     this.terrain = new Terrain();
     this.terrain.build();
     this.scene.add(this.terrain.group);
@@ -136,6 +138,8 @@ export class Game {
     // place the player
     const d = this.state.d;
     const fresh = d.playTime < 1;
+    progress(0.95, 'PAINTING SURFACES');
+    await Promise.race([painted, new Promise<void>((r) => setTimeout(r, 6000))]);
     const at = fresh ? { x: SPAWN.x, y: this.terrain.h(SPAWN.x, SPAWN.z), z: SPAWN.z, yaw: SPAWN.yaw } : this.resolvePos(d.pos[0], d.pos[1], d.pos[2], d.yaw);
     this.player.teleport(at.x, at.y + 0.1, at.z, at.yaw);
     this.cameraRig.snap(this.player.yaw + Math.PI, 0.16);

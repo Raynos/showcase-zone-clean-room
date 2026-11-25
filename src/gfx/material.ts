@@ -183,7 +183,7 @@ export class WorldMaterial extends THREE.MeshStandardMaterial {
     const wind = !!o.wind, rim = !!o.rim;
     this.onBeforeCompile = (sh) => {
       sh.uniforms.uTexA = GU.uTexA; sh.uniforms.uTexN = GU.uTexN;
-      sh.uniforms.uTime = GU.uTime; sh.uniforms.uWind = GU.uWind;
+      sh.uniforms.uTime = GU.uTime; sh.uniforms.uWind = GU.uWind; sh.uniforms.uNoise = GU.uNoise;
       sh.uniforms.uWet = GU.uWet; sh.uniforms.uEmitBoost = GU.uEmitBoost; sh.uniforms.uCharFill = GU.uCharFill;
       sh.uniforms.uFlash = this.flash; sh.uniforms.uRim = this.rim; sh.uniforms.uEmitMul = this.emitMul;
       sh.vertexShader = sh.vertexShader
@@ -209,8 +209,8 @@ ${wind ? /* glsl */ `vSway = aSway;
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', /* glsl */ `#include <common>
 precision highp sampler2DArray;
-uniform sampler2DArray uTexA; uniform sampler2DArray uTexN;
-uniform vec4 uFlash; uniform vec4 uRim; uniform float uEmitBoost; uniform float uEmitMul; uniform float uWet; uniform vec3 uCharFill;
+uniform sampler2DArray uTexA; uniform sampler2DArray uTexN; uniform sampler2D uNoise;
+uniform vec4 uFlash; uniform vec4 uRim; uniform float uEmitBoost; uniform float uEmitMul; uniform float uWet; uniform vec3 uCharFill; uniform vec2 uNearFade;
 varying float vLayer; varying float vEmit; varying vec2 vWUv;
 ${wind ? 'varying float vSway;' : ''}
 vec4 gTA; vec4 gTN;`)
@@ -239,6 +239,9 @@ vec4 gTA; vec4 gTN;`)
   float det = max(dot(Tt, Tt), dot(Bb, Bb));
   float sc = det == 0.0 ? 0.0 : inversesqrt(det);
   vec2 nxy = gTN.xy * 2.0 - 1.0;
+${rim ? '' : /* glsl */ `  // slow drift in tone and warmth, so a wall or a square is never one flat fill
+  vec2 mv = texture2D(uNoise, vWUv * 0.037).rg;
+  gTA.rgb *= (0.78 + 0.44 * mv.x) * mix(vec3(1.05, 1.0, 0.94), vec3(0.95, 1.0, 1.07), mv.y);`}
   normal = normalize(normal + (Tt * nxy.x + Bb * nxy.y) * sc);
 }`)
         .replace('#include <emissivemap_fragment>', 'totalEmissiveRadiance += vColor.rgb * gTA.rgb * (vEmit * uEmitBoost * uEmitMul);')

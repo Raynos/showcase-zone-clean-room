@@ -6,8 +6,9 @@ export const T = {
   FLAT: 0, METAL: 1, PLANKS: 2, CRATE: 3, CONCRETE: 4, COBBLE: 5, BRICK: 6, ROOF: 7,
   STRIPE: 8, CANVAS: 9, ROCK: 10, GRASS: 11, DIRT: 12, PLATE: 13, GRATE: 14, BARK: 15,
   GRAVEL: 16, TILE: 17, RUBBER: 18, LEAF: 19, PAVER: 20, PLASTER: 21, CRATE2: 22, PANEL: 23,
+  SAND: 24, LITTER: 25,
 } as const;
-export const LAYER_COUNT = 24;
+export const LAYER_COUNT = 26;
 
 const S = 256; // texel size of each layer
 
@@ -360,6 +361,26 @@ def(T.PANEL, 1.8, (u, v, o) => {
   o.m = 0.7;
 });
 
+// SAND: wind ripples (painted tile replaces it)
+def(T.SAND, 0.8, (u, v, o) => {
+  const warp = tfbm(u, v, 3, 3, 250) * 0.6;
+  const rip = Math.sin((v * 14 + warp * 3 + u * 2) * Math.PI * 2) * 0.5 + 0.5;
+  const n = tfbm(u, v, 12, 4, 251);
+  o.h = rip * 0.5 + n * 0.3;
+  o.a = 0.78 + rip * 0.08 + n * 0.12;
+  o.r = 0.92;
+});
+// LITTER: fallen leaves over dark earth (painted tile replaces it)
+def(T.LITTER, 0.8, (u, v, o) => {
+  const w = worley(u, v, 9, 260, 1);
+  const leaf = 1 - smooth(0.18, 0.3, w[0]);
+  const n = tfbm(u, v, 10, 3, 261);
+  o.h = leaf * 0.6 + n * 0.2;
+  o.a = 0.3 + leaf * (0.5 + w[2] * 0.2) + n * 0.1;
+  o.tr = 1; o.tg = 0.62 + w[2] * 0.3; o.tb = 0.3 + w[2] * 0.1;
+  o.r = 0.9;
+});
+
 export interface TexArrays { albedo: THREE.DataArrayTexture; normal: THREE.DataArrayTexture; size: number }
 
 /** Builds the albedo(+roughness) and normal(+metal) texture arrays. */
@@ -411,6 +432,189 @@ export function buildTextureArrays(maxAniso: number): TexArrays {
     return t;
   };
   return { albedo: mk(A, true), normal: mk(N, false), size: S };
+}
+
+// ---- painted layers --------------------------------------------------------------------------
+
+/**
+ * A painted tile under public/tex/ (its generation prompt is in public/tex/prompts/) that takes
+ * the place of a code-generated layer once it has loaded. The world tints every layer with
+ * vertex colour, so a painting is stored relative to its own mean colour: light, dark and hue
+ * shifts survive, and the surface keeps the colour the scene gave it.
+ */
+interface Paint {
+  file: string;
+  /** normal strength, read from the painting's own light and dark */
+  bump: number;
+  /** roughness at mean brightness; `roughK` adds roughness to darker paint and takes it from lighter */
+  rough: number; roughK?: number;
+  metal?: number;
+  /** 1 keeps the painting's hue shifts around its mean colour, 0 keeps only light and dark */
+  hue?: number;
+  /** contrast around the mean, and brightness against the code-generated layer it replaces */
+  contrast?: number; gain?: number;
+  /** orange-brown paint on this layer is rust: rough, and not metal */
+  rust?: boolean;
+  /** keep the painting's own colours (for layers drawn with a near-white tint) */
+  raw?: boolean;
+  /** brightness multiplier laid over the painting, e.g. awning stripes */
+  over?: (u: number, v: number) => number;
+}
+const PAINT: Record<number, Paint> = {
+  [T.COBBLE]: { file: 'cobble', bump: 1.5, rough: 0.78, roughK: 0.3 },
+  [T.PAVER]: { file: 'paver', bump: 1.5, rough: 0.76, roughK: 0.3, contrast: 1.25 },
+  [T.BRICK]: { file: 'stonewall', bump: 1.5, rough: 0.86, roughK: 0.2 },
+  [T.ROOF]: { file: 'roof', bump: 1.6, rough: 0.72, roughK: 0.3 },
+  [T.PLANKS]: { file: 'planks', bump: 1.2, rough: 0.8, roughK: 0.2 },
+  [T.CRATE]: { file: 'crate', bump: 1.4, rough: 0.8, roughK: 0.2 },
+  [T.CRATE2]: { file: 'crate2', bump: 1.4, rough: 0.8, roughK: 0.2 },
+  [T.PLASTER]: { file: 'plaster', bump: 0.7, rough: 0.9, roughK: 0.1 },
+  [T.METAL]: { file: 'metal', bump: 1.0, rough: 0.4, roughK: 0.5, metal: 0.85, rust: true, hue: 1 },
+  [T.CONCRETE]: { file: 'concrete', bump: 0.9, rough: 0.88, roughK: 0.15 },
+  [T.ROCK]: { file: 'rock', bump: 1.6, rough: 0.88, roughK: 0.15 },
+  [T.DIRT]: { file: 'dirt', bump: 1.1, rough: 0.93, roughK: 0.1, contrast: 1.3 },
+  [T.GRASS]: { file: 'grassground', bump: 0.8, rough: 0.9 },
+  [T.GRAVEL]: { file: 'gravel', bump: 1.5, rough: 0.86, roughK: 0.15 },
+  [T.SAND]: { file: 'sand', bump: 0.8, rough: 0.92 },
+  [T.BARK]: { file: 'bark', bump: 1.8, rough: 0.92 },
+  [T.CANVAS]: { file: 'canvas', bump: 0.9, rough: 0.92, over: (u) => 0.62 + 0.38 * smooth(0.48, 0.52, Math.abs(((u * 4) % 1) - 0.5) * 2) },
+  [T.PLATE]: { file: 'plate', bump: 1.6, rough: 0.46, roughK: 0.5, metal: 0.8 },
+  [T.TILE]: { file: 'tile', bump: 1.2, rough: 0.42, roughK: 0.5, metal: 0.35 },
+  [T.PANEL]: { file: 'panel', bump: 1.3, rough: 0.46, roughK: 0.5, metal: 0.7, rust: true },
+  [T.LITTER]: { file: 'leaflitter', bump: 0.9, rough: 0.88, raw: true },
+};
+
+/** Writes one painted tile (sRGB RGBA bytes, S×S) into layer `layer` of the two arrays. */
+function paintLayer(src: Uint8ClampedArray, S: number, p: Paint, A: Uint8Array, N: Uint8Array, layer: number, target: number) {
+  const n = S * S, base = layer * n * 4;
+  let mr = 0, mg = 0, mb = 0;
+  for (let i = 0; i < n; i++) { mr += src[i * 4]; mg += src[i * 4 + 1]; mb += src[i * 4 + 2]; }
+  mr /= n * 255; mg /= n * 255; mb /= n * 255;
+  const ml = 0.3 * mr + 0.55 * mg + 0.15 * mb;
+  const hue = p.hue ?? 1, con = p.contrast ?? 1, gain = target * (p.gain ?? 1), rk = p.roughK ?? 0, metal = p.metal ?? 0;
+  const hb = new Float32Array(n);
+  // highlights roll off instead of clipping
+  const knee = (x: number) => (x < 0.8 ? x : 0.8 + 0.2 * (1 - Math.exp(-(x - 0.8) / 0.2)));
+  for (let i = 0; i < n; i++) {
+    const r = src[i * 4] / 255, g = src[i * 4 + 1] / 255, b = src[i * 4 + 2] / 255;
+    const l = (0.3 * r + 0.55 * g + 0.15 * b) / ml;
+    const o = base + i * 4;
+    let k = 1;
+    if (p.over) k = p.over(((i % S) + 0.5) / S, (Math.floor(i / S) + 0.5) / S);
+    if (p.raw) {
+      A[o] = Math.round(clamp01(r * k) * 255); A[o + 1] = Math.round(clamp01(g * k) * 255); A[o + 2] = Math.round(clamp01(b * k) * 255);
+    } else {
+      const lc = 1 + (l - 1) * con;
+      const cr = lc + (r / mr - l) * hue, cg = lc + (g / mg - l) * hue, cb = lc + (b / mb - l) * hue;
+      A[o] = Math.round(clamp01(knee(cr * gain) * k) * 255);
+      A[o + 1] = Math.round(clamp01(knee(cg * gain) * k) * 255);
+      A[o + 2] = Math.round(clamp01(knee(cb * gain) * k) * 255);
+    }
+    let rough = p.rough + (1 - l) * rk, mt = metal;
+    if (p.rust) {
+      const rust = smooth(0.07, 0.2, (r - b) - (mr - mb));
+      rough += (0.95 - rough) * rust; mt *= 1 - rust;
+    }
+    A[o + 3] = Math.round(clamp01(rough) * 255);
+    N[o + 2] = Math.round(clamp01(mt) * 255); N[o + 3] = 255;
+    hb[i] = l;
+  }
+  // normals from the painting's light and dark, taken over a 3×3 neighbourhood so brush texture
+  // does not turn into grit
+  const k = p.bump * 0.55;
+  const at = (x: number, y: number) => hb[((y + S) % S) * S + ((x + S) % S)];
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const dx = (at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1) - at(x - 1, y - 1) - 2 * at(x - 1, y) - at(x - 1, y + 1)) * k;
+    const dy = (at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1) - at(x - 1, y - 1) - 2 * at(x, y - 1) - at(x + 1, y - 1)) * k;
+    const il = 1 / Math.hypot(dx, dy, 1);
+    const o = base + (y * S + x) * 4;
+    N[o] = Math.round((-dx * il * 0.5 + 0.5) * 255);
+    N[o + 1] = Math.round((-dy * il * 0.5 + 0.5) * 255);
+  }
+}
+
+/** Mean albedo of one layer, 0..1. */
+function layerMean(A: Uint8Array, S: number, layer: number) {
+  const n = S * S, base = layer * n * 4;
+  let sum = 0;
+  for (let i = 0; i < n; i += 7) sum += A[base + i * 4] + A[base + i * 4 + 1] + A[base + i * 4 + 2];
+  return sum / (Math.ceil(n / 7) * 3 * 255);
+}
+
+/** Copies a layer between arrays of different sizes, bilinear with wrap. */
+function resample(src: Uint8Array, S0: number, dst: Uint8Array, S1: number, layer: number) {
+  const b0 = layer * S0 * S0 * 4, b1 = layer * S1 * S1 * 4;
+  if (S0 === S1) { dst.set(src.subarray(b0, b0 + S0 * S0 * 4), b1); return; }
+  const f = S0 / S1;
+  for (let y = 0; y < S1; y++) {
+    const fy = (y + 0.5) * f - 0.5, y0 = Math.floor(fy), ty = fy - y0;
+    const ya = ((y0 % S0) + S0) % S0, yb = (ya + 1) % S0;
+    for (let x = 0; x < S1; x++) {
+      const fx = (x + 0.5) * f - 0.5, x0 = Math.floor(fx), tx = fx - x0;
+      const xa = ((x0 % S0) + S0) % S0, xb = (xa + 1) % S0;
+      const i00 = b0 + (ya * S0 + xa) * 4, i10 = b0 + (ya * S0 + xb) * 4, i01 = b0 + (yb * S0 + xa) * 4, i11 = b0 + (yb * S0 + xb) * 4;
+      const o = b1 + (y * S1 + x) * 4;
+      for (let c = 0; c < 4; c++) {
+        const a = src[i00 + c] + (src[i10 + c] - src[i00 + c]) * tx, b = src[i01 + c] + (src[i11 + c] - src[i01 + c]) * tx;
+        dst[o + c] = a + (b - a) * ty;
+      }
+    }
+  }
+}
+
+async function loadTile(file: string, S: number): Promise<Uint8ClampedArray | null> {
+  try {
+    // relative to the page, so it works from any sub-path the site is served under
+    const res = await fetch(`tex/${file}.webp`);
+    if (!res.ok) return null;
+    const bmp = await createImageBitmap(await res.blob());
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = S;
+    const cx = cv.getContext('2d', { willReadFrequently: true })!;
+    cx.imageSmoothingQuality = 'high';
+    cx.drawImage(bmp, 0, 0, S, S);
+    bmp.close();
+    return cx.getImageData(0, 0, S, S).data;
+  } catch { return null; }
+}
+
+/**
+ * Loads the painted tiles and swaps them in for the code-generated layers: the world is drawn
+ * with `base` until every tile has arrived, then `swap` receives arrays of `size` texels a side
+ * holding the paintings (and the code-generated layers that have none, scaled to match).
+ * A tile that fails to load leaves its layer as it was. `progress` runs 0..1.
+ */
+export async function loadPaintedArrays(base: TexArrays, size: number, swap: (t: TexArrays) => void, progress?: (k: number) => void): Promise<void> {
+  const ids = Object.keys(PAINT).map(Number);
+  let got = 0;
+  const tiles = await Promise.all(ids.map(async (id) => {
+    const d = await loadTile(PAINT[id].file, size);
+    progress?.(++got / ids.length * 0.8);
+    return d;
+  }));
+  const A0 = base.albedo.image.data as Uint8Array, N0 = base.normal.image.data as Uint8Array, S0 = base.size;
+  const A = new Uint8Array(size * size * 4 * LAYER_COUNT), N = new Uint8Array(size * size * 4 * LAYER_COUNT);
+  for (let layer = 0; layer < LAYER_COUNT; layer++) {
+    const k = ids.indexOf(layer), tile = k >= 0 ? tiles[k] : null;
+    if (tile) paintLayer(tile, size, PAINT[layer], A, N, layer, layerMean(A0, S0, layer));
+    else { resample(A0, S0, A, size, layer); resample(N0, S0, N, size, layer); }
+    // a layer at a time, so a swap that lands during play does not stall a frame for long
+    if (layer % 2 === 1) await new Promise((r) => setTimeout(r, 0));
+  }
+  const mk = (data: Uint8Array, like: THREE.DataArrayTexture) => {
+    const t = new THREE.DataArrayTexture(data, size, size, LAYER_COUNT);
+    t.format = THREE.RGBAFormat; t.type = THREE.UnsignedByteType;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
+    t.generateMipmaps = true; t.anisotropy = like.anisotropy; t.colorSpace = like.colorSpace;
+    // the pixels live on the GPU from the first draw; a lost context reloads the page
+    t.onUpdate = () => { (t.image as { data: Uint8Array | null }).data = null; };
+    t.needsUpdate = true;
+    return t;
+  };
+  swap({ albedo: mk(A, base.albedo), normal: mk(N, base.normal), size });
+  base.albedo.dispose(); base.normal.dispose();
+  progress?.(1);
 }
 
 /** Small tileable RGBA noise texture used by sky/clouds/water/wind. */
