@@ -1,13 +1,33 @@
 import * as THREE from 'three';
+import { CameraRig } from './core/camera';
+import { Input } from './core/input';
 import { Physics } from './core/physics';
+import { clamp, damp } from './core/util';
+import { placeholderHumanoid, placeholderRobot } from './entities/placeholder';
+import { Player } from './entities/player';
+import type { RobotKind, RobotLook, RobotRig } from './entities/robots/types';
+import { FX } from './gfx/fx';
 import { GU, installFog } from './gfx/material';
 import { QUALITY, Renderer } from './gfx/renderer';
 import { buildNoiseTexture, buildTextureArrays } from './gfx/textures';
-import { Environment } from './world/environment';
+import { Combat } from './systems/combat';
+import { Interact } from './systems/interact';
+import { Loot } from './systems/loot';
+import { Mobs } from './systems/mobs';
+import { State } from './systems/state';
+import { Hud } from './ui/hud';
 import { Chunks } from './world/chunks';
+import { Environment } from './world/environment';
 import { scatterFlora } from './world/flora';
 import { Grass } from './world/grass';
+import { BANDS, PADS, ROCK, SPAWN, TOWN, bandAt, inTown } from './world/layout';
 import { Terrain } from './world/terrain';
+
+export interface System { update(dt: number, rdt: number): void }
+/** Walkable floor override for interiors: return a height, or null to fall through to terrain. */
+export type FloorFn = (x: number, z: number, y: number) => number | null;
+
+const _v = new THREE.Vector3();
 
 export class Game {
   renderer!: Renderer;
@@ -18,19 +38,47 @@ export class Game {
   grass!: Grass;
   chunks!: Chunks;
   physics!: Physics;
-  time = 0;
+  input!: Input;
+  cameraRig!: CameraRig;
+  state = new State();
+  player!: Player;
+  fx!: FX;
+  hud!: Hud;
+  combat!: Combat;
+  mobs!: Mobs;
+  loot!: Loot;
+  interact!: Interact;
+  systems: System[] = [];
+  floors: FloorFn[] = [];
+  /** real seconds since boot, and simulated seconds */
+  time = 0; simTime = 0;
   private last = 0;
-  focus = new THREE.Vector3(-30, 1, 6);
+  private stopT = 0; private slowT = 0; private slowK = 1;
+  paused = false;
+  /** hold the screen black (interior transitions) */
+  fadeHold = false;
+  zoneName = ''; zoneDanger = false; private zoneT = 0; private zoneKey = '';
+  /** true while inside a portal interior (vault / arena) */
+  interior: string | null = null;
+  audio: { play(name: string, o?: any): void; [k: string]: any } | null = null;
+  robotFactory: ((kind: RobotKind, look: RobotLook) => RobotRig) | null = null;
+  onSprintStart: (() => void) | null = null;
+  dev = new URLSearchParams(location.search).has('dev');
+  private fpsAcc = 0; private fpsN = 0; fps = 60;
+  started = false;
 
   async boot(canvas: HTMLCanvasElement, progress: (p: number, label: string) => void) {
     installFog();
-    const qn = new URLSearchParams(location.search).get('q') ?? 'high';
+    const params = new URLSearchParams(location.search);
+    const saved = this.state.d.settings.quality;
+    const coarse = matchMedia('(pointer: coarse)').matches;
+    const qn = params.get('q') ?? (saved !== 'auto' ? saved : coarse ? 'medium' : 'high');
     this.renderer = new Renderer(canvas, QUALITY[qn] ?? QUALITY.high);
     progress(0.1, 'MIXING PAINT');
     await tick();
     const tex = buildTextureArrays(this.renderer.gl.capabilities.getMaxAnisotropy());
     GU.uTexA.value = tex.albedo; GU.uTexN.value = tex.normal; GU.uNoise.value = buildNoiseTexture();
-    progress(0.3, 'RAISING THE YARD');
+    progress(0.25, 'RAISING THE YARD');
     await tick();
     this.physics = await Physics.init();
     this.terrain = new Terrain();
@@ -39,46 +87,274 @@ export class Game {
     const tm = this.terrain.trimesh();
     this.physics.addTrimesh(tm.vertices, tm.indices);
     this.chunks = new Chunks();
-    scatterFlora(this.chunks, this.terrain);
-    const st = this.chunks.build(this.physics);
-    console.log('static world', st);
-    this.scene.add(this.chunks.group);
-    progress(0.6, 'SOWING GRASS');
+    progress(0.4, 'PLANTING');
     await tick();
+    scatterFlora(this.chunks, this.terrain);
+    this.env = new Environment(this.scene);
+    this.env.hour = this.state.d.hour;
+    this.input = new Input(canvas);
+    this.cameraRig = new CameraRig(this.camera, this.physics);
+    this.fx = new FX();
+    this.fx.groundY = (x, z, y) => this.groundY(x, z, y);
+    this.scene.add(this.fx.group);
+    this.player = new Player(this);
+    this.player.setRig(placeholderHumanoid());
+    this.hud = new Hud(this);
+    this.combat = new Combat(this);
+    this.mobs = new Mobs(this);
+    this.loot = new Loot(this);
+    this.interact = new Interact(this);
+    progress(0.5, 'BUILDING BRASSWICK');
+    await tick();
+    const content = await import('./content');
+    await content.buildWorld(this, progress);
+    progress(0.86, 'SOWING GRASS');
+    await tick();
+    const st = this.chunks.build(this.physics);
+    if (this.dev) console.log('static world', st);
+    this.scene.add(this.chunks.group);
     this.grass = new Grass(this.terrain, this.renderer.quality.grass);
     this.scene.add(this.grass.group);
-    this.env = new Environment(this.scene);
-    progress(1, 'READY');
+    await content.startSystems(this);
+    this.wire();
+    // place the player
+    const d = this.state.d;
+    const fresh = d.playTime < 1;
+    const px = fresh ? SPAWN.x : d.pos[0], pz = fresh ? SPAWN.z : d.pos[2];
+    const py = fresh || d.pos[1] < -20 ? this.terrain.h(px, pz) : d.pos[1];
+    this.player.teleport(px, py + 0.1, pz, fresh ? SPAWN.yaw : d.yaw);
+    this.cameraRig.snap(this.player.yaw + Math.PI, 0.16);
+    d.hp = clamp(d.hp, 1, this.state.maxHp);
     window.addEventListener('resize', () => this.resize());
+    window.addEventListener('orientationchange', () => setTimeout(() => this.resize(), 200));
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.state.save(); this.last = performance.now(); });
+    window.addEventListener('pagehide', () => this.savePos());
     this.resize();
+    progress(1, 'READY');
+    // warm the shaders before the first visible frame
+    this.cameraRig.update(0.016, this.player.pos, { lookX: 0, lookY: 0, zoom: 0, moveHeading: null, speed: 0 });
+    this.env.update(0.016, this.camera, this.player.pos, this.renderer);
+    try { this.renderer.gl.compile(this.scene, this.camera); } catch { /* optional */ }
     this.last = performance.now();
+    this.started = true;
     requestAnimationFrame((t) => this.frame(t));
+  }
+
+  private wire() {
+    const ev = this.state.events, hud = this.hud;
+    ev.on('toast', (t) => hud.toast(t.text, t.kind ?? 'info', t.sub ?? '', t.icon ?? ''));
+    ev.on('log', (l) => hud.log(l.text, l.kind ?? 'sys'));
+    ev.on('levelUp', (e) => {
+      hud.banner('LEVEL ' + e.level, 'Health and energy restored', 'level');
+      this.fx.levelUp(this.player.pos);
+      this.sfx('level_up');
+      this.cameraRig.punch(5); this.renderer.post.flash.set(1, 0.85, 0.5, 0.35);
+      this.slowMo(0.4, 0.5);
+      if (!this.combat.busy) { this.player.action = 'cheer'; this.player.actionT = 0; (this.combat as any).actDur = 1.2; }
+      hud.log(`You reached level ${e.level}.`, 'quest');
+      this.state.save();
+    });
+    ev.on('item', (e) => {
+      const def = (ITEMS_REF as any)[e.id];
+      hud.log(`+${e.count} ${def?.name ?? e.id}`, 'loot');
+    });
+    ev.on('zone', (z) => { hud.banner(z.name, z.sub, z.danger ? 'danger' : ''); this.sfx(z.danger ? 'zone_danger' : 'zone_enter'); });
+    this.player.onLand = (fall) => {
+      const p = this.player.pos;
+      if (fall > 1.2) { this.fx.dust(p, Math.min(12, 3 + fall), Math.min(1.8, 0.7 + fall * 0.1)); this.cameraRig.shake(Math.min(0.4, fall * 0.035)); }
+      if (fall > 5) this.fx.ring(p, 3, 0xffffff, 0.3, 0.8);
+      this.sfx(fall > 4 ? 'land_heavy' : 'land', { vol: clamp(0.4 + fall * 0.08, 0.4, 1) });
+      // long falls sting a little, never kill
+      if (fall > 13 && !this.player.mode) { const dmg = Math.min(this.state.d.hp - 1, Math.round((fall - 13) * this.state.maxHp * 0.03)); if (dmg > 0) { this.state.d.hp -= dmg; this.renderer.post.hurt = 0.5; } }
+    };
+    this.player.onStep = () => {
+      const p = this.player;
+      this.sfx(this.surfaceSound(), { vol: p.sprinting ? 0.55 : 0.4, pitch: 0.92 + Math.random() * 0.16 });
+      if (p.sprinting) this.fx.dust(p.pos, 1, 0.7);
+    };
+    this.player.onJump = (dbl) => {
+      this.sfx(dbl ? 'jump_double' : 'jump');
+      if (dbl) { this.fx.ring({ x: this.player.pos.x, y: this.player.pos.y - 0.05, z: this.player.pos.z } as THREE.Vector3, 1.6, 0x7ff0ff, 0.25, 2); }
+      else this.fx.dust(this.player.pos, 3, 0.6);
+    };
+    this.onSprintStart = () => { this.fx.dust(this.player.pos, 4, 0.9); };
+    this.input.onFirstGesture = () => { this.audio?.unlock?.(); };
+  }
+  private surfaceSound(): string {
+    const p = this.player;
+    if (p.groundTag === 'metal') return 'step_metal';
+    if (p.groundTag === 'wood') return 'step_wood';
+    if (this.interior) return 'step_metal';
+    if (inTown(p.pos.x, p.pos.z)) return 'step_stone';
+    return this.terrain.grassAt(p.pos.x, p.pos.z) > 0.35 ? 'step_grass' : 'step_dirt';
+  }
+
+  // ---- services ----
+  sfx(name: string, o?: { vol?: number; pitch?: number; pos?: { x: number; y: number; z: number }; delay?: number }) { this.audio?.play(name, o); }
+  haptic(ms: number) { try { if (this.input.isTouch) navigator.vibrate?.(ms); } catch { /* unsupported */ } }
+  hitStop(sec: number) { this.stopT = Math.max(this.stopT, sec); }
+  slowMo(scale: number, sec: number) { this.slowK = scale; this.slowT = Math.max(this.slowT, sec); }
+  makeRobot(kind: RobotKind, look: RobotLook): RobotRig {
+    if (this.robotFactory) { try { return this.robotFactory(kind, look); } catch { /* fall through to stand-in */ } }
+    const s = { mite: 0.7, pallet: 1.3, drone: 1, welder: 1.8, riveter: 1.8, sentry: 2.6, warden: 3.2, foreman: 3, titan: 12 }[kind] ?? 1;
+    return placeholderRobot(s * (look.scale ?? 1));
+  }
+  /** Height of the walkable surface under a point (terrain outdoors, registered floors inside). */
+  groundY(x: number, z: number, y: number): number {
+    for (const f of this.floors) { const h = f(x, z, y); if (h !== null) return h; }
+    return this.terrain.h(x, z);
+  }
+  addSystem<T extends System>(s: T): T { this.systems.push(s); return s; }
+  savePos() {
+    const p = this.player.pos, d = this.state.d;
+    if (!this.interior && !this.player.dead) { d.pos = [p.x, p.y, p.z]; d.yaw = this.player.yaw; }
+    d.hour = this.env.hour;
+    this.state.save();
   }
 
   resize() {
     this.renderer.resize();
-    this.camera.aspect = this.renderer.width / this.renderer.height;
-    this.camera.fov = this.camera.aspect < 1 ? 62 : 55;
-    this.camera.updateProjectionMatrix();
+    this.cameraRig.setAspect(this.renderer.width / this.renderer.height);
+    this.hud.resize();
   }
 
-  camYaw = 0.3; camPitch = 0.12; camDist = 8;
+  private updateZone(dt: number) {
+    this.zoneT -= dt;
+    if (this.zoneT > 0) return;
+    this.zoneT = 0.4;
+    const p = this.player.pos;
+    let name = 'The Proving Yard', sub = 'Peaceful', danger = false, key = 'yard';
+    if (this.interior) { return; }
+    if (inTown(p.x, p.z)) { name = 'Brasswick'; sub = 'Town · Safe'; key = 'town'; }
+    else {
+      const b = bandAt(p.x, p.z);
+      if (b) { name = b.name; sub = `Levels ${b.lo}-${b.hi}`; danger = true; key = 'b' + b.id; }
+      else {
+        for (const k in PADS) { const r = PADS[k]; if (p.x > r.x0 - 3 && p.x < r.x1 + 3 && p.z > r.z0 - 3 && p.z < r.z1 + 3) { name = r.name; sub = 'Test course'; key = k; } }
+        if (Math.hypot(p.x - ROCK.x, p.z - ROCK.z) < ROCK.r * 0.85) { name = 'The Rock'; sub = 'Crag'; key = 'rock'; }
+      }
+    }
+    this.setZone(key, name, sub, danger);
+    void TOWN; void BANDS;
+  }
+  setZone(key: string, name: string, sub: string, danger: boolean) {
+    if (key === this.zoneKey) return;
+    const first = this.zoneKey === '';
+    this.zoneKey = key; this.zoneName = name; this.zoneDanger = danger;
+    if (!first) this.state.events.emit('zone', { name, sub, danger });
+    this.state.events.emit('reach', { place: key });
+  }
+
+  private updateHudButtons() {
+    const c = this.combat, hud = this.hud, st = this.state, k = c.kind;
+    const sk = c.skills;
+    hud.setAct('attack', { icon: k === 'none' ? 'sword' : k, count: c.attackLabel() });
+    hud.setAct('skill1', { icon: sk[0].icon, cd: c.cd1, cdMax: sk[0].cd, off: st.d.energy < sk[0].energy });
+    hud.setAct('skill2', { icon: sk[1].icon, cd: c.cd2, cdMax: sk[1].cd, off: st.d.energy < sk[1].energy });
+    hud.setAct('dodge', { cd: this.player.rollCd, cdMax: 0.75 });
+    hud.setAct('potion', { cd: c.potionCd, cdMax: 12, count: String(st.count('kit')), off: st.count('kit') <= 0 });
+    hud.setAct('swap', { hidden: !st.d.loadout[1] });
+    const t = c.target;
+    hud.setTarget(t && t.alive && t.cls !== 'boss' ? { name: t.name, level: t.level, frac: t.hpFrac, cls: t.cls, sub: t.cls === 'elite' ? 'Elite' : t.cls === 'rare' ? 'Rare' : t.cls === 'night' ? 'Night shift' : '' } : null);
+    if (t && t.alive) { t.center(_v); hud.setReticle(_v, clamp(t.radius * 1.4, 0.7, 4)); } else hud.setReticle(null);
+  }
+
+  private plates() {
+    const hud = this.hud, p = this.player.pos;
+    hud.beginPlates();
+    for (const m of this.mobs.list) {
+      if (!m.alive || !m.rig.root.visible || m.isBoss) continue;
+      const d = Math.hypot(m.pos.x - p.x, m.pos.z - p.z);
+      if (d > 40 || (!m.aggro && d > 24 && m.hp >= m.maxHp && m.cls === 'normal')) continue;
+      _v.set(m.pos.x, m.pos.y + m.lift + m.height + 0.35, m.pos.z);
+      hud.plate('m' + m.id, _v, { name: m.name, level: m.level, hp: m.aggro || m.hp < m.maxHp ? m.hpFrac : undefined, cls: m.cls });
+    }
+    for (const f of this.plateFns) f();
+    hud.endPlates();
+  }
+  /** content modules add nameplates (NPCs, dummies) here */
+  plateFns: Array<() => void> = [];
+
   frame(now: number) {
     requestAnimationFrame((t) => this.frame(t));
-    const dt = Math.min(0.05, (now - this.last) / 1000);
+    const rdt = Math.min(0.05, Math.max(0.001, (now - this.last) / 1000));
     this.last = now;
-    this.time += dt;
+    this.time += rdt;
+    this.fpsAcc += rdt; this.fpsN++;
+    if (this.fpsAcc > 0.5) { this.fps = this.fpsN / this.fpsAcc; this.fpsAcc = 0; this.fpsN = 0; }
+    this.renderer.tickPerf(rdt);
     GU.uTime.value = this.time;
-    this.renderer.tickPerf(dt);
-    const f = this.focus;
-    f.y = this.terrain.h(f.x, f.z) + 1.6;
-    const cp = Math.cos(this.camPitch);
-    this.camera.position.set(f.x - Math.sin(this.camYaw) * cp * this.camDist, f.y + Math.sin(this.camPitch) * this.camDist, f.z - Math.cos(this.camYaw) * cp * this.camDist);
-    this.camera.lookAt(f);
-    this.camera.updateMatrixWorld();
-    this.env.update(dt, this.camera, f, this.renderer);
-    this.grass.begin(this.camera.position, f, this.env.sunDir, this.env.sky.u.uSunColor.value, this.env.sky.u.uSunGlow.value);
-    this.renderer.render(this.scene, this.camera, dt);
+    const inp = this.input;
+    inp.lookSensitivity = this.state.d.settings.sens; inp.invertY = this.state.d.settings.invertY;
+    this.cameraRig.autoFollow = this.state.d.settings.autoFollow;
+    inp.update(rdt);
+
+    // time scale: hit-stop freezes the simulation for a few frames; slow-mo stretches it
+    let scale = 1;
+    if (this.stopT > 0) { this.stopT -= rdt; scale = 0.04; }
+    else if (this.slowT > 0) { this.slowT -= rdt; scale = this.slowK; }
+    const dt = this.paused ? 0 : rdt * scale;
+    this.simTime += dt;
+
+    const pl = this.player, post = this.renderer.post;
+    if (!this.paused) {
+      pl.update(dt);
+      this.combat.update(dt, rdt);
+      this.mobs.playerHostile = !pl.dead && this.combat.enabled;
+      this.mobs.update(dt);
+      for (const s of this.systems) s.update(dt, rdt);
+      this.physics.step(Math.max(dt, 1e-4));
+      this.loot.update(dt);
+      this.interact.update();
+      this.state.update(rdt);
+      this.updateZone(rdt);
+    }
+
+    // camera
+    const tgt = this.combat.target;
+    const aim = tgt && tgt.alive && this.mobs.inCombat > 0 ? tgt.pos : null;
+    const sp = pl.speed2d;
+    this.cameraRig.update(rdt, pl.pos.clone().setY(pl.pos.y + 1.0), {
+      lookX: inp.lookX, lookY: inp.lookY, zoom: inp.zoom, moveHeading: pl.moveHeading, speed: sp, aimTarget: aim,
+      fovExtra: (pl.sprinting ? 5 : 0) + (this.combat.aiming ? -16 * this.combat.draw : 0) + this.fovExtra,
+      distMul: this.camDist * (this.combat.aiming ? 0.62 : this.mobs.inCombat > 2 ? 1.12 : 1),
+    });
+    this.cameraRig.shoulder = damp(this.cameraRig.shoulder, this.combat.aiming ? 0.7 : 0, 8, rdt);
+    if (this.state.d.settings.shake !== 1) this.cameraRig.trauma *= 0.5 + 0.5 * this.state.d.settings.shake;
+
+    // world + fx
+    this.env.update(rdt, this.camera, pl.pos, this.renderer);
+    this.grass.begin(this.camera.position, pl.pos, this.env.sunDir, this.env.sky.u.uSunColor.value, this.env.sky.u.uSunGlow.value);
+    // robots near the player press the grass down so they stay readable
+    let np = 0;
+    for (const m of this.mobs.list) {
+      if (np >= 7) break;
+      if (!m.alive || Math.abs(m.pos.x - pl.pos.x) > 16 || Math.abs(m.pos.z - pl.pos.z) > 16) continue;
+      this.grass.push(m.pos.x, m.pos.z, m.radius * 2.2 + 0.9); np++;
+    }
+    const fog = this.scene.fog as THREE.FogExp2 | null;
+    this.fx.update(rdt * (this.stopT > 0 ? 0.3 : 1), this.camera, fog?.color ?? BLACK, fog?.density ?? 0.002);
+
+    // post feedback decay
+    post.hurt = damp(post.hurt, 0, 3.2, rdt);
+    post.flash.w = damp(post.flash.w, 0, 6, rdt);
+    if (!this.fadeHold && !pl.dead) post.fade = damp(post.fade, 0, 3.5, rdt);
+    post.speed = damp(post.speed, this.speedFx, 5, rdt);
+    post.letterbox = damp(post.letterbox, this.cameraRig.cine ? 1 : 0, 4, rdt);
+
+    // hud
+    this.hud.setVisible(!this.cameraRig.cine && !this.hideHud);
+    this.updateHudButtons();
+    this.plates();
+    this.hud.update(rdt);
+    this.audio?.update?.(rdt, this.camera.position, this.cameraRig.forward(_v));
+
+    this.renderer.render(this.scene, this.camera, rdt);
+    inp.endFrame();
   }
+  /** extra knobs content modules can drive */
+  fovExtra = 0; camDist = 1; speedFx = 0; hideHud = false;
 }
+const BLACK = new THREE.Color(0, 0, 0);
+import { ITEMS as ITEMS_REF } from './data/items';
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));

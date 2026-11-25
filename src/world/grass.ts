@@ -7,7 +7,7 @@ import { TCELL, TN } from './terrain';
 
 export const grassU = {
   uCam: { value: new THREE.Vector3() },
-  uPush: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] }, // xyz pos, w radius
+  uPush: { value: [0, 1, 2, 3, 4, 5, 6, 7].map(() => new THREE.Vector4()) }, // xyz pos, w radius
   uSunDir: { value: new THREE.Vector3(0, 1, 0) },
   uSunCol: { value: new THREE.Color(1, 0.9, 0.7) },
 };
@@ -56,7 +56,7 @@ function makeLayer(terrain: Terrain, count: number, size: number, bladeW: number
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', /* glsl */ `#include <common>
 attribute vec2 aOff; attribute vec4 aRnd;
-uniform vec3 uCam; uniform vec4 uPush[4]; uniform float uTime; uniform vec4 uWind;
+uniform vec3 uCam; uniform vec4 uPush[8]; uniform float uTime; uniform vec4 uWind;
 uniform sampler2D uColorMap; uniform sampler2D uHeight; uniform sampler2D uNoise;
 varying vec3 vGCol; varying float vTip; varying float vWave; varying vec3 vGW; varying float vRnd;
 float terrH(vec2 p) {
@@ -94,12 +94,12 @@ p.xz += wdir * lean * bend * bh * 0.9;
 p.xz += fwd * (aRnd.w - 0.5) * 0.5 * bend * bh;
 p.y -= abs(lean) * bend * bh * 0.28;
 // trample
-for (int i = 0; i < 4; i++) {
+for (int i = 0; i < 8; i++) {
   vec3 dp = vec3(wxz.x, 0.0, wxz.y) - vec3(uPush[i].x, 0.0, uPush[i].z);
   float pd = length(dp.xz);
   float k = (1.0 - smoothstep(uPush[i].w * 0.35, uPush[i].w, pd)) * step(0.001, uPush[i].w);
   p.xz += normalize(dp.xz + 1e-4) * k * y * bh * 0.85;
-  p.y *= 1.0 - k * 0.62;
+  p.y *= 1.0 - k * 0.72;
 }
 vec3 transformed = vec3(wxz.x, terrH(wxz) - 0.03, wxz.y) + p;
 vGCol = cm.rgb; vTip = y; vWave = gust; vGW = transformed; vRnd = aRnd.w;`);
@@ -146,12 +146,12 @@ export class Grass {
     grassU.uSunCol.value.copy(sunCol).multiplyScalar(sunAmt);
     const P = grassU.uPush.value;
     P[0].set(playerPos.x, playerPos.y, playerPos.z, 1.5);
-    for (let i = 1; i < 4; i++) P[i].w = 0;
+    for (let i = 1; i < 8; i++) P[i].w = 0;
     this.pushIdx = 1;
   }
   /** Extra tramplers (mounts, big enemies). */
   push(x: number, z: number, r: number) {
-    if (this.pushIdx >= 4) return;
+    if (this.pushIdx >= 8) return;
     grassU.uPush.value[this.pushIdx++].set(x, 0, z, r);
   }
 }
