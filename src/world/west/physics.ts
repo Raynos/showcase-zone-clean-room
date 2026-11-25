@@ -399,7 +399,10 @@ export function start(game: Game) {
         game.sfx('gate_open'); game.cameraRig.shake(0.3); game.haptic(30);
         st.setFlag('physics_solved');
       }
-      const go = solved ? 1 : 0;
+      // `solved` is not saved, so a reload inside the lock-up finds the puzzle reset: the portcullis lifts for
+      // anyone standing behind it, whatever the plates say, so it can never hold the player in
+      const inside = pp.x > -169.7 && pp.x < GATE.x + 0.5 && Math.abs(pp.z - GATE.z) < 8.4;
+      const go = solved || inside ? 1 : 0;
       if (gateOpen !== go) {
         gateOpen = go > gateOpen ? Math.min(1, gateOpen + dt / 1.5) : Math.max(0, gateOpen - dt / 0.8);
         const y = Y - easeInOut(gateOpen) * (GATE.h + 0.1);
