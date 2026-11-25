@@ -6,13 +6,13 @@ const TIPS: Record<string, Tip> = {
   move: { id: 'move', title: 'Getting around', touch: 'Drag on the left to move. Drag anywhere else to look around.', desk: 'WASD to move, mouse to look. Shift sprints, Space jumps.' },
   quest: { id: 'quest', title: 'Find work', touch: 'People with a yellow ! have a job for you. Walk up and tap the prompt.', desk: 'People with a yellow ! have a job for you. Walk up and press E.' },
   gate: { id: 'gate', title: 'The live yard', touch: 'East of the Blast Wall the robots are hostile. Each band is tougher than the last.', desk: 'East of the Blast Wall the robots are hostile. Each band is tougher than the last.' },
-  fight: { id: 'fight', title: 'Fighting', touch: 'Tap the big button to attack: keep tapping to chain a combo. Tap a robot to target it.', desk: 'Left click to attack: keep clicking to chain a combo. Tab cycles targets.' },
+  fight: { id: 'fight', title: 'Fighting', touch: 'Tap the big button to attack: keep tapping to chain a combo. Tap a robot, or the target button, to choose your target.', desk: 'Left click to attack: keep clicking to chain a combo. Tab cycles targets.' },
   dodge: { id: 'dodge', title: 'Read the floor', touch: 'Red shapes on the ground are incoming attacks. Roll out with the dodge button: a late roll slows time.', desk: 'Red shapes on the ground are incoming attacks. Roll out with C: a late roll slows time.' },
   kit: { id: 'kit', title: 'Repair kits', touch: 'Low on health? Tap the flask to use a repair kit.', desk: 'Low on health? Press H to use a repair kit.' },
-  skills: { id: 'skills', title: 'Skills', touch: 'The two cyan buttons are weapon skills. They cost energy and hit hard.', desk: 'Q and R are weapon skills. They cost energy and hit hard.' },
+  skills: { id: 'skills', title: 'Skills', touch: 'The cyan buttons are weapon skills. They cost energy and hit hard.', desk: 'Q and R are weapon skills. They cost energy and hit hard.' },
   level: { id: 'level', title: 'Level up', touch: 'New weapons unlock by level at the shop, and the tinker turns salvage into upgrades.', desk: 'New weapons unlock by level at the shop, and the tinker turns salvage into upgrades.' },
   swap: { id: 'swap', title: 'Two weapons', touch: 'Tap the swap button to switch between your two equipped weapons mid-fight.', desk: 'Press F to switch between your two equipped weapons mid-fight.' },
-  ranged: { id: 'ranged', title: 'Ranged weapons', touch: 'Hold the attack button to draw or aim, release to fire. A full draw hits hardest.', desk: 'Hold left click to draw or aim, release to fire. A full draw hits hardest.' },
+  ranged: { id: 'ranged', title: 'Ranged weapons', touch: 'Hold the attack button to draw or aim, and drag from it to steer the shot. Release to fire: a full draw hits hardest.', desk: 'Hold left click to draw or aim, release to fire. A full draw hits hardest.' },
   elite: { id: 'elite', title: 'Gate elite', touch: 'Each band gate is held by an elite. Defeat it to open the way on.', desk: 'Each band gate is held by an elite. Defeat it to open the way on.' },
   night: { id: 'night', title: 'Night shift', touch: 'After dark the night shift clocks in: tougher robots, better salvage, and elites that only walk at night.', desk: 'After dark the night shift clocks in: tougher robots, better salvage, and elites that only walk at night.' },
 };
@@ -23,9 +23,13 @@ export class Coach implements System {
   constructor(private game: Game) {
     const css = document.createElement('style');
     css.textContent = `
-    .coach { position: absolute; left: calc(10px + var(--sal)); bottom: calc(118px + var(--sab)); transform: translate(0, 8px); width: min(43vw, 300px); padding: 9px 12px 10px; border-radius: 12px; background: #10151bdd; border: 1px solid #7ff0ff55;
+    /* under the target frame on the left: clear of both thumbs, the stick's rest and the action buttons */
+    .coach { position: absolute; left: calc(10px + var(--sal)); top: calc(254px + var(--sat)); transform: translate(0, 8px); width: min(56vw, 300px); padding: 9px 12px 10px; border-radius: 12px; background: #10151bdd; border: 1px solid #7ff0ff55;
       box-shadow: 0 6px 24px #0008; opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none; }
     .coach.on { opacity: 1; transform: none; }
+    .hud.lefty .coach { left: auto; right: calc(10px + var(--sar)); }
+    /* landscape has no room there: the strip between the stick and the buttons, along the bottom */
+    @media (max-height: 520px) { .coach, .hud.lefty .coach { left: 50%; right: auto; top: auto; bottom: calc(14px + var(--sab)); width: min(36vw, 300px); transform: translate(-50%, 8px); } .coach.on { transform: translate(-50%, 0); } }
     .coach b { display: block; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--cyan); margin-bottom: 3px; }
     .coach span { font-size: 12.5px; line-height: 1.35; font-weight: 600; }`;
     document.head.appendChild(css);
