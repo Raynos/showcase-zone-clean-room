@@ -254,7 +254,8 @@ float alive = smoothstep(rnd.x * 0.92, rnd.x * 0.92 + 0.08, cm.a) * fade * step(
 float clump = texture2D(uNoise, wxz * 0.045).g;
 float bh = ${bladeH.toFixed(3)} * (0.5 + 0.7 * rnd.y + 0.6 * clump) * alive * (0.7 + 0.5 * cm.a);
 bh *= smoothstep(0.9, 3.4, length(vec3(wxz.x, uCam.y - 1.0, wxz.y) - uCam));
-float bw = ${bladeW.toFixed(3)} * (0.75 + 0.5 * rnd.w) * step(1e-4, bh);
+// thin cover is separate narrow tufts on bare ground, not a mown lawn with holes in it
+float bw = ${bladeW.toFixed(3)} * (0.75 + 0.5 * rnd.w) * step(1e-4, bh) * mix(0.42, 1.0, smoothstep(0.3, 0.85, cm.a));
 // which painted tuft: mostly plain and short, seed heads in drifts, flowers now and then
 float pick = fract(rnd.w * 7.31 + rnd.x * 3.7);
 float seedy = smoothstep(0.42, 0.62, clump);
@@ -299,7 +300,7 @@ vec3 base = vGCol;
 // per-blade drift: some rust, some pale straw
 base = mix(base, base * vec3(1.12, 0.74, 0.5), smoothstep(0.7, 1.0, vRnd) * 0.7);
 base = mix(base, vec3(dot(base, vec3(0.4, 0.5, 0.1))) * vec3(1.15, 1.08, 0.8), smoothstep(0.3, 0.0, vRnd) * 0.55);
-vec3 gc = base * vec3(1.08, 1.02, 0.86) * mix(0.4, 1.22, pow(tip, 0.6));
+vec3 gc = base * vec3(1.08, 1.02, 0.86) * mix(0.4, 1.34, pow(tip, 0.6));
 gc += vec3(0.07, 0.05, 0.02) * tip * tip * tip;
 gc *= 0.92 + 0.3 * smoothstep(0.4, 0.8, vWave) * tip;
 // each painted blade has its own tone; seed heads are pale straw, petals white to lilac
@@ -382,8 +383,8 @@ export class Grass {
   private hooked: THREE.Object3D | null = null;
   constructor(terrain: Terrain, density: number) {
     this.layers = [
-      new Layer(terrain, Math.floor(64000 * density), 46, 0.7, 0.56, 7, 0),
-      new Layer(terrain, Math.floor(70000 * density), 160, 1.25, 0.66, 9, 17, 0),
+      new Layer(terrain, Math.floor(64000 * density), 46, 0.74, 0.68, 7, 0),
+      new Layer(terrain, Math.floor(70000 * density), 160, 1.25, 0.76, 9, 17, 0),
     ];
     for (const l of this.layers) this.group.add(l.mesh);
   }
