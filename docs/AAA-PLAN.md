@@ -48,6 +48,17 @@ These came from the owner on 2026-11-25 and are settled unless reopened.
   was derived from: the third-person hero, the dodge roll, the skills and
   the names all stay. From here it is steered toward experiments the owner
   names, which take priority over the long tail of this plan.
+- **Rulings of 2026-11-25, evening:**
+  - Characters: accept the chunkier stylised look and move on. Fix defects
+    (wood-grain cloth, Rook's back view), stop chasing the painted targets.
+  - Grind: the pacing table in phase 9 stands; `?boost=<n>` stays.
+  - Sword against guns: the measured balance stands.
+  - Aiming down sights always goes to first person, from either view. On
+    desktop, right-click toggles it.
+  - The HUD is rejected as button spam. It is redesigned from first
+    principles, from a study of the leading mobile action games and PC
+    MMOs (`docs/HUD-STUDY.md`, `docs/HUD.md`).
+  - Work on `main`; push early and often, as with commits.
 - **Audience:** a short clip, a full playthrough, and a game that keeps being
   built. All three count.
 - **Art inputs:** code, AI-generated images (via `codex`), and Blender
@@ -489,6 +500,39 @@ player something after level 20.
 
 Done when: the bot's time per band matches a written pacing target and a
 level-20 character has at least three repeatable things to do.
+
+#### Pacing target (set 2026-11-25)
+
+The curve is written as minutes, not XP: `PACE_MIN` in
+`src/data/balance.ts` holds the bot's minutes for each level, and
+`xpToNext(L) = killXp(L) x PACE_MIN[L] x XP_PER_MIN`. `XP_PER_MIN` is the
+one calibration knob: same-level common kills' worth of XP a competent
+player earns a minute from everything (kills, streaks, camp clears,
+bounties, quests). Kills, with their streak and camp-clear bonuses, should
+bring about 70% of it; quests, contracts and bounties the rest.
+
+A first-time player is taken to need 1.5 times the bot's time. The check
+passes when the bot's in-game time for each band is within 20% of the
+"bot" column, and no level runs past 1.5 times its target.
+
+| Band (levels)   | Bot min/level | Bot | Player | Kills |
+|-----------------|---------------|-----|--------|-------|
+| 1-3 Crate Fields | 2, 3, 5      | 10m | 15m    | 60    |
+| 4-6 Docks        | 7, 9, 10     | 26m | 39m    | 155   |
+| 7-9 Heights      | 11, 12, 13   | 36m | 54m    | 215   |
+| 10-12 Slagworks  | 14, 15, 16   | 45m | 1h08   | 270   |
+| 13-15 Rivet Row  | 17, 18, 19   | 54m | 1h21   | 325   |
+| 16-18 Arc Field  | 20, 21, 22   | 63m | 1h35   | 380   |
+| 19 to 20         | 24           | 24m | 36m    | 145   |
+| **Total to 20**  |              | 4h18| 6h27   | ~1,550|
+
+Kill XP follows the fight, not just the level: a robot pays
+`killXp(level) x its hit points relative to a common x class pay x level
+difference`. Class pay is 1.4 for elites, 1.5 for rares, 1.2 for bosses.
+Robots above the player pay 15% more a level (up to 1.6); below, 0.8, 0.6,
+0.4, 0.25, then 0.1. So a player who outruns a band is pushed on, and one
+who falls behind is pulled forward. The `?boost=<n>` URL multiplier plays on
+its own save slot and never touches this curve.
 
 ### Phase 10: sound (one run)
 
