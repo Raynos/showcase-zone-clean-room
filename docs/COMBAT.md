@@ -125,11 +125,18 @@ clips), so the spear pokes faster and recovers slower.
 
 **HUD feed.** `Combat.actionBar()` builds the slots and `hud.setActionBar`
 receives them when anything visible changes. Conventions the interface
-left open: a `locked` slot carries its unlock level in `label` ("Level 6");
-the Overdrive slot is `noenergy` with `charge` while filling; the swap slot
-is `active` while a swap would strike and its `cd` is the strike cooldown;
-the attack slot is `active` with `charge` while a heavy, draw or aim is
-held, and `active` with label "Counter" during the counter window.
+left open: a `locked` slot carries its level in `unlock` and no label; the
+Overdrive slot is `ready` with `charge` as the meter (it fires at 1) and
+`active` while the ultimate runs; the swap slot is `active` while a swap
+would strike; the attack slot carries `charge` while a heavy, draw or aim
+is held (label "Charge", then "Full"), and is `active` with label "Counter"
+during the counter window. A skill in use is `active` and sends its
+cooldown only once it is over. The mount slot is left to `hud.setAct`.
+
+The same feed calls `hud.setTargetState` when the target or its values
+change: `stagger` is `Mob.staggerFrac`, `broken` is true while the robot is
+staggered or stunned, `effects` is empty until enemies have status effects,
+and `null` goes out when there is no target.
 
 ## Enemy states
 
