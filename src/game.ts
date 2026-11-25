@@ -7,6 +7,7 @@ import { placeholderHumanoid, placeholderRobot } from './entities/placeholder';
 import { Player } from './entities/player';
 import type { RobotKind, RobotLook, RobotRig } from './entities/robots/types';
 import { FX, SP } from './gfx/fx';
+import { ContactShadows } from './gfx/contact';
 import { GU, installFog } from './gfx/material';
 import { QUALITY, Renderer } from './gfx/renderer';
 import { buildNoiseTexture, buildTextureArrays, loadPaintedArrays } from './gfx/textures';
@@ -43,6 +44,7 @@ export class Game {
   env!: Environment;
   terrain!: Terrain;
   grass!: Grass;
+  contact = new ContactShadows();
   chunks!: Chunks;
   physics!: Physics;
   input!: Input;
@@ -143,6 +145,7 @@ export class Game {
     this.scene.add(this.chunks.group);
     this.grass = new Grass(this.terrain, this.renderer.quality.grass);
     this.scene.add(this.grass.group);
+    this.scene.add(this.contact.mesh);
     await content.startSystems(this);
     this.wire();
     // place the player
@@ -460,6 +463,7 @@ export class Game {
       if (!m.alive || Math.abs(m.pos.x - pl.pos.x) > 16 || Math.abs(m.pos.z - pl.pos.z) > 16) continue;
       this.grass.push(m.pos.x, m.pos.z, m.radius * 2.2 + 0.9); np++;
     }
+    this.contact.gather(this);
     const fog = this.scene.fog as THREE.FogExp2 | null;
     this.fx.update(rdt * (this.stopT > 0 ? 0.3 : 1), this.camera, fog?.color ?? BLACK, fog?.density ?? 0.002);
 
