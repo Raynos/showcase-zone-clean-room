@@ -164,7 +164,7 @@ export class Renderer {
       }`, { tMap: { value: null }, uSun: { value: new THREE.Vector3() }, uStep: { value: 0.1 }, uSeed: { value: 0 } });
     this.mFinal = fsMat(/* glsl */ `
       varying vec2 vUv;
-      uniform sampler2D tMap; uniform sampler2D tBloom; uniform sampler2D tRays;
+      uniform sampler2D tMap; uniform sampler2D tBloom; uniform sampler2D tRays; uniform sampler2D tDepth; uniform float uNear;
       uniform float uExposure, uBloom, uSat, uContrast, uVig, uHurt, uDesat, uSpeed, uFade, uLetter, uChroma, uRays, uTime, uAspect, uSharp;
       uniform vec2 uTexel;
       uniform vec4 uFlash; uniform vec4 uLift; uniform float uVib; uniform vec3 uTint, uShadowTint, uHighTint, uSunCol; uniform vec3 uSun;
@@ -195,7 +195,9 @@ export class Renderer {
         vec3 col;
         if (uSpeed > 0.001) {
           col = vec3(0.0);
-          float amt = uSpeed * 0.06 * dot(cc, cc) * 4.0;
+          // speed streaks what rushes past, not the horizon: the far distance and the sky stay sharp
+          float z = uNear / max(1.0 - texture2D(tDepth, uv).x, 1e-6);
+          float amt = uSpeed * 0.06 * dot(cc, cc) * 4.0 * (1.0 - smoothstep(22.0, 90.0, z));
           for (int i = 0; i < 6; i++) col += texture2D(tMap, uv - cc * amt * float(i) / 5.0).rgb;
           col /= 6.0;
         } else if (uChroma > 0.0005) {
@@ -240,7 +242,7 @@ export class Renderer {
         col *= lb * (1.0 - uFade);
         gl_FragColor = vec4(col, 1.0);
       }`, {
-      tMap: { value: null }, tBloom: { value: null }, tRays: { value: null },
+      tMap: { value: null }, tBloom: { value: null }, tRays: { value: null }, tDepth: { value: null }, uNear: { value: 0.1 },
       uExposure: { value: 1 }, uBloom: { value: 1 }, uSat: { value: 1 }, uContrast: { value: 1 }, uVig: { value: 0.4 },
       uHurt: { value: 0 }, uDesat: { value: 0 }, uSpeed: { value: 0 }, uFade: { value: 0 }, uLetter: { value: 0 }, uChroma: { value: 0 },
       uRays: { value: 0 }, uTime: { value: 0 }, uAspect: { value: 1 }, uSharp: { value: 0 }, uTexel: { value: new THREE.Vector2() },
@@ -344,6 +346,7 @@ export class Renderer {
     }
     const u = this.mFinal.uniforms;
     u.tMap.value = this.rtMain.texture;
+    u.tDepth.value = this.rtMain.depthTexture; u.uNear.value = camera.near;
     u.tBloom.value = B.length ? B[0].texture : null;
     u.uExposure.value = p.exposure; u.uBloom.value = q.bloom ? p.bloom : 0; u.uSat.value = p.saturation; u.uContrast.value = p.contrast;
     u.uVig.value = p.vignette; u.uHurt.value = p.hurt; u.uDesat.value = p.desat; u.uSpeed.value = p.speed; u.uFade.value = p.fade;
