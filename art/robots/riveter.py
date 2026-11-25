@@ -32,28 +32,28 @@ def leg(m, s, th, sh):
     m.paint('body2', texel=0.9)
     m.cyl(0.19, 0.19, 0.2, 10, at=(-s * 0.03, 0, 0), rot=(0, 0, PI / 2), bevel=0.025)
     m.steel(texel=0.4)
-    m.cyl(0.07, 0.07, 0.04, 6, at=(s * 0.09, 0, 0), rot=(0, 0, PI / 2))
+    m.cyl(0.07, 0.07, 0.04, 6, at=(s * 0.09, 0, 0), rot=(0, 0, PI / 2), lod=1)
     m.darkmetal(texel=0.8)
     m.strut((0, 0, 0), (0, -0.42, -0.32), 0.13, 0.105, 8)
     m.panel('body', texel=1.2)
     m.box(0.3, 0.42, 0.12, at=(0, -0.15, -0.235), rot=(0.65, 0, 0), bevel=0.035)
     m.fixed(CHROME, surf='metal', metal=0.9, rough=0.3, texel=0.4)
-    m.strut((0, 0.02, 0.15), (0, -0.37, -0.2), 0.026, 0.026, 5)
+    m.strut((0, 0.02, 0.15), (0, -0.37, -0.2), 0.026, 0.026, 5, lod=1)
     m.darkmetal(texel=0.4)
-    m.strut((0, 0.02, 0.15), (0, -0.16, -0.01), 0.045, 0.045, 6)
+    m.strut((0, 0.02, 0.15), (0, -0.16, -0.01), 0.045, 0.045, 6, lod=1)
 
     m.bone(sh, th, (0, -0.42, -0.32))
     # knee drum and pin, shin with a chrome ram, ankle, and a clawed foot
     m.paint('body2', texel=0.9)
     m.cyl(0.15, 0.15, 0.27, 10, at=(0, 0, 0), rot=(0, 0, PI / 2), bevel=0.02)
     m.steel(texel=0.4)
-    m.cyl(0.055, 0.055, 0.3, 6, at=(0, 0, 0), rot=(0, 0, PI / 2))
+    m.cyl(0.055, 0.055, 0.3, 6, at=(0, 0, 0), rot=(0, 0, PI / 2), lod=1)
     m.steel(texel=0.8)
     m.strut((0, 0, 0), (0, -0.5, 0.3), 0.1, 0.08, 8)
     m.panel('body', texel=1.0)
     m.box(0.22, 0.3, 0.07, at=(0, -0.21, 0.215), rot=(-0.54, 0, 0), bevel=0.02)
     m.fixed(CHROME, surf='metal', metal=0.9, rough=0.3, texel=0.4)
-    m.strut((0, -0.126, -0.04), (0, -0.451, 0.154), 0.03, 0.03, 5)
+    m.strut((0, -0.126, -0.04), (0, -0.451, 0.154), 0.03, 0.03, 5, lod=1)
     m.darkmetal(texel=0.5)
     m.cyl(0.1, 0.1, 0.3, 8, at=(0, -0.5, 0.3), rot=(0, 0, PI / 2))
     m.mat(slot='dark', surf='panel', metal=0.6, rough=0.55, emit=0, texel=1.0)
@@ -61,7 +61,7 @@ def leg(m, s, th, sh):
     m.paint('body', texel=0.8)
     m.box(0.3, 0.08, 0.22, at=(0, -0.49, 0.48), bevel=0.025)
     m.fixed(CHROME, surf='metal', metal=0.9, rough=0.3, texel=0.3)
-    m.strut((0, -0.3, 0.27), (0, -0.47, 0.5), 0.02, 0.02, 5)
+    m.strut((0, -0.3, 0.27), (0, -0.47, 0.5), 0.02, 0.02, 5, lod=1)
     m.steel(texel=0.4)
     for k in (-1, 1):
         m.cone(0.05, 0.16, 5, at=(k * 0.11, -0.56, 0.68), rot=(PI / 2, 0, 0))
@@ -86,9 +86,9 @@ def make():
     m.darkmetal(texel=0.7)
     m.box(0.36, 0.2, 0.14, at=(0, 0.0, -0.3), bevel=0.03)
     m.glow(slot='glow2', emit=1.2, texel=0.4)
-    m.box(0.08, 0.04, 0.012, at=(0.1, 0.04, -0.372), bevel=0)
+    m.box(0.08, 0.04, 0.012, at=(0.1, 0.04, -0.372), bevel=0, lod=1)
     m.vent(texel=0.6)
-    m.box(0.14, 0.1, 0.012, at=(-0.08, 0.0, -0.372), bevel=0)
+    m.box(0.14, 0.1, 0.012, at=(-0.08, 0.0, -0.372), bevel=0, lod=1)
 
     leg(m, 1, 'thighL', 'shinL')
     leg(m, -1, 'thighR', 'shinR')
@@ -111,7 +111,7 @@ def make():
         m.panel('body2', texel=1.3)
         m.box(0.2, 0.62, 0.7, at=(s * 0.68, 0.32, -0.02), bevel=0.05)
         m.steel(texel=0.4)
-        m.cyl(0.075, 0.075, 0.06, 8, at=(s * 0.79, 0.32, 0.1), rot=(0, 0, PI / 2))
+        m.cyl(0.075, 0.075, 0.06, 8, at=(s * 0.79, 0.32, 0.1), rot=(0, 0, PI / 2), lod=1)
         m.vent(texel=0.7)
         m.box(0.016, 0.2, 0.26, at=(s * 0.785, 0.36, -0.2), bevel=0)
         # a raised strike plate up front, a warning strip along the sill, spare rivet tubes on top
@@ -121,9 +121,9 @@ def make():
         m.box(0.215, 0.07, 0.6, at=(s * 0.68, 0.055, -0.02), bevel=0)
         for i in range(3):
             m.darkmetal(texel=0.4)
-            m.cyl(0.045, 0.045, 0.2, 7, at=(s * 0.68, 0.66, -0.26 + i * 0.11), rot=(0.9, 0, 0))
+            m.cyl(0.045, 0.045, 0.2, 7, at=(s * 0.68, 0.66, -0.26 + i * 0.11), rot=(0.9, 0, 0), lod=1)
             m.fixed(CHROME, surf='metal', metal=0.9, rough=0.3, texel=0.25)
-            m.cyl(0.036, 0.036, 0.03, 7, at=(s * 0.68, 0.727, -0.176 + i * 0.11), rot=(0.9, 0, 0))
+            m.cyl(0.036, 0.036, 0.03, 7, at=(s * 0.68, 0.727, -0.176 + i * 0.11), rot=(0.9, 0, 0), lod=1)
     # ammo hopper: a steel funnel with a rim, sunk into the casemate roof
     m.steel(texel=1.0)
     m.cyl(0.36, 0.2, 0.36, 14, at=(0.12, 0.72, -0.14))
@@ -135,32 +135,32 @@ def make():
     m.rubber(texel=0.7)
     m.tube([(0.12, 0.7, 0.1), (0.1, 0.74, 0.34), (0.05, 0.62, 0.46), (0.04, 0.5, 0.48)], 0.065, 6)
     m.steel(texel=0.4)
-    m.cyl(0.085, 0.085, 0.04, 8, at=(0.04, 0.52, 0.48))
-    m.cyl(0.078, 0.078, 0.03, 8, at=(0.1, 0.74, 0.3), rot=(PI / 2, 0, 0))
+    m.cyl(0.085, 0.085, 0.04, 8, at=(0.04, 0.52, 0.48), lod=1)
+    m.cyl(0.078, 0.078, 0.03, 8, at=(0.1, 0.74, 0.3), rot=(PI / 2, 0, 0), lod=1)
     # headlamp and tow eyes on the bow
     m.darkmetal(texel=0.4)
-    m.cyl(0.075, 0.075, 0.07, 8, at=(0.42, 0.26, 0.42), rot=(PI / 2, 0, 0))
+    m.cyl(0.075, 0.075, 0.07, 8, at=(0.42, 0.26, 0.42), rot=(PI / 2, 0, 0), lod=1)
     m.fixed(0xfff3d0, surf='glass', rough=0.2, emit=0.3, texel=0.4)
-    m.cyl(0.058, 0.058, 0.02, 8, at=(0.42, 0.26, 0.46), rot=(PI / 2, 0, 0))
+    m.cyl(0.058, 0.058, 0.02, 8, at=(0.42, 0.26, 0.46), rot=(PI / 2, 0, 0), lod=1)
     m.steel(texel=0.3)
     for s in (-1, 1):
-        m.torus(0.045, 0.014, 8, 4, at=(s * 0.4, 0.08, 0.46), rot=(0, 0, PI / 2))
+        m.torus(0.045, 0.014, 8, 4, at=(s * 0.4, 0.08, 0.46), rot=(0, 0, PI / 2), lod=1)
     # roof: a hatch with a handle, a grab rail, a whip aerial
     m.paint('body2', texel=0.6)
-    m.cyl(0.13, 0.13, 0.03, 10, at=(-0.3, 0.66, -0.22))
+    m.cyl(0.13, 0.13, 0.03, 10, at=(-0.3, 0.66, -0.22), lod=1)
     m.steel(texel=0.3)
-    m.box(0.12, 0.03, 0.025, at=(-0.3, 0.69, -0.22), bevel=0)
-    m.tube([(0.26, 0.64, 0.3), (0.26, 0.73, 0.3), (0.45, 0.73, 0.3), (0.45, 0.64, 0.3)], 0.016, 5)
+    m.box(0.12, 0.03, 0.025, at=(-0.3, 0.69, -0.22), bevel=0, lod=1)
+    m.tube([(0.26, 0.64, 0.3), (0.26, 0.73, 0.3), (0.45, 0.73, 0.3), (0.45, 0.64, 0.3)], 0.016, 5, lod=1)
     m.darkmetal(texel=0.3)
-    m.strut((0.44, 0.64, -0.32), (0.44, 1.1, -0.36), 0.012, 0.006, 5)
+    m.strut((0.44, 0.64, -0.32), (0.44, 1.1, -0.36), 0.012, 0.006, 5, lod=1)
     m.glow(slot='glow2', emit=1.4, texel=0.3)
-    m.sphere(0.022, 5, 3, at=(0.44, 1.11, -0.36))
+    m.sphere(0.022, 5, 3, at=(0.44, 1.11, -0.36), lod=1)
     # tail: exhausts, louvres, a hot vent slot, a spare rivet canister strapped on
     for s in (-1, 1):
         m.darkmetal(texel=0.6)
         m.cyl(0.06, 0.07, 0.3, 7, at=(s * 0.38, 0.7, -0.4), rot=(-0.5, 0, 0))
         m.steel(texel=0.3)
-        m.cyl(0.075, 0.065, 0.05, 7, at=(s * 0.38, 0.83, -0.47), rot=(-0.5, 0, 0))
+        m.cyl(0.075, 0.065, 0.05, 7, at=(s * 0.38, 0.83, -0.47), rot=(-0.5, 0, 0), lod=1)
     m.vent(texel=0.9)
     m.box(0.6, 0.18, 0.016, at=(0, 0.5, -0.392), bevel=0)
     m.glow(emit=0.9, texel=0.7)
@@ -169,7 +169,7 @@ def make():
     m.cyl(0.07, 0.07, 0.34, 8, at=(0.0, 0.14, -0.455), rot=(0, 0, PI / 2), bevel=0.012)
     m.darkmetal(texel=0.3)
     for s in (-1, 1):
-        m.cyl(0.078, 0.078, 0.03, 8, at=(s * 0.1, 0.14, -0.455), rot=(0, 0, PI / 2))
+        m.cyl(0.078, 0.078, 0.03, 8, at=(s * 0.1, 0.14, -0.455), rot=(0, 0, PI / 2), lod=1)
 
     # ---- variant dressing on the hull -----------------------------------------------------------
     m.bone('opt_rare', 'turret', (0, 0, 0))
@@ -236,7 +236,7 @@ def make():
     m.glow(emit=1.3, texel=1.2)
     m.sphere(0.078, 10, 5, at=(0, 0, 0.115), scale=(1, 1, 0.5))
     m.fixed(0x071015, surf='flat', rough=0.3, texel=0.4)
-    m.sphere(0.03, 6, 3, at=(-0.01, 0.012, 0.152), scale=(1, 1, 0.5))
+    m.sphere(0.03, 6, 3, at=(-0.01, 0.012, 0.152), scale=(1, 1, 0.5), lod=1)
     m.bone('opt_nightElite_eye', 'eye', (0, 0, 0))
     m.fixed(0x15181d, surf='flat', rough=0.6, texel=0.3)
     for i in (-1, 0, 1):
@@ -245,13 +245,13 @@ def make():
     # ---- the rivet pile: loose chrome in the hopper, stirred by an agitator ----------------------
     m.bone('drum', 'turret', (0.12, 0.93, -0.14))
     m.darkmetal(texel=0.4)
-    m.box(0.56, 0.03, 0.05, at=(0, 0.03, 0), bevel=0)
-    m.cyl(0.04, 0.04, 0.08, 6, at=(0, 0.03, 0))
+    m.box(0.56, 0.03, 0.05, at=(0, 0.03, 0), bevel=0, lod=1)
+    m.cyl(0.04, 0.04, 0.08, 6, at=(0, 0.03, 0), lod=1)
     m.fixed(CHROME, surf='metal', metal=0.9, rough=0.3, texel=0.35)
     for i in range(8):
         a = i * 2.4
         r = 0.08 + (i % 3) * 0.085
-        m.sphere(0.07, 6, 3, at=(math.cos(a) * r, 0.01 + (i % 2) * 0.04, math.sin(a) * r))
+        m.sphere(0.07, 6, 3, at=(math.cos(a) * r, 0.01 + (i % 2) * 0.04, math.sin(a) * r), lod=1)
 
     # ---- the gun -----------------------------------------------------------------------------------
     m.bone('barrel', 'turret', (0, 0.3, 0.52))
@@ -259,7 +259,7 @@ def make():
     m.cyl(0.15, 0.15, 0.34, 10, at=(0, 0, 0.17), rot=(PI / 2, 0, 0), bevel=0.02)
     m.darkmetal(texel=0.4)
     for i in range(3):
-        m.cyl(0.17, 0.17, 0.03, 10, at=(0, 0, 0.08 + i * 0.09), rot=(PI / 2, 0, 0))
+        m.cyl(0.17, 0.17, 0.03, 10, at=(0, 0, 0.08 + i * 0.09), rot=(PI / 2, 0, 0), lod=1)
     m.darkmetal(texel=0.8)
     m.cyl(0.1, 0.1, 0.5, 9, at=(0, 0, 0.55), rot=(PI / 2, 0, 0))
     m.paint('body', texel=0.9)
@@ -268,12 +268,12 @@ def make():
     m.cyl(0.062, 0.062, 0.02, 9, at=(0, 0, 0.915), rot=(PI / 2, 0, 0))
     # recoil cylinder over the barrel
     m.steel(texel=0.5)
-    m.cyl(0.045, 0.045, 0.4, 6, at=(0, 0.17, 0.2), rot=(PI / 2, 0, 0))
+    m.cyl(0.045, 0.045, 0.4, 6, at=(0, 0.17, 0.2), rot=(PI / 2, 0, 0), lod=1)
     m.darkmetal(texel=0.3)
-    m.box(0.06, 0.1, 0.05, at=(0, 0.14, 0.32), bevel=0)
+    m.box(0.06, 0.1, 0.05, at=(0, 0.14, 0.32), bevel=0, lod=1)
     m.fixed(CHROME, surf='metal', metal=0.9, rough=0.3, texel=0.4)
     for s in (-1, 1):
-        m.cyl(0.03, 0.03, 0.6, 5, at=(s * 0.18, -0.06, 0.3), rot=(PI / 2, 0, 0))
+        m.cyl(0.03, 0.03, 0.6, 5, at=(s * 0.18, -0.06, 0.3), rot=(PI / 2, 0, 0), lod=1)
 
     # ---- variant dressing on the legs ----------------------------------------------------------------
     for th, sh in (('thighL', 'shinL'), ('thighR', 'shinR')):

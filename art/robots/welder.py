@@ -35,22 +35,22 @@ def leg(m, name, shin, s):
     m.paint('body2', texel=0.9)
     m.cyl(0.155, 0.155, 0.2, 10, at=(0, 0, 0), rot=(0, 0, PI / 2), bevel=0.02)
     m.steel(texel=0.4)
-    m.cyl(0.06, 0.06, 0.03, 6, at=(s * 0.11, 0, 0), rot=(0, 0, PI / 2))
+    m.cyl(0.06, 0.06, 0.03, 6, at=(s * 0.11, 0, 0), rot=(0, 0, PI / 2), lod=1)
     m.darkmetal(texel=0.8)
     m.box(0.17, 0.44, 0.17, at=(0, -0.225, 0.06), rot=(-0.26, 0, 0), bevel=0.03)
     m.mat(slot='steel', surf='panel', metal=0.6, rough=0.5, emit=0, texel=1.0)
     m.box(0.21, 0.27, 0.06, at=(0, -0.2, 0.155), rot=(-0.26, 0, 0), bevel=0.02)
     m.steel(texel=0.4)
-    m.strut((0, -0.04, -0.11), (0, -0.4, -0.02), 0.022, 0.022, 5)
+    m.strut((0, -0.04, -0.11), (0, -0.4, -0.02), 0.022, 0.022, 5, lod=1)
     m.darkmetal(texel=0.4)
-    m.strut((0, -0.04, -0.11), (0, -0.2, -0.065), 0.036, 0.036, 6)
+    m.strut((0, -0.04, -0.11), (0, -0.2, -0.065), 0.036, 0.036, 6, lod=1)
 
     m.bone(shin, name, (0, -0.45, 0.12))
     # knee drum with a pin, chunky shin armour, ankle and a steel-capped boot
     m.paint('body', texel=0.9)
     m.cyl(0.125, 0.125, 0.27, 10, at=(0, 0, 0), rot=(0, 0, PI / 2), bevel=0.02)
     m.steel(texel=0.4)
-    m.cyl(0.05, 0.05, 0.3, 6, at=(0, 0, 0), rot=(0, 0, PI / 2))
+    m.cyl(0.05, 0.05, 0.3, 6, at=(0, 0, 0), rot=(0, 0, PI / 2), lod=1)
     m.darkmetal(texel=0.6)
     m.strut((0, 0, 0), (0, -0.38, -0.13), 0.1, 0.085, 6)
     m.panel('body', texel=1.2)
@@ -58,7 +58,7 @@ def leg(m, name, shin, s):
     m.paint('body2', texel=0.7)
     m.box(0.2, 0.12, 0.1, at=(0, -0.08, 0.075), rot=(0.33, 0, 0), bevel=0.025)
     m.steel(texel=0.4)
-    m.strut((s * 0.1, -0.1, -0.13), (s * 0.1, -0.36, -0.2), 0.02, 0.02, 5)
+    m.strut((s * 0.1, -0.1, -0.13), (s * 0.1, -0.36, -0.2), 0.02, 0.02, 5, lod=1)
     m.darkmetal(texel=0.5)
     m.cyl(0.085, 0.085, 0.3, 8, at=(0, -0.385, -0.14), rot=(0, 0, PI / 2))
     m.rubber(texel=0.9)
@@ -68,7 +68,7 @@ def leg(m, name, shin, s):
     m.darkmetal(texel=0.6)
     m.box(0.26, 0.11, 0.16, at=(0, -0.38, -0.2), bevel=0.03)
     m.steel(texel=0.5)
-    m.box(0.31, 0.04, 0.06, at=(0, -0.43, 0.215), bevel=0.012)
+    m.box(0.31, 0.04, 0.06, at=(0, -0.43, 0.215), bevel=0.012, lod=1)
 
 
 def make():
@@ -84,9 +84,9 @@ def make():
     m.cyl(0.135, 0.135, 0.06, 12, at=(0, 0.0, 0.203), rot=(PI / 2, 0, 0))
     m.steel(texel=0.4)
     for i in (-2, -1, 0, 1, 2):
-        m.box(0.012, 0.26 - abs(i) * 0.04, 0.014, at=(i * 0.05, 0.0, 0.233), bevel=0)
+        m.box(0.012, 0.26 - abs(i) * 0.04, 0.014, at=(i * 0.05, 0.0, 0.233), bevel=0, lod=1)
     for i in (-1, 0, 1):
-        m.box(0.25 - abs(i) * 0.05, 0.012, 0.012, at=(0, i * 0.07, 0.236), bevel=0)
+        m.box(0.25 - abs(i) * 0.05, 0.012, 0.012, at=(0, i * 0.07, 0.236), bevel=0, lod=1)
     m.darkmetal(texel=0.5)
     m.box(0.3, 0.07, 0.3, at=(0, -0.15, 0), bevel=0.02)
 
@@ -115,13 +115,13 @@ def make():
     m.box(0.48, 0.16, 0.03, at=(0, 0.53, 0.365), bevel=0)
     m.darkmetal(texel=0.4)
     for i in range(-3, 4):
-        m.box(0.016, 0.17, 0.02, at=(i * 0.065, 0.53, 0.378), bevel=0)
-    m.box(0.49, 0.016, 0.022, at=(0, 0.53, 0.38), bevel=0)
+        m.box(0.016, 0.17, 0.02, at=(i * 0.065, 0.53, 0.378), bevel=0, lod=1)
+    m.box(0.49, 0.016, 0.022, at=(0, 0.53, 0.38), bevel=0, lod=1)
     # data plate and collar lamps
     m.fixed(0xffc23a, surf='flat', rough=0.6, texel=0.6)
-    m.box(0.16, 0.07, 0.012, at=(0.2, 0.74, 0.351), bevel=0)
+    m.box(0.16, 0.07, 0.012, at=(0.2, 0.74, 0.351), bevel=0, lod=1)
     m.glow(slot='glow2', emit=1.2, texel=0.4)
-    m.box(0.05, 0.03, 0.014, at=(-0.24, 0.75, 0.352), bevel=0)
+    m.box(0.05, 0.03, 0.014, at=(-0.24, 0.75, 0.352), bevel=0, lod=1)
     # side louvres
     for s in (-1, 1):
         m.vent(texel=0.9)
@@ -137,15 +137,15 @@ def make():
         m.steel(texel=0.5)
         m.sphere(0.115, 8, 4, at=(s * 0.15, 0.92, -0.34), scale=(1, 0.55, 1))
         m.fixed(BRASS, surf='metal', metal=0.9, rough=0.35, texel=0.4)
-        m.cyl(0.03, 0.03, 0.1, 6, at=(s * 0.15, 1.02, -0.34))
-        m.cyl(0.055, 0.055, 0.02, 6, at=(s * 0.15, 1.07, -0.34))
+        m.cyl(0.03, 0.03, 0.1, 6, at=(s * 0.15, 1.02, -0.34), lod=1)
+        m.cyl(0.055, 0.055, 0.02, 6, at=(s * 0.15, 1.07, -0.34), lod=1)
     m.darkmetal(texel=0.6)
-    m.box(0.56, 0.07, 0.07, at=(0, 0.48, -0.455), bevel=0.015)
-    m.box(0.56, 0.07, 0.07, at=(0, 0.78, -0.455), bevel=0.015)
+    m.box(0.56, 0.07, 0.07, at=(0, 0.48, -0.455), bevel=0.015, lod=1)
+    m.box(0.56, 0.07, 0.07, at=(0, 0.78, -0.455), bevel=0.015, lod=1)
     m.box(0.3, 0.4, 0.1, at=(0, 0.6, -0.26), bevel=0.02)
     # gas hose to the torch shoulder
     m.rubber(texel=0.5)
-    m.tube([(-0.15, 1.07, -0.34), (-0.36, 1.15, -0.22), (-0.56, 1.02, -0.06), (-0.6, 0.78, -0.02)], 0.03, 6)
+    m.tube([(-0.15, 1.07, -0.34), (-0.36, 1.15, -0.22), (-0.56, 1.02, -0.06), (-0.6, 0.78, -0.02)], 0.03, 6, lod=1)
 
     # ---- variant dressing on the torso -------------------------------------------------------
     m.bone('opt_rare', 'torso', (0, 0, 0))
@@ -207,14 +207,14 @@ def make():
     # breather slats, hinge bolts, a lifting eye on top
     m.steel(texel=0.4)
     for i in range(3):
-        m.box(0.2, 0.018, 0.02, at=(0, 0.05 - i * 0.04, 0.203 - i * 0.004), bevel=0)
+        m.box(0.2, 0.018, 0.02, at=(0, 0.05 - i * 0.04, 0.203 - i * 0.004), bevel=0, lod=1)
     for s in (-1, 1):
-        m.cyl(0.05, 0.05, 0.05, 8, at=(s * 0.215, 0.3, 0.08), rot=(0, 0, PI / 2))
+        m.cyl(0.05, 0.05, 0.05, 8, at=(s * 0.215, 0.3, 0.08), rot=(0, 0, PI / 2), lod=1)
     m.darkmetal(texel=0.4)
-    m.box(0.05, 0.07, 0.16, at=(0, 0.46, -0.03), bevel=0.012)
+    m.box(0.05, 0.07, 0.16, at=(0, 0.46, -0.03), bevel=0.012, lod=1)
     # breather hose: out of the mask's side, over the shoulder and down into the yoke
     m.steel(texel=0.4)
-    m.cyl(0.05, 0.05, 0.05, 8, at=(-0.2, 0.2, -0.02), rot=(0, 0, PI / 2))
+    m.cyl(0.05, 0.05, 0.05, 8, at=(-0.2, 0.2, -0.02), rot=(0, 0, PI / 2), lod=1)
     m.rubber(texel=0.7)
     m.tube([(-0.2, 0.2, -0.02), (-0.36, 0.3, -0.04), (-0.42, 0.14, -0.2), (-0.26, -0.04, -0.3), (-0.1, -0.12, -0.28)], 0.034, 6)
 
@@ -224,7 +224,7 @@ def make():
         m.darkmetal(texel=0.4)
         m.cyl(0.06, 0.06, 0.05, 8, at=(s * 0.245, 0.3, 0.08), rot=(0, 0, PI / 2))
         m.glow(slot='glow2', emit=1.5, texel=0.4)
-        m.cyl(0.04, 0.04, 0.03, 8, at=(s * 0.275, 0.3, 0.08), rot=(0, 0, PI / 2))
+        m.cyl(0.04, 0.04, 0.03, 8, at=(s * 0.275, 0.3, 0.08), rot=(0, 0, PI / 2), lod=1)
 
     m.bone('opt_nightElite_head', 'head', (0, 0, 0))
     for i in range(6):
@@ -245,10 +245,10 @@ def make():
     m.panel('body', texel=1.2)
     m.box(0.27, 0.27, 0.27, at=(0, -0.47, 0.3), rot=(0.15, 0, 0), bevel=0.05)
     m.vent(texel=0.7)
-    m.box(0.02, 0.15, 0.17, at=(-0.137, -0.47, 0.3), rot=(0.15, 0, 0), bevel=0)
+    m.box(0.02, 0.15, 0.17, at=(-0.137, -0.47, 0.3), rot=(0.15, 0, 0), bevel=0, lod=1)
     m.fixed(0xd84a2e, surf='paint', rough=0.6, texel=0.4)
-    m.cyl(0.035, 0.035, 0.07, 6, at=(0, -0.31, 0.33))
-    m.box(0.11, 0.02, 0.025, at=(0, -0.275, 0.33), bevel=0)
+    m.cyl(0.035, 0.035, 0.07, 6, at=(0, -0.31, 0.33), lod=1)
+    m.box(0.11, 0.02, 0.025, at=(0, -0.275, 0.33), bevel=0, lod=1)
     # heat shield, brass lance, nozzle
     m.steel(texel=0.6)
     m.cyl(0.13, 0.13, 0.03, 10, at=(0, -0.5, 0.5), rot=(PI / 2 + 0.11, 0, 0))
@@ -257,7 +257,7 @@ def make():
     m.darkmetal(texel=0.5)
     m.cyl(0.075, 0.048, 0.1, 8, at=(0, -0.535, 0.8), rot=(PI / 2 + 0.11, 0, 0))
     m.rubber(texel=0.4)
-    m.tube([(-0.05, -0.02, -0.08), (-0.1, -0.3, -0.1), (-0.06, -0.5, 0.08), (-0.02, -0.56, 0.3)], 0.026, 5)
+    m.tube([(-0.05, -0.02, -0.08), (-0.1, -0.3, -0.1), (-0.06, -0.5, 0.08), (-0.02, -0.56, 0.3)], 0.026, 5, lod=1)
 
     m.bone('flame', 'armR', (0, -0.54, 0.85))
     m.glow(slot='cloth2', emit=1.8, texel=0.5)
@@ -281,11 +281,11 @@ def make():
     m.paint('body2', texel=0.9)
     m.box(0.27, 0.19, 0.23, at=(0, -0.36, 0.23), rot=(0.5, 0, 0), bevel=0.05)
     m.steel(texel=0.4)
-    m.strut((0.06, -0.03, -0.09), (0.06, -0.3, 0.1), 0.02, 0.02, 5)
+    m.strut((0.06, -0.03, -0.09), (0.06, -0.3, 0.1), 0.02, 0.02, 5, lod=1)
     for nm, s in (('clawA', 1), ('clawB', -1)):
         m.bone(nm, 'foreL', (s * 0.09, -0.4, 0.27))
         m.darkmetal(texel=0.7)
         m.box(0.075, 0.085, 0.3, at=(0, -0.05, 0.11), rot=(0.5, s * 0.25, 0), bevel=0.018)
         m.steel(texel=0.4)
-        m.box(0.05, 0.06, 0.1, at=(-s * 0.035, -0.115, 0.235), rot=(0.5, -s * 0.5, 0), bevel=0.012)
+        m.box(0.05, 0.06, 0.1, at=(-s * 0.035, -0.115, 0.235), rot=(0.5, -s * 0.5, 0), bevel=0.012, lod=1)
     return m
