@@ -1,105 +1,19 @@
 import type { RobotLook, RobotRig } from './types';
-import { Rig, T, legGround, addCrown, addFlag, addLight, bounceOut, bump, bx, easeOutBack, joint, recoil, ss, strike, strut } from './common';
+import { Rig, legGround, bounceOut, bump, easeOutBack, recoil, ss, strike } from './common';
 
 const HIP = 1.15;
 /** Vault Warden: a walking strongroom door. It has never once been opened politely. */
 export function makeWarden(look: RobotLook): RobotRig {
   const rig = new Rig('warden', look, 3.2, 1.3);
-  const p = rig.paint, v = look.variant;
-  const brassC = 0xd9a441;
-  const all = rig.pivot(rig.inner, 0, 0, 0);
-  const hips = rig.pivot(all, 0, HIP, 0);
-
-  const legGeo = (g: any) => {
-    joint(g, 0, 0, 0, 0.3, p.dark);
-    bx(g, 0.46, 0.56, 0.5, { at: [0, -0.3, 0.02], color: p.body, layer: T.PANEL, uv: 'fit', grad: 0.8, bevel: 0.09 });
-    g.cyl(0.2, 0.2, 0.5, 8, { at: [0, -0.56, 0], rot: [0, 0, Math.PI / 2], color: p.steel, layer: T.METAL });
-    bx(g, 0.5, 0.5, 0.56, { at: [0, -0.82, 0.02], color: p.steel, layer: T.CONCRETE, grad: 0.8, bevel: 0.08 });
-    bx(g, 0.62, 0.2, 0.84, { at: [0, -1.05, 0.1], color: p.dark, layer: T.PLATE, bevel: 0.06 });
-    bx(g, 0.5, 0.14, 0.3, { at: [0, -0.96, 0.36], color: v === 'elite' ? 0xffc23a : p.body2, layer: v === 'elite' ? T.STRIPE : T.FLAT, uvScale: 3, bevel: 0.04 });
-  };
-  const legL = rig.part('leg', hips, 0.52, 0, 0, legGeo);
-  const legR = rig.part('leg', hips, -0.52, 0, 0, legGeo);
-
-  const torso = rig.part('torso', hips, 0, 0, 0, (g) => {
-    // waist
-    g.cyl(0.5, 0.56, 0.3, 12, { at: [0, 0.08, 0], color: p.dark, layer: T.GRATE, uvScale: 3 });
-    // the door: a thick steel disc
-    g.cyl(0.88, 0.88, 0.7, 20, { at: [0, 0.98, 0], rot: [Math.PI / 2, 0, 0], color: p.steel, layer: T.METAL, uvScale: 1.2 });
-    g.cyl(0.8, 0.8, 0.08, 20, { at: [0, 0.98, 0.37], rot: [Math.PI / 2, 0, 0], color: p.body, layer: T.PANEL, uvScale: 1.4, grad: 0.85 });
-    g.torus(0.84, 0.07, 6, 20, { at: [0, 0.98, 0.34], color: p.dark, layer: T.METAL });
-    for (let i = 0; i < 10; i++) {
-      const a = (i / 10) * Math.PI * 2 + 0.3;
-      g.cyl(0.055, 0.055, 0.06, 6, { at: [Math.cos(a) * 0.68, 0.98 + Math.sin(a) * 0.68, 0.42], rot: [Math.PI / 2, 0, 0], color: brassC, layer: T.METAL });
-    }
-    // locking bolts poking through the rim
-    for (const [a, l] of [[0.45, 1], [Math.PI - 0.45, 1], [-0.6, 1], [Math.PI + 0.6, 1]] as Array<[number, number]>) {
-      g.cyl(0.085, 0.085, 0.3 * l, 7, { at: [Math.cos(a) * 0.9, 0.98 + Math.sin(a) * 0.9, 0.05], rot: [0, 0, a - Math.PI / 2], color: 0xd8dde2, layer: T.METAL });
-    }
-    // dial well glow
-    g.cyl(0.36, 0.36, 0.03, 14, { at: [0, 0.98, 0.415], rot: [Math.PI / 2, 0, 0], color: p.glow, emit: p.e * 0.55, layer: T.GRATE, uvScale: 3 });
-    // concrete yoke over the shoulders
-    bx(g, 2.3, 0.44, 0.76, { at: [0, 1.62, -0.03], color: 0xb9b4aa, layer: T.CONCRETE, grad: 0.85, bevel: 0.1 });
-    for (const s of [-1, 1]) {
-      bx(g, 0.5, 0.6, 0.86, { at: [s * 1.02, 1.52, -0.03], color: v === 'elite' ? 0xffc23a : p.body, layer: v === 'elite' ? T.STRIPE : T.PANEL, uv: v === 'elite' ? 'world' : 'fit', uvScale: 2, bevel: 0.1 });
-      // hinges on the back
-      g.cyl(0.11, 0.11, 0.36, 7, { at: [s * 0.5, 0.98 + s * 0.0, -0.4], color: p.dark, layer: T.METAL });
-    }
-    // rear reactor vent
-    g.cyl(0.3, 0.3, 0.08, 10, { at: [0, 1.0, -0.37], rot: [Math.PI / 2, 0, 0], color: p.glow2, emit: 1.1, layer: T.GRATE, uvScale: 3 });
-    if (v === 'rare') addFlag(g, -0.8, 1.84, -0.2, 0.6, p);
-    if (v === 'night' || v === 'nightElite') for (const s of [-1, 1]) addLight(g, s * 1.02, 1.52, 0.405, 0.3, 0.05, 0.02, s > 0 ? p.glow : p.glow2);
-  });
-  const dial = rig.part('dial', torso, 0, 0.98, 0.45, (g) => {
-    g.torus(0.3, 0.045, 6, 16, { color: brassC, layer: T.METAL });
-    for (let i = 0; i < 5; i++) {
-      const a = (i / 5) * Math.PI * 2;
-      strut(g, [0, 0, 0], [Math.cos(a) * 0.3, Math.sin(a) * 0.3, 0], 0.035, 0.03, 5, { color: brassC, layer: T.METAL });
-      g.sphere(0.06, 6, 4, { at: [Math.cos(a) * 0.36, Math.sin(a) * 0.36, 0], color: p.dark, layer: T.FLAT });
-    }
-    g.cyl(0.1, 0.12, 0.12, 8, { at: [0, 0, 0.02], rot: [Math.PI / 2, 0, 0], color: p.dark, layer: T.METAL });
-    g.cyl(0.06, 0.06, 0.02, 8, { at: [0, 0, 0.09], rot: [Math.PI / 2, 0, 0], color: p.glow, emit: p.e, layer: T.FLAT });
-  });
-  const head = rig.part('head', torso, 0, 1.84, 0.12, (g) => {
-    bx(g, 0.62, 0.36, 0.56, { at: [0, 0.14, 0], color: p.dark, layer: T.METAL, bevel: 0.1 });
-    g.box(0.44, 0.07, 0.03, { at: [0, 0.16, 0.285], color: p.glow, emit: p.e * 1.1, layer: T.FLAT });
-    bx(g, 0.68, 0.1, 0.4, { at: [0, 0.3, 0.1], rot: [0.2, 0, 0], color: p.body, layer: T.FLAT, bevel: 0.03 });
-    for (const s of [-1, 1]) g.cyl(0.06, 0.06, 0.08, 6, { at: [s * 0.33, 0.12, 0], rot: [0, 0, Math.PI / 2], color: brassC, layer: T.METAL });
-    if (v === 'elite') addCrown(g, 0, 0.34, -0.06, 0.2, p, 6);
-  });
-  const armL = rig.part('armL', torso, 1.3, 1.5, 0, (g) => {
-    joint(g, 0, 0, 0, 0.3, p.dark);
-    strut(g, [0, 0, 0], [0.04, -0.66, 0.06], 0.22, 0.19, 8, { color: p.steel, layer: T.METAL });
-    joint(g, 0.04, -0.68, 0.06, 0.22, p.body2, T.FLAT);
-    strut(g, [0.04, -0.68, 0.06], [-0.1, -0.8, 0.6], 0.19, 0.16, 8, { color: p.dark, layer: T.METAL });
-    // the shield: a slab of vault door
-    bx(g, 1.3, 1.75, 0.2, { at: [-0.2, -0.72, 0.76], color: p.steel, layer: T.PLATE, uvScale: 1.2, grad: 0.85, bevel: 0.07 });
-    bx(g, 1.1, 1.52, 0.08, { at: [-0.2, -0.72, 0.88], color: p.body, layer: T.PANEL, uv: 'fit', grad: 0.85, bevel: 0.03 });
-    bx(g, 1.34, 0.22, 0.24, { at: [-0.2, -1.5, 0.78], color: 0xffc23a, layer: T.STRIPE, uvScale: 2.6, bevel: 0.04 });
-    g.cyl(0.26, 0.26, 0.08, 12, { at: [-0.2, -0.56, 0.94], rot: [Math.PI / 2, 0, 0], color: p.dark, layer: T.METAL });
-    g.cyl(0.17, 0.17, 0.03, 12, { at: [-0.2, -0.56, 0.985], rot: [Math.PI / 2, 0, 0], color: p.glow, emit: p.e * 0.8, layer: T.GRATE, uvScale: 4 });
-    for (const sx of [-1, 1]) for (const sy of [-1, 1]) g.cyl(0.06, 0.06, 0.05, 6, { at: [-0.2 + sx * 0.46, -0.66 + sy * 0.62, 0.93], rot: [Math.PI / 2, 0, 0], color: brassC, layer: T.METAL });
-    for (let i = 0; i < 3; i++) g.cone(0.09, 0.22, 5, { at: [-0.62 + i * 0.42, 0.24, 0.76], color: p.dark, layer: T.METAL });
-  });
-  const armR = rig.part('armR', torso, -1.3, 1.5, 0, (g) => {
-    joint(g, 0, 0, 0, 0.3, p.dark);
-    strut(g, [0, 0, 0], [0, -0.62, 0], 0.22, 0.2, 8, { color: p.steel, layer: T.METAL });
-    // piston housing
-    g.cyl(0.27, 0.27, 0.5, 10, { at: [0, -0.8, 0], color: p.body, layer: T.PANEL, uvScale: 2, grad: 0.85 });
-    g.cyl(0.3, 0.3, 0.09, 10, { at: [0, -1.04, 0], color: 0xffc23a, layer: T.STRIPE, uvScale: 3 });
-    for (const s of [-1, 1]) g.cyl(0.05, 0.05, 0.5, 5, { at: [s * 0.27, -0.8, 0.06], color: 0x1c1f24, layer: T.RUBBER });
-  });
-  const fist = rig.part('fist', armR, 0, -0.9, 0, (g) => {
-    g.cyl(0.13, 0.13, 0.7, 8, { at: [0, -0.2, 0], color: 0xe2e7ec, layer: T.METAL });
-    bx(g, 0.62, 0.56, 0.62, { at: [0, -0.72, 0], color: p.dark, layer: T.PLATE, uvScale: 1.6, bevel: 0.12 });
-    bx(g, 0.66, 0.16, 0.66, { at: [0, -0.5, 0], color: p.body, layer: T.FLAT, bevel: 0.04 });
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.cyl(0.07, 0.085, 0.08, 6, { at: [sx * 0.17, -1.02, sz * 0.17], color: p.steel, layer: T.METAL });
-    g.box(0.5, 0.05, 0.02, { at: [0, -0.72, 0.315], color: p.glow, emit: p.e * 0.8, layer: T.FLAT });
-  });
-  rig.socket('core', torso, 0, 0.98, 0.2);
+  // the hull is white-grey, painted into the model; the palette's body colour is its armour.
+  // The standard Warden wears safety yellow, the variants keep their own livery.
+  const b = rig.useModel('warden', look.variant === 'normal' ? { body: 0xf2b62c, body2: 0xd98f1c } : {});
+  const all = b.all, hips = b.hips, torso = b.torso, dial = b.dial, head = b.head;
+  const legL = b.legL, legR = b.legR, armL = b.armL, armR = b.armR, fist = b.fist;
+  rig.socket('core', torso, 0, 0.98, 0.3);
   rig.socket('head', head, 0, 0.5, 0);
   rig.socket('muzzle', fist, 0, -1.05, 0);
-  rig.socket('shield', armL, -0.2, -0.72, 1.0);
+  rig.socket('shield', armL, -0.1, -1.0, 0.9);
 
   let dialA = 0, tick = 0;
   rig.animate = (dt, pose) => {
