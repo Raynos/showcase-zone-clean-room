@@ -58,7 +58,9 @@ export class Director {
 
   // ------------------------------------------------------------------ picking and filling
   private speaker(filter?: (a: Adv) => boolean): Adv | null {
-    const pool = this.advs.list.filter((a) => a !== this.lastSpeaker && this.time - a.lastSaid > 25 && (!filter || filter(a)));
+    // whoever spoke last in chat (other systems post as adventurers too) waits their turn
+    const m = this.chat.msgs[this.chat.msgs.length - 1], recent = m && m.who && !m.mine && this.game.time - m.t < 8 ? m.who : null;
+    const pool = this.advs.list.filter((a) => a !== this.lastSpeaker && this.time - a.lastSaid > 25 && a.def.name.split(' ')[0] !== recent && (!filter || filter(a)));
     return pool.length ? pick(pool) : null;
   }
   private fill(text: string, ctx: Record<string, string | number>): string {
@@ -265,7 +267,9 @@ export class Director {
     const night = g.env.isNight();
     if (night !== this.night) {
       this.night = night;
-      const a = this.speaker();
+      // only a clock that really turned (not a jump: a bench rest, a reload) gets remarked on
+      const h = g.env.hour, natural = night ? h >= 20 && h < 22 : h >= 5 && h < 7;
+      const a = natural ? this.speaker() : null;
       if (a) this.sayAs(a, night ? 'night' : 'dawn', {}, rand(2, 6));
       if (night) this.chat.system('The night shift has clocked on. Tougher robots are out.', 'warn');
     }
