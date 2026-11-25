@@ -131,7 +131,7 @@ export class Quests {
     const st = this.game.state;
     if (e === 'vault_key') st.addItem('vault_key', 1);
     else if (e === 'horse_whistle') { st.setFlag('horse_whistle'); this.game.hud.toast('Whistle learned', 'good', 'Call Biscuit anywhere west of the wall'); }
-    else if (e === 'storm_start') st.setFlag('storm', 1);
+    else if (e === 'storm_start') { st.addItem('beacon_fuse', 4); st.setFlag('storm', 1); }
     else if (e === 'storm_end') st.setFlag('storm', 0);
     this.onEffect(e, q);
   }

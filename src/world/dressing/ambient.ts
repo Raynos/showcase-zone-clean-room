@@ -8,6 +8,7 @@ import { GU, worldMat } from '../../gfx/material';
 import { T } from '../../gfx/textures';
 import { LAKE, bandAt } from '../layout';
 import type { DressInfo } from './kit';
+import { addEmitter } from '../../systems/emitters';
 
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
 
@@ -41,10 +42,16 @@ export function startAmbient(game: Game, info: DressInfo) {
     geo.computeBoundingSphere();
     group.add(new THREE.Mesh(geo, slag)); }
 
+  // ---- what these places sound like: molten slag seethes, tesla pylons hum, smelter furnaces roar
+  for (const p of info.pools) addEmitter(game, { loop: 'lava', x: p.x, y: p.level, z: p.z, size: p.r, r: 18, vol: 0.9 });
+  for (const p of info.pylons) addEmitter(game, { loop: 'arc', x: p.x, y: game.terrain.h(p.x, p.z) + 4, z: p.z, r: 24, vol: 0.5 });   // the coil stack, not the cap
+  for (const s of info.stacks) addEmitter(game, { loop: 'fire', x: s.x, y: game.terrain.h(s.x, s.z) + 1.5, z: s.z, r: 22, vol: 0.7 });
+
   // ---- the slag fall
   let fall: { x: number; y: number; z: number; yaw: number } | null = null;
   if (A.sluice_fall) {
     fall = A.sluice_fall;
+    addEmitter(game, { loop: 'lava', x: fall.x, y: fall.y + 2, z: fall.z, r: 28, vol: 1 });
     const mat = new THREE.ShaderMaterial({
       uniforms: { uTime: GU.uTime, uNoise: GU.uNoise }, side: THREE.DoubleSide,
       vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',

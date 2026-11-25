@@ -15,6 +15,7 @@ import { TITAN_YARD } from './east';
 import type { InteriorLook } from './environment';
 import { ARENA, PAL } from './layout';
 import { pixelText } from './props';
+import { addEmitter } from '../systems/emitters';
 
 /**
  * The Titan's Arena: a buried 58 m test hall under the Arc Field, and the three-phase raid fight
@@ -384,6 +385,13 @@ export class Arena implements System {
     }
     g.hooks.enterArena = () => this.enter();
     g.hooks.arenaBusy = () => this.stage !== 'idle' && this.stage !== 'wait' && this.stage !== 'done';
+    // ---- ambience: the way-out portals, lit pylons, burning floor vents, and the Titan's core (louder each phase)
+    addEmitter(g, { loop: 'portal', x: X, y: Y + 3.5, z: Z + WR + 16.3, r: 18, vol: 0.7, interior: 'arena' });
+    addEmitter(g, { loop: 'portal', x: X, y: Y + 4.3, z: EXIT_Z, r: 22, vol: 0.7, interior: 'arena', on: () => this.stage === 'done' && this.exitRise >= 0.7 });
+    for (const p of this.pylons) addEmitter(g, { loop: 'arc', x: p.top.x, y: Y + 4, z: p.top.z, r: 34, vol: 0.8, interior: 'arena', on: () => p.lit });
+    addEmitter(g, { loop: 'fire', x: X, y: Y, z: Z, r: 400, vol: 0.8, interior: 'arena', on: () => this.vents.some((v) => v.fire) });
+    addEmitter(g, { loop: 'titan_core', x: X, y: Y + 8, z: Z, r: 130, interior: 'arena', at: () => this.titan?.pos ?? null,
+      on: () => { const m = this.titan; return m?.alive && (this.stage === 'fight' || this.stage === 'assemble') ? [0.45, 0.7, 1][m.phase - 1] ?? 0.45 : 0; } });
     g.addSystem(this);
   }
 

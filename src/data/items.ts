@@ -14,7 +14,7 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries([
   I('bolt_blast', 'Blast Bolts', 'uncommon', 'ammo', 9, 'bolt_blast', 'Crossbow ammo: explodes.', 200),
   I('bolt_pierce', 'Piercing Bolts', 'uncommon', 'ammo', 7, 'bolt_pierce', 'Crossbow ammo: goes through everything.', 200),
   I('cog', 'Brass Cog', 'uncommon', 'quest', 0, 'cog', 'A collectible cog stamped with the yard crest. Dozens are hidden across the zone, on rooftops, under decks and off the beaten track.', 99),
-  I('beacon_fuse', 'Beacon Fuse', 'uncommon', 'quest', 0, 'fuse', 'Lights one storm beacon.', 4),
+  I('beacon_fuse', 'Beacon Fuse', 'uncommon', 'quest', 0, 'fuse', 'Ines hands over four with the Storm Hour job. Each one lights a storm beacon.', 4),
   I('vault_key', 'Vault Keycard', 'rare', 'key', 0, 'key', 'Opens the Training Vault portal.', 1),
 ].map((d) => [d.id, d]));
 export const RARITY_COLOR: Record<Rarity, string> = { common: '#d8dde4', uncommon: '#5ef0ff', rare: '#ffb03a', epic: '#d08cff' };

@@ -9,6 +9,7 @@ import { Course } from '../../systems/world';
 import { PADS, PAL } from '../layout';
 import { barrel, crate, crateStack, lampPost, pipeRun, pixelText } from '../props';
 import { arch, beltMat, courseBoard, deck, dynMesh, kit, near, rail, stairs } from './kitA';
+import { addEmitter } from '../../systems/emitters';
 
 /**
  * MOVERS RUN (pad x -98..-44, z 62..118). A timed obstacle course over a coolant vat:
@@ -198,6 +199,7 @@ export function start(game: Game) {
     game.scene.add(m);
     const c = alongX ? phys.addBox(cx, Y + h - 0.15, cz, len / 2, 0.15, w / 2) : phys.addBox(cx, Y + h - 0.15, cz, w / 2, 0.15, len / 2);
     phys.meta.set(c.handle, { vel: alongX ? new THREE.Vector3(v, 0, 0) : new THREE.Vector3(0, 0, v), tag: 'metal' });
+    addEmitter(game, { loop: 'conveyor', x: cx, y: Y + h, z: cz, r: len / 2 + 12, vol: 0.7 });
   };
   belt(BELT1.x, (BELT1.z0 + BELT1.z1) / 2, BELT1.z1 - BELT1.z0, BELT1.w, H1, false, BELT1.v);
   belt((BELT2.x0 + BELT2.x1) / 2, BELT2.z, BELT2.x1 - BELT2.x0, BELT2.w, H2, true, BELT2.v);

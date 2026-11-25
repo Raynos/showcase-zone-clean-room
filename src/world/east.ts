@@ -11,6 +11,7 @@ import { T } from '../gfx/textures';
 import type { Mob } from '../systems/mobs';
 import { BANDS, BAND_GATES, GAUNTLET, PAL, TITAN_GATE, VAULT_PORTAL, type BandGate } from './layout';
 import { pixelIcon, pixelText } from './props';
+import { addEmitter } from '../systems/emitters';
 
 const _v = new THREE.Vector3();
 
@@ -216,6 +217,7 @@ export class East implements System {
       if (gate.want) { gate.open = 1; mat.uniforms.uOpen.value = 1; mesh.visible = false; }
       else gate.col = g.physics.addBox(def.x, y + 6, def.z, def.half + 0.2, 7, 0.4, yaw);
       this.gates.push(gate);
+      addEmitter(g, { loop: 'arc', x: def.x, y: y + 3, z: def.z, r: 20, vol: 0.6, on: () => !gate.want });   // a sealed force-field hums
       const to = BANDS[def.to - 1];
       g.pois.push({ id: 'gate_' + def.id, x: def.x, z: def.z, icon: 'lock', label: `Gate: ${to.name}`, show: () => !this.gateUnlocked(def) });
     }
@@ -263,11 +265,13 @@ export class East implements System {
       const shaft = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 0.9, 150, 14, 1, true), shaftMat(0xffb04a, 1.6));
       shaft.position.set(b.x, y + 8.8 + 75, b.z); shaft.visible = false; shaft.renderOrder = 4; g.scene.add(shaft);
       this.beaconFx.push({ shaft, lamp, x: b.x, y: y + 8.8, z: b.z });
+      addEmitter(g, { loop: 'fire', x: b.x, y: y + 4, z: b.z, r: 24, vol: 0.7, on: () => this.beaconLit[i] });   // a lit beacon burns
       this.beaconLit[i] = !!st.flag('beacon_' + i);
       if (this.beaconLit[i]) this.lightBeacon(i, true);
-      g.interact.add({ id: 'beacon#' + i, pos: new THREE.Vector3(b.x, y + 1, b.z), radius: 3.6, icon: 'bolt', label: 'Light the beacon',
+      g.interact.add({ id: 'beacon#' + i, pos: new THREE.Vector3(b.x, y + 1, b.z), radius: 3.6, icon: 'bolt', label: () => (st.count('beacon_fuse') ? 'Fit a fuse and light the beacon' : 'Light the beacon'),
         enabled: () => !this.beaconLit[i] && g.quests.status('q_storm') === 'active',
         onUse: () => {
+          st.removeItem('beacon_fuse', 1);   // one fuse per beacon; a pack without one (an older save) still lights it
           st.setFlag('beacon_' + i); this.lightBeacon(i, false);
           // the grid holds the moment the fourth beacon burns: the storm breaks here, not back in town at turn-in
           if (this.beaconLit.length === BEACONS.length && this.beaconLit.every(Boolean)) st.setFlag('storm', 0);
@@ -310,6 +314,12 @@ export class East implements System {
       }
       return best;
     };
+    // a Storm Hour job in progress carries one fuse per unlit beacon (saves from before the fuses were handed out get theirs here)
+    {
+      const unlit = this.beaconLit.filter((l) => !l).length, storming = g.quests.status('q_storm') === 'active';
+      const want = storming ? unlit : 0, have = st.count('beacon_fuse');
+      if (have < want) st.addItem('beacon_fuse', want - have, true); else if (have > want) st.removeItem('beacon_fuse', have - want);
+    }
     // storm state restored from the save (a save from before the storm ended at the fourth beacon may still carry it)
     if (st.flag('storm') === 1 && this.beaconLit.every(Boolean)) st.setFlag('storm', 0);
     this.applyStorm(false);
@@ -327,7 +337,9 @@ export class East implements System {
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(half * 2, h), mat);
     mesh.position.set(x, y + h / 2, z); mesh.rotation.y = yaw; mesh.renderOrder = 6;
     this.game.scene.add(mesh);
-    return { mesh, mat, col: null, open: 0, want: false, x, y, z, yaw, half, h };
+    const d: Door = { mesh, mat, col: null, open: 0, want: false, x, y, z, yaw, half, h };
+    addEmitter(this.game, { loop: 'arc', x, y: y + h / 2, z, r: 15, vol: 0.5, on: () => !d.want });
+    return d;
   }
   private snapDoor(d: Door) { d.open = d.want ? 1 : 0; d.mat.uniforms.uOpen.value = d.open; d.mesh.visible = !d.want; this.doorCollider(d); }
   private doorCollider(d: Door | Gate) {
@@ -339,6 +351,7 @@ export class East implements System {
     const mat = portalMat(c1, c2);
     const m = new THREE.Mesh(new THREE.CircleGeometry(r, 40), mat);
     m.position.set(x, y, z); m.rotation.y = yaw; this.game.scene.add(m);
+    addEmitter(this.game, { loop: 'portal', x, y, z, r: 20, vol: 0.7 });
     this.portals.push({ mat });
     return mat;
   }
@@ -385,7 +398,7 @@ export class East implements System {
     this.doors[0].want = false; this.doors[1].want = false; this.doors[2].want = false;
     for (const d of this.doors) this.doorCollider(d);
     g.hud.banner('THE GAUNTLET', 'Three courts · five waves', 'danger');
-    g.sfx('gauntlet_start');
+    g.sfx('gauntlet_start'); g.musicOverride = 'gauntlet';
     const A = GAUNTLET.courts[0];
     g.combat.checkpoint = { x: A.x, y: GAUNTLET.y + 0.4, z: A.z + GAUNTLET.size / 2 + 6, yaw: Math.PI };
     g.mobs.bounds = (pos, r) => this.clampCourt(pos, r);
@@ -418,6 +431,7 @@ export class East implements System {
     this.gMobs.length = 0; this.gState = 'idle'; this.gWave = -1; this.gRun++;
     for (const d of this.doors) { d.want = true; this.doorCollider(d); }
     g.mobs.bounds = null; g.combat.checkpoint = null;
+    if (g.musicOverride === 'gauntlet') g.musicOverride = null;
   }
   private updateGauntlet(dt: number) {
     const g = this.game, st = g.state;
@@ -438,6 +452,7 @@ export class East implements System {
       this.gMobs.length = 0;
       if (this.gWave >= WAVES.length - 1) {
         this.gState = 'done'; this.gDelay = 4;
+        if (g.musicOverride === 'gauntlet') g.musicOverride = null;   // the victory sting plays over the zone's own music
         const first = !st.flag('gauntlet_clear');
         g.hud.banner('GAUNTLET CLEARED', first ? 'The Titan road is open' : 'Well fought', 'level');
         g.sfx('victory_sting'); g.slowMo(0.3, 1.2);

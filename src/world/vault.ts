@@ -12,6 +12,7 @@ import type { Mob } from '../systems/mobs';
 import type { InteriorLook } from './environment';
 import { PAL, VAULT, VAULT_PORTAL } from './layout';
 import { pixelText } from './props';
+import { addEmitter } from '../systems/emitters';
 
 /**
  * The Training Vault: four chambers strung north along x = VAULT.x, 70 m under the Slagworks.
@@ -217,6 +218,9 @@ export class Vault implements System {
     // arrival portal (the way back out)
     const back = new THREE.Mesh(new THREE.CircleGeometry(2.1, 36), portalMat(0x3fe3ff, 0xffffff));
     back.position.set(X, Y + 3.2, 76.9); back.rotation.y = Math.PI; this.group.add(back);
+    addEmitter(g, { loop: 'portal', x: X, y: Y + 3.2, z: 76.9, r: 18, vol: 0.7, interior: 'vault' });
+    addEmitter(g, { loop: 'portal', x: X, y: Y + UP + 5.6, z: -86.9, r: 22, vol: 0.7, interior: 'vault', on: () => this.stage === 'done' });
+    for (const d of this.doors) addEmitter(g, { loop: 'arc', x: d.x, y: d.y + 2.5, z: d.z, r: 13, vol: 0.5, interior: 'vault', on: () => !d.want });
     g.interact.add({ id: 'vault_leave', pos: new THREE.Vector3(X, Y + 1, 74.5), radius: 3, icon: 'star', label: 'Leave the vault', enabled: () => g.interior === 'vault', onUse: () => this.leave() });
     // ---- logic plates ----
     PLATE_POS.forEach(([px, pz], i) => {
