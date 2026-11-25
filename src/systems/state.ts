@@ -7,9 +7,11 @@ import { PERK_BY_ID, perkGate, perkPoints } from '../data/perks';
 import { WEAPON_TRAIT, type TraitId } from '../data/traits';
 
 export type ToastKind = 'info' | 'good' | 'warn' | 'loot' | 'quest' | 'zone' | 'level' | 'pb' | 'secret';
+/** Where XP came from (the playthrough bot's pacing report reads it off the xp event). */
+export type XpSource = 'kill' | 'quest' | 'contract' | 'bounty' | 'event' | 'other';
 export interface GameEvents {
   levelUp: { level: number };
-  xp: { amount: number };
+  xp: { amount: number; src?: XpSource };
   scrip: { amount: number };
   item: { id: string; count: number };
   toast: { text: string; kind?: ToastKind; sub?: string; icon?: string };
@@ -34,6 +36,25 @@ export interface GameEvents {
 }
 
 export interface QuestSave { state: 'active' | 'ready' | 'done'; prog: number[] }
+/** A bounty: a short contract from the board that follows the player's band and pays as soon as it is met. */
+export interface Bounty {
+  id: number; kind: 'hunt' | 'band' | 'break' | 'ranged' | 'camp' | 'rare' | 'elite' | 'streak';
+  band: number; target?: string; n: number; prog: number; xp: number; scrip: number; item?: [string, number]; text: string;
+}
+export interface GrindSave {
+  /** Field Training: bonus perk points earned, and kills toward the next */
+  perks: number; field: number;
+  /** the longest kill streak ever */
+  best: number;
+  bounties: Bounty[]; bountyId: number; bountyBand: number; bountiesDone: number;
+  /** kills in each band since its champion last showed */
+  bandKills: Record<string, number>;
+  /** a champion that has beaten the player comes back stronger, by name */
+  nemesis: { band: number; rank: number; name: string } | null;
+  /** traits found for a weapon that already carries one: the player picks */
+  tunes: Array<{ weapon: string; trait: string; from: string }>;
+  rares: number; camps: number; champions: number;
+}
 export interface SaveData {
   v: number;
   name: string;
@@ -58,6 +79,8 @@ export interface SaveData {
   perks?: Record<string, number>;
   /** a rolled extra trait per weapon, from rare salvage (see data/traits) */
   wtraits?: Record<string, string>;
+  /** the grind's own record: streak best, bounties, field training, champions, tuning offers (systems/grind.ts) */
+  grind?: GrindSave;
   settings: { quality: string; sfx: number; music: number; sens: number; invertY: boolean; autoFollow: boolean; shake: number; dmgNumbers: boolean; haptics: boolean; lefty: boolean; /** the always-on frame-rate readout */ fps: boolean;
     /** third or first person (systems/view.ts); degrees added to the first-person field of view; head bob in first person */
     view: 'third' | 'first'; fpFov: number; headBob: boolean;
@@ -66,7 +89,23 @@ export interface SaveData {
     adsMode?: 'hold' | 'tap'; adsSens?: number; aimAssist?: boolean; assistSlow?: number; assistPull?: number; gyro?: boolean; gyroSens?: number };
 }
 
-const KEY = 'cratefall.save.v1';
+/**
+ * A reviewer's shortcut: `?boost=<n>` (bare `?boost` is 10, at most 50) multiplies every XP gain so the
+ * long grind does not stand between a reviewer and the game. It plays on a save slot of its own, begun
+ * as a copy of the normal save, so boosted progress never reaches a normal save. Never saved itself.
+ */
+export const XP_BOOST = (() => {
+  try {
+    const q = new URLSearchParams(location.search);
+    if (!q.has('boost')) return 1;
+    const v = Number(q.get('boost') || 10);
+    return v > 1 ? Math.min(50, Math.round(v * 10) / 10) : 1;
+  } catch { return 1; }
+})();
+const BASE_KEY = 'cratefall.save.v1';
+const KEY = XP_BOOST > 1 ? BASE_KEY + '.boost' : BASE_KEY;
+/** what a boosted slot holds after a reset, so the next load starts fresh instead of copying the normal save */
+const FRESH = 'fresh';
 /** One slot per kind of item; more than the game has kinds, so the pack only fills if items are added without raising this. */
 const PACK_SLOTS = 16;
 /** what the three tiers of the removed Pack Expansion upgrade cost, by tier */
@@ -94,7 +133,10 @@ export class State {
 
   static load(): SaveData | null {
     try {
-      const raw = localStorage.getItem(KEY);
+      let raw = localStorage.getItem(KEY);
+      if (raw === FRESH) return null;
+      // a boosted session starts from where the normal save stands
+      if (!raw && KEY !== BASE_KEY) raw = localStorage.getItem(BASE_KEY);
       if (!raw) return null;
       const d = JSON.parse(raw) as SaveData;
       if (d.v !== 1) return null;
@@ -105,7 +147,9 @@ export class State {
       return out;
     } catch { return null; }
   }
-  static hasSave(): boolean { try { return !!localStorage.getItem(KEY); } catch { return false; } }
+  static hasSave(): boolean { try { const r = localStorage.getItem(KEY) ?? (KEY !== BASE_KEY ? localStorage.getItem(BASE_KEY) : null); return !!r && r !== FRESH; } catch { return false; } }
+  /** the XP multiplier in force (1 unless the page was opened with ?boost) */
+  readonly xpBoost = XP_BOOST;
   /** set by reset(): nothing is written again until the page reloads, so the wipe sticks */
   private wiped = false;
   /** runs before every write so live values (where the player stands, the clock) go into the save */
@@ -116,7 +160,7 @@ export class State {
     try { localStorage.setItem(KEY, JSON.stringify(this.d)); } catch { /* storage unavailable */ }
     this.dirty = false;
   }
-  reset() { try { localStorage.removeItem(KEY); } catch { /* ignore */ } this.wiped = true; this.d = freshSave(); this.events.emit('stateChanged', {}); }
+  reset() { try { if (KEY !== BASE_KEY) localStorage.setItem(KEY, FRESH); else localStorage.removeItem(KEY); } catch { /* ignore */ } this.wiped = true; this.d = freshSave(); this.events.emit('stateChanged', {}); }
   touch() { this.dirty = true; }
   update(dt: number) {
     this.d.playTime += dt;
@@ -170,10 +214,12 @@ export class State {
   }
 
   // ---- progression ----
-  addXp(n: number): number {
+  /** Add XP (times the ?boost multiplier). Returns the number of levels gained. */
+  addXp(n: number, src: XpSource = 'other'): number {
     if (this.d.level >= MAX_LEVEL || n <= 0) return 0;
+    n = Math.round(n * this.xpBoost);
     this.d.xp += n;
-    this.events.emit('xp', { amount: n });
+    this.events.emit('xp', { amount: n, src });
     let ups = 0;
     while (this.d.level < MAX_LEVEL && this.d.xp >= xpToNext(this.d.level)) {
       this.d.xp -= xpToNext(this.d.level);
@@ -189,7 +235,8 @@ export class State {
   /** rank of a perk (0 when not taken) */
   perk(id: string): number { return this.d.perks?.[id] ?? 0; }
   get perksSpent(): number { let n = 0; for (const k in this.d.perks ?? {}) n += this.d.perks![k]; return n; }
-  get perksFree(): number { return Math.max(0, perkPoints(this.d.level) - this.perksSpent); }
+  /** perk points: one a level from 2, plus Field Training's bonus points earned by fighting (systems/grind.ts) */
+  get perksFree(): number { return Math.max(0, perkPoints(this.d.level) + (this.d.grind?.perks ?? 0) - this.perksSpent); }
   treeSpent(tree: string): number { let n = 0; for (const k in this.d.perks ?? {}) if (PERK_BY_ID[k]?.tree === tree) n += this.d.perks![k]; return n; }
   canLearn(id: string): boolean { const p = PERK_BY_ID[id]; return !!p && this.perksFree > 0 && this.perk(id) < p.ranks && this.treeSpent(p.tree) >= perkGate(p); }
   learnPerk(id: string): boolean { if (!this.canLearn(id)) return false; (this.d.perks ??= {})[id] = this.perk(id) + 1; this.touch(); return true; }

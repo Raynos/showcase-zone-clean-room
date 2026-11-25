@@ -33,7 +33,7 @@
   const BANDS = ['1-3', '4-6', '7-9', '10-12', '13-15', '16-18', '19-20'];
   B.bandOf = (lvl) => BANDS[Math.min(6, Math.floor((lvl - 1) / 3))];
   B.newReport = (cfg) => ({
-    v: 1, runId: cfg.runId, style: cfg.style || 'competent', url: location.href.replace(/[?&]dev\b/, ''), startMode: cfg.from === 'fresh' ? 'fresh' : cfg.from === 'resume' ? 'resume' : 'checkpoint', checkpoint: cfg.from === 'fresh' || cfg.from === 'resume' ? null : cfg.from,
+    v: 1, runId: cfg.runId, style: cfg.style || 'competent', boost: cfg.boost || 1, url: location.href.replace(/[?&]dev\b/, ''), startMode: cfg.from === 'fresh' ? 'fresh' : cfg.from === 'resume' ? 'resume' : 'checkpoint', checkpoint: cfg.from === 'fresh' || cfg.from === 'resume' ? null : cfg.from,
     startedAt: new Date().toISOString(), startLevel: B.G().state.d.level, startPlayTime: B.playTime(),
     wallSec: 0, gameSec: 0, reloads: 0, restores: 0,
     levels: { [B.G().state.d.level]: { wall: 0, game: 0 } },
@@ -105,6 +105,15 @@
       if (k.kind === 'titan') { B.rep.outcome.titanDead = true; B.rep.outcome.titanAt = B.stamp(); B.note('Crate Titan destroyed'); }
     });
     ev.on('questUpdate', () => { if (B.rep) B.progress('quest'); });
+    // where each XP gain came from, as the game labels it (kill, quest, contract, bounty, event, other)
+    ev.on('xp', (e) => {
+      if (!B.rep) return;
+      B.xpEvents = true;
+      const src = e.src && e.src !== 'other' ? e.src : B.xpSrc || 'other';
+      const lv = B.lvl(g.state.d.level);
+      lv.xp[src] = (lv.xp[src] || 0) + e.amount;
+      B.rep.xpBySrc = B.rep.xpBySrc || {}; B.rep.xpBySrc[src] = (B.rep.xpBySrc[src] || 0) + e.amount;
+    });
     ev.on('mobBreak', (e) => { if (B.rep && B.started) B.tool(e.boss ? 'break boss' : e.elite ? 'break elite' : 'break'); });
     ev.on('finisher', () => { if (B.rep && B.started) B.tool('finisher landed'); });
     ev.on('respawn', () => { B.lastHp = g.state.d.hp; });
@@ -216,7 +225,7 @@
       B.lastKits = kits;
       // where the XP came from: quest hand-ins, contracts, courses, or kills
       const xt = B.xpTotal();
-      if (B.lastXp !== undefined && xt > B.lastXp) {
+      if (!B.xpEvents && B.lastXp !== undefined && xt > B.lastXp) {
         const src = B.xpSrc || (t - (B.lastKillT || -9) < 1.5 ? 'kill' : 'other');
         const lv = B.lvl(B.xpLevel || st.d.level);
         lv.xp[src] = (lv.xp[src] || 0) + (xt - B.lastXp);

@@ -32,7 +32,7 @@
     if (!c) return 'unknown checkpoint: ' + name;
     const { QUEST_BY_ID } = await import(/* @vite-ignore */ new URL('src/data/quests.ts', document.baseURI).href);
     const { xpToNext } = await import(/* @vite-ignore */ new URL('src/data/balance.ts', document.baseURI).href);
-    while (d.level < c.level) st.addXp(xpToNext(d.level) - d.xp);
+    while (d.level < c.level) st.addXp((xpToNext(d.level) - d.xp) / (st.xpBoost || 1));
     for (const [id, lvl] of WEAPONS) if (lvl <= c.level) st.giveWeapon(id);
     const RANGED = ['trainer_bow', 'bolt_driver', 'tension_bow', 'twin_driver', 'arcstring', 'rail_rifle'];
     const best = (ranged) => WEAPONS.filter(([id, lvl]) => lvl <= c.level && RANGED.includes(id) === ranged).pop()[0];

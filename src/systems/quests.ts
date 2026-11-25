@@ -146,7 +146,7 @@ export class Quests {
       g.hud.toast(WEAPONS[q.weapon as WeaponId].name, 'loot', 'New weapon');
     }
     g.hud.log(`Quest complete: ${q.name} (+${q.xp} XP, +${q.scrip} Scrip)`, 'quest');
-    st.addXp(q.xp);
+    st.addXp(q.xp, 'quest');
     if (q.onDone) this.effect(q.onDone, q);
     st.touch(); st.save();
     st.events.emit('questUpdate', { id });
@@ -213,7 +213,7 @@ export class Quests {
     const s = this.contract(c), st = this.game.state, g = this.game;
     if (!s.claimable) return false;
     st.d.contracts[c.id] = s.claimed + 1;
-    st.addScrip(s.scrip); st.addXp(s.xp);
+    st.addScrip(s.scrip); st.addXp(s.xp, 'contract');
     g.sfx('contract_claim');
     if (s.claimed === 0) {
       st.d.trophies.push(c.id);
@@ -239,6 +239,7 @@ export class Quests {
       else q.objectives.forEach((o, i) => { html += `<div class="qo${p[i] >= o.n ? ' done' : ''}">${o.text}${o.n > 1 ? ` <b>${p[i]}/${o.n}</b>` : ''}</div>`; });
       html += '</div>';
     }
+    html += this.game.grind?.trackerLine() ?? '';
     if (html !== this.trackerSig) { this.trackerSig = html; this.game.hud.tracker.innerHTML = html; }
     void ITEMS;
   }

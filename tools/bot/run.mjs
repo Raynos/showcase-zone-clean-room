@@ -25,17 +25,22 @@ if (flag('help') || flag('h')) {
   --reload-at N       reload the page N minutes in, to prove the run resumes from the save
   --style <s>         competent (default): dodges, counters, sweeps, breakers, cover, flanks, finishers,
                       skills, perks. careless: walks in and taps attack, drinks kits below 30%, nothing else
+  --boost N           play with ?boost=N (XP times N, on the game's separate boost save slot): the fast
+                      full-journey run. Pacing checks run without it.
+  --until-level N     stop when the player reaches level N (one band's honest pacing check)
   --list              list checkpoints and exit`);
   process.exit(0);
 }
-const url = opt('url', 'http://localhost:5174/?q=medium');
+const boost = Number(opt('boost', '1'));
+const untilLevel = Number(opt('until-level', '0'));
+const url = (() => { const u = new URL(opt('url', 'http://localhost:5174/?q=medium')); if (boost > 1) u.searchParams.set('boost', String(boost)); return u.toString(); })();
 const from = opt('from', 'fresh');
 const maxMin = Number(opt('max-minutes', '180'));
 const scale = opt('scale', '1');
 const reloadAt = Number(opt('reload-at', '0'));
 const style = opt('style', 'competent');
 if (!['competent', 'careless'].includes(style)) { console.error('--style is competent or careless'); process.exit(1); }
-const runId = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*/, '').replace('T', '-') + '-' + from + (style === 'careless' ? '-careless' : '');
+const runId = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*/, '').replace('T', '-') + '-' + from + (style === 'careless' ? '-careless' : '') + (boost > 1 ? '-boost' + boost : '') + (untilLevel ? '-to' + untilLevel : '');
 const outDir = resolve(opt('out', join(ROOT, 'shots', 'playthrough', runId)));
 const env = { ...process.env, AGENT_BROWSER_SESSION: process.env.PLAYTHROUGH_SESSION || 'playthrough-bot', AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' };
 
@@ -71,7 +76,8 @@ async function openGame(u) {
  * long run is not lost. That is the bot's own save coming back, never an edited one; the report counts it.
  */
 let backup = null;
-const KEYS = ['cratefall.save.v1', 'cratefall.bot.report'];
+// a boosted run plays on the game's boost save slot (src/systems/state.ts)
+const KEYS = [boost > 1 ? 'cratefall.save.v1.boost' : 'cratefall.save.v1', 'cratefall.bot.report'];
 const takeBackup = () => {
   const v = evJson(`JSON.stringify(${JSON.stringify(KEYS)}.map((k) => localStorage.getItem(k)))`);
   if (Array.isArray(v) && v[0] && v[1]) { try { if (JSON.parse(v[1]).rep.runId === runId) backup = v; } catch { /* keep the old one */ } }
@@ -89,7 +95,7 @@ async function restoreIfLost() {
   await openGame(withDev(url, false));
 }
 const inject = () => { ab(['eval', '--stdin'], botSource() + '\n;"injected"'); };
-const startBot = () => ev(`window.__pb.start(${JSON.stringify({ runId, from, style })})`);
+const startBot = () => ev(`window.__pb.start(${JSON.stringify({ runId, from, style, boost, untilLevel })})`);
 
 function summary(r) {
   const t = (s) => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return (h ? h + 'h' : '') + String(m).padStart(h ? 2 : 1, '0') + 'm' + String(s % 60).padStart(2, '0') + 's'; };
@@ -109,17 +115,18 @@ function summary(r) {
   L.push('', 'band    time      kills  deaths  dmg taken  kits');
   for (const k of ['1-3', '4-6', '7-9', '10-12', '13-15', '16-18', '19-20']) { const b = r.bands[k]; if (b) L.push(`  ${k.padEnd(6)}${t(b.gameSec).padEnd(10)}${String(b.kills).padEnd(7)}${String(b.deaths).padEnd(8)}${String(Math.round(b.damageTaken)).padEnd(11)}${b.kitsUsed}`); }
   if (r.perLevel) {
-    L.push('', 'per level (in-game): time   kills  dmg taken (x max hp)  kits  deaths  XP from quests/contracts/kills/other');
+    L.push('', 'per level (in-game): time   kills  dmg taken (x max hp)  kits  deaths  XP from quests/contracts/kills/bounties/events/other');
     for (const l of Object.keys(r.perLevel).map(Number).sort((a, b) => a - b)) {
       const x = r.perLevel[l], xp = x.xp || {}, tot = Object.values(xp).reduce((a, b) => a + b, 0) || 1;
       const pc = (k) => String(Math.round(100 * (xp[k] || 0) / tot)).padStart(3) + '%';
-      L.push(`  L${String(l).padEnd(3)} ${t(x.sec).padEnd(8)} ${String(x.kills).padEnd(6)} ${String(Math.round(x.dmg)).padEnd(6)} (${(x.dmg / Math.max(1, x.maxHp || 1)).toFixed(1).padStart(4)})       ${String(x.kits).padEnd(5)} ${String(x.deaths).padEnd(7)} ${pc('quest')} ${pc('contract')} ${pc('kill')} ${pc('other')}`);
+      L.push(`  L${String(l).padEnd(3)} ${t(x.sec).padEnd(8)} ${String(x.kills).padEnd(6)} ${String(Math.round(x.dmg)).padEnd(6)} (${(x.dmg / Math.max(1, x.maxHp || 1)).toFixed(1).padStart(4)})       ${String(x.kits).padEnd(5)} ${String(x.deaths).padEnd(7)} ${pc('quest')} ${pc('contract')} ${pc('kill')} ${pc('bounty')} ${pc('event')} ${pc('other')}`);
     }
   }
   if (r.fights && r.fights.length) {
     L.push('', 'elite and boss fights: name (its level / ours)  time  dmg  kits  deaths  lowest hp  result  tools');
     for (const f of r.fights) L.push(`  ${(f.name + ' (' + f.mobLevel + '/' + f.level + ')').padEnd(28)} ${t(f.sec).padEnd(7)} ${String(f.dmg).padEnd(5)} ${String(f.kits).padEnd(4)} ${String(f.deaths).padEnd(3)} ${String(Math.round(f.minHp * 100)).padStart(3)}%  ${f.result.padEnd(7)} ${Object.entries(f.tools).map(([k, v]) => k + ' ' + v).join(', ')}`);
   }
+  if (r.xpBySrc) { const tot = Object.values(r.xpBySrc).reduce((a, b) => a + b, 0) || 1; L.push('', 'XP by source: ' + Object.entries(r.xpBySrc).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${Math.round(100 * v / tot)}%`).join(', ') + (r.boost > 1 ? ` (boosted x${r.boost})` : '')); }
   if (r.tools) L.push('', 'tools used: ' + Object.entries(r.tools).map(([k, v]) => k + ' ' + v).join(', '));
   if (r.perks && r.perks.length) L.push('perks learned: ' + r.perks.map((p) => p.id + ' (L' + p.level + ')').join(', '));
   L.push('', 'quests (accepted -> turned in, in-game):');

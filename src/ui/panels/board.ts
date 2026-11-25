@@ -9,14 +9,30 @@ export const boardPanel: PanelSpec = {
   title: 'Contract Board', icon: 'skull', scrip: true,
   make(host, arg) {
     const g = host.game, st = g.state, qs = g.quests;
-    let tab: string = arg?.tab ?? 'hunts', sig = '';
-    const signature = () => tab + JSON.stringify(st.d.kills) + JSON.stringify(st.d.contracts);
+    let tab: string = arg?.tab ?? 'bounties', sig = '';
+    const signature = () => tab + JSON.stringify(st.d.kills) + JSON.stringify(st.d.contracts) + JSON.stringify(st.d.grind?.bounties) + (g.grind?.summary().refill.length ?? 0);
     const render = () => {
       sig = signature();
       const hunts = CONTRACTS.filter((c) => !isWanted(c)), wanted = CONTRACTS.filter(isWanted);
-      host.setTabs([{ id: 'hunts', label: 'Hunts', pip: hunts.some((c) => qs.contract(c).claimable) }, { id: 'wanted', label: 'Wanted', pip: wanted.some((c) => qs.contract(c).claimable) }], tab);
+      host.setTabs([{ id: 'bounties', label: 'Bounties' }, { id: 'hunts', label: 'Hunts', pip: hunts.some((c) => qs.contract(c).claimable) }, { id: 'wanted', label: 'Wanted', pip: wanted.some((c) => qs.contract(c).claimable) }], tab);
       let h = '';
-      if (tab === 'hunts') {
+      if (tab === 'bounties') {
+        // short contracts for the band that fits you, paid the moment they are met (src/systems/grind.ts)
+        const s = g.grind.summary();
+        h += `<div class="pn-note top">Three at a time, made for <b>${s.band.name}</b> and paid the moment you meet them. A paid one is replaced shortly.</div>`;
+        for (const b of s.bounties) {
+          const f = Math.min(1, b.prog / b.n);
+          h += `<div class="pn-row con"><div class="grow"><b>${b.text}</b>
+            <div class="pn-bar kill"><i style="transform:scaleX(${f})"></i><span>${b.prog} / ${b.n}</span></div>
+            <div class="cr"><span class="rxp">${icon('star', 13)}${Math.round(b.xp * st.xpBoost).toLocaleString('en-US')} XP</span>${scripHtml(b.scrip, 13)}</div></div></div>`;
+        }
+        for (const t of s.refill) h += `<div class="pn-row con done"><div class="grow"><b>New bounty posting</b><small>In ${Math.ceil(t)} s</small></div></div>`;
+        h += `<div class="pn-sec">Field record</div><div class="pn-kv">
+          <div><span>Field Training</span><b>${s.perks >= s.perksMax ? 'Complete' : `${s.field} / ${s.fieldStep} kills`} · ${s.perks}/${s.perksMax} perk points</b></div>
+          <div><span>Bounties paid</span><b>${s.done}</b></div><div><span>Best streak</span><b>${s.best} kills</b></div>
+          <div><span>Camps cleared</span><b>${s.camps}</b></div><div><span>Named rares</span><b>${s.rares}</b></div><div><span>Champions beaten</span><b>${s.champions}</b></div>
+          ${s.nemesis ? `<div><span>Nemesis</span><b>${s.nemesis.name}, rank ${s.nemesis.rank}</b></div>` : ''}</div>`;
+      } else if (tab === 'hunts') {
         h += '<div class="pn-note top">Every robot you scrap counts. The first payout on each contract hangs a trophy on the wall and earns a title.</div>';
         for (const c of hunts) {
           const s = qs.contract(c);

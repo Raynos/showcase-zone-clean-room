@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { TAU, angleDiff, clamp, clamp01, damp, dampAngle, lerp, rand } from '../core/util';
-import { VARIANT, enemyDamage, enemyHp, killScrip, killXp, xpLevelScale } from '../data/balance';
+import { VARIANT, enemyDamage, enemyHp, killScrip, mobKillXp } from '../data/balance';
 import { CAMPS, ELITES, ENEMIES, type AttackDef, type CampDef, type EliteDef, type EnemyDef } from '../data/enemies';
 import type { RobotKind, RobotPose, RobotRig, RobotVariant } from '../entities/robots/types';
 import type { Game } from '../game';
@@ -14,7 +14,6 @@ import { BREAK, MECH_ATTACKS, TELE_RED, threatMul } from '../data/enemies';
 import { Mech } from './mechanics';
 import { WindupArrows } from './warn';
 import { Finishers } from './finisher';
-import { RARE_TUNE_CHANCE, ROLLED, TRAITS } from '../data/traits';
 import { SHIELD_ARC, SHIELD_FRONT, roleFor, type RoleDef } from '../data/shooter-roles';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _d = new THREE.Vector3(), _c = new THREE.Color();
@@ -1006,9 +1005,11 @@ export class Mobs {
     const g = this.game, st = g.state;
     this.release(m);
     const V = VARIANT[m.variant];
-    const xp = Math.round(killXp(m.level) * V.xp * (m.def.boss ? 14 : 1) * xpLevelScale(st.d.level, m.level) * m.xpMul);
+    // kill XP by how much robot it was (data/balance.ts); the grind adds streaks, camp clears and champions
+    const base = mobKillXp({ level: m.level, kindHp: m.def.hp, variant: m.variant, boss: !!m.def.boss, xpMul: m.xpMul }, st.d.level);
+    const xp = g.grind ? g.grind.onKill(m, base) : base;
     m.center(_v);
-    if (xp > 0) { st.addXp(xp); g.hud.damage({ x: _v.x, y: _v.y + 0.8, z: _v.z }, `+${xp} XP`, 'xp'); }
+    if (xp > 0) { st.addXp(xp, 'kill'); g.hud.damage({ x: _v.x, y: _v.y + 0.8, z: _v.z }, `+${Math.round(xp * st.xpBoost)} XP`, 'xp'); }
     if (!m.noLoot) {
       const scrip = Math.round(killScrip(m.level) * V.scrip * (m.def.boss ? 10 : 1) * rand(0.8, 1.25));
       g.loot.scrip(_v, scrip, m.isBoss ? 1.6 : 1);
@@ -1020,13 +1021,8 @@ export class Mobs {
       if (m.variant === 'elite' || m.variant === 'nightElite') { g.loot.item(_v, 'core', 1); if (Math.random() < 0.6) g.loot.item(_v, 'kit', 1); }
       else if (Math.random() < 0.06) g.loot.item(_v, 'kit', 1);
       else if (m.variant === 'rare') g.loot.item(_v, 'lens', 2);
-      // a rare robot's salvage can tune the weapon in hand with a rolled trait
-      if (m.variant === 'rare' && Math.random() < RARE_TUNE_CHANCE) {
-        const id = st.weaponId, cur = st.d.wtraits?.[id], pool = ROLLED.filter((t) => t !== cur), t = pool[Math.floor(Math.random() * pool.length)];
-        (st.d.wtraits ??= {})[id] = t; st.touch();
-        g.hud.toast(`${st.weapon.name} tuned: ${TRAITS[t].name}`, 'loot', TRAITS[t].desc.replace('Rolled. ', ''));
-        g.sfx('ui_equip');
-      }
+      // a rare robot's salvage can tune the weapon in hand with a rolled trait; the player chooses (systems/grind.ts)
+      if (m.variant === 'rare') g.grind?.rareSalvage(m);
     }
     const key = m.elite ? m.elite.id : m.kind;
     st.addKill(key);

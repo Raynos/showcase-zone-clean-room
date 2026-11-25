@@ -20,6 +20,7 @@ import { Interact } from './systems/interact';
 import { Loot } from './systems/loot';
 import { Mobs } from './systems/mobs';
 import { Quests } from './systems/quests';
+import { Grind } from './systems/grind';
 import { NPC_NAMES } from './data/quests';
 import { State } from './systems/state';
 import { Movers, Triggers, type Course } from './systems/world';
@@ -64,6 +65,8 @@ export class Game {
   loot!: Loot;
   interact!: Interact;
   quests!: Quests;
+  /** streaks, rares, bounties, champions, Field Training and tuning offers (systems/grind.ts) */
+  grind!: Grind;
   movers!: Movers;
   triggers!: Triggers;
   activeCourse: Course | null = null;
@@ -135,6 +138,7 @@ export class Game {
     this.loot = new Loot(this);
     this.interact = new Interact(this);
     this.quests = new Quests(this);
+    this.grind = new Grind(this);
     this.movers = new Movers(this.physics);
     this.triggers = new Triggers(this);
     progress(0.46, `UNCRATING THE CAST ${modelsDone}/${modelsTotal || MODEL_NAMES.length}`);

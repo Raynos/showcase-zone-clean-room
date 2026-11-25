@@ -336,7 +336,7 @@ export class ZoneEvents implements System {
     if (gold || Math.random() < 0.25 * mul) g.loot.item(pos, 'core', 1, 1.4);
     if (Math.random() < 0.35) g.loot.item(pos, e.band.id >= 3 ? 'cell' : 'lens', gold ? 3 : 1, 1.4);
     const xp = Math.round(killXp(L) * (gold ? 10 : 4));
-    st.addXp(xp); g.hud.damage({ x: e.x, y: e.y + 3, z: e.z }, `+${xp} XP`, 'xp');
+    st.addXp(xp, 'event'); g.hud.damage({ x: e.x, y: e.y + 3, z: e.z }, `+${Math.round(xp * st.xpBoost)} XP`, 'xp');
     // gear: a weapon the yard has not sold you yet, or the one in hand tuned, at far better odds than any camp
     const gear = this.rollGear(gold ? 0.75 : storm ? 0.45 : 0.3);
     // the record
@@ -368,8 +368,8 @@ export class ZoneEvents implements System {
     }
     if (Math.random() < Math.max(RARE_TUNE_CHANCE, 0.5)) {
       const id = st.weaponId, cur = st.d.wtraits?.[id], opts = ROLLED.filter((t) => t !== cur), t = opts[Math.floor(Math.random() * opts.length)];
-      (st.d.wtraits ??= {})[id] = t; st.touch();
-      this.game.hud.toast(`${st.weapon.name} tuned: ${TRAITS[t].name}`, 'loot', TRAITS[t].desc.replace('Rolled. ', ''));
+      // a weapon that already has a tuning asks the player first (src/systems/grind.ts)
+      this.game.grind.offerTrait(id, t, 'the supply drop');
       return TRAITS[t].name;
     }
     return '';

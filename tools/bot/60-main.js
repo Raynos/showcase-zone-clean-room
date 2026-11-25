@@ -76,8 +76,11 @@
           continue;
         }
         if (g.panels && g.panels.current) await B.closeUi();
+        // a tuning found for a weapon that already has one waits on the player's choice: fit the new one (as the card's first button does)
+        if (g.grind && g.state.d.grind && g.state.d.grind.tunes.length && g.mobs.inCombat === 0) { g.grind.chooseTune(true); B.tool('tuning fitted'); }
         if (!pl.controllable || g.cameraRig.cine) { B.stop(); await B.rawSleep(0.3); if (g.interior !== 'arena' && g.interior !== 'vault') continue; }
         if (B.cfg.maxGameSec && B.rep.gameSec > B.cfg.maxGameSec) { B.finish('stopped', 'time limit reached'); break; }
+        if (B.cfg.untilLevel && g.state.d.level >= B.cfg.untilLevel) { B.finish('stopped', `reached level ${B.cfg.untilLevel} (--until-level)`); break; }
         if ((B.stallRun || 0) >= 5) { B.finish('stalled', `five stalls in a row (15 minutes) with no progress while: ${B.goal}`); break; }
         const t0 = B.now();
         await B.step();

@@ -289,7 +289,7 @@ export class Combat {
     let forceCrit = o.crit;
     if (broken && move === 'full' && st.perk('deadeye') > 0) forceCrit = true;
     const { dmg: dmg0, crit } = this.roll(mult, forceCrit);
-    const tr = traitHit(st.weaponTraits(), move, crit, { isBoss: !!mob0.isBoss, cls: mob0.cls ?? '', broken, shocked: !!mob0.status?.has('shock') }, this.tOut);
+    const tr = traitHit(st.weaponTraits(), move, crit, { isBoss: !!mob0.isBoss, cls: mob0.cls ?? '', broken, shocked: !!mob0.status?.has('shock'), burning: !!mob0.status?.has('burn') }, this.tOut);
     let dmg = dmg0 * tr.dmg * (broken && move === 'full' && st.perk('deadeye') > 1 ? 1.33 : 1);
     let poise = (o.poise ?? 1) * tr.poise;
     if ((move === 'heavy' || move === 'sweep' || move === 'breaker') && st.perk('breakpoint') > 0) poise *= 1.25;

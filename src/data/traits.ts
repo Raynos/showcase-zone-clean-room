@@ -9,7 +9,9 @@ export type TraitId =
   | 'whetted' | 'pinning' | 'hooked' | 'spark_plug' | 'hot_band' | 'rivet_pin' | 'cam_lock' | 'piston'
   | 'incendiary' | 'weathered' | 'arc_nock' | 'grounding' | 'coil_heat'
   // rolled
-  | 'serrated' | 'capacitor' | 'gummed' | 'breakers_mark' | 'scavenger' | 'executioner';
+  | 'serrated' | 'capacitor' | 'gummed' | 'breakers_mark' | 'scavenger' | 'executioner'
+  // unique: only named rares and champions carry these
+  | 'tuning_fork' | 'ember_core' | 'deadbolt';
 
 export interface TraitDef { id: TraitId; name: string; desc: string }
 const T = (id: TraitId, name: string, desc: string): TraitDef => ({ id, name, desc });
@@ -33,6 +35,9 @@ export const TRAITS: Record<TraitId, TraitDef> = {
   breakers_mark: T('breakers_mark', "Breaker's Mark", 'Rolled. A quarter more stagger against elites and bosses.'),
   scavenger: T('scavenger', 'Scavenger', 'Rolled. Every kill refunds 10 energy.'),
   executioner: T('executioner', 'Executioner', 'Rolled. A quarter more damage to broken robots.'),
+  tuning_fork: T('tuning_fork', 'Tuning Fork', 'Unique. A fifth more damage to shocked robots, and every fourth hit shocks.'),
+  ember_core: T('ember_core', 'Ember Core', 'Unique. Every third hit sets robots burning; burning robots take a tenth more.'),
+  deadbolt: T('deadbolt', 'Deadbolt', 'Unique. Breakers, counters and full draws jam, with half again the stagger.'),
 };
 export const WEAPON_TRAIT: Record<WeaponId, TraitId> = {
   shop_blade: 'whetted', trainer_bow: 'pinning', rebar_pike: 'hooked', bolt_driver: 'spark_plug', bandsaw: 'hot_band',
@@ -40,12 +45,14 @@ export const WEAPON_TRAIT: Record<WeaponId, TraitId> = {
   arcstring: 'arc_nock', stormrod: 'grounding', rail_rifle: 'coil_heat',
 } as Record<WeaponId, TraitId>;
 export const ROLLED: TraitId[] = ['serrated', 'capacitor', 'gummed', 'breakers_mark', 'scavenger', 'executioner'];
+/** Unique tunings: a named rare or a champion's salvage may carry one (src/data/grind.ts, RARE.unique). */
+export const UNIQUE: TraitId[] = ['tuning_fork', 'ember_core', 'deadbolt'];
 /** Chance that a rare robot's salvage tunes the weapon in hand with a rolled trait. */
 export const RARE_TUNE_CHANCE = 0.4;
 
 /** What kind of blow a hit was, as far as traits and perks care. */
 export type TraitMove = 'light' | 'light3' | 'heavy' | 'sweep' | 'breaker' | 'counter' | 'entry' | 'shot' | 'full' | 'skill';
-export interface TraitTarget { isBoss: boolean; cls: string; broken: boolean; shocked: boolean }
+export interface TraitTarget { isBoss: boolean; cls: string; broken: boolean; shocked: boolean; burning?: boolean }
 export interface TraitOut { status?: StatusKind; poise: number; dmg: number; knock: number }
 
 const counters: Record<string, number> = {};
@@ -75,6 +82,9 @@ export function traitHit(traits: TraitId[], move: TraitMove, crit: boolean, t: T
       case 'gummed': if ((move === 'counter' || move === 'entry') && !out.status) out.status = 'jam'; break;
       case 'breakers_mark': if (t.isBoss || t.cls === 'elite') out.poise *= 1.25; break;
       case 'executioner': if (t.broken) out.dmg *= 1.25; break;
+      case 'tuning_fork': if (t.shocked) out.dmg *= 1.2; if (!out.status && every('fork', 4)) out.status = 'shock'; break;
+      case 'ember_core': if (t.burning) out.dmg *= 1.1; if (!out.status && every('ember', 3)) out.status = 'burn'; break;
+      case 'deadbolt': if (move === 'breaker' || move === 'counter' || move === 'full') { out.poise *= 1.5; if (!out.status) out.status = 'jam'; } break;
       default: break;
     }
   }
