@@ -1,5 +1,6 @@
 import type { WeaponKind } from '../entities/humanoid/types';
 import type { Game } from '../game';
+import { TELE_VIEW } from '../gfx/fx';
 
 /**
  * Combat stance: what the weapon in hand makes of the controls (docs/UI-ENGINE-PLAN.md, U5).
@@ -24,6 +25,7 @@ export function setStance(game: Game, s: Stance) {
   c.shooter.onStance(s);
   game.cameraRig.setStance(s);
   game.input.shooter = shooter;
+  if (!shooter) TELE_VIEW.wash.value = 0;
   const hud = game.hud as unknown as { setStance?: (s: Stance) => void };
   hud.setStance?.(s);
 }

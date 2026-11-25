@@ -21,10 +21,11 @@ export const FP_FOV = { portrait: 72, landscape: 50 };
  * Shooter stance in third person (docs/UI-ENGINE-PLAN.md U5): the pivot sits at eye height and
  * `side` metres over the right shoulder, `dist` behind it, looking straight down the aim, so the
  * crosshair at screen centre is the aim and the hero stands off to the left. Hip fire, then fully
- * aimed down sights. Portrait is narrow: the shoulder sits closer so the hero stays in the frame.
+ * aimed down sights. Portrait is narrow: the lens sits farther back, higher and wider of the
+ * shoulder, so the hero stays low and left of the crosshair at every pitch and never covers the aim.
  */
 export const SHOULDER = {
-  portrait: { side: [0.5, 0.4], dist: [2.7, 1.45], lift: 0.62 },
+  portrait: { side: [0.76, 0.58], dist: [3.5, 2.1], lift: 0.95 },
   landscape: { side: [0.7, 0.52], dist: [2.5, 1.35], lift: 0.58 },
 };
 /** Shooter pitch limits (up, down): flyers are shot from below. */

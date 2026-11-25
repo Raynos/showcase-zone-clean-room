@@ -209,6 +209,13 @@ const _m = new THREE.Matrix4(), _s = new THREE.Vector3(), _e = new THREE.Euler()
 interface Debris { x: number; y: number; z: number; vx: number; vy: number; vz: number; rx: number; ry: number; rz: number; ax: number; ay: number; az: number; life: number; sx: number; sy: number; sz: number; ground: number }
 const MAXD = 220;
 
+/**
+ * Shared by every ground warning. The shooter stance's low, close camera looks across the floor, so a
+ * warning under the hero would fill the lower half of the frame: `wash` (0..1, set by the shooter)
+ * thins the fill and fades the stretch nearer the lens than `near` metres. Edges and the sweeping
+ * front stay at full strength, so the warning still reads.
+ */
+export const TELE_VIEW = { wash: { value: 0 }, near: { value: 4 } };
 export interface Telegraph { mesh: THREE.Mesh; u: Record<string, THREE.IUniform>; life: number; dur: number; active: boolean; hold: boolean }
 
 interface Beam { mesh: THREE.Mesh; pts: THREE.Vector3[]; life: number; dur: number; width: number; active: boolean; jag: number; color: THREE.Color; glow: number; seedT: number }
@@ -448,7 +455,7 @@ export class FX {
   telegraph(o: { shape: 0 | 1 | 2; x: number; y: number; z: number; radius?: number; inner?: number; angle?: number; yaw?: number; w?: number; l?: number; dur: number; color?: number; hold?: boolean }): Telegraph {
     let t = this.telegraphs.find((x) => !x.active);
     if (!t) {
-      const u = { uColor: { value: new THREE.Color() }, uT: { value: 0 }, uShape: { value: 0 }, uAngle: { value: 1 }, uInner: { value: 0 }, uFade: { value: 1 }, uAspect: { value: new THREE.Vector2(1, 1) } };
+      const u = { uColor: { value: new THREE.Color() }, uT: { value: 0 }, uShape: { value: 0 }, uAngle: { value: 1 }, uInner: { value: 0 }, uFade: { value: 1 }, uAspect: { value: new THREE.Vector2(1, 1) }, uWash: TELE_VIEW.wash, uNear: TELE_VIEW.near };
       const g = new THREE.PlaneGeometry(2, 2); g.rotateX(-Math.PI / 2);
       const mat = new THREE.ShaderMaterial({
         uniforms: u, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
@@ -456,11 +463,13 @@ export class FX {
         // a warning must read through grass: the depth is pulled 1.6 m toward the camera along the view
         // ray (the screen position does not move), so blades in front of it lose and a hero standing in
         // it is only tinted round the feet
-        vertexShader: `varying vec2 vUv; void main(){ vUv = uv * 2.0 - 1.0; vec4 mv = modelViewMatrix * vec4(position, 1.0); float L = length(mv.xyz); mv.xyz *= max(L - 1.6, 0.3) / L; gl_Position = projectionMatrix * mv; }`,
+        vertexShader: `varying vec2 vUv; varying float vL; void main(){ vUv = uv * 2.0 - 1.0; vec4 mv = modelViewMatrix * vec4(position, 1.0); float L = length(mv.xyz); vL = L; mv.xyz *= max(L - 1.6, 0.3) / L; gl_Position = projectionMatrix * mv; }`,
         fragmentShader: /* glsl */ `
-          uniform vec3 uColor; uniform float uT, uShape, uAngle, uInner, uFade; uniform vec2 uAspect; varying vec2 vUv;
+          uniform vec3 uColor; uniform float uT, uShape, uAngle, uInner, uFade, uWash, uNear; uniform vec2 uAspect; varying vec2 vUv; varying float vL;
           void main() {
             float a = 0.0;
+            // the shooter stance thins the fill near the lens; the edge and the sweeping front keep their strength
+            float fk = mix(1.0, 0.15 + 0.45 * smoothstep(uNear * 0.6, uNear * 1.4, vL), uWash);
             if (uShape < 1.5) {
               float r = length(vUv);
               float ang = abs(atan(vUv.x, vUv.y));
@@ -472,7 +481,7 @@ export class FX {
               if (uShape > 0.5) edge += smoothstep(0.08, 0.0, (uAngle - ang) * r);
               float fill = step(rr, uT);
               float front = smoothstep(0.1, 0.0, abs(rr - uT)) * step(uT, 0.999);
-              a = inside * (0.1 + fill * 0.26 + min(edge, 1.0) * 0.75 + front * 0.6);
+              a = inside * ((0.1 + fill * 0.26) * fk + min(edge, 1.0) * 0.75 + front * 0.6);
             } else {
               vec2 p = abs(vUv);
               float inside = step(p.x, 1.0) * step(p.y, 1.0);
@@ -480,7 +489,7 @@ export class FX {
               float along = vUv.y * 0.5 + 0.5;
               float fill = step(along, uT);
               float front = smoothstep(0.06, 0.0, abs(along - uT)) * step(uT, 0.999);
-              a = inside * (0.1 + fill * 0.26 + edge * 0.75 + front * 0.6);
+              a = inside * ((0.1 + fill * 0.26) * fk + edge * 0.75 + front * 0.6);
             }
             a *= uFade * (0.85 + 0.15 * sin(uT * 40.0));
             gl_FragColor = vec4(uColor * a * 1.6, 1.0);

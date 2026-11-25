@@ -377,17 +377,20 @@ export class Game {
     const c = this.combat, hud = this.hud;
     const t = c.target;
     hud.setTarget(t && t.alive && t.cls !== 'boss' ? { name: t.name, level: t.level, frac: t.hpFrac, cls: t.cls, sub: t.cls === 'elite' ? 'Elite' : t.cls === 'rare' ? 'Rare' : t.cls === 'night' ? 'Night shift' : '' } : null);
-    if (t && t.alive) { t.center(_v); hud.setReticle(_v, clamp(t.radius * 1.4, 0.7, 4)); } else hud.setReticle(null);
+    // the shooter stance's crosshair is the reticle (systems/shooter.ts)
+    if (t && t.alive && c.stance !== 'shooter') { t.center(_v); hud.setReticle(_v, clamp(t.radius * 1.4, 0.7, 4)); } else hud.setReticle(null);
   }
 
   private plates() {
     const hud = this.hud, p = this.player.pos;
     hud.beginPlates();
+    // the shooter stance reads robots through the crosshair, the hit markers and the target frame: no floating plates
+    const shooter = this.combat.stance === 'shooter';
     for (const m of this.mobs.list) {
-      if (!m.alive || !m.rig.root.visible || m.isBoss) continue;
+      if (shooter || !m.alive || !m.rig.root.visible || m.isBoss) continue;
       const d = Math.hypot(m.pos.x - p.x, m.pos.z - p.z);
       if (d > 40 || (!m.aggro && d > 24 && m.hp >= m.maxHp && m.cls === 'normal')) continue;
-      _v.set(m.pos.x, m.pos.y + m.lift + m.height + 0.35, m.pos.z);
+      _v.set(m.pos.x, m.pos.y + m.lift + m.fly + m.height + 0.35, m.pos.z);
       const tough = m.cls === 'elite' && (m.aggro || m.hp < m.maxHp);
       hud.plate('m' + m.id, _v, { name: m.name, level: m.level, hp: m.aggro || m.hp < m.maxHp ? m.hpFrac : undefined, cls: m.cls, fx: m.effects(), stagger: tough ? m.staggerFrac : undefined, broken: m.broken });
     }

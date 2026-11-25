@@ -3,7 +3,7 @@ import { clamp, clamp01, damp, lerp, rand } from '../core/util';
 import { BOW_DRAW, BOW_PERFECT, GUNS, RIFLE_STEADY, RIFLE_STEADY_MULT, XBOW_SPECIAL_EVERY, type GunDef } from '../data/moves';
 import { AMMO } from '../data/weapons';
 import type { Game } from '../game';
-import { SP } from '../gfx/fx';
+import { SP, TELE_VIEW } from '../gfx/fx';
 import { Crosshair, type HitKind } from '../ui/crosshair';
 import { AimAssist } from './aimassist';
 import { cast, launchDir, type RayHit } from './ballistics';
@@ -170,6 +170,9 @@ export class Shooter {
     cr.ads = this.adsK * this.adsK * (3 - 2 * this.adsK);
     cr.adsFov = G.adsFov; cr.adsZoom = G.adsZoom;
     cr.side = s.lefty ? -1 : 1;
+    // ground warnings thin out near the low shoulder lens so they do not wash the frame (gfx/fx.ts)
+    TELE_VIEW.wash.value = cr.shoulderAmount;
+    TELE_VIEW.near.value = g.camera.position.distanceTo(pl.pos) + 1;
 
     // ---- look: slower aimed, slower still through a scope; aim assist on touch; gyro; then recoil
     const fovNow = cr.cam.fov, hipFov = cr.eyeAmount > 0.5 ? cr.fpFovNow : cr.baseFov;
