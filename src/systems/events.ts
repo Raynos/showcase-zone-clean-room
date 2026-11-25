@@ -240,7 +240,7 @@ export class ZoneEvents implements System {
   }
   private expire() {
     const e = this.ev;
-    if (!e) return;
+    if (!e || e.phase === 'opened' || e.phase === 'expired') return;
     this.clearGuards(true);
     e.phase = 'expired'; e.endT = 0;
     this.cf?.setLife(e.id, 0);
@@ -434,6 +434,8 @@ export class ZoneEvents implements System {
       this.beamM.uniforms.uTime.value = this.coreM.uniforms.uTime.value = g.time;
     }
     if (e.phase === 'inbound') { e.eta -= dt; return; }
+    // ---- over: let the card and the chat wind down, then let go of it
+    if (e.phase === 'opened' || e.phase === 'expired') { e.endT += dt; if (e.endT > 20) this.ev = null; return; }
     // ---- landed: reclaim clock (it holds while the player is fighting over it)
     const engaged = dist < 30 && (g.mobs.inCombat > 0 || e.phase === 'opening');
     if (!engaged) e.left -= dt;
