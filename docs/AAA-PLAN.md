@@ -43,6 +43,11 @@ combat is too simple.
 
 These came from the owner on 2026-11-25 and are settled unless reopened.
 
+- **Standing of this game (added later the same day):** CRATEFALL stays free
+  as its own standalone game. It does not have to match any other design it
+  was derived from: the third-person hero, the dodge roll, the skills and
+  the names all stay. From here it is steered toward experiments the owner
+  names, which take priority over the long tail of this plan.
 - **Audience:** a short clip, a full playthrough, and a game that keeps being
   built. All three count.
 - **Art inputs:** code, AI-generated images (via `codex`), and Blender
