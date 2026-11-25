@@ -184,7 +184,12 @@ vec3 gTerrN; float gTerrR;`)
       g.setIndex(new THREE.BufferAttribute(idx, 1));
       g.computeBoundingSphere(); g.computeBoundingBox();
       const m = new THREE.Mesh(g, mat);
+      // the ground stays a shadow caster: at low sun the hills and the rim shade whole fields.
+      // A box fits a 100 m slab of ground far better than the default sphere, which keeps the
+      // slab out of shadow cascades (and views) it only brushes.
       m.receiveShadow = true; m.castShadow = true;
+      const box = g.boundingBox!;
+      m.intersectsFrustum = (f) => (f as THREE.Frustum).intersectsBox(box);
       m.matrixAutoUpdate = false;
       // after every other opaque mesh: the ground shader is the costliest per pixel and most of it
       // is covered by props, characters and grass. Only the sky (1000) draws later.

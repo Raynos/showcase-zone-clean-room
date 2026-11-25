@@ -4,6 +4,7 @@ import { clamp01, damp, lerp, rand, smooth } from '../core/util';
 import { FOGX, GU } from '../gfx/material';
 import type { Renderer } from '../gfx/renderer';
 import { Sky } from '../gfx/sky';
+import { CASTER } from './chunks';
 
 type Key = {
   t: number; zenith: number; horizon: number; haze: number; light: number; lightI: number;
@@ -103,12 +104,98 @@ export class Environment {
     this.envSky = new THREE.Mesh(this.sky.mesh.geometry, this.sky.mesh.material);
     this.envSky.frustumCulled = false;
     this.envScene.add(this.envSky);
+    this.tuneCascades();
   }
 
   setShadowQuality(size: number, dist = 120) {
     this.sun.shadow.mapSize.set(size, size);
     this.sun.shadow.camera.far = dist; this.sun.shadow.camera.updateProjectionMatrix();
     if (this.sun.shadow.map) { this.sun.shadow.map.dispose(); (this.sun.shadow as any).map = null; }
+    CASTER.mapSize = size; CASTER.dist = dist;
+    this.farFresh = false;
+  }
+
+  /** Redraw the far shadow cascade every n-th frame; the near one, where the characters are, is drawn every frame. */
+  farEvery = 1;
+  private farFresh = false; private farAge = 0;
+  private farMatrix = new THREE.Matrix4();
+  /**
+   * Two changes to how the sun's cascades are drawn, neither of which moves a shadow.
+   *
+   * Casters are gathered only where they can shade something on screen. The addon fits each
+   * cascade's map to a sphere around its slice of the view, which keeps shadows from crawling
+   * as the camera turns, but in portrait that square is nearly three times as wide as the view.
+   * The map keeps that fit; the list of casters drawn into it is cut down to the footprint of
+   * the slice itself, clipped to the height range the world actually occupies there.
+   *
+   * The far cascade covers ground 20 m and more from the camera, where a frame-old shadow cannot
+   * be told from a fresh one, so it is redrawn every `farEvery`-th frame while the camera holds
+   * roughly still. On the frames it sits out, its map tile is kept (the clear and the near
+   * cascade are scissored to their own tile), nothing is drawn into it, and the shader keeps the
+   * matrix the tile was drawn with.
+   */
+  private tuneCascades() {
+    const sh = this.sun.shadow as any;
+    const fit = sh.updateMatrices.bind(sh) as (light: THREE.Light, viewCamera?: THREE.Camera) => void;
+    const nothing = new THREE.Plane(new THREE.Vector3(0, 1, 0), -1e30);
+    const corners = Array.from({ length: 8 }, () => new THREE.Vector3());
+    const pt = new THREE.Vector3(), R = new THREE.Vector3(), U = new THREE.Vector3(), C = new THREE.Vector3();
+    const dir = new THREE.Vector3(), heldDir = new THREE.Vector3(), heldPos = new THREE.Vector3();
+
+    const cullToSlice = (i: number, cam: THREE.PerspectiveCamera, pad: number) => {
+      const planes = (sh._frustums[i] as THREE.Frustum).planes, lc = sh._cameras[i] as THREE.OrthographicCamera;
+      const near = i === 0 ? cam.near : (sh._cascadeData[i - 1] as THREE.Vector4).z, far = (sh._cascadeData[i] as THREE.Vector4).y;
+      const ty = Math.tan((cam.fov * Math.PI) / 360) / cam.zoom, tx = ty * cam.aspect;
+      for (let k = 0; k < 8; k++) {
+        const d = k & 4 ? far : near;
+        corners[k].set((k & 1 ? tx : -tx) * d, (k & 2 ? ty : -ty) * d, -d).applyMatrix4(cam.matrixWorld);
+      }
+      // the slice's twelve edges, cut to the height range that can hold a receiver, seen from the light
+      const y0 = CASTER.yMin, y1 = CASTER.yMax;
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (let a = 0; a < 8; a++) for (let bit = 1; bit < 8; bit <<= 1) {
+        if (a & bit) continue;
+        const A = corners[a], B = corners[a | bit], dy = B.y - A.y;
+        let t0 = 0, t1 = 1;
+        if (dy === 0) { if (A.y < y0 || A.y > y1) continue; }
+        else { const ta = (y0 - A.y) / dy, tb = (y1 - A.y) / dy; t0 = Math.max(0, Math.min(ta, tb)); t1 = Math.min(1, Math.max(ta, tb)); if (t0 > t1) continue; }
+        for (let e = 0; e < 2; e++) {
+          pt.lerpVectors(A, B, e ? t1 : t0).applyMatrix4(lc.matrixWorldInverse);
+          if (pt.x < minX) minX = pt.x; if (pt.x > maxX) maxX = pt.x; if (pt.y < minY) minY = pt.y; if (pt.y > maxY) maxY = pt.y;
+        }
+      }
+      if (minX > maxX) { for (const p of planes) p.copy(nothing); return; }
+      minX = Math.max(lc.left, minX - pad); maxX = Math.min(lc.right, maxX + pad);
+      minY = Math.max(lc.bottom, minY - pad); maxY = Math.min(lc.top, maxY + pad);
+      R.setFromMatrixColumn(lc.matrixWorld, 0); U.setFromMatrixColumn(lc.matrixWorld, 1); C.setFromMatrixPosition(lc.matrixWorld);
+      const rc = R.dot(C), uc = U.dot(C);
+      // planes 0-3 are the sides of the cascade's box; 4 and 5 (far, near) stay as fitted
+      planes[0].setComponents(R.x, R.y, R.z, -(rc + minX)); planes[1].setComponents(-R.x, -R.y, -R.z, rc + maxX);
+      planes[2].setComponents(U.x, U.y, U.z, -(uc + minY)); planes[3].setComponents(-U.x, -U.y, -U.z, uc + maxY);
+    };
+
+    sh.updateMatrices = (light: THREE.Light, viewCamera?: THREE.Camera) => {
+      const map = sh.map as THREE.WebGLRenderTarget | null;
+      const cam = viewCamera as THREE.PerspectiveCamera | undefined;
+      if (!cam || !map || !cam.isPerspectiveCamera) { fit(light, viewCamera); return; }
+      cam.getWorldDirection(dir);
+      // hold the far tile only while the view it was drawn for still covers this one (about 2.5 degrees, 1 m)
+      const hold = this.farEvery > 1 && this.farFresh && ++this.farAge % this.farEvery !== 0
+        && dir.dot(heldDir) > 0.999 && cam.position.distanceToSquared(heldPos) < 1;
+      if (hold) this.farMatrix.copy(sh._matrices[1]);
+      fit(light, cam);
+      if (CASTER.fit) cullToSlice(0, cam, 0.5);
+      if (hold) {
+        sh._matrices[1].copy(this.farMatrix);
+        for (const p of (sh._frustums[1] as THREE.Frustum).planes) p.copy(nothing);
+        map.scissorTest = true; map.scissor.set(0, 0, sh.mapSize.x, sh.mapSize.y);
+      } else {
+        // a held tile has to serve the next frame too: gather a little wider than this frame needs
+        if (CASTER.fit) cullToSlice(1, cam, this.farEvery > 1 ? 5 : 0.5);
+        map.scissorTest = false;
+        this.farFresh = true; this.farAge = 0; heldDir.copy(dir); heldPos.copy(cam.position);
+      }
+    };
   }
 
   isNight() { return this.hour >= 20.2 || this.hour < 5.2; }
@@ -129,6 +216,7 @@ export class Environment {
 
   update(dt: number, camera: THREE.PerspectiveCamera, focus: THREE.Vector3, renderer: Renderer) {
     this.elapsed += dt;
+    this.farEvery = renderer.quality.shadowFarEvery;
     if (this.forcedHour !== null) {
       // glide the clock toward the forced hour (shortest way round)
       let d = this.forcedHour - this.hour;

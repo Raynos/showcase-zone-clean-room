@@ -21,9 +21,9 @@ export const CASTER = {
   /** shadow map resolution per cascade */
   mapSize: 2048,
   /** primitives smaller than this many shadow texels are left out of that cascade */
-  texels: 0,
+  texels: 2,
   /** gather casters only where they can shade something in view, rather than over the whole cascade map */
-  fit: false,
+  fit: true,
   /** how far from the camera sun shadows reach, metres */
   dist: 80,
   /** lowest and highest point anything within shadow reach of the camera can be: refreshed every frame */
