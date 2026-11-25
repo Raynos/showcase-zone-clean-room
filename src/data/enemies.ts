@@ -199,7 +199,7 @@ export const ELITES: EliteDef[] = [
 export const MECH_ATTACKS: Partial<Record<MechDef, AttackDef[]>> = {
   brood: [M({ id: 'unpack', type: 'summon', range: [0, 30], windup: 0.9, cd: 13, dmg: 0, summon: 'mite', count: 4, weight: 4, anim: 'attack2' })],
   ram: [M({ id: 'ram', type: 'charge', range: [5, 20], windup: 0.9, active: 0.8, recover: 1.9, cd: 6, dmg: 2.0, width: 2.6, length: 18, speed: 22, knock: 11, weight: 4, anim: 'attack2' })],
-  plumb: [M({ id: 'plumbline', type: 'channel', range: [4, 30], windup: 0.9, active: 3.2, recover: 0.8, cd: 10, dmg: 0.32, interval: 0.2, width: 0.5, length: 32, color: 0xff4a3a, weight: 5, anim: 'attack2' })],
+  plumb: [M({ id: 'plumbline', type: 'channel', range: [4, 30], windup: 0.9, active: 3.2, recover: 0.8, cd: 10, dmg: 0.22, interval: 0.2, width: 0.5, length: 32, color: 0xff4a3a, weight: 5, anim: 'attack2' })],
 };
 
 /** Camps: packs of commons. Positions are hand-placed inside each band; count scales with radius. */

@@ -437,10 +437,12 @@ export class FX {
       const u = { uColor: { value: new THREE.Color() }, uT: { value: 0 }, uShape: { value: 0 }, uAngle: { value: 1 }, uInner: { value: 0 }, uFade: { value: 1 }, uAspect: { value: new THREE.Vector2(1, 1) } };
       const g = new THREE.PlaneGeometry(2, 2); g.rotateX(-Math.PI / 2);
       const mat = new THREE.ShaderMaterial({
-        // no depth test: a warning must read through grass (it lies on the ground, so nothing else should hide it)
-        uniforms: u, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+        uniforms: u, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
         polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
-        vertexShader: `varying vec2 vUv; void main(){ vUv = uv * 2.0 - 1.0; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+        // a warning must read through grass: the depth is pulled 1.6 m toward the camera along the view
+        // ray (the screen position does not move), so blades in front of it lose and a hero standing in
+        // it is only tinted round the feet
+        vertexShader: `varying vec2 vUv; void main(){ vUv = uv * 2.0 - 1.0; vec4 mv = modelViewMatrix * vec4(position, 1.0); float L = length(mv.xyz); mv.xyz *= max(L - 1.6, 0.3) / L; gl_Position = projectionMatrix * mv; }`,
         fragmentShader: /* glsl */ `
           uniform vec3 uColor; uniform float uT, uShape, uAngle, uInner, uFade; uniform vec2 uAspect; varying vec2 vUv;
           void main() {
