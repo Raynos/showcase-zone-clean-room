@@ -159,6 +159,44 @@ and `null` goes out when there is no target.
 - **Aggro.** Robots need line of sight to notice the player and give up as
   the plan's phase 0 fix describes.
 
+### As tuned (`src/data/enemies.ts`, `src/systems/status.ts`)
+
+- **Meter size** is max health × the robot's poise × the class cap: common
+  2.2, elite 1.0, boss 3.0. Hits fill it by damage × poise (heavies ×1.15).
+  It drains at 14% of the cap a second after 2.2 s without a hit.
+- **Break length** is common 4.5 s, elite 3.5 s, boss 3.0 s. Afterwards
+  elites are immune to breaks and hard stuns for 8 s, bosses for 12 s.
+  Broken robots take ×1.4 damage.
+- **Finisher**: a 1.45 s invulnerable kill. The blow lands at 0.62 s. It
+  gives +25 Overdrive and full energy.
+- **Statuses.** Shock lasts 2.5 s and interrupts commons 75% of the time,
+  elites 30%. In rain or storm it chains up to 7 m, to three robots. Burn
+  lasts 4.5 s, dealing 0.45 × the hit's power a second (×1.6 on the slag
+  ground of the Slagworks). Jam lasts 4 s: half speed, wind-ups and
+  recoveries ×1.6. On elites and bosses, repeat applications within 14 s
+  last 1, ½, then ¼ as long, then not at all.
+- **Telegraphs.** The shortest wind-up is 0.5 s (0.45 s for night robots).
+  Floor shapes are always red (`TELE_RED`).
+- **Threat.** Damage is ×1 at level 1, ×1.2 at level 2, ×1.5 from level 3,
+  and bosses ×1.25. There are 0.25–0.7 s between attacks. A player standing
+  still for 1.6 s makes leaps, lobs, charges and slams three times as
+  likely. Melee packs circle to the player's back. Camps of three or more
+  in bands 2–6 mix a ranged robot, a rusher and a tank.
+- **Gate elites**, one mechanic each (`src/systems/mechanics.ts`):
+  - Gatecrasher is shelled (×0.2 damage) while two or more of its larvae
+    live. Answer: clear the larvae with a sweep.
+  - Big Pallet's ram hardly staggers (×0.25). Answer: a counter within
+    2.2 s of a ram breaks it on the spot.
+  - Plumb Line Prime channels a tracking laser. Answer: break line of
+    sight behind cover.
+  - Shift Boss Slag is plated: ×0.2 damage and no stagger. Answer: a
+    breaker or a heavy rifle round cracks the plate for 9 s (×1.15).
+  - Old Reliable is a bulwark: ×0.25 from the front and ×1.25 from behind,
+    and it turns slowly. Answer: get behind it.
+- **Vault Warden phase 3** below a third of its health: the shield blows off, it takes
+  ×1.15 damage, and it adds a sweeping beam, triple rings and a chasing
+  stamp.
+
 ## Build
 
 - **Perks.** One point per level from level 2, 19 in all. Three short trees:

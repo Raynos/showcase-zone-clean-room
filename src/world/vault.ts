@@ -460,14 +460,13 @@ export class Vault implements System {
       if (this.warden?.alive) { this.warden.aggro = true; this.stage = 'boss'; }
     });
     m.onPhase = (ph) => {
-      g.hud.banner(ph === 2 ? 'EXAM: PRACTICAL' : 'EXAM: FINAL', ph === 2 ? 'The Warden calls its drones' : 'No more questions', 'danger');
+      g.hud.banner(ph === 2 ? 'EXAM: PRACTICAL' : 'EXAM: FINAL', ph === 2 ? 'The Warden calls its drones' : 'Its shield is gone: the core is open', 'danger');
       g.sfx('elite_roar', { pos: m.pos }); g.cameraRig.shake(0.5); g.fx.ring(m.pos, 14, 0x7ff0ff, 0.7, 3);
       if (ph === 3) {
         // the final: the shield plates blow off and the core runs hot. It hits harder and faster
         // (sweeping beam, triple rings, a slam that chases), and takes more damage for it.
         const c = m.center(new THREE.Vector3());
         g.fx.chunks(c, 22, [0x5b6470, 0x383e47, 0xf28a2e], 12, 0.4); g.fx.explosion(c, 1.4, 0x7ff0ff);
-        g.hud.banner('EXAM: FINAL', 'Its shield is gone: the core is open', 'danger');
         m.dmgTakenMul = 1.15;
       }
     };
