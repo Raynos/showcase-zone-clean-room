@@ -1,10 +1,12 @@
 import * as THREE from 'three';
+import type { Btn } from '../core/input';
 import { RAY_SOLID } from '../core/physics';
 import { TAU, angleDiff, clamp, clamp01, damp, lerp, rand } from '../core/util';
 import { CRIT_MULT } from '../data/balance';
-import { AMMO, SKILLS, type AmmoId, type SkillDef } from '../data/weapons';
+import { BOW, CHARGE_LV, CHARGE_MAX, CHARGE_MIN, COUNTER_WINDOW, HEAVY_HOLD, RIFLE, SPEAR, SWAP_STRIKE_CD, SWAP_WINDOW, SWORD, XBOW, type MeleeSet, type Swing } from '../data/moves';
+import { AMMO, OVERDRIVE_LEVEL, SKILLS, SLOT3_LEVEL, ULTIMATES, skillLoadout, type AmmoId, type SkillDef, type SkillKind, type SkillSlots } from '../data/weapons';
 import { DOWN } from '../entities/humanoid/types';
-import type { HumanAction, WeaponKind } from '../entities/humanoid/types';
+import type { WeaponKind } from '../entities/humanoid/types';
 import type { Game } from '../game';
 import { SP, type Trail } from '../gfx/fx';
 import { WorldMaterial } from '../gfx/material';
@@ -12,7 +14,12 @@ import { T } from '../gfx/textures';
 import { HurtArc } from '../ui/hurtarc';
 import type { Mob } from './mobs';
 
-export interface HitInfo { dmg: number; crit: boolean; dirX: number; dirZ: number; knock: number; heavy: boolean; stun?: number; source: 'melee' | 'arrow' | 'bolt' | 'rifle' | 'skill'; color: number }
+export interface HitInfo {
+  dmg: number; crit: boolean; dirX: number; dirZ: number; knock: number; heavy: boolean; stun?: number;
+  /** stagger damage multiplier: heavies, breakers and counters carry more than their damage */
+  poise?: number;
+  source: 'melee' | 'arrow' | 'bolt' | 'rifle' | 'skill'; color: number;
+}
 export interface Hittable {
   pos: THREE.Vector3; radius: number; height: number; alive: boolean; targetable: boolean;
   name: string; level: number; hpFrac: number; cls: string;
@@ -20,26 +27,30 @@ export interface Hittable {
   /** returns damage actually dealt */
   takeHit(h: HitInfo): number;
 }
+/** One button of the action bar, as the combat-to-HUD contract in docs/COMBAT.md defines it. */
+export interface ActionSlot {
+  id: 'attack' | 'dodge' | 'jump' | 'skill1' | 'skill2' | 'skill3' | 'overdrive' | 'swap' | 'kit' | 'target' | 'mount';
+  icon: string; label: string;
+  state: 'ready' | 'cooldown' | 'noenergy' | 'locked' | 'hidden' | 'active';
+  /** cd: 0..1 of the cooldown left. charge: 0..1 of a held attack or the Overdrive meter. count: kits, ammunition. */
+  cd?: number; charge?: number; count?: number;
+  /** seconds of cooldown left: the HUD prints it over the sweep and runs both down smoothly between calls */
+  cdSec?: number;
+  /** the level that opens a locked slot */
+  unlock?: number;
+}
 
 interface Shot {
   x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; grav: number;
   dmg: number; radius: number; color: number; enemy: boolean; owner: Mob | null;
-  pierce: boolean; hit: Set<Hittable> | null; kind: 'arrow' | 'bolt' | 'orb' | 'shell'; ammo: AmmoId | null; crit: boolean;
+  pierce: boolean; hit: Set<Hittable> | null; kind: 'arrow' | 'bolt' | 'orb' | 'shell' | 'wave' | 'javelin'; ammo: AmmoId | null; crit: boolean;
   knock: number; stun: number; blast: number; near: boolean;
+  poise: number; heavy: boolean; src: HitInfo['source'] | null; zone: Zone['kind'] | null;
 }
 interface Strike { pos: THREE.Vector3; t: number; dur: number; radius: number; dmg: number; color: number; owner: Mob | null; kind: 'bolt' | 'crate' | 'shell'; from: THREE.Vector3 | null }
-interface Swing { anim: HumanAction; dur: number; hitAt: number; mult: number; arc: number; range: number; heavy: boolean; knock: number; step: number }
+/** Something a skill leaves on the ground: falling arrows, a jamming field, a mine. */
+interface Zone { kind: 'rain' | 'jam' | 'mine'; x: number; y: number; z: number; r: number; t: number; dur: number; next: number; color: number }
 
-const SWORD: Swing[] = [
-  { anim: 'sword1', dur: 0.4, hitAt: 0.38, mult: 1.0, arc: 1.25, range: 2.9, heavy: false, knock: 2.5, step: 1.3 },
-  { anim: 'sword2', dur: 0.4, hitAt: 0.38, mult: 1.1, arc: 1.25, range: 2.9, heavy: false, knock: 2.5, step: 1.3 },
-  { anim: 'sword3', dur: 0.62, hitAt: 0.42, mult: 1.8, arc: 0.95, range: 3.2, heavy: true, knock: 7, step: 1.8 },
-];
-const SPEAR: Swing[] = [
-  { anim: 'spear1', dur: 0.42, hitAt: 0.4, mult: 1.0, arc: 0.5, range: 4.3, heavy: false, knock: 3, step: 1.0 },
-  { anim: 'spear2', dur: 0.42, hitAt: 0.4, mult: 1.1, arc: 0.5, range: 4.3, heavy: false, knock: 3, step: 1.0 },
-  { anim: 'spear3', dur: 0.66, hitAt: 0.42, mult: 1.6, arc: 1.7, range: 4.4, heavy: true, knock: 8, step: 0.6 },
-];
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _d = new THREE.Vector3(), _c = new THREE.Vector3();
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _col = new THREE.Color(), _up = new THREE.Vector3(0, 0, 1);
 const MAXS = 96;
@@ -55,8 +66,11 @@ const LUNGE_MAX = 3, LUNGE_SPEED = 15;
  * one staggers or floors.
  */
 const STAGGER_FRAC = 0.095, STAGGER_TIME = 0.25, KNOCKDOWN_FRAC = 0.22, KNOCKDOWN_KNOCK = 9;
-type BufAct = 'attack' | 'dodge' | 'skill1' | 'skill2' | 'swap';
-const BUFFERED: BufAct[] = ['attack', 'dodge', 'skill1', 'skill2', 'swap'];
+/** Overdrive gained per attack-power's worth of damage dealt, per whole health bar lost, and for the big moments. */
+const OD_DEALT = 0.45, OD_TAKEN = 40, OD_DODGE = 8, OD_STAGGER = 4, OD_KILL = 2;
+type BufAct = 'attack' | 'dodge' | 'skill1' | 'skill2' | 'skill3' | 'overdrive' | 'swap';
+const BUFFERED: BufAct[] = ['attack', 'dodge', 'skill1', 'skill2', 'skill3', 'overdrive', 'swap'];
+const smooth01 = (x: number) => { const k = clamp01(x); return k * k * (3 - 2 * k); };
 
 /** Player offence and defence: targeting, weapons, skills, projectiles, getting hurt. */
 export class Combat {
@@ -65,10 +79,17 @@ export class Combat {
   extras: Hittable[] = [];
   private shots: Shot[] = [];
   private strikes: Strike[] = [];
+  private zones: Zone[] = [];
   private shotMesh: THREE.InstancedMesh;
   private crateMesh: THREE.InstancedMesh;
   // melee
   private swing: Swing | null = null; private swingT = 0; private swingHit = false; private combo = 0; private comboT = 0; private queued = false;
+  /** charge level (0..2) the swing in flight was released at */
+  private swingLv = 0;
+  /** the heavy being held coiled, for how long, and whether the button has been let go */
+  private charging: Swing | null = null; private chargeT = 0; private chargeLv = 0; private chargeRel = false;
+  /** the newest attack press is still down; and the swing in flight was started by it (so holding on turns it into a heavy) */
+  private pressLive = false; private ownPress = false;
   private trailOn = false;
   /** wind-up rate of the current swing: below 1 when a long lunge has to arrive before the blade does */
   private windK = 1;
@@ -76,14 +97,24 @@ export class Combat {
   /** the one shared input buffer: the latest press of a buffered action and how long it has left */
   private buf: BufAct | null = null; private bufT = 0;
   // ranged
-  drawing = false; draw = 0; private fullT = 0; private fireCd = 0; private mag = 5; private reloadT = 0;
+  drawing = false; draw = 0; private fullT = 0; private fireCd = 0; private mag = XBOW.mag; private reloadT = 0;
   aiming = false;
+  /** crossbow burst in progress: bolts left, time to the next, damage each, and whether it spends the magazine */
+  private burstN = 0; private burstT = 0; private burstMul = XBOW.mult; private burstFree = false; private burstFirst = false; private burstCrit = false;
   // skills
-  cd1 = 0; cd2 = 0; potionCd = 0; private skillT = 0; private skill: string | null = null; private skillHits = 0; private skillDur = 1;
+  potionCd = 0; private skillT = 0; private skill: string | null = null; private skillHits = 0; private skillDur = 1;
+  /** cooldown left per skill id */
+  private cds: Record<string, number> = {};
+  private slots: SkillSlots = [null, null, null]; private slotKind = ''; private slotLevel = -1; private slotSaved: unknown = null;
+  private ultSeen = new Set<Hittable>();
   private overcharge = 0;
   private actDur = 0;
   private autoT = 0;
   sinceHurt = 99; private regenT = 0;
+  /** seconds since the player last landed a hit; the swap-strike cooldown; the counter window left (real time) */
+  private sinceHit = 9; private swapCd = 0; private counterT = 0;
+  /** Overdrive, 0..100: shared across weapons, spent whole on the weapon's ultimate */
+  od = 0;
   private deadT = 0;
   /** where the player comes back after dying */
   checkpoint: { x: number; y: number; z: number; yaw: number; onRespawn?: () => void } | null = null;
@@ -91,6 +122,7 @@ export class Combat {
   private lastHitSfx = 0;
   enabled = true;
   private hurtArc: HurtArc;
+  private hudSig = ''; private tgtSig = -1; private lastKind = '';
   /** set by the camera's engagement tracker while the player runs from a fight: no auto-targeting until they turn back */
   autoTargetOff = false;
 
@@ -113,9 +145,30 @@ export class Combat {
   }
 
   get kind(): WeaponKind { return this.game.state.weapon.kind; }
-  get skills(): [SkillDef, SkillDef] { return SKILLS[this.kind as Exclude<WeaponKind, 'none'>]; }
-  get busy() { return !!this.swing || !!this.skill || this.drawing; }
+  /** The slotted skills for the weapon in hand: three slots, null where empty or not yet open. */
+  get skillSlots(): SkillSlots {
+    const st = this.game.state, k = this.kind, saved = st.d.skills?.[k];
+    if (this.slotKind !== k || this.slotLevel !== st.d.level || this.slotSaved !== saved) {
+      this.slotKind = k; this.slotLevel = st.d.level; this.slotSaved = saved;
+      this.slots = skillLoadout(st.d.skills, k as SkillKind, st.d.level);
+    }
+    return this.slots;
+  }
+  /** The first two slots (always filled). Kept for callers written for two skills. */
+  get skills(): [SkillDef, SkillDef] { const s = this.skillSlots, all = SKILLS[this.kind as SkillKind]; return [s[0] ?? all[0], s[1] ?? all[1]]; }
+  /** Cooldown left on a skill, in seconds. */
+  skillCd(id: string | undefined) { return id ? this.cds[id] ?? 0 : 0; }
+  get cd1() { return this.skillCd(this.skillSlots[0]?.id); }
+  get cd2() { return this.skillCd(this.skillSlots[1]?.id); }
+  get cd3() { return this.skillCd(this.skillSlots[2]?.id); }
+  get busy() { return !!this.swing || !!this.charging || !!this.skill || this.drawing || this.burstN > 0; }
   get inCombat() { return this.game.mobs.inCombat > 0 || this.sinceHurt < 4; }
+  private get melee(): MeleeSet { return this.kind === 'spear' ? SPEAR : SWORD; }
+  /**
+   * A released heavy is a commitment: from letting go until 0.2 s after it lands there is no dodge
+   * and no skill, and a staggering hit only flinches.
+   */
+  private get committed() { const s = this.swing; return !!s && s.holdAt !== undefined && s.from === undefined && this.swingT < s.hitAt + 0.2 / s.dur; }
 
   *candidates(): Generator<Hittable> {
     for (const m of this.game.mobs.list) if (m.alive && m.targetable && m.rig.root.visible) yield m;
@@ -172,13 +225,14 @@ export class Combat {
     return { dmg: st.attackPower * mult * (crit ? CRIT_MULT : 1) * rand(0.92, 1.08), crit };
   }
   /** Apply a hit to something with all the feedback. */
-  strikeTarget(h: Hittable, mult: number, o: { heavy?: boolean; knock?: number; source: HitInfo['source']; crit?: boolean; stun?: number; fromX?: number; fromZ?: number; quiet?: boolean }) {
+  strikeTarget(h: Hittable, mult: number, o: { heavy?: boolean; knock?: number; source: HitInfo['source']; crit?: boolean; stun?: number; poise?: number; fromX?: number; fromZ?: number; quiet?: boolean }) {
     const g = this.game, pl = g.player, st = g.state;
     const { dmg, crit } = this.roll(mult, o.crit);
     const fx0 = o.fromX ?? pl.pos.x, fz0 = o.fromZ ?? pl.pos.z;
     let dx = h.pos.x - fx0, dz = h.pos.z - fz0; const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
     const color = st.weapon.color;
-    const dealt = h.takeHit({ dmg, crit, dirX: dx, dirZ: dz, knock: o.knock ?? 2, heavy: !!o.heavy, stun: o.stun, source: o.source, color });
+    const mob = h as Partial<Mob>, was = mob.state;
+    const dealt = h.takeHit({ dmg, crit, dirX: dx, dirZ: dz, knock: o.knock ?? 2, heavy: !!o.heavy, stun: o.stun, poise: o.poise, source: o.source, color });
     if (dealt <= 0) { h.center(_c); g.hud.damage({ x: _c.x, y: _c.y + 0.6, z: _c.z }, 'IMMUNE', 'miss'); return 0; }
     h.center(_c);
     // impact point on the near side
@@ -196,35 +250,51 @@ export class Combat {
       if (now - this.lastHitSfx > 0.03) { this.lastHitSfx = now; g.sfx(o.heavy ? 'hit_heavy' : crit ? 'hit_crit' : 'hit_metal', { pos: h.pos, pitch: rand(0.94, 1.08) }); }
       g.haptic(o.heavy || crit ? 18 : 8);
     }
-    pl.sinceCombat = 0;
+    pl.sinceCombat = 0; this.sinceHit = 0;
+    // Overdrive: from damage dealt, from putting a robot on its heels, from kills
+    this.addOverdrive(OD_DEALT * dealt / st.attackPower + (!h.alive ? OD_KILL : mob.state !== was && (mob.state === 'stagger' || mob.state === 'stun') ? OD_STAGGER : 0));
     if (!h.alive) { if (this.target === h) this.target = null; g.hitStop(0.09); g.renderer.post.flash.w = Math.max(g.renderer.post.flash.w, 0.08); }
     return dealt;
   }
-  /** Area damage around a point. */
-  private aoe(x: number, y: number, z: number, radius: number, mult: number, o: { heavy?: boolean; knock?: number; source: HitInfo['source']; stun?: number; crit?: boolean }) {
+  /** Area damage around a point. `quiet` drops the hit-stop and shake (for ticking fields). */
+  private aoe(x: number, y: number, z: number, radius: number, mult: number, o: { heavy?: boolean; knock?: number; source: HitInfo['source']; stun?: number; crit?: boolean; poise?: number; quiet?: boolean }) {
     let n = 0;
     for (const h of [...this.candidates()]) {
       if (Math.hypot(h.pos.x - x, h.pos.z - z) > radius + h.radius || Math.abs(h.pos.y - y) > 6 + h.height) continue;
-      this.strikeTarget(h, mult, { ...o, fromX: x, fromZ: z, quiet: n > 0 }); n++;
+      this.strikeTarget(h, mult, { ...o, fromX: x, fromZ: z, quiet: o.quiet || n > 0 }); n++;
     }
     return n;
+  }
+  /** Fill the Overdrive meter (it opens at OVERDRIVE_LEVEL and does not fill during an ultimate). */
+  addOverdrive(n: number) {
+    const g = this.game;
+    if (n <= 0 || g.state.d.level < OVERDRIVE_LEVEL || this.od >= 100 || this.skill?.startsWith('ult_')) return;
+    this.od = Math.min(100, this.od + n);
+    if (this.od >= 100) {
+      g.sfx('skill_charge', { pitch: 1.25 }); g.haptic(30);
+      g.fx.ring(g.player.pos, 5, 0xffd24a, 0.5, 3);
+      g.hud.toast('Overdrive ready', 'good', ULTIMATES[this.kind as SkillKind]?.name);
+    }
   }
   evaded() {
     const g = this.game;
     if (this.perfectT > 0) return;
     this.perfectT = 1.2;
+    // an attack press in the next COUNTER_WINDOW (real time, so the slow-motion does not stretch it) is a counter
+    this.counterT = COUNTER_WINDOW;
     g.hud.damage(g.player.center, 'DODGED', 'miss');
     g.state.d.energy = Math.min(g.state.maxEnergy, g.state.d.energy + 12);
+    this.addOverdrive(OD_DODGE);
     g.sfx('dodge_perfect');
     g.slowMo(0.35, 0.35);
   }
   /** Cut whatever the player is doing (a staggering hit, a knockdown). The input buffer survives it. */
   private interrupt() {
     const pl = this.game.player;
-    this.swing = null; this.queued = false; this.skill = null; this.trail?.stop();
+    this.swing = null; this.charging = null; this.queued = false; this.skill = null; this.trail?.stop(); this.burstN = 0;
     if (this.drawing) pl.weaponModel?.setDraw?.(0);
     this.drawing = false; this.aiming = false; this.draw = 0;
-    pl.action = null; pl.lungeT = 0; this.actDur = 0;
+    pl.action = null; pl.lungeT = 0; this.actDur = 0; pl.pose.charge = 0;
   }
   /**
    * Damage the player. Returns true when it landed.
@@ -241,7 +311,10 @@ export class Combat {
     const c = pl.center;
     // 1 flinch, 2 stagger, 3 knockdown. Mounted or climbing, a hit can only flinch.
     const frac = dmg / st.maxHp;
-    const tier = dot ? 0 : pl.mode ? 1 : knock >= KNOCKDOWN_KNOCK || frac >= KNOCKDOWN_FRAC ? 3 : frac >= STAGGER_FRAC ? 2 : 1;
+    let tier = dot ? 0 : pl.mode ? 1 : knock >= KNOCKDOWN_KNOCK || frac >= KNOCKDOWN_FRAC ? 3 : frac >= STAGGER_FRAC ? 2 : 1;
+    // a released heavy and an ultimate are armoured: what would stagger only flinches (a knockdown still floors a heavy)
+    if (this.skill?.startsWith('ult_') ? tier >= 2 : tier === 2 && this.committed) tier = 1;
+    this.addOverdrive(OD_TAKEN * dmg / st.maxHp);
     g.hud.damage({ x: c.x, y: c.y + 0.9, z: c.z }, '-' + dmg, 'hurt');
     g.renderer.post.hurt = Math.min(1, g.renderer.post.hurt + (dot ? 0.25 : tier >= 2 ? 0.8 : 0.55));
     g.cameraRig.shake(dot ? 0.12 : tier === 3 ? 0.75 : tier === 2 ? 0.55 : 0.36);
@@ -259,6 +332,8 @@ export class Combat {
         g.hitStop(0.05);
         // interrupt a draw
         if (this.drawing) { this.drawing = false; this.draw = 0; pl.weaponModel?.setDraw?.(0); }
+        // and a charge that has not reached its first level
+        if (this.charging && this.chargeLv === 0) { this.charging = null; pl.action = null; pl.pose.charge = 0; }
       } else {
         this.interrupt();
         // heavy hits land harder: a longer freeze, a camera punch, sparks off the armour
@@ -290,7 +365,7 @@ export class Combat {
   private die() {
     const g = this.game, pl = g.player;
     pl.dead = true; pl.controllable = false; this.deadT = 0; this.hurtArc.clear();
-    this.swing = null; this.skill = null; this.drawing = false; this.aiming = false; this.trail?.stop();
+    this.clearAttack(); this.skill = null; this.zones.length = 0;
     pl.action = null;
     g.mobs.resetAggro();
     g.sfx('player_death');
@@ -318,12 +393,13 @@ export class Combat {
     if (this.shots.length >= MAXS) this.shots.shift();
     this.shots.push({
       x: from.x, y: from.y, z: from.z, vx: dir.x * speed, vy: dir.y * speed, vz: dir.z * speed, life: 2.2, grav: kind === 'arrow' ? 5 : 0,
-      dmg: dmgMult, radius: 0.3, color: this.game.state.weapon.color, enemy: false, owner: null, pierce: false, hit: null, kind, ammo: null, crit: false, knock: 3, stun: 0, blast: 0, near: false, ...o,
+      dmg: dmgMult, radius: 0.3, color: this.game.state.weapon.color, enemy: false, owner: null, pierce: false, hit: null, kind, ammo: null, crit: false, knock: 3, stun: 0, blast: 0, near: false,
+      poise: 1, heavy: false, src: null, zone: null, ...o,
     });
   }
   enemyShot(from: THREE.Vector3, dir: THREE.Vector3, speed: number, dmg: number, radius: number, color: number, owner: Mob | null) {
     if (this.shots.length >= MAXS) return;
-    this.shots.push({ x: from.x, y: from.y, z: from.z, vx: dir.x * speed, vy: dir.y * speed, vz: dir.z * speed, life: 3, grav: 0, dmg, radius, color, enemy: true, owner, pierce: false, hit: null, kind: 'orb', ammo: null, crit: false, knock: 3, stun: 0, blast: 0, near: false });
+    this.shots.push({ x: from.x, y: from.y, z: from.z, vx: dir.x * speed, vy: dir.y * speed, vz: dir.z * speed, life: 3, grav: 0, dmg, radius, color, enemy: true, owner, pierce: false, hit: null, kind: 'orb', ammo: null, crit: false, knock: 3, stun: 0, blast: 0, near: false, poise: 1, heavy: false, src: null, zone: null });
   }
   /** Arcing shell that lands after `flight` seconds with a ground warning. */
   lob(from: THREE.Vector3, to: THREE.Vector3, flight: number, radius: number, dmg: number, color: number, owner: Mob | null) {
@@ -335,8 +411,8 @@ export class Combat {
     this.game.fx.telegraph({ shape: 0, x: pos.x, y: pos.y, z: pos.z, radius, dur: delay, color });
     this.strikes.push({ pos, t: 0, dur: delay, radius, dmg, color, owner, kind, from: null });
   }
-  private aimDir(from: THREE.Vector3, out: THREE.Vector3, speed: number, grav: number): THREE.Vector3 {
-    const g = this.game, t = this.target;
+  private aimDir(from: THREE.Vector3, out: THREE.Vector3, speed: number, grav: number, t: Hittable | null = this.target): THREE.Vector3 {
+    const g = this.game;
     if (t && t.alive) {
       t.center(_c);
       const d = _c.distanceTo(from), tt = d / speed;
@@ -356,17 +432,21 @@ export class Combat {
   }
   private muzzlePos(out: THREE.Vector3) {
     const pl = this.game.player, w = pl.weaponModel;
-    if (w) return w.tip.getWorldPosition(out);
+    // out of a roll or off the ground the weapon can be at the hero's feet: shoot from the chest instead
+    if (w && w.tip.getWorldPosition(out).y > pl.pos.y + 0.6) return out;
     return out.set(pl.pos.x + Math.sin(pl.yaw) * 0.6, pl.pos.y + 1.35, pl.pos.z + Math.cos(pl.yaw) * 0.6);
   }
 
   // ------------------------------------------------------------------ per-frame
   update(dt: number, rdt: number) {
     const g = this.game, pl = g.player, inp = g.input, st = g.state;
-    this.sinceHurt += dt; this.perfectT -= dt;
-    this.cd1 = Math.max(0, this.cd1 - dt); this.cd2 = Math.max(0, this.cd2 - dt); this.potionCd = Math.max(0, this.potionCd - dt);
+    this.sinceHurt += dt; this.perfectT -= dt; this.sinceHit += dt; this.counterT -= rdt;
+    for (const id in this.cds) if (this.cds[id] > 0) this.cds[id] = Math.max(0, this.cds[id] - dt);
+    this.potionCd = Math.max(0, this.potionCd - dt); this.swapCd = Math.max(0, this.swapCd - dt);
     this.fireCd = Math.max(0, this.fireCd - dt);
     if (this.overcharge > 0) this.overcharge -= dt;
+    // the weapon changed under us (Loadout tab, a shop): whatever the old one was doing ends here
+    if (this.kind !== this.lastKind) { if (this.lastKind) { this.clearAttack(); if (!this.skill) pl.action = null; this.mag = XBOW.mag; this.reloadT = 0; this.combo = 0; } this.lastKind = this.kind; }
     // target upkeep
     const t = this.target;
     if (t && (!t.alive || !t.targetable || Math.hypot(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) > 55)) this.target = null;
@@ -384,6 +464,7 @@ export class Combat {
       if (this.deadT > 2.6) g.renderer.post.fade = Math.min(1, g.renderer.post.fade + rdt * 2.2);
       if (this.deadT > 3.4) this.respawn();
       this.updateShots(dt);
+      this.feedHud();
       return;
     }
     g.renderer.post.desat = damp(g.renderer.post.desat, 0, 4, rdt);
@@ -401,41 +482,52 @@ export class Combat {
     const can = pl.controllable && this.enabled && (!pl.mode || !!pl.mode.canAttack) && pl.stunT <= 0;
     const melee = this.kind === 'sword' || this.kind === 'spear';
     // one-shot action clips (hit flinch, fire recoil)
-    if (this.actDur > 0 && !this.swing && !this.skill && !this.drawing) {
+    if (this.actDur > 0 && !this.swing && !this.charging && !this.skill && !this.drawing) {
       pl.actionT += dt / this.actDur;
       if (pl.actionT >= 1) { pl.action = null; this.actDur = 0; }
     }
 
     // ---- input buffer: the newest press replaces the last and waits up to BUFFER for its first legal frame ----
-    for (const a of BUFFERED) if (inp.pressed(a)) { this.buf = a; this.bufT = BUFFER; }
+    for (const a of BUFFERED) if (inp.pressed(a as Btn)) { this.buf = a; this.bufT = BUFFER; }
 
-    // ---- dodge ----
-    if (this.buf === 'dodge' && can && !pl.mode && !this.skill) {
+    // ---- dodge (a released heavy cannot be rolled out of until it has landed) ----
+    if (this.buf === 'dodge' && can && !pl.mode && !this.skill && !this.committed) {
       const wasDown = pl.down;
       g.cameraRig.forward(_v); _v2.set(-_v.z, 0, _v.x);
       const mx = _v2.x * inp.moveX + _v.x * inp.moveY, mz = _v2.z * inp.moveX + _v.z * inp.moveY;
       if (pl.startRoll(mx, mz)) {
         this.buf = null;
-        this.swing = null; this.queued = false; this.trail?.stop(); this.drawing = false; this.aiming = false; pl.action = null; pl.lungeT = 0;
+        this.clearAttack(); pl.action = null; pl.lungeT = 0;
         g.sfx('dodge'); g.fx.dust(pl.pos, wasDown ? 7 : 4, wasDown ? 1.1 : 0.8);
       }
     }
     // on the ground nothing else happens: swaps, skills and attacks wait for the feet
     const up = can && !pl.down;
-    // ---- swap / potion ----
-    if (this.buf === 'swap' && up && !this.busy) {
-      this.buf = null;
-      if (st.swapWeapon()) { g.sfx('swap'); this.combo = 0; this.mag = 5; this.reloadT = 0; }
-      else g.hud.toast('No second weapon equipped', 'warn');
+    // ---- counter: an attack press just after a perfect dodge ----
+    if (this.counterT > 0 && this.buf === 'attack' && up && !this.skill) { this.buf = null; this.counter(); }
+    // ---- swap: in a swing's recovery or just after a hit lands, the incoming weapon enters with a strike ----
+    if (this.buf === 'swap' && up) {
+      const strike = this.swapStrikeOpen;
+      if (strike || !this.busy) {
+        this.buf = null;
+        if (st.swapWeapon()) {
+          g.sfx('swap'); this.clearAttack(); pl.action = null; this.lastKind = this.kind;
+          this.combo = 0; this.mag = XBOW.mag; this.reloadT = 0;
+          if (strike) this.swapStrike();
+        } else g.hud.toast('No second weapon equipped', 'warn');
+      }
     }
     if (pl.controllable && inp.pressed('potion')) this.usePotion();
 
-    // ---- skills ----
-    if (up && !pl.rolling && !this.skill) {
-      const sk = this.skills;
-      // a press that finds the skill still cooling stays buffered; anything else uses the press up
-      if (this.buf === 'skill1') { if (this.cast(0, sk[0])) this.buf = null; }
-      else if (this.buf === 'skill2') { if (this.cast(1, sk[1])) this.buf = null; }
+    // ---- skills and the ultimate ----
+    if (up && !pl.rolling && !this.skill && !this.committed) {
+      const i = this.buf === 'skill1' ? 0 : this.buf === 'skill2' ? 1 : this.buf === 'skill3' ? 2 : -1;
+      if (i >= 0) {
+        const sk = this.skillSlots[i as 0 | 1 | 2];
+        // a press that finds the skill still cooling stays buffered; anything else uses the press up
+        if (!sk) { this.buf = null; if (st.d.level < SLOT3_LEVEL) g.hud.toast(`Third skill opens at level ${SLOT3_LEVEL}`, 'info'); }
+        else if (this.cast(sk)) this.buf = null;
+      } else if (this.buf === 'overdrive') { this.buf = null; this.castUlt(); }
     }
     if (this.skill) this.updateSkill(dt);
 
@@ -444,9 +536,10 @@ export class Combat {
     if (melee) this.updateMelee(dt, up);
     else this.updateRanged(dt, up);
     if (this.skill === 'whirlwind') pl.actionSlow = 0.75;
+    else if (this.skill?.startsWith('ult_')) pl.actionSlow = 0.1;
 
     // face the target while fighting
-    if ((this.swing || this.drawing || this.aiming || this.skill) && this.target && this.target.alive && !pl.rolling) {
+    if ((this.swing || this.charging || this.drawing || this.aiming || this.skill || this.burstN > 0) && this.target && this.target.alive && !pl.rolling) {
       pl.faceYaw = Math.atan2(this.target.pos.x - pl.pos.x, this.target.pos.z - pl.pos.z);
     } else if ((this.drawing || this.aiming) && !pl.rolling) pl.faceYaw = g.cameraRig.yaw + Math.PI;
 
@@ -465,45 +558,80 @@ export class Combat {
     }
     this.updateShots(dt);
     this.updateStrikes(dt);
+    this.updateZones(dt);
     if (this.buf && (this.bufT -= dt) <= 0) this.buf = null;
+    this.feedHud();
+  }
+  /** Drop any basic attack in progress: swing, held charge, draw, aim, burst. */
+  private clearAttack() {
+    const pl = this.game.player;
+    this.swing = null; this.charging = null; this.queued = false; this.trail?.stop(); this.trailOn = false;
+    if (this.drawing) pl.weaponModel?.setDraw?.(0);
+    this.drawing = false; this.aiming = false; this.draw = 0; this.burstN = 0; pl.pose.charge = 0;
   }
 
+  // ------------------------------------------------------------------ melee
   private updateMelee(dt: number, can: boolean) {
-    const g = this.game, pl = g.player, inp = g.input;
-    const set = this.kind === 'sword' ? SWORD : SPEAR;
+    const g = this.game, pl = g.player, inp = g.input, set = this.melee;
     this.comboT -= dt;
-    if (this.comboT <= 0 && !this.swing) this.combo = 0;
+    if (this.comboT <= 0 && !this.swing && !this.charging) this.combo = 0;
     const ok = can && !pl.rolling && !this.skill;
-    const press = ok && this.buf === 'attack';
-    const want = press || (ok && inp.down('attack') && inp.heldFor('attack') > 0.25);
+    const press = ok && this.buf === 'attack', held = inp.down('attack');
+    if (!held) this.pressLive = false;
+    pl.pose.charge = 0;
+    if (this.charging) {
+      // coiled: the pose is held at the top of the wind-up while the charge builds, and let go on release
+      const c = this.charging;
+      if (!ok) { this.charging = null; if (!this.skill) pl.action = null; return; }
+      if (press) this.buf = null;
+      this.chargeT += dt;
+      const lv = this.chargeT >= CHARGE_LV[1] ? 2 : this.chargeT >= CHARGE_LV[0] ? 1 : 0;
+      if (lv > this.chargeLv) { this.chargeLv = lv; this.chargeFx(lv); }
+      pl.action = c.anim; pl.actionT = c.holdAt! * smooth01(this.chargeT / 0.16); pl.actionSlow = 0.12; pl.sinceCombat = 0;
+      pl.pose.charge = clamp01(this.chargeT / CHARGE_LV[1]);
+      if (!held) this.chargeRel = true;
+      if ((this.chargeRel && this.chargeT >= CHARGE_MIN) || this.chargeT >= CHARGE_MAX) { this.charging = null; pl.pose.charge = 0; this.startSwing(c, this.chargeLv); }
+      return;
+    }
     if (this.swing) {
-      const s = this.swing;
-      this.swingT += (dt / s.dur) * (this.swingHit ? 1 : this.windK);
+      const s = this.swing, light = s.holdAt === undefined && s.from === undefined;
+      // a light whose own press is still down waits at the top of its wind-up; held long enough it becomes the
+      // heavy for this point of the string instead of landing
+      let wait = false;
+      if (light && this.ownPress && this.pressLive && !this.swingHit && ok) {
+        if (inp.heldFor('attack') >= HEAVY_HOLD) { this.beginCharge(); return; }
+        wait = this.swingT >= Math.max(0.1, s.hitAt - 0.17);
+      }
+      if (!wait) this.swingT += (dt / s.dur) * (this.swingHit ? 1 : this.windK);
       pl.action = s.anim; pl.actionT = Math.min(1, this.swingT);
-      pl.actionSlow = 0.25;
+      pl.actionSlow = light ? 0.25 : 0.1;
       // the trail marks the cut itself, not the wind-up or the recovery
-      if (!this.trailOn && this.swingT >= s.hitAt - 0.16 && this.swingT < s.hitAt + 0.1) { this.trailOn = true; this.startTrail(s.heavy ? 0.16 : 0.11); }
+      if (!this.trailOn && this.swingT >= s.hitAt - 0.16 && this.swingT < s.hitAt + 0.1) { this.trailOn = true; this.startTrail(s.heavy ? 0.16 : 0.11, light ? 0.5 : 0.6); }
       else if (this.trailOn && this.swingT > s.hitAt + 0.2) { this.trailOn = false; this.trail?.stop(); }
-      // a press at any point of a swing chains the next one; it no longer has to land after the first 30%
-      if (want) { this.queued = true; if (press) this.buf = null; }
-      if (!this.swingHit && this.swingT >= s.hitAt) {
-        this.swingHit = true;
-        this.meleeHit(s);
-      }
+      // a press at any point of a swing chains the next one
+      if (press) { this.queued = true; this.buf = null; this.pressLive = held; this.ownPress = false; }
+      if (!this.swingHit && this.swingT >= s.hitAt) { this.swingHit = true; this.meleeHit(s); }
       // cancel window into the next swing
-      if (this.swingT >= (this.queued ? 0.78 : 1)) {
-        this.swing = null; this.trail?.stop(); pl.action = null;
+      if (this.swingT >= (this.queued ? s.cancel ?? 0.78 : 1)) {
+        this.swing = null; this.trail?.stop(); this.trailOn = false; pl.action = null;
         this.comboT = 0.55;
-        if (this.queued) { this.queued = false; this.startSwing(set); }
+        if (!light) this.combo = 0;
+        if (this.queued) { this.queued = false; this.startSwing(set.light[this.combo % 3]); }
       }
-    } else if (want) { if (press) this.buf = null; this.startSwing(set); }
+    } else if (press) { this.buf = null; this.pressLive = held; this.startSwing(set.light[this.combo % 3]); }
   }
-  private startSwing(set: Swing[]) {
+  private startSwing(s: Swing, lv = 0) {
     const g = this.game, pl = g.player;
-    const s = set[this.combo % set.length];
-    this.combo++;
-    this.swing = s; this.swingT = 0; this.swingHit = false; this.queued = false;
-    pl.action = s.anim; pl.actionT = 0; pl.sinceCombat = 0;
+    const light = s.holdAt === undefined && s.from === undefined;
+    if (light) {
+      this.combo++;
+      this.ownPress = this.pressLive;
+      // held since before this swing could start: no light at all, straight into the heavy
+      if (this.ownPress && g.input.heldFor('attack') >= HEAVY_HOLD) { this.beginCharge(); return; }
+    } else this.ownPress = false;
+    const t0 = s.from ?? s.holdAt ?? 0;
+    this.swing = s; this.swingT = t0; this.swingHit = false; this.queued = false; this.swingLv = lv; this.trailOn = false;
+    pl.action = s.anim; pl.actionT = t0; pl.sinceCombat = 0;
     const t = this.ensureTarget(s.range + 6);
     // close the gap: a short slide that arrives before the blade does. With nothing to hit it is only a
     // weight shift, so a string swung at the air stays roughly where it started.
@@ -511,18 +639,35 @@ export class Combat {
     if (t) {
       const dx = t.pos.x - pl.pos.x, dz = t.pos.z - pl.pos.z, d = Math.hypot(dx, dz) - t.radius;
       yaw = Math.atan2(dx, dz);
-      step = clamp(d - (s.range - 1.3), 0, LUNGE_MAX);
+      step = clamp(d - (s.burst ? s.range - 0.4 : s.range - 1.3), 0, Math.max(LUNGE_MAX, s.step));
       pl.yaw = yaw;
     } else if (pl.moveHeading !== null) pl.yaw = yaw;
     // the slide normally takes 85% of the wind-up; a longer one stretches the wind-up so the hit waits for arrival
-    const lt = s.dur * s.hitAt * 0.85, ld = Math.max(lt, step / LUNGE_SPEED);
+    const lt = s.dur * (s.hitAt - t0) * 0.85, ld = Math.max(lt, step / (s.crit ? 26 : LUNGE_SPEED));
     this.windK = lt / ld;
     if (step > 0.05 && pl.grounded) {
       pl.startLunge(Math.sin(yaw), Math.cos(yaw), step, ld);
       if (step > 1.2) g.fx.dust(pl.pos, 3, 0.7);
     }
-    this.trailOn = false;
-    g.sfx(s.heavy ? 'swing_heavy' : this.kind === 'spear' ? 'swing_spear' : 'swing_sword', { pitch: 0.95 + (this.combo % 3) * 0.06 });
+    g.sfx(s.heavy ? 'swing_heavy' : this.kind === 'spear' ? 'swing_spear' : 'swing_sword', { pitch: light ? 0.95 + (this.combo % 3) * 0.06 : 0.84 + lv * 0.08 });
+  }
+  /** The held press turns into the heavy for this point of the string: plain from a standstill, the sweep after one light, the breaker after two. */
+  private beginCharge() {
+    const g = this.game, pl = g.player, set = this.melee;
+    const n = (this.combo + 2) % 3;
+    const c = n === 1 ? set.sweep : n === 2 ? set.breaker : set.heavy;
+    this.swing = null; this.trail?.stop(); this.trailOn = false; this.queued = false; pl.lungeT = 0;
+    this.charging = c; this.chargeT = 0; this.chargeLv = 0; this.chargeRel = false; this.ownPress = false;
+    pl.action = c.anim; pl.actionT = 0; pl.sinceCombat = 0;
+    this.ensureTarget(c.range + 6);
+    g.sfx('bow_draw', { vol: 0.5, pitch: 0.7 });
+  }
+  private chargeFx(lv: number) {
+    const g = this.game, pl = g.player, col = lv === 2 ? 0xffffff : g.state.weapon.color;
+    g.fx.ring(pl.pos, lv === 2 ? 3.4 : 2.2, col, 0.3, 3);
+    if (pl.weaponModel) g.fx.emit(pl.weaponModel.tip.getWorldPosition(_v), { count: 1, speed: [0, 0], life: [0.14, 0.14], size: [lv === 2 ? 0.7 : 0.45, lv === 2 ? 0.7 : 0.45], grow: 0.2, color: col, glow: 4, sprite: SP.STAR });
+    g.sfx('bow_full', { pitch: lv === 2 ? 1.5 : 1.15 }); g.haptic(lv === 2 ? 22 : 12);
+    if (lv === 2) g.renderer.post.flash.w = Math.max(g.renderer.post.flash.w, 0.05);
   }
   /** A dim, short-lived ribbon in the weapon's colour. */
   private startTrail(life: number, dim = 0.5) {
@@ -532,19 +677,81 @@ export class Combat {
     tr.color.multiplyScalar(dim);
   }
   private meleeHit(s: Swing) {
-    const g = this.game, pl = g.player;
+    const g = this.game, pl = g.player, col = g.state.weapon.color, lv = this.swingLv;
+    const mult = lv > 0 && s.lv ? s.lv[lv - 1] : s.mult, poise = (s.poise ?? 1) * (1 + 0.25 * lv);
+    const range = s.range + (s.line ? lv * 0.8 : 0);
+    const sy = Math.sin(pl.yaw), cy = Math.cos(pl.yaw), px = pl.pos.x, py = pl.pos.y, pz = pl.pos.z;
+    const bx = px + sy * s.range, bz = pz + cy * s.range;
     let n = 0;
     for (const h of [...this.candidates()]) {
-      const dx = h.pos.x - pl.pos.x, dz = h.pos.z - pl.pos.z, d = Math.hypot(dx, dz);
-      if (d - h.radius > s.range || Math.abs(h.pos.y - pl.pos.y) > 2.6 + h.height * 0.5) continue;
-      if (d > h.radius + 0.6 && Math.abs(angleDiff(pl.yaw, Math.atan2(dx, dz))) > s.arc + Math.atan2(h.radius, d)) continue;
-      this.strikeTarget(h, s.mult, { heavy: s.heavy, knock: s.knock, source: 'melee', quiet: n > 0 });
+      const dx = h.pos.x - px, dz = h.pos.z - pz, d = Math.hypot(dx, dz);
+      if (Math.abs(h.pos.y - py) > 2.6 + h.height * 0.5) continue;
+      if (s.burst) { if (Math.hypot(h.pos.x - bx, h.pos.z - bz) > s.burst + h.radius) continue; }
+      else if (s.line) { const along = dx * sy + dz * cy; if (along < -0.6 || along - h.radius > range || Math.abs(dx * cy - dz * sy) > s.line + h.radius) continue; }
+      else {
+        if (d - h.radius > range) continue;
+        if (d > h.radius + 0.6 && Math.abs(angleDiff(pl.yaw, Math.atan2(dx, dz))) > s.arc + Math.atan2(h.radius, d)) continue;
+      }
+      this.strikeTarget(h, mult, { heavy: s.heavy, knock: s.knock, source: 'melee', quiet: n > 0, poise, crit: s.crit || undefined, stun: s.stun });
       n++;
     }
     if (n > 0) g.state.d.energy = Math.min(g.state.maxEnergy, g.state.d.energy + 5 + n);
+    if (s.burst) {
+      _v.set(bx, py + 0.1, bz);
+      g.fx.ring(_v, s.burst * 2, col, 0.35, 3); g.fx.dust(_v, 12, 1.6); g.fx.chunks(_v, 6, [0x8a8f98, 0x6a6f78, col], 6, 0.14);
+      g.cameraRig.shake(0.4 + 0.1 * lv); g.sfx('skill_slam', { vol: 0.7 });
+    } else if (s.line) {
+      _v.set(px + sy * 0.6, py + 1.15, pz + cy * 0.6); _v2.set(px + sy * range, py + 1.15, pz + cy * range);
+      g.fx.beam(_v, _v2, col, 0.3 + 0.12 * lv, 0.16, 0, 4);
+    } else if (s.arc > 2) g.fx.ring(pl.pos, range * 2, col, 0.25, 2.5);
     if (s.heavy) { pl.forward(_v).multiplyScalar(1.6).add(pl.pos); _v.y += 0.1; g.fx.dust(_v, 5, 1.1); if (n === 0) g.cameraRig.shake(0.08); }
+    if (s.holdAt !== undefined && s.from === undefined) {
+      // a released charge is felt whether or not it connects; a full one whites out for a frame when it does
+      g.cameraRig.shake(0.2 + 0.12 * lv);
+      if (lv === 2 && n > 0) { g.cameraRig.punch(-4); g.renderer.post.flash.w = Math.max(g.renderer.post.flash.w, 0.07); }
+    }
+    if (s.crit && n > 0) g.slowMo(0.3, 0.14);
   }
 
+  // ------------------------------------------------------------------ counter and swap strike
+  /** True when a swap right now would bring the other weapon in with a strike. */
+  private get swapStrikeOpen() {
+    const st = this.game.state;
+    if (this.swapCd > 0 || !st.d.loadout[1] || this.skill || this.charging || this.drawing || this.aiming) return false;
+    return this.swing ? this.swingHit : this.sinceHit < SWAP_WINDOW;
+  }
+  private counter() {
+    const g = this.game, pl = g.player, c = pl.center;
+    this.counterT = 0; pl.rolling = false; pl.invuln = Math.max(pl.invuln, 0.4);
+    this.clearAttack();
+    g.hud.damage({ x: c.x, y: c.y + 1.1, z: c.z }, 'COUNTER', 'crit');
+    g.sfx('dodge_perfect', { pitch: 1.5 }); g.fx.ring(pl.pos, 3, 0xffffff, 0.25, 3); g.cameraRig.punch(4); g.haptic(20);
+    this.quickAttack(true);
+  }
+  private swapStrike() {
+    const g = this.game, pl = g.player, c = pl.center;
+    this.swapCd = SWAP_STRIKE_CD;
+    g.hud.damage({ x: c.x, y: c.y + 1.1, z: c.z }, 'SWAP STRIKE', 'crit');
+    g.fx.ring(pl.pos, 2.6, g.state.weapon.color, 0.25, 3); g.sfx('xbow_ready', { pitch: 1.3 });
+    this.quickAttack(false);
+  }
+  /** The weapon in hand attacks at once with no wind-up: a counter (critical, heavy stagger) or a swap strike. */
+  private quickAttack(counter: boolean) {
+    const g = this.game, pl = g.player, k = this.kind;
+    if (k === 'sword' || k === 'spear') { this.startSwing(counter ? this.melee.counter : this.melee.entry); return; }
+    const t = this.ensureTarget(45);
+    if (t) pl.yaw = Math.atan2(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z);
+    if (k === 'bow') {
+      this.muzzlePos(_v); this.aimDir(_v, _d, 68, 5);
+      this.fire('arrow', _v, _d, 68, counter ? 2.0 : 1.4, { crit: counter, knock: 6, poise: counter ? 3 : 1.5, heavy: true });
+      g.sfx('bow_release', { pitch: 1.15 }); g.cameraRig.kick(0.014);
+      pl.action = 'bowRelease'; pl.actionT = 0; this.actDur = 0.32; this.fireCd = 0.25; pl.sinceCombat = 0;
+    } else if (k === 'crossbow') {
+      this.burstN = XBOW.burst; this.burstT = 0; this.burstMul = counter ? 0.95 : 0.5; this.burstFree = true; this.burstFirst = true; this.burstCrit = counter;
+    } else if (k === 'rifle') { this.fireRifle(counter ? 2.0 : 1.4, { crit: counter, poise: counter ? 3 : 1.5 }); this.fireCd = 0.5; }
+  }
+
+  // ------------------------------------------------------------------ ranged
   private updateRanged(dt: number, can: boolean) {
     const g = this.game, pl = g.player, inp = g.input, st = g.state, k = this.kind;
     const ok = can && !pl.rolling && !this.skill;
@@ -559,10 +766,11 @@ export class Combat {
           this.drawing = false;
           pl.weaponModel?.setDraw?.(0);
           if (ok || !inp.down('attack')) {
-            const dr = Math.max(0.3, this.draw), perfect = this.draw >= 1 && this.fullT < 0.3;
+            const dr = Math.max(0.3, this.draw), full = this.draw >= 1, perfect = full && this.fullT < 0.3;
             this.ensureTarget(42);
             this.muzzlePos(_v); this.aimDir(_v, _d, 46 + 22 * dr, 5);
-            this.fire('arrow', _v, _d, 46 + 22 * dr, 0.5 + 1.2 * dr, { crit: perfect, knock: 2 + 4 * dr });
+            // a full draw finds the weak point: it staggers a common robot and carries extra stagger damage
+            this.fire('arrow', _v, _d, 46 + 22 * dr, 0.5 + 1.2 * dr, { crit: perfect, knock: 2 + 4 * dr, heavy: full, poise: full ? BOW.fullPoise : 1 });
             g.sfx('bow_release', { pitch: 0.9 + dr * 0.2 });
             g.cameraRig.kick(0.012 * dr); if (perfect) g.cameraRig.punch(-2);
             pl.action = 'bowRelease'; pl.actionT = 0; this.actDur = 0.32; this.fireCd = 0.22; pl.sinceCombat = 0;
@@ -571,25 +779,43 @@ export class Combat {
         }
       }
     } else if (k === 'crossbow') {
-      if (this.reloadT > 0) {
+      if (this.burstN > 0) {
+        // a burst, once started, empties itself
+        this.burstT -= dt;
+        if (this.burstT <= 0) {
+          this.fireBolt(this.burstMul, 0.012, this.burstFirst, this.burstCrit && this.burstFirst);
+          this.burstFirst = false; this.burstT = XBOW.gap; this.burstN--;
+          if (!this.burstFree) this.mag--;
+          if (this.burstN <= 0 || (!this.burstFree && this.mag <= 0)) {
+            this.burstN = 0; this.fireCd = XBOW.rest;
+            if (this.mag <= 0) { this.reloadT = XBOW.reload; g.sfx('xbow_reload'); }
+          }
+        }
+      } else if (this.reloadT > 0) {
         this.reloadT -= dt;
-        pl.action = 'xbowReload'; pl.actionT = clamp01(1 - this.reloadT / 1.15); pl.actionSlow = 0.7;
-        if (this.reloadT <= 0) { this.mag = 5; pl.action = null; g.sfx('xbow_ready'); }
-      } else if (ok && inp.down('attack') && this.fireCd <= 0) {
+        pl.action = 'xbowReload'; pl.actionT = clamp01(1 - this.reloadT / XBOW.reload); pl.actionSlow = 0.7;
+        if (this.reloadT <= 0) { this.mag = XBOW.mag; pl.action = null; g.sfx('xbow_ready'); }
+      } else if (ok && (inp.down('attack') || this.buf === 'attack') && this.fireCd <= 0) {
+        if (this.buf === 'attack') this.buf = null;
         this.ensureTarget(42);
-        this.fireBolt(1.0);
-        this.fireCd = 0.34;
-        if (--this.mag <= 0) { this.reloadT = 1.15; g.sfx('xbow_reload'); }
+        this.burstN = Math.min(XBOW.burst, this.mag); this.burstT = 0; this.burstMul = XBOW.mult; this.burstFree = false; this.burstFirst = true; this.burstCrit = false;
       }
-      if (inp.down('attack') && ok) pl.actionSlow = Math.min(pl.actionSlow, 0.7);
+      if ((inp.down('attack') || this.burstN > 0) && ok) pl.actionSlow = Math.min(pl.actionSlow, 0.7);
     } else if (k === 'rifle') {
       if (!this.aiming && ok && this.buf === 'attack' && this.fireCd <= 0) { this.buf = null; this.aiming = true; this.draw = 0; this.ensureTarget(60); g.sfx('rifle_aim'); }
       if (this.aiming) {
-        this.draw = Math.min(1, this.draw + dt / 0.55);
-        pl.action = 'rifleAim'; pl.actionT = this.draw; pl.actionSlow = 0.4;
+        // draw runs 0..1 to a steady shot and on to RIFLE.full seconds for the second charge
+        const top = RIFLE.full / RIFLE.steady, was = this.draw;
+        this.draw = Math.min(top, this.draw + dt / RIFLE.steady);
+        if (was < top && this.draw >= top) {
+          g.sfx('bow_full', { pitch: 1.4 }); g.haptic(16);
+          this.muzzlePos(_v); g.fx.emit(_v, { count: 1, speed: [0, 0], life: [0.2, 0.2], size: [1, 1], grow: 0.2, color: 0xffffff, glow: 5, sprite: SP.STAR });
+        }
+        pl.action = 'rifleAim'; pl.actionT = Math.min(1, this.draw); pl.actionSlow = 0.4;
         if (!inp.down('attack') || !ok) {
           this.aiming = false;
-          if (ok || !inp.down('attack')) this.fireRifle(0.7 + 0.8 * this.draw, this.draw >= 1);
+          const full = this.draw >= top;
+          if (ok || !inp.down('attack')) this.fireRifle(full ? RIFLE.fullMult : 0.7 + 0.8 * Math.min(1, this.draw), { steady: this.draw >= 1, full, poise: full ? RIFLE.fullPoise : 1 });
           else pl.action = null;
           this.draw = 0;
         }
@@ -602,47 +828,61 @@ export class Combat {
     if (a !== 'bolt' && st.count(a) <= 0) { a = st.d.ammo = 'bolt'; this.game.hud.toast('Out of special bolts', 'warn'); }
     return a;
   }
-  private fireBolt(mult: number, spread = 0) {
+  /** One bolt. Only a `special` bolt (the first of a burst) carries the selected ammunition and spends one. */
+  private fireBolt(mult: number, spread = 0, special = true, crit = false) {
     const g = this.game, pl = g.player, st = g.state;
-    const a = this.ammo(), A = AMMO[a];
+    const a = special ? this.ammo() : 'bolt', A = AMMO[a];
     if (a !== 'bolt') st.removeItem(a, 1);
     this.muzzlePos(_v); this.aimDir(_v, _d, 78, 0);
     if (spread) { _d.x += rand(-1, 1) * spread; _d.y += rand(-1, 1) * spread * 0.4; _d.z += rand(-1, 1) * spread; _d.normalize(); }
-    this.fire('bolt', _v, _d, 78, mult * A.mult, { color: A.color, ammo: a, pierce: a === 'bolt_pierce', hit: a === 'bolt_pierce' ? new Set() : null, blast: a === 'bolt_blast' ? 4 : 0, stun: a === 'bolt_shock' ? 0.8 : 0 });
+    // a special bolt is worth a whole old shot, so status ammunition keeps its value in a burst of small bolts
+    this.fire('bolt', _v, _d, 78, a === 'bolt' ? mult : Math.max(mult, 1) * A.mult, { color: A.color, ammo: a, crit, pierce: a === 'bolt_pierce', hit: a === 'bolt_pierce' ? new Set() : null, blast: a === 'bolt_blast' ? 4 : 0, stun: a === 'bolt_shock' ? 0.8 : 0 });
     g.fx.muzzle(_v, _d, A.color, 0.5);
     g.sfx('xbow_fire', { pitch: rand(0.95, 1.05) });
-    g.cameraRig.kick(0.01, rand(-0.004, 0.004));
+    g.cameraRig.kick(0.008, rand(-0.004, 0.004));
     pl.action = 'xbowFire'; pl.actionT = 0; this.actDur = 0.28; pl.sinceCombat = 0;
   }
-  private fireRifle(mult: number, steady: boolean, concussion = false) {
+  /**
+   * One rifle round. It goes through robots and loses force at each (RIFLE.falloff); a rail shot loses
+   * nothing and is wider; a concussion round bursts at the first thing it meets.
+   */
+  private fireRifle(mult: number, o: { steady?: boolean; full?: boolean; crit?: boolean; concussion?: boolean; rail?: boolean; poise?: number; knock?: number; stun?: number } = {}) {
     const g = this.game, pl = g.player, st = g.state;
-    const oc = this.overcharge > 0;
+    const oc = this.overcharge > 0 && !o.rail;
     if (oc) { mult *= 3; this.overcharge = 0; }
     this.muzzlePos(_v); this.aimDir(_v, _d, 400, 0);
-    // hitscan: nearest hittable along the ray, else the world
-    const wh = g.physics.raycast(_v, _d, 140, RAY_SOLID);
-    let best: Hittable | null = null, bt = wh ? wh.dist : 140;
+    const wh = g.physics.raycast(_v, _d, 140, RAY_SOLID), len = wh ? wh.dist : 140;
+    const hits: { h: Hittable; t: number }[] = [];
     for (const h of this.candidates()) {
       h.center(_c);
       const ox = _c.x - _v.x, oy = _c.y - _v.y, oz = _c.z - _v.z;
       const tt = ox * _d.x + oy * _d.y + oz * _d.z;
-      if (tt < 0 || tt > bt) continue;
+      if (tt < 0 || tt > len) continue;
       const px = ox - _d.x * tt, py = oy - _d.y * tt, pz = oz - _d.z * tt;
-      if (Math.hypot(px, pz) < h.radius + 0.25 && Math.abs(py) < h.height * 0.6 + 0.3) { best = h; bt = tt; }
+      if (Math.hypot(px, pz) < h.radius + (o.rail ? 0.9 : 0.25) && Math.abs(py) < h.height * 0.6 + 0.3) hits.push({ h, t: tt });
     }
-    _v2.copy(_v).addScaledVector(_d, bt);
-    const col = oc ? 0xffffff : st.weapon.color;
-    g.fx.beam(_v, _v2, col, oc ? 0.5 : 0.22, 0.2, 0, oc ? 7 : 5);
-    g.fx.muzzle(_v, _d, col, oc ? 2 : 1.3);
-    g.sfx(oc ? 'rifle_overcharge' : 'rifle_fire');
-    g.cameraRig.kick(0.05 + (oc ? 0.05 : 0), rand(-0.012, 0.012)); g.cameraRig.shake(oc ? 0.5 : 0.24); g.cameraRig.punch(oc ? 6 : 3);
+    hits.sort((a, b) => a.t - b.t);
+    const max = o.rail ? hits.length : o.concussion ? 0 : RIFLE.falloff.length;
+    const end = o.concussion ? hits[0]?.t ?? len : hits.length > max ? hits[max - 1].t : len;
+    _v2.copy(_v).addScaledVector(_d, end);
+    const big = oc || !!o.rail, col = big ? 0xffffff : st.weapon.color;
+    g.fx.beam(_v, _v2, col, o.rail ? 1.1 : oc ? 0.5 : o.full ? 0.34 : 0.22, o.rail ? 0.4 : 0.2, 0, o.rail ? 8 : oc ? 7 : 5);
+    if (o.rail) g.fx.beam(_v, _v2, st.weapon.color, 2.4, 0.5, 0, 3);
+    g.fx.muzzle(_v, _d, col, big ? 2 : o.full ? 1.7 : 1.3);
+    g.sfx(big ? 'rifle_overcharge' : 'rifle_fire', o.full ? { pitch: 0.86 } : undefined);
+    g.cameraRig.kick(0.05 + (big ? 0.05 : o.full ? 0.025 : 0), rand(-0.012, 0.012)); g.cameraRig.shake(o.rail ? 0.8 : oc ? 0.5 : o.full ? 0.36 : 0.24); g.cameraRig.punch(big ? 6 : o.full ? 4.5 : 3);
     pl.action = 'rifleFire'; pl.actionT = 0; this.actDur = 0.5; this.fireCd = 0.85; pl.sinceCombat = 0;
-    pl.knockback(-_d.x, -_d.z, oc ? 5 : 1.5);
-    if (concussion) {
+    pl.knockback(-_d.x, -_d.z, big ? 5 : o.full ? 2.5 : 1.5);
+    if (o.concussion) {
       g.fx.explosion(_v2, 1.3, 0xffb04a); g.sfx('explode_small', { pos: _v2 });
       this.aoe(_v2.x, _v2.y, _v2.z, 5.5, 1.6, { heavy: true, knock: 10, source: 'skill', stun: 1.5 });
-    } else if (best) this.strikeTarget(best, mult, { heavy: true, knock: oc ? 12 : 6, source: 'rifle', crit: steady && Math.random() < 0.5 ? true : undefined, stun: oc ? 2 : 0 });
-    else if (wh) g.fx.hitSparks(_v2, wh.normal, 0xffc46a, 1);
+      return;
+    }
+    if (!hits.length && wh) g.fx.hitSparks(_v2, wh.normal, 0xffc46a, 1);
+    for (let i = 0; i < hits.length && i < max; i++) {
+      const crit = o.crit || (o.steady && i === 0 && Math.random() < 0.5) ? true : undefined;
+      this.strikeTarget(hits[i].h, mult * (o.rail ? 1 : RIFLE.falloff[i]), { heavy: true, knock: o.knock ?? (oc ? 12 : 6), source: o.rail ? 'skill' : 'rifle', crit, stun: o.stun ?? (oc ? 2 : 0), poise: o.poise, quiet: i > 0 });
+    }
   }
 
   private usePotion() {
@@ -661,47 +901,72 @@ export class Combat {
 
   // ------------------------------------------------------------------ skills
   /** Returns false only when the skill is still cooling down, so the press can stay buffered. */
-  private cast(slot: 0 | 1, sk: SkillDef): boolean {
+  private cast(sk: SkillDef): boolean {
     const g = this.game, pl = g.player, st = g.state;
-    const cd = slot === 0 ? this.cd1 : this.cd2;
-    if (cd > 0) return false;
+    if ((this.cds[sk.id] ?? 0) > 0) return false;
     if (st.d.energy < sk.energy) { g.hud.toast('Not enough energy', 'warn'); g.sfx('ui_deny'); return true; }
-    if (this.swing) { this.swing = null; this.trail?.stop(); }
-    if (this.drawing || this.aiming) { this.drawing = false; this.aiming = false; this.draw = 0; }
     const melee = this.kind === 'sword' || this.kind === 'spear';
-    const t = sk.id === 'cycle_ammo' ? null : this.ensureTarget(melee ? 13 : 45);
+    const t = sk.id === 'cycle_ammo' || sk.id === 'arc_mine' ? null : this.ensureTarget(melee ? 13 : 45);
     if (sk.id === 'skewer_leap' && !t) { g.hud.toast('No target', 'warn'); return true; }
+    this.clearAttack();
     st.d.energy -= sk.energy;
-    if (slot === 0) this.cd1 = sk.cd; else this.cd2 = sk.cd;
+    this.cds[sk.id] = sk.cd;
     pl.sinceCombat = 0;
     this.skill = sk.id; this.skillT = 0; this.skillHits = 0;
     const face = t ? Math.atan2(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) : pl.moveHeading ?? (melee ? pl.yaw : g.cameraRig.yaw + Math.PI);
     pl.yaw = face;
-    const col = st.weapon.color;
+    const sf = Math.sin(face), cf = Math.cos(face);
+    const td = t ? Math.hypot(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) : 0;
     switch (sk.id) {
       case 'whirlwind': this.skillDur = 0.75; pl.action = 'swordSkill'; this.startTrail(0.22, 0.7); g.sfx('skill_whirl'); break;
       case 'dash_strike': {
         this.skillDur = 0.34; pl.action = 'sword3';
-        const dist = t ? clamp(Math.hypot(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) + 3, 5, 11) : 9;
-        pl.lunge.set(Math.sin(face) * dist / 0.16, 0, Math.cos(face) * dist / 0.16); pl.lungeT = 0.16;
+        const dist = t ? clamp(td + 3, 5, 11) : 9;
+        pl.lunge.set(sf * dist / 0.16, 0, cf * dist / 0.16); pl.lungeT = 0.16;
         pl.invuln = Math.max(pl.invuln, 0.3);
         this.dashFrom.copy(pl.pos); this.dashYaw = face;
         this.startTrail(0.22, 0.7);
         g.sfx('skill_dash'); g.cameraRig.punch(7);
         break;
       }
+      case 'rising_cut': {
+        this.skillDur = 0.5; pl.action = 'swordRise';
+        const step = t ? clamp(td - t.radius - 1.8, 0, 4.5) : 0.6;
+        if (step > 0.05 && pl.grounded) pl.startLunge(sf, cf, step, 0.15);
+        this.startTrail(0.2, 0.8); g.sfx('swing_heavy', { pitch: 1.15 });
+        break;
+      }
+      case 'arc_wave': this.skillDur = 0.42; pl.action = 'sword1'; this.startTrail(0.2, 0.8); g.sfx('skill_whirl', { pitch: 1.2 }); break;
       case 'skewer_leap': {
         this.skillDur = 0.62; pl.action = 'spearSkill';
-        const dx = t!.pos.x - pl.pos.x, dz = t!.pos.z - pl.pos.z, d = Math.max(0.1, Math.hypot(dx, dz) - t!.radius - 1.2);
-        const tt = this.skillDur * 0.6;
-        pl.launch(dx / Math.hypot(dx, dz) * d / tt, 9.5, dz / Math.hypot(dx, dz) * d / tt);
+        const d = Math.max(0.1, td - t!.radius - 1.2), tt = this.skillDur * 0.6;
+        pl.launch(sf * d / tt, 9.5, cf * d / tt);
         pl.invuln = Math.max(pl.invuln, 0.45);
         g.sfx('skill_leap');
         break;
       }
       case 'sweep': this.skillDur = 0.6; pl.action = 'spear3'; this.startTrail(0.22, 0.7); g.sfx('swing_heavy'); break;
+      case 'impale': {
+        this.skillDur = 0.42; pl.action = 'spearHeavy';
+        const dist = t ? clamp(td + 2.5, 5, 10) : 8;
+        pl.lunge.set(sf * dist / 0.2, 0, cf * dist / 0.2); pl.lungeT = 0.2;
+        pl.invuln = Math.max(pl.invuln, 0.3);
+        this.dashFrom.copy(pl.pos); this.dashYaw = face;
+        this.startTrail(0.22, 0.8);
+        g.sfx('skill_dash', { pitch: 0.85 }); g.cameraRig.punch(6);
+        break;
+      }
+      case 'javelin': this.skillDur = 0.55; pl.action = 'spearThrow'; g.sfx('bow_draw', { pitch: 0.8 }); break;
       case 'volley': this.skillDur = 0.4; pl.action = 'bowRelease'; break;
       case 'piercer': this.skillDur = 0.75; pl.action = 'bowDraw'; g.sfx('bow_draw'); break;
+      case 'shock_arrow': this.skillDur = 0.4; pl.action = 'bowRelease'; break;
+      case 'arrow_rain': {
+        this.skillDur = 0.45; pl.action = 'bowRelease';
+        const x = t ? t.pos.x : pl.pos.x + sf * 11, z = t ? t.pos.z : pl.pos.z + cf * 11;
+        this.addZone('rain', x, t ? t.pos.y : g.groundY(x, z, pl.pos.y + 2), z);
+        g.sfx('bow_release'); g.sfx('skill_volley'); g.cameraRig.kick(0.02);
+        break;
+      }
       case 'cycle_ammo': {
         const order: AmmoId[] = ['bolt', 'bolt_shock', 'bolt_blast', 'bolt_pierce'];
         let i = order.indexOf(st.d.ammo);
@@ -713,11 +978,95 @@ export class Combat {
         break;
       }
       case 'barrage': this.skillDur = 0.55; break;
+      case 'jam_bolt':
+        this.skillDur = 0.3; pl.action = 'xbowFire';
+        this.muzzlePos(_v); this.aimDir(_v, _d, 78, 0);
+        this.fire('bolt', _v, _d, 78, 1.0, { color: 0xffd23a, zone: 'jam', src: 'skill', radius: 0.45 });
+        g.fx.muzzle(_v, _d, 0xffd23a, 0.9); g.sfx('xbow_fire', { pitch: 0.8 }); g.cameraRig.kick(0.02);
+        break;
+      case 'flip_volley':
+        this.skillDur = 0.5; pl.action = 'xbowFire';
+        pl.launch(-sf * 9.5, 6, -cf * 9.5); pl.invuln = Math.max(pl.invuln, 0.55);
+        g.fx.dust(pl.pos, 6, 1); g.sfx('dodge', { pitch: 0.9 });
+        break;
       case 'overcharge': this.overcharge = 12; this.skill = null; g.sfx('skill_charge'); g.fx.ring(pl.pos, 3, 0x7ff0ff, 0.5, 2); g.hud.toast('Overcharged', 'good', 'next shot ×3'); break;
-      case 'concussion': this.skillDur = 0.3; this.fireRifle(1, false, true); break;
+      case 'concussion': this.skillDur = 0.3; this.fireRifle(1, { concussion: true }); break;
+      case 'snap_shot': this.skill = null; this.fireRifle(1.15, { knock: 13 }); this.fireCd = 0.45; return true;
+      case 'arc_mine': {
+        this.skill = null;
+        const x = pl.pos.x + sf * 1.2, z = pl.pos.z + cf * 1.2;
+        this.addZone('mine', x, g.groundY(x, z, pl.pos.y + 1), z);
+        pl.action = 'pickup'; this.actDur = 0.45; g.sfx('xbow_ready', { pitch: 0.8 });
+        break;
+      }
     }
     pl.actionT = 0;
     return true;
+  }
+  /** Spend the whole Overdrive meter on the ultimate of the weapon in hand. */
+  private castUlt() {
+    const g = this.game, pl = g.player, st = g.state, k = this.kind as SkillKind, u = ULTIMATES[k];
+    if (st.d.level < OVERDRIVE_LEVEL) { g.hud.toast(`Overdrive opens at level ${OVERDRIVE_LEVEL}`, 'info'); g.sfx('ui_deny'); return; }
+    if (this.od < 100 || !u) { g.sfx('ui_deny'); return; }
+    const melee = k === 'sword' || k === 'spear';
+    const t = this.ensureTarget(melee ? 14 : 45);
+    this.clearAttack();
+    this.od = 0; this.skill = u.id; this.skillT = 0; this.skillHits = 0; this.ultSeen.clear();
+    pl.sinceCombat = 0;
+    const face = t ? Math.atan2(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) : pl.moveHeading ?? (melee ? pl.yaw : g.cameraRig.yaw + Math.PI);
+    pl.yaw = face;
+    const col = st.weapon.color, c = pl.center;
+    g.hud.damage({ x: c.x, y: c.y + 1.3, z: c.z }, u.name.toUpperCase(), 'crit');
+    g.slowMo(0.3, 0.22); g.cameraRig.punch(8); g.cameraRig.shake(0.5); g.haptic(40);
+    g.fx.ring(pl.pos, 9, col, 0.5, 3); g.fx.ring(pl.pos, 5, 0xffffff, 0.35, 4);
+    g.fx.flash({ x: c.x, y: c.y, z: c.z }, col, 90, 16, 0.3);
+    g.renderer.post.flash.w = Math.max(g.renderer.post.flash.w, 0.1);
+    g.sfx('skill_charge', { pitch: 0.8 }); g.sfx('rifle_overcharge', { vol: 0.5, pitch: 0.7 });
+    switch (k) {
+      case 'sword': this.skillDur = 1.5; pl.action = 'sword1'; pl.invuln = Math.max(pl.invuln, 1.7); this.startTrail(0.25, 0.9); break;
+      case 'spear': {
+        this.skillDur = 0.95; pl.action = 'spearSkill';
+        const d = t ? Math.max(0.1, Math.hypot(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) - t.radius - 1.2) : 0, tt = this.skillDur * 0.62;
+        pl.launch(Math.sin(face) * d / tt, 13, Math.cos(face) * d / tt);
+        pl.invuln = Math.max(pl.invuln, 1.2); g.sfx('skill_leap', { pitch: 0.8 });
+        break;
+      }
+      case 'bow': this.skillDur = 1.1; pl.action = 'bowRelease'; pl.invuln = Math.max(pl.invuln, 0.6); break;
+      case 'crossbow': this.skillDur = 1.2; pl.action = 'xbowFire'; pl.invuln = Math.max(pl.invuln, 0.6); break;
+      case 'rifle': this.skillDur = 0.95; pl.action = 'rifleAim'; pl.invuln = Math.max(pl.invuln, 0.6); g.sfx('rifle_aim'); break;
+    }
+    pl.actionT = 0;
+  }
+  /** The nearest robot within range that this ultimate has not yet gone for; starts over when all have been. */
+  private pickUnseen(range: number): Hittable | null {
+    const p = this.game.player.pos;
+    for (let pass = 0; pass < 2; pass++) {
+      let best: Hittable | null = null, bd = range;
+      for (const h of this.candidates()) {
+        if (this.ultSeen.has(h) || Math.abs(h.pos.y - p.y) > 8) continue;
+        const d = Math.hypot(h.pos.x - p.x, h.pos.z - p.z) - h.radius;
+        if (d < bd) { bd = d; best = h; }
+      }
+      if (best) { this.ultSeen.add(best); return best; }
+      if (!this.ultSeen.size) return null;
+      this.ultSeen.clear();
+    }
+    return null;
+  }
+  /** Everything on the line from `dashFrom` to the player takes a hit (dash skills). */
+  private lineHits(mult: number, o: { knock: number; stun?: number; poise?: number }) {
+    const g = this.game, pl = g.player;
+    const sy = Math.sin(this.dashYaw), cy = Math.cos(this.dashYaw);
+    const len = Math.hypot(pl.pos.x - this.dashFrom.x, pl.pos.z - this.dashFrom.z) + 1.5;
+    let n = 0;
+    for (const h of [...this.candidates()]) {
+      const dx = h.pos.x - this.dashFrom.x, dz = h.pos.z - this.dashFrom.z;
+      const along = dx * sy + dz * cy, side = Math.abs(dx * cy - dz * sy);
+      if (along > -1 && along < len && side < 1.8 + h.radius && Math.abs(h.pos.y - pl.pos.y) < 3 + h.height * 0.5) { this.strikeTarget(h, mult, { heavy: true, source: 'skill', quiet: n > 0, ...o }); n++; }
+    }
+    _v.copy(this.dashFrom); _v.y += 1; _v2.copy(pl.pos); _v2.y += 1;
+    g.fx.beam(_v, _v2, g.state.weapon.color, 0.9, 0.25, 0, 3);
+    return n;
   }
   private dashFrom = new THREE.Vector3(); private dashYaw = 0;
   private updateSkill(dt: number) {
@@ -735,18 +1084,26 @@ export class Combat {
         }
         break;
       case 'dash_strike':
-        if (crossed(0.5)) {
-          // everything along the dash line
-          const sy = Math.sin(this.dashYaw), cy = Math.cos(this.dashYaw);
-          const len = Math.hypot(pl.pos.x - this.dashFrom.x, pl.pos.z - this.dashFrom.z) + 1.5;
+        if (crossed(0.5)) this.lineHits(2.3, { knock: 5 });
+        break;
+      case 'rising_cut':
+        if (crossed(0.38)) {
           let n = 0;
           for (const h of [...this.candidates()]) {
-            const dx = h.pos.x - this.dashFrom.x, dz = h.pos.z - this.dashFrom.z;
-            const along = dx * sy + dz * cy, side = Math.abs(dx * cy - dz * sy);
-            if (along > -1 && along < len && side < 1.8 + h.radius && Math.abs(h.pos.y - pl.pos.y) < 3 + h.height * 0.5) { this.strikeTarget(h, 2.3, { heavy: true, knock: 5, source: 'skill', quiet: n > 0 }); n++; }
+            const dx = h.pos.x - pl.pos.x, dz = h.pos.z - pl.pos.z, d = Math.hypot(dx, dz);
+            if (d - h.radius < 3.6 && Math.abs(angleDiff(pl.yaw, Math.atan2(dx, dz))) < 1.1 + Math.atan2(h.radius, d) && Math.abs(h.pos.y - pl.pos.y) < 3 + h.height * 0.5) { this.strikeTarget(h, 2.4, { heavy: true, knock: 3, source: 'skill', stun: 1.2, poise: 3, quiet: n > 0 }); n++; }
           }
-          _v.copy(this.dashFrom); _v.y += 1; _v2.copy(pl.pos); _v2.y += 1;
-          g.fx.beam(_v, _v2, col, 0.9, 0.25, 0, 3);
+          pl.forward(_v).multiplyScalar(1.5).add(pl.pos); _v.y += 0.3;
+          g.fx.emit(_v, { count: 14, speed: [4, 9], up: 9, life: [0.2, 0.45], size: [0.06, 0.12], color: col, color2: 0xffffff, glow: 5, gravity: 10, sprite: SP.STREAK, stretch: 0.08 });
+          g.fx.ring(_v, 3, col, 0.25, 2.5); g.fx.dust(_v, 6, 1.2);
+          if (n) g.cameraRig.punch(-3);
+        }
+        break;
+      case 'arc_wave':
+        if (crossed(0.4)) {
+          _v.copy(pl.pos); _v.y += 1.1; pl.forward(_d);
+          this.fire('wave', _v, _d, 30, 2.0, { pierce: true, hit: new Set(), radius: 1.5, life: 0.62, knock: 5, src: 'skill', heavy: true, poise: 1.5 });
+          g.sfx('skill_pierce', { pitch: 1.3 }); g.cameraRig.shake(0.25); g.cameraRig.punch(3);
         }
         break;
       case 'skewer_leap':
@@ -767,6 +1124,18 @@ export class Combat {
           g.fx.ring(pl.pos, 10, col, 0.3, 2);
         }
         break;
+      case 'impale':
+        // the point stays out in front for the whole charge
+        pl.actionT = lerp(0.32, 0.6, clamp01(t));
+        if (crossed(0.55)) { if (this.lineHits(1.9, { knock: 3, stun: 1.0, poise: 2 })) g.cameraRig.shake(0.3); }
+        break;
+      case 'javelin':
+        if (crossed(0.42)) {
+          _v.copy(pl.pos); _v.y += 1.45; this.aimDir(_v, _d, 62, 0);
+          this.fire('javelin', _v, _d, 62, 2.8, { pierce: true, hit: new Set(), radius: 0.6, life: 1.1, knock: 7, src: 'skill', heavy: true, poise: 2 });
+          g.sfx('swing_spear', { pitch: 0.8 }); g.sfx('skill_pierce'); g.cameraRig.kick(0.03); g.cameraRig.punch(3);
+        }
+        break;
       case 'volley':
         if (crossed(0.2)) {
           this.muzzlePos(_v); this.aimDir(_v, _d, 60, 3);
@@ -785,20 +1154,94 @@ export class Combat {
         if (crossed(0.7)) {
           this.muzzlePos(_v); this.aimDir(_v, _d, 400, 0);
           const wh = g.physics.raycast(_v, _d, 70, RAY_SOLID), len = wh ? wh.dist : 70;
+          const ox0 = _v.x, oy0 = _v.y, oz0 = _v.z, ax = _d.x, ay = _d.y, az = _d.z;
           let n = 0;
           for (const h of [...this.candidates()]) {
             h.center(_c);
-            const ox = _c.x - _v.x, oy = _c.y - _v.y, oz = _c.z - _v.z, tt = ox * _d.x + oy * _d.y + oz * _d.z;
+            const ox = _c.x - ox0, oy = _c.y - oy0, oz = _c.z - oz0, tt = ox * ax + oy * ay + oz * az;
             if (tt < 0 || tt > len) continue;
-            if (Math.hypot(ox - _d.x * tt, oz - _d.z * tt) < h.radius + 0.6 && Math.abs(oy - _d.y * tt) < h.height * 0.6 + 0.5) { this.strikeTarget(h, 3.1, { heavy: true, knock: 9, source: 'skill', quiet: n > 0 }); n++; }
+            if (Math.hypot(ox - ax * tt, oz - az * tt) < h.radius + 0.6 && Math.abs(oy - ay * tt) < h.height * 0.6 + 0.5) { this.strikeTarget(h, 3.1, { heavy: true, knock: 9, source: 'skill', quiet: n > 0 }); n++; }
           }
-          _v2.copy(_v).addScaledVector(_d, len);
+          _v.set(ox0, oy0, oz0); _v2.set(ox0 + ax * len, oy0 + ay * len, oz0 + az * len);
           g.fx.beam(_v, _v2, col, 0.7, 0.3, 0, 5); g.fx.beam(_v, _v2, 0xffffff, 0.2, 0.2, 0, 6);
           g.sfx('skill_pierce'); g.cameraRig.kick(0.04); g.cameraRig.shake(0.35); g.cameraRig.punch(4);
         }
         break;
+      case 'shock_arrow':
+        if (crossed(0.2)) {
+          this.muzzlePos(_v); this.aimDir(_v, _d, 64, 4);
+          this.fire('arrow', _v, _d, 64, 1.5, { stun: 1.2, ammo: 'bolt_shock', color: 0x7ff0ff, knock: 4, src: 'skill', grav: 4 });
+          g.sfx('bow_release'); g.sfx('arc_zap', { vol: 0.5 }); g.cameraRig.kick(0.02);
+        }
+        break;
       case 'barrage':
-        for (let i = 0; i < 6; i++) if (crossed(0.05 + i * 0.15)) this.fireBolt(0.75, 0.025);
+        for (let i = 0; i < 6; i++) if (crossed(0.05 + i * 0.15)) this.fireBolt(0.75, 0.025, i === 0);
+        break;
+      case 'flip_volley':
+        for (let i = 0; i < 3; i++) if (crossed(0.15 + i * 0.25)) this.fireBolt(0.9, 0.012, false);
+        break;
+
+      // ---- ultimates ----
+      case 'ult_sword': {
+        for (let i = 0; i < 6; i++) if (crossed(0.06 + i * 0.125)) {
+          const h = this.pickUnseen(14);
+          if (!h) continue;
+          const dx = h.pos.x - pl.pos.x, dz = h.pos.z - pl.pos.z, d = Math.hypot(dx, dz) || 1;
+          const go = Math.max(0, d - h.radius - 1.4);
+          _v.copy(pl.pos); _v.y += 1; _v2.set(pl.pos.x + dx / d * go, pl.pos.y + 1, pl.pos.z + dz / d * go);
+          g.fx.beam(_v, _v2, col, 0.5, 0.2, 0, 4);
+          pl.yaw = Math.atan2(dx, dz); pl.lunge.set(dx / d * go / 0.06, 0, dz / d * go / 0.06); pl.lungeT = 0.06;
+          this.target = h; this.skillHits = i + 1;
+          this.strikeTarget(h, 1.3, { heavy: true, knock: 1, source: 'skill', poise: 1.5, quiet: i % 2 === 1 });
+          g.sfx('swing_sword', { pitch: 1.1 + i * 0.07 });
+        }
+        if (t < 0.8) { const u = Math.max(0, (t - 0.06) / 0.125); pl.action = Math.floor(u) % 2 ? 'sword2' : 'sword1'; pl.actionT = 0.3 + 0.3 * (u % 1); }
+        else { pl.action = 'swordSkill'; pl.actionT = 0.15 + 0.85 * clamp01((t - 0.8) / 0.2); }
+        if (crossed(0.9)) {
+          this.aoe(pl.pos.x, pl.pos.y, pl.pos.z, 5.5, 2.4, { heavy: true, knock: 9, source: 'skill', poise: 2 });
+          g.fx.ring(pl.pos, 11, col, 0.4, 3); g.fx.ring(pl.pos, 7, 0xffffff, 0.3, 4); g.fx.dust(pl.pos, 14, 2);
+          g.cameraRig.shake(0.7); g.sfx('skill_slam'); g.sfx('skill_whirl', { pitch: 0.8 });
+        }
+        break;
+      }
+      case 'ult_spear':
+        if (crossed(0.62)) {
+          pl.vel.set(0, -26, 0);
+          this.aoe(pl.pos.x, pl.pos.y, pl.pos.z, 6, 6.5, { heavy: true, knock: 12, source: 'skill', stun: 2, poise: 3 });
+          _v.copy(pl.pos); _v.y = g.groundY(pl.pos.x, pl.pos.z, pl.pos.y + 0.5) + 0.1;
+          _v2.set(_v.x + 2, _v.y + 30, _v.z + 1);
+          g.fx.beam(_v2, _v, col, 1.4, 0.35, 0, 5); g.fx.beam(_v2, _v, 0xffffff, 0.4, 0.25, 0, 8);
+          g.fx.ring(_v, 12, col, 0.5, 3); g.fx.ring(_v, 7, 0xffffff, 0.35, 4); g.fx.explosion(_v, 2.2, col); g.fx.dust(_v, 24, 2.6);
+          g.fx.chunks(_v, 12, [0x8a8f98, 0x6a6f78, col], 9, 0.2);
+          g.cameraRig.shake(0.9); g.cameraRig.punch(-6); g.renderer.post.flash.w = Math.max(g.renderer.post.flash.w, 0.12);
+          g.sfx('skill_slam'); g.sfx('thunder_strike', { pos: _v });
+        }
+        break;
+      case 'ult_bow':
+        pl.action = 'bowRelease'; pl.actionT = (t * 8) % 1; pl.actionSlow = 0.1;
+        for (let i = 0; i < 14; i++) if (crossed(0.08 + i * 0.06)) {
+          const h = this.pickUnseen(45);
+          this.muzzlePos(_v); this.aimDir(_v, _d, 72, 4, h ?? this.target);
+          if (!h) { _d.x += rand(-0.08, 0.08); _d.z += rand(-0.08, 0.08); _d.normalize(); }
+          this.fire('arrow', _v, _d, 72, 0.72, { knock: 3, grav: 4 });
+          g.sfx('bow_release', { pitch: 1 + i * 0.03, vol: 0.7 }); g.cameraRig.kick(0.006);
+        }
+        break;
+      case 'ult_crossbow':
+        for (let i = 0; i < 16; i++) if (crossed(0.04 + i * 0.05)) this.fireBolt(0.45, 0.035, false);
+        if (crossed(0.9)) {
+          this.muzzlePos(_v); this.aimDir(_v, _d, 78, 0);
+          this.fire('bolt', _v, _d, 78, 1.6, { blast: 5.5, color: 0xff8a2a, radius: 0.5, src: 'skill' });
+          g.fx.muzzle(_v, _d, 0xff8a2a, 2); g.sfx('rifle_fire', { pitch: 0.7 }); g.cameraRig.kick(0.05); g.cameraRig.punch(5);
+        }
+        break;
+      case 'ult_rifle':
+        pl.actionSlow = 0.1;
+        if (t < 0.6) {
+          pl.action = 'rifleAim'; pl.actionT = Math.min(1, t / 0.3);
+          this.muzzlePos(_v); g.fx.emit(_v, { count: 2, speed: [2, 5], life: [0.15, 0.3], size: [0.06, 0.12], color: col, color2: 0xffffff, glow: 5, sprite: SP.STREAK, stretch: 0.1, radius: 0.6 });
+        } else pl.actionT = clamp01((t - 0.6) / 0.4);
+        if (crossed(0.6)) this.fireRifle(8, { rail: true, stun: 1.5, poise: 3, knock: 14 });
         break;
     }
     if (t >= 1) {
@@ -843,27 +1286,37 @@ export class Combat {
         }
         if (best) {
           _v2.set(s.x + _d.x * hitT, s.y + _d.y * hitT, s.z + _d.z * hitT);
-          this.strikeTarget(best, s.dmg, { source: s.kind === 'arrow' ? 'arrow' : 'bolt', knock: s.knock, crit: s.crit || undefined, stun: s.stun || undefined, fromX: s.x - _d.x * 2, fromZ: s.z - _d.z * 2 });
-          if (s.blast) this.blast(_v2, s.blast, s.dmg * 0.8);
+          // the strike and what follows it reuse the scratch vectors: keep the direction and the impact point
+          const ix = _v2.x, iy = _v2.y, iz = _v2.z, ax = _d.x, ay = _d.y, az = _d.z;
+          this.strikeTarget(best, s.dmg, { source: s.src ?? (s.kind === 'arrow' ? 'arrow' : 'bolt'), knock: s.knock, crit: s.crit || undefined, stun: s.stun || undefined, heavy: s.heavy, poise: s.poise, fromX: s.x - ax * 2, fromZ: s.z - az * 2 });
+          if (s.blast) this.blast(_v2.set(ix, iy, iz), s.blast, s.dmg * 0.8);
           if (s.ammo === 'bolt_shock') this.chain(best, s.dmg * 0.6);
+          if (s.zone) this.addZone(s.zone, ix, this.game.groundY(ix, iz, iy + 0.5), iz);
+          _d.set(ax, ay, az);
           if (s.pierce && s.hit) { s.hit.add(best); stop = false; } else continue;
         }
       }
       if (stop) {
         _v2.set(s.x + _d.x * hitT, s.y + _d.y * hitT, s.z + _d.z * hitT);
         g.fx.hitSparks(_v2, wh!.normal, s.color, 0.6);
-        if (s.blast) this.blast(_v2, s.blast, s.dmg * 0.8);
         if (!s.enemy) g.sfx('arrow_thunk', { pos: _v2, vol: 0.5 });
+        if (s.zone) this.addZone(s.zone, _v2.x, _v2.y, _v2.z);
+        if (s.blast) this.blast(_v2, s.blast, s.dmg * 0.8);
         continue;
       }
       s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
       // visuals
       if (s.enemy) {
         g.fx.emit(s, { count: 1, speed: [0, 0.4], life: [0.14, 0.2], size: [s.radius * 2.6, s.radius * 3], grow: 0.2, color: s.color, glow: 3.2, sprite: SP.DOT });
+      } else if (s.kind === 'wave') {
+        // a crescent: bright streaks thrown out along its width as it flies
+        for (let k = -1; k <= 1; k++) g.fx.emit({ x: s.x - _d.z * k * 0.9, y: s.y + rand(-0.3, 0.3), z: s.z + _d.x * k * 0.9 }, { count: 1, speed: [0, 0.6], life: [0.12, 0.2], size: [0.3, 0.45], grow: 0.2, color: s.color, color2: 0xffffff, glow: 3.5, sprite: SP.DOT });
       } else {
-        g.fx.emit(s, { count: 1, speed: [0, 0.2], life: [0.1, 0.16], size: [0.12, 0.16], grow: 0.1, color: s.color, glow: 2.5, sprite: SP.DOT });
+        const big = s.kind === 'javelin';
+        g.fx.emit(s, { count: big ? 2 : 1, speed: [0, 0.2], life: [0.1, big ? 0.28 : 0.16], size: big ? [0.2, 0.3] : [0.12, 0.16], grow: 0.1, color: s.color, color2: big ? 0xffffff : undefined, glow: big ? 4 : 2.5, sprite: SP.DOT });
       }
-      _m.compose(_v.set(s.x, s.y, s.z), _q.setFromUnitVectors(_up, _d), _s.set(s.enemy ? 2.5 : 1.2, s.enemy ? 2.5 : 1.2, s.enemy ? 0.9 : 1.1));
+      if (s.kind === 'wave') _s.set(52, 3, 0.5); else if (s.kind === 'javelin') _s.set(2.4, 2.4, 2.8); else _s.set(s.enemy ? 2.5 : 1.2, s.enemy ? 2.5 : 1.2, s.enemy ? 0.9 : 1.1);
+      _m.compose(_v.set(s.x, s.y, s.z), _q.setFromUnitVectors(_up, _d), _s);
       this.shotMesh.setMatrixAt(w, _m);
       this.shotMesh.setColorAt(w, _col.setHex(s.color));
       this.shots[w++] = s;
@@ -933,14 +1386,90 @@ export class Combat {
     if (this.crateMesh.instanceColor) this.crateMesh.instanceColor.needsUpdate = true;
   }
 
+  // ------------------------------------------------------------------ ground effects left by skills
+  private addZone(kind: Zone['kind'], x: number, y: number, z: number) {
+    const g = this.game, col = kind === 'jam' ? 0xffd23a : g.state.weapon.color;
+    if (this.zones.length >= 6) this.zones.shift();
+    if (kind === 'rain') {
+      // arrows take a moment to come down; the ring on the ground says where
+      this.zones.push({ kind, x, y, z, r: 4.5, t: -0.35, dur: 2, next: 0, color: col });
+      g.fx.telegraph({ shape: 0, x, y, z, radius: 4.5, dur: 2.35, color: col });
+    } else if (kind === 'jam') {
+      this.zones.push({ kind, x, y, z, r: 4.5, t: 0, dur: 3, next: 0.75, color: col });
+      _v2.set(x, y + 0.4, z);
+      g.fx.explosion(_v2, 0.8, col); g.fx.ring(_v2, 9, col, 0.4, 3); g.sfx('arc_pulse', { pos: _v2 });
+      g.fx.telegraph({ shape: 0, x, y, z, radius: 4.5, dur: 3, color: col });
+      this.aoe(x, y, z, 4.5, 0.5, { source: 'skill', stun: 1.2, knock: 1 });
+    } else this.zones.push({ kind, x, y, z, r: 2.8, t: 0, dur: 14, next: 0, color: col });
+  }
+  private updateZones(dt: number) {
+    const g = this.game;
+    for (let i = this.zones.length - 1; i >= 0; i--) {
+      const z = this.zones[i];
+      z.t += dt;
+      let done = z.t >= z.dur;
+      if (z.kind === 'rain') {
+        if (z.t >= 0) {
+          for (let k = 0; k < 2; k++) {
+            const a = rand(0, TAU), r = Math.sqrt(Math.random()) * z.r;
+            _v2.set(z.x + Math.sin(a) * r, z.y + 0.05, z.z + Math.cos(a) * r); _v.set(_v2.x - 1.5, z.y + 16, _v2.z - 1);
+            g.fx.beam(_v, _v2, z.color, 0.07, 0.1, 0, 4); g.fx.hitSparks(_v2, _upY, z.color, 0.5);
+          }
+          if (z.t >= z.next) {
+            z.next += 0.25;
+            g.sfx('arrow_thunk', { pos: _v2, vol: 0.5, pitch: rand(0.9, 1.2) });
+            this.aoe(z.x, z.y, z.z, z.r, 0.45, { source: 'arrow', knock: 0.5, quiet: true });
+          }
+        }
+      } else if (z.kind === 'jam') {
+        // robots inside keep seizing: a short stun on every pulse
+        if (z.t >= z.next) {
+          z.next += 0.75;
+          for (let k = 0; k < 3; k++) {
+            const a = rand(0, TAU), b = rand(0, TAU);
+            _v.set(z.x + Math.sin(a) * z.r * 0.9, z.y + rand(0.3, 1.6), z.z + Math.cos(a) * z.r * 0.9);
+            _v2.set(z.x + Math.sin(b) * z.r * 0.5, z.y + rand(0.3, 1.6), z.z + Math.cos(b) * z.r * 0.5);
+            g.fx.beam(_v, _v2, z.color, 0.14, 0.2, 0.5, 5);
+          }
+          _v2.set(z.x, z.y + 0.1, z.z); g.fx.ring(_v2, z.r * 2, z.color, 0.3, 2); g.sfx('arc_zap', { pos: _v2, vol: 0.35 });
+          this.aoe(z.x, z.y, z.z, z.r, 0.25, { source: 'skill', knock: 0, stun: 0.4, quiet: true });
+        }
+      } else {
+        // mine: blinks once armed, and bursts when a robot comes near
+        const armed = z.t > 0.5;
+        if (z.t >= z.next) {
+          z.next += armed ? 0.6 : 0.25;
+          _v2.set(z.x, z.y + 0.12, z.z);
+          g.fx.emit(_v2, { count: 1, speed: [0, 0], life: [0.3, 0.3], size: [0.5, 0.5], grow: 0.3, color: armed ? z.color : 0xffffff, glow: 5, sprite: SP.STAR });
+          if (armed) g.fx.ring(_v2, z.r * 2, z.color, 0.4, 1.2);
+        }
+        let trip = false;
+        if (armed) for (const h of this.candidates()) if ((h as Partial<Mob>).state !== 'spawn' && Math.hypot(h.pos.x - z.x, h.pos.z - z.z) < z.r + h.radius && Math.abs(h.pos.y - z.y) < 3) { trip = true; break; }
+        if (trip) {
+          done = true;
+          _v2.set(z.x, z.y + 0.5, z.z);
+          g.fx.explosion(_v2, 1.5, z.color); g.fx.ring(_v2, 10, z.color, 0.4, 3); g.sfx('explode_small', { pos: _v2 }); g.sfx('arc_zap', { pos: _v2 }); g.cameraRig.shake(0.4);
+          this.aoe(z.x, z.y, z.z, 5, 2.6, { heavy: true, knock: 9, stun: 1.5, source: 'skill', poise: 2 });
+        }
+      }
+      if (done) this.zones.splice(i, 1);
+    }
+  }
+
   /** Reset transient state (teleports, cutscenes). */
   cancel() {
     const pl = this.game.player;
-    this.swing = null; this.skill = null; this.drawing = false; this.aiming = false; this.draw = 0; this.queued = false; this.trail?.stop();
-    this.buf = null;
+    this.clearAttack(); this.skill = null;
+    this.buf = null; this.counterT = 0;
     pl.action = null; pl.lungeT = 0; this.actDur = 0;
   }
-  clearShots() { this.shots.length = 0; this.strikes.length = 0; }
+  clearShots() { this.shots.length = 0; this.strikes.length = 0; this.zones.length = 0; }
+  /** Dev and test hook: back to a clean slate (cooldowns, meter, magazine, anything in flight). */
+  resetForTest() {
+    this.cancel(); this.clearShots();
+    this.cds = {}; this.od = 0; this.swapCd = 0; this.potionCd = 0; this.fireCd = 0; this.overcharge = 0;
+    this.mag = XBOW.mag; this.reloadT = 0; this.combo = 0; this.perfectT = 0; this.sinceHit = 9;
+  }
   /** HUD helper: ammo/magazine label for the attack button. */
   attackLabel(): string {
     if (this.kind === 'crossbow') return this.reloadT > 0 ? '…' : String(this.mag);
@@ -949,4 +1478,68 @@ export class Combat {
   get overcharged() { return this.overcharge > 0; }
   /** seconds of Overcharge left (the next rifle shot hits three times as hard) */
   get overchargeT() { return Math.max(0, this.overcharge); }
+
+  // ------------------------------------------------------------------ HUD
+  /**
+   * The action bar as docs/COMBAT.md defines it. Sent through hud.setActionBar when the HUD has it,
+   * and only when something a player could see has changed.
+   */
+  actionBar(): ActionSlot[] {
+    const g = this.game, st = g.state, pl = g.player, k = this.kind, lvl = st.d.level, e = st.d.energy;
+    const out: ActionSlot[] = [];
+    // attack: the weapon in hand, what a hold does with it, and the hold itself as a 0..1 charge
+    const atk: ActionSlot = { id: 'attack', icon: k === 'none' ? 'sword' : k, label: ATTACK_LABEL[k] ?? 'Strike', state: this.busy && !this.aiming ? 'active' : 'ready' };
+    if (this.charging) { atk.charge = clamp01(this.chargeT / CHARGE_LV[1]); atk.label = this.chargeLv === 2 ? 'Full' : 'Charge'; }
+    else if (this.drawing) atk.charge = this.draw;
+    else if (this.aiming) atk.charge = clamp01(this.draw * RIFLE.steady / RIFLE.full);
+    else if (this.counterT > 0) { atk.state = 'active'; atk.label = 'Counter'; }
+    if (k === 'crossbow') { atk.count = this.mag; if (this.reloadT > 0) { atk.state = 'cooldown'; atk.cd = clamp01(this.reloadT / XBOW.reload); } }
+    out.push(atk);
+    const dodge: ActionSlot = { id: 'dodge', icon: 'dodge', label: 'Dodge', state: pl.rollCd > 0 ? 'cooldown' : 'ready' };
+    if (pl.rollCd > 0) dodge.cd = clamp01(pl.rollCd / 0.75);
+    out.push(dodge, { id: 'jump', icon: 'jump', label: 'Jump', state: 'ready' });
+    // skills: the third slot is locked until its level; an empty slot is left out (hidden)
+    const sl = this.skillSlots;
+    for (let i = 0; i < 3; i++) {
+      const s = sl[i], id = ('skill' + (i + 1)) as ActionSlot['id'];
+      if (!s) { if (i === 2 && lvl < SLOT3_LEVEL) out.push({ id, icon: 'lock', label: '', state: 'locked', unlock: SLOT3_LEVEL }); continue; }
+      const cd = this.cds[s.id] ?? 0;
+      const b: ActionSlot = { id, icon: s.icon, label: s.name, state: this.skill === s.id ? 'active' : cd > 0 ? 'cooldown' : e < s.energy ? 'noenergy' : 'ready' };
+      // a skill in use glows; its sweep and number show once it is over
+      if (cd > 0 && b.state !== 'active') { b.cd = s.cd > 0 ? clamp01(cd / s.cd) : 0; if (s.cd >= 2) b.cdSec = cd; }
+      out.push(b);
+    }
+    // Overdrive: locked until its level, then a meter that fills; `ready` with a full charge means it can be fired
+    if (lvl < OVERDRIVE_LEVEL) out.push({ id: 'overdrive', icon: 'overdrive', label: '', state: 'locked', unlock: OVERDRIVE_LEVEL });
+    else out.push({ id: 'overdrive', icon: 'overdrive', label: ULTIMATES[k as SkillKind]?.name ?? 'Overdrive', state: this.skill?.startsWith('ult_') ? 'active' : 'ready', charge: this.od / 100 });
+    const kit: ActionSlot = { id: 'kit', icon: 'potion', label: 'Heal Kit', state: this.potionCd > 0 ? 'cooldown' : 'ready', count: st.count('kit') };
+    if (this.potionCd > 0) { kit.cd = clamp01(this.potionCd / 12); kit.cdSec = this.potionCd; }
+    out.push(kit);
+    // swap lights up while it would bring the other weapon in with a strike
+    if (st.d.loadout[1]) out.push({ id: 'swap', icon: 'swap', label: 'Swap', state: this.swapStrikeOpen ? 'active' : 'ready' });
+    out.push({ id: 'target', icon: 'nexttarget', label: 'Target', state: 'ready' });
+    // the mount button is not combat's: the mount system shows it through hud.setAct
+    return out;
+  }
+  private feedHud() {
+    const hud = this.game.hud as unknown as { setActionBar?: (slots: ActionSlot[]) => void; setTargetState?: (s: { stagger: number; broken: boolean; effects: string[] } | null) => void };
+    // target frame: the stagger meter of the robot in the reticle, and whether it is on its heels
+    if (typeof hud.setTargetState === 'function') {
+      const t = this.target as (Hittable & Partial<Mob>) | null;
+      const on = !!t && t.alive && typeof t.staggerFrac === 'number';
+      const broken = on && (t!.state === 'stagger' || t!.state === 'stun');
+      const sig = on ? (t!.id ?? 0) * 1000 + Math.round(t!.staggerFrac! * 100) + (broken ? 0.5 : 0) : -1;
+      if (sig !== this.tgtSig) { this.tgtSig = sig; hud.setTargetState(on ? { stagger: t!.staggerFrac!, broken, effects: NO_EFFECTS } : null); }
+    }
+    if (typeof hud.setActionBar !== 'function') return;
+    const slots = this.actionBar();
+    let sig = '';
+    for (const s of slots) sig += s.id + s.icon + s.label + s.state + Math.round((s.cd ?? 0) * 200) + ',' + Math.round((s.charge ?? 0) * 100) + ',' + (s.count ?? '') + ',' + Math.ceil((s.cdSec ?? 0) * 10) + '|';
+    if (sig === this.hudSig) return;
+    this.hudSig = sig;
+    hud.setActionBar(slots);
+  }
 }
+const _upY = new THREE.Vector3(0, 1, 0);
+const ATTACK_LABEL: Record<string, string> = { sword: 'Slash', spear: 'Thrust', bow: 'Draw', crossbow: 'Burst', rifle: 'Fire' };
+const NO_EFFECTS: string[] = [];

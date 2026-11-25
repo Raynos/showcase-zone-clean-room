@@ -715,6 +715,17 @@ const SWORD2 = [
   [0.74, -108, -22, 0.48, -32, -0.76, 0.12, -0.34, -0.04],
   [1.0, -40, -35, 0.42, 0, 0.0, 0.0, 0.0, 0.0],
 ];
+// charged sweep: wound right round and low at 0.28, through the front at 0.42, carried past the far shoulder
+const SWORD_SWEEP = [
+  [0.0, -40, -35, 0.42, 0, 0.0, 0.0, 0.0, 0.0],
+  [0.16, -120, 10, 0.5, -36, -0.7, -0.04, -0.4, -0.04],
+  [0.28, -162, 16, 0.52, -52, -1.1, -0.08, -0.62, -0.14],
+  [0.35, -70, 6, 0.62, -30, -0.2, 0.1, 0.0, -0.16],
+  [0.42, 30, -4, 0.66, 10, 0.6, 0.18, 0.4, -0.18],
+  [0.52, 140, -14, 0.56, 36, 1.15, 0.2, 0.66, -0.16],
+  [0.8, 150, -22, 0.48, 40, 1.0, 0.14, 0.56, -0.12],
+  [1.0, 100, -30, 0.42, 20, 0.4, 0.04, 0.2, 0.0],
+];
 function swordArc(P: Pose, hp: HumanPose, keys: number[][], dirSign: number) {
   const t = hp.actionT;
   track(keys, t, K);
@@ -742,14 +753,49 @@ const SWORD3 = [
   [0.72, -50, 0.5, -24, 0.42, -0.16, 0.06],
   [1.0, -40, 0.42, 0, 0.0, 0.0, 0.0],
 ];
-function swordChop(P: Pose, hp: HumanPose) {
+// charged overhead: coiled at 0.3 with the blade right back over the shoulder, lands at 0.42, buried until 0.8
+const SWORD_HEAVY = [
+  [0.0, -40, 0.42, 0, 0.0, 0.0, 0.0],
+  [0.18, 120, 0.5, 40, -0.3, 0.04, -0.2],
+  [0.3, 152, 0.46, 58, -0.46, -0.1, -0.3],
+  [0.36, 95, 0.6, 20, -0.1, 0.06, -0.08],
+  [0.42, 6, 0.66, -12, 0.42, -0.2, 0.08],
+  [0.5, -58, 0.56, -28, 0.66, -0.32, 0.1],
+  [0.8, -60, 0.52, -26, 0.58, -0.28, 0.08],
+  [1.0, -40, 0.42, 0, 0.0, 0.0, 0.0],
+];
+// breaker: crouched to spring at 0.3, in the air at 0.37, lands with the blade at 0.44
+const SWORD_BREAKER = [
+  [0.0, -40, 0.42, 0, 0.0, 0.0, 0.0],
+  [0.18, 100, 0.48, 30, -0.1, -0.16, 0.1],
+  [0.3, 135, 0.46, 50, 0.1, -0.3, 0.16],
+  [0.37, 150, 0.52, 44, -0.4, 0.36, 0.0],
+  [0.44, 10, 0.66, -12, 0.46, -0.1, 0.06],
+  [0.52, -62, 0.56, -30, 0.72, -0.38, 0.08],
+  [0.82, -62, 0.52, -28, 0.62, -0.32, 0.06],
+  [1.0, -40, 0.42, 0, 0.0, 0.0, 0.0],
+];
+// rising cut: blade trailing low at 0.14, through the target at 0.38, high and stretched at 0.48
+const SWORD_RISE = [
+  [0.0, -40, 0.42, 0, 0.0, 0.0, 0.0],
+  [0.14, -75, 0.46, -30, 0.42, -0.26, -0.3],
+  [0.3, -30, 0.58, -20, 0.2, -0.12, -0.1],
+  [0.38, 45, 0.64, 10, -0.16, 0.06, 0.12],
+  [0.48, 118, 0.56, 36, -0.36, 0.16, 0.2],
+  [0.76, 112, 0.5, 30, -0.26, 0.1, 0.14],
+  [1.0, -40, 0.42, 0, 0.0, 0.0, 0.0],
+];
+function swordChop(P: Pose, hp: HumanPose, keys: number[][] = SWORD3) {
   const t = hp.actionT;
-  track(SWORD3, t, K);
+  track(keys, t, K);
   const b = K[0] * DEG, r = K[1], lead = K[2] * DEG;
   const pl = planted(hp);
   twist(P, 0, K[5], K[3], K[4] * (0.35 + 0.65 * pl), 0.1 * bell(t, 0.3, 0.45, 0.7, 1) * pl);
   combatFeet(P, pl, 0.2 * bell(t, 0.28, 0.45, 0.75, 1), 0);
   if (pl > 0) P.footPos[L].y += 0.1 * bell(t, 0.18, 0.3, 0.36, 0.42) * pl;
+  // a table that lifts the hips this far is a leap: the feet leave the ground and tuck
+  const up = Math.max(0, K[4] - 0.1);
+  if (up > 0) { P.footPos[L].y += up * 1.1; P.footPos[R].y += up * 1.5; P.footPos[R].z -= up * 0.4; qmul(P.footQ[R], up * 2.2); }
   torso(P);
   const px = -0.1, py = 0.2 + Math.sin(b) * r, pz = Math.cos(b) * r;
   handPosRA(P, R, px, py, pz);
@@ -791,22 +837,75 @@ function swordSkill(P: Pose, hp: HumanPose) {
 // thrusts: [t, hx, hy, hz (rear hand, root-aligned from chest), yaw°, pitch°, chestYaw, hipsZ, hipsY, chestPitch, grip]
 const SPEAR1 = [
   [0.0, -0.22, -0.1, -0.05, 12, 5, -0.25, 0.0, 0.0, 0.0, 0.45],
-  [0.2, -0.3, -0.02, -0.32, 8, 3, -0.62, -0.08, -0.02, -0.04, 0.5],
-  [0.3, -0.2, 0.0, 0.1, 4, 1, 0.1, 0.1, -0.05, 0.1, 0.4],
-  [0.39, -0.08, 0.0, 0.44, 2, 0, 0.56, 0.22, -0.08, 0.2, 0.3],
-  [0.52, -0.08, 0.0, 0.45, 2, 0, 0.56, 0.22, -0.08, 0.2, 0.3],
-  [0.74, -0.18, -0.06, 0.1, 8, 3, 0.0, 0.05, -0.02, 0.04, 0.42],
+  [0.14, -0.3, -0.02, -0.32, 8, 3, -0.62, -0.08, -0.02, -0.04, 0.5],
+  [0.22, -0.2, 0.0, 0.1, 4, 1, 0.1, 0.1, -0.05, 0.1, 0.4],
+  [0.29, -0.08, 0.0, 0.46, 2, 0, 0.56, 0.24, -0.08, 0.2, 0.3],
+  [0.48, -0.08, 0.0, 0.47, 2, 0, 0.56, 0.24, -0.08, 0.2, 0.3],
+  [0.76, -0.18, -0.06, 0.1, 8, 3, 0.0, 0.05, -0.02, 0.04, 0.42],
   [1.0, -0.22, -0.1, -0.05, 12, 5, -0.25, 0.0, 0.0, 0.0, 0.45],
 ];
 const SPEAR2 = [
   [0.0, -0.22, -0.1, -0.05, 12, 5, -0.25, 0.0, 0.0, 0.0, 0.45],
-  [0.2, -0.28, 0.36, -0.2, 6, -16, -0.55, -0.06, 0.02, -0.12, 0.42],
-  [0.3, -0.2, 0.32, 0.12, 3, -20, 0.1, 0.1, -0.03, 0.12, 0.36],
-  [0.39, -0.1, 0.22, 0.42, 0, -24, 0.5, 0.2, -0.1, 0.3, 0.3],
-  [0.52, -0.1, 0.2, 0.43, 0, -25, 0.5, 0.2, -0.1, 0.3, 0.3],
-  [0.74, -0.2, 0.0, 0.1, 8, -5, 0.0, 0.04, -0.02, 0.05, 0.42],
+  [0.14, -0.28, 0.36, -0.2, 6, -16, -0.55, -0.06, 0.02, -0.12, 0.42],
+  [0.22, -0.2, 0.32, 0.12, 3, -20, 0.1, 0.1, -0.03, 0.12, 0.36],
+  [0.29, -0.1, 0.22, 0.44, 0, -24, 0.5, 0.22, -0.1, 0.3, 0.3],
+  [0.48, -0.1, 0.2, 0.45, 0, -25, 0.5, 0.22, -0.1, 0.3, 0.3],
+  [0.76, -0.2, 0.0, 0.1, 8, -5, 0.0, 0.04, -0.02, 0.05, 0.42],
   [1.0, -0.22, -0.1, -0.05, 12, 5, -0.25, 0.0, 0.0, 0.0, 0.45],
 ];
+// charged thrust: drawn right back and sunk at 0.3, full extension at 0.4 and held out until 0.62
+const SPEAR_HEAVY = [
+  [0.0, -0.22, -0.1, -0.05, 12, 5, -0.25, 0.0, 0.0, 0.0, 0.45],
+  [0.18, -0.3, 0.0, -0.3, 8, 3, -0.6, -0.08, -0.04, -0.04, 0.5],
+  [0.3, -0.34, 0.04, -0.46, 5, 2, -0.95, -0.18, -0.14, -0.1, 0.52],
+  [0.35, -0.2, 0.02, 0.1, 3, 1, 0.1, 0.12, -0.12, 0.12, 0.4],
+  [0.4, -0.06, 0.0, 0.54, 1, 0, 0.7, 0.34, -0.16, 0.26, 0.26],
+  [0.62, -0.06, 0.0, 0.54, 1, 0, 0.68, 0.32, -0.16, 0.26, 0.26],
+  [0.84, -0.18, -0.06, 0.1, 8, 3, 0.0, 0.05, -0.04, 0.04, 0.42],
+  [1.0, -0.22, -0.1, -0.05, 12, 5, -0.25, 0.0, 0.0, 0.0, 0.45],
+];
+// breaker: shaft raised overhead and the back arched at 0.3, slammed into the ground ahead at 0.42
+const SPEAR_BREAKER = [
+  [0.0, -0.22, -0.1, -0.05, 12, 5, -0.25, 0.0, 0.0, 0.0, 0.45],
+  [0.18, -0.2, 0.3, -0.1, 4, 50, -0.2, -0.04, 0.02, -0.2, 0.42],
+  [0.3, -0.16, 0.52, -0.16, 2, 78, -0.1, -0.1, 0.06, -0.36, 0.42],
+  [0.36, -0.14, 0.4, 0.14, 1, 30, 0.1, 0.08, -0.04, 0.1, 0.4],
+  [0.42, -0.12, 0.02, 0.36, 0, -28, 0.2, 0.22, -0.26, 0.56, 0.36],
+  [0.66, -0.12, 0.0, 0.36, 0, -30, 0.2, 0.22, -0.28, 0.54, 0.36],
+  [0.86, -0.18, -0.06, 0.1, 8, 0, 0.0, 0.05, -0.06, 0.1, 0.42],
+  [1.0, -0.22, -0.1, -0.05, 12, 5, -0.25, 0.0, 0.0, 0.0, 0.45],
+];
+// javelin throw: cocked by the ear at 0.3, gone at 0.42
+const SPEAR_THROW = [
+  [0.0, -0.22, -0.1, -0.05, 12, 5, -0.25, 0.0, 0.0, 0.0, 0.45],
+  [0.3, -0.34, 0.4, -0.34, 4, 12, -0.9, -0.14, -0.04, -0.14, 0.3],
+  [0.42, -0.1, 0.34, 0.5, 0, -6, 0.8, 0.3, -0.12, 0.3, 0.24],
+  [0.7, -0.1, 0.2, 0.46, 0, -14, 0.7, 0.26, -0.12, 0.3, 0.28],
+  [1.0, -0.22, -0.1, -0.05, 12, 5, -0.25, 0.0, 0.0, 0.0, 0.45],
+];
+/** Spear sweep: coil at 0.22, then one full turn with the shaft held level, the point passing the front at 0.46. */
+function spearSpin(P: Pose, hp: HumanPose) {
+  const t = hp.actionT;
+  const wind = smooth(0, 0.22, t) * (1 - smooth(0.26, 0.36, t));
+  const spin = smooth(0.26, 0.68, t);
+  const yaw = -0.95 * wind + TAU * spin;
+  const act = bell(t, 0.04, 0.22, 0.72, 0.98);
+  neutral(P);
+  P.hipsPos.set(0, SK.hipY - 0.17 * act, 0);
+  qe(P.hipsQ, 0.12 * act, yaw, 0);
+  qe(P.spineQ, 0.08 * act, 0.1 * act, 0); qe(P.chestQ, 0.04, 0.16 * act, 0); qe(P.headQ, -0.1 * act, 0.2 * act, 0);
+  qe(_q2, 0, yaw, 0);
+  for (let s = 0; s < 2; s++) {
+    const k = sx(s);
+    _v1.set(k * lerp(0.11, 0.3, act), SK.ankle, s === L ? 0.14 * act : -0.16 * act).applyQuaternion(_q2);
+    P.footPos[s].copy(_v1);
+    qe(P.footQ[s], 0, yaw + k * 0.3);
+    P.knee[s].set(k * 0.4, 0, 1).applyQuaternion(_q2);
+  }
+  // the shaft rides the turn: hands are placed root-aligned, so they are swung round by hand
+  const c = Math.cos(yaw), sn = Math.sin(yaw), hx = -0.14, hz = 0.16;
+  spearHands(P, hx * c + hz * sn, -0.04 - 0.04 * act, -hx * sn + hz * c, yaw - 0.35 * act, -0.06 * act, 0.44);
+}
 function spearHands(P: Pose, rx: number, ry: number, rz: number, yaw: number, pitch: number, grip: number) {
   torso(P);
   const dx = Math.sin(yaw) * Math.cos(pitch), dy = Math.sin(pitch), dz = Math.cos(yaw) * Math.cos(pitch);
@@ -927,12 +1026,29 @@ function gunPose(P: Pose, hp: HumanPose, rifle: boolean, shoulder: number, recoi
   P.elbow[R].set(-1, -0.5, -0.5); P.elbow[L].set(0.5, -1, 0);
 }
 
+/** A held charge shows as strain: the coiled pose sinks and trembles more the longer it is held. */
+function strain(P: Pose, hp: HumanPose) {
+  const ch = hp.charge ?? 0;
+  if (ch <= 0) return;
+  const n = noise1(hp.time * 46) * 0.014 * ch;
+  qmul(P.chestQ, n, n * 0.7, 0); qmul(P.headQ, -n, 0, 0);
+  P.hipsPos.y -= 0.035 * ch;
+  for (let s = 0; s < 2; s++) P.handPos[s].y += n * 0.4;
+}
 function applyAction(P: Pose, hp: HumanPose, st: AnimState) {
   const a = hp.action, t = clamp01(hp.actionT);
   switch (a) {
     case 'sword1': swordArc(P, hp, SWORD1, 1); break;
     case 'sword2': swordArc(P, hp, SWORD2, -1); break;
     case 'sword3': swordChop(P, hp); break;
+    case 'swordHeavy': swordChop(P, hp, SWORD_HEAVY); break;
+    case 'swordBreaker': swordChop(P, hp, SWORD_BREAKER); break;
+    case 'swordRise': swordChop(P, hp, SWORD_RISE); break;
+    case 'swordSweep': swordArc(P, hp, SWORD_SWEEP, 1); break;
+    case 'spearHeavy': spearThrust(P, hp, SPEAR_HEAVY); break;
+    case 'spearBreaker': spearThrust(P, hp, SPEAR_BREAKER); break;
+    case 'spearThrow': spearThrust(P, hp, SPEAR_THROW); break;
+    case 'spearSpin': spearSpin(P, hp); break;
     case 'swordSkill': swordSkill(P, hp); break;
     case 'spear1': spearThrust(P, hp, SPEAR1); break;
     case 'spear2': spearThrust(P, hp, SPEAR2); break;
@@ -1149,7 +1265,7 @@ export function evaluate(hp: HumanPose, st: AnimState, dt: number): Pose {
     case 'dead': dead(P); break;
   }
   const actionOK = hp.action && hp.locomotion !== 'dead' && hp.locomotion !== 'down' && (hp.locomotion !== 'roll' || FULL_BODY[hp.action]);
-  if (actionOK) applyAction(P, hp, st);
+  if (actionOK) { applyAction(P, hp, st); strain(P, hp); }
   if (hp.locomotion !== 'dead' && hp.locomotion !== 'down') flinch(P, hp);
   // head look
   if (hp.lookYaw !== 0 || hp.lookPitch !== 0) {

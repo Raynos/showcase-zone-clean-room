@@ -86,6 +86,8 @@ export class Mob implements Hittable {
   private endTele() { if (this.tele) { this.mobs.game.fx.endTelegraph(this.tele); this.tele = null; } }
   private ground() { return this.floor ?? this.mobs.game.terrain.h(this.pos.x, this.pos.z); }
 
+  /** 0..1 of the way to a stagger: what the target frame draws under the health bar */
+  get staggerFrac() { return Math.min(1, this.poiseDmg / (this.maxHp * this.def.poise * (!this.isBoss && (this.variant === 'elite' || this.variant === 'nightElite') ? 0.55 : 1))); }
   takeHit(h: HitInfo): number {
     if (!this.alive || this.invuln || this.state === 'spawn') return 0;
     const g = this.mobs.game;
@@ -100,7 +102,7 @@ export class Mob implements Hittable {
     const kb = h.knock * (this.isBoss ? 0.06 : this.variant === 'elite' || this.variant === 'nightElite' ? 0.35 : 1);
     this.knockX += h.dirX * kb; this.knockZ += h.dirZ * kb;
     // poise
-    this.poiseDmg += dmg; this.poiseT = 1.4;
+    this.poiseDmg += dmg * (h.poise ?? 1); this.poiseT = 1.4;
     const interruptible = this.state === 'chase' || this.state === 'windup' || this.state === 'recover' || this.state === 'idle';
     // elites shrug off heavy hits and commit to a wind-up once it has started: they have to be dodged, not stun-locked
     const tough = this.isBoss || this.variant === 'elite' || this.variant === 'nightElite';

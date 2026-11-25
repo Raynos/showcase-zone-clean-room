@@ -31,6 +31,10 @@ export type Locomotion =
 export type HumanAction =
   | null
   | 'sword1' | 'sword2' | 'sword3'      // 3-hit combo: R-to-L slash, L-to-R slash, overhead chop. Blade passes through the target at t~0.4
+  | 'swordHeavy' | 'swordSweep' | 'swordBreaker'   // charged moves: coiled (held) at t~0.3, land at t~0.42, long recovery
+  | 'swordRise'                         // rising cut: low at 0.14, through the target at 0.38
+  | 'spearHeavy' | 'spearSpin' | 'spearBreaker'    // charged thrust, full-turn sweep (front at 0.46), overhead slam (0.42)
+  | 'spearThrow'                        // javelin: cocked at 0.3, released at 0.42
   | 'swordSkill'                        // whirlwind: full 360 spin slash, hit window t 0.25..0.7
   | 'spear1' | 'spear2' | 'spear3'      // thrust, thrust, wide sweep. Tip at full extension at t~0.4
   | 'spearSkill'                        // leaping downward thrust, impact at t~0.6
@@ -87,6 +91,8 @@ export interface HumanPose {
   pivot?: number; pivotX?: number; pivotZ?: number;
   /** seconds since the stick was let go at a run (the weight rocks forward over the feet and settles) */
   settleT?: number;
+  /** 0..1 strain of a held charge (the coiled pose sinks and trembles) */
+  charge?: number;
 }
 
 /** Knockdown timeline in seconds: thrown back until `fall`, lying until `lie`, on the feet again at `end`. A roll can start from `rollAt`. */
