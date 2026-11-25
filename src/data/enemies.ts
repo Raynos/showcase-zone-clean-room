@@ -134,7 +134,8 @@ export const ENEMIES: Record<RobotKind, EnemyDef> = {
     salvage: [['cell', 0.55], ['lens', 0.4], ['wire', 0.4]], colors: [0x8a939e, 0x383e47, 0x3fe3ff], glow: 0x7ff0ff,
   },
   warden: {
-    kind: 'warden', name: 'Vault Warden', hp: 26, dmg: 1.5, speed: 3.2, turn: 3.2, aggro: 60, leash: 200, poise: 0.08, boss: true,
+    // hp 26 fell in 48-62 s to playthrough bots (careless and competent): too short for a dungeon boss's three phases
+    kind: 'warden', name: 'Vault Warden', hp: 52, dmg: 1.5, speed: 3.2, turn: 3.2, aggro: 60, leash: 200, poise: 0.08, boss: true,
     attacks: [
       M({ id: 'bash', type: 'melee', range: [0, 4.2], windup: 0.75, cd: 2.6, dmg: 1.2, radius: 5.2, angle: 0.9, knock: 7 }),
       M({ id: 'quake', type: 'slam', range: [0, 6], windup: 1.0, cd: 6, dmg: 1.5, radius: 6.5, knock: 9, anim: 'attack2' }),

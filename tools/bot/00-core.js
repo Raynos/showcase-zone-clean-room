@@ -76,7 +76,7 @@
     if (gone || fr.away > 6) {
       const tools = {};
       for (const k in B.rep.tools || {}) { const n = B.rep.tools[k] - (fr.tools0[k] || 0); if (n) tools[k] = n; }
-      const out = { name: fr.name, mobLevel: fr.mobLevel, level: fr.level, style: fr.style, at: fr.at, sec: Math.round(fr.sec), dmg: Math.round(fr.dmg), kits: fr.kits, deaths: fr.deaths, minHp: Math.round(fr.minHp * 100) / 100, result: gone ? 'killed' : fr.deaths ? 'died' : 'reset', tools };
+      const out = { name: fr.name, mobLevel: fr.mobLevel, level: fr.level, style: fr.style, at: fr.at, sec: Math.round(fr.sec), dmg: Math.round(fr.dmg), kits: fr.kits, deaths: fr.deaths, minHp: Math.round(fr.minHp * 100) / 100, result: gone && m.hp <= 0 ? 'killed' : fr.deaths ? 'died' : 'reset', tools };   // a boss cleared away on our respawn is not a kill
       (B.rep.fights = B.rep.fights || []).push(out);
       console.log('[bot] fight: ' + JSON.stringify(out));
       B.fightRec = null;
