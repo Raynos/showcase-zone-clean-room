@@ -67,7 +67,9 @@ export class Engagement {
     c.autoTargetOff = this.disengaged;
     this.framed = t && !fleeing && inFight && c.target === t ? t : null;
     // First person never turns the view by itself: the target keeps its marker and the player looks.
-    // Engagement still decides when a retreat drops the target.
-    if (g.cameraRig.view === 'first') { this.framed = null; this.flee = 0; }
+    // Engagement still decides when a retreat drops the target. The shooter stance has no target to
+    // frame at all: the crosshair is the aim (systems/stance.ts).
+    if (g.cameraRig.view === 'first' || c.stance === 'shooter') { this.framed = null; this.flee = 0; }
+    if (c.stance === 'shooter') { this.disengaged = false; this.manual = false; c.autoTargetOff = true; }
   }
 }

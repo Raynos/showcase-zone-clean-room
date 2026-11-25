@@ -3,7 +3,7 @@ import { clamp } from './util';
 export type Btn =
   | 'attack' | 'skill1' | 'skill2' | 'dodge' | 'jump' | 'interact' | 'swap' | 'sprint' | 'mount'
   | 'potion' | 'target' | 'menu' | 'map' | 'bag' | 'quests' | 'char'
-  | 'skill3' | 'overdrive';
+  | 'skill3' | 'overdrive' | 'fire2' | 'aim' | 'reload';
 
 interface BtnState { down: boolean; pressed: boolean; released: boolean; heldFor: number; downAt: number }
 
@@ -40,6 +40,8 @@ export class Input {
   invertY = false;
   /** left-handed layout: the stick lives on the right half of the screen and the buttons on the left */
   mirror = false;
+  /** the shooter stance (systems/stance.ts): R reloads, the left mouse button fires, the right one aims */
+  shooter = false;
   private btn = new Map<Btn, BtnState>();
   private keys = new Set<string>();
   private stickId = -1;
@@ -91,7 +93,7 @@ export class Input {
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
     this.first();
     if (down) this.keys.add(e.code); else this.keys.delete(e.code);
-    const b = KEYMAP[e.code];
+    const b = this.shooter && e.code === 'KeyR' ? 'reload' : KEYMAP[e.code];
     if (b) { if (down) this.press(b); else this.release(b); e.preventDefault(); }
   }
 
@@ -100,7 +102,11 @@ export class Input {
     if (this.uiCapture) return;
     if (e.pointerType === 'mouse') {
       this.isTouch = false;
-      if (e.button === 0) {
+      if (this.shooter && (e.button === 0 || e.button === 2)) {
+        // the shooter stance: the first click takes the pointer; then left fires and right aims
+        if (!this.pointerLocked) this.el.requestPointerLock?.();
+        else this.press(e.button === 0 ? 'attack' : 'aim');
+      } else if (e.button === 0) {
         if (this.pointerLocked) this.press('attack');
         else { this.lookIds.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(), moved: 0 }); this.mouseLook = true; }
       } else if (e.button === 2) {
@@ -159,7 +165,7 @@ export class Input {
   private onUp(e: PointerEvent) {
     if (e.pointerType === 'mouse') {
       if (e.button === 0 && this.pointerLocked) this.release('attack');
-      if (e.button === 2 && this.pointerLocked) this.release('dodge');
+      if (e.button === 2 && this.pointerLocked) { this.release('dodge'); this.release('aim'); }
     }
     if (e.pointerId === this.stickId) { this.endStick(); return; }
     const l = this.lookIds.get(e.pointerId);

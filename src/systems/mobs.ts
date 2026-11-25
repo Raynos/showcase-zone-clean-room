@@ -15,6 +15,7 @@ import { Mech } from './mechanics';
 import { WindupArrows } from './warn';
 import { Finishers } from './finisher';
 import { RARE_TUNE_CHANCE, ROLLED, TRAITS } from '../data/traits';
+import { SHIELD_ARC, SHIELD_FRONT, roleFor, type RoleDef } from '../data/shooter-roles';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _d = new THREE.Vector3(), _c = new THREE.Color();
 type MState = 'spawn' | 'idle' | 'chase' | 'windup' | 'active' | 'recover' | 'stagger' | 'stun' | 'broken' | 'return' | 'dead';
@@ -78,6 +79,26 @@ export class Mob implements Hittable {
   mech: Mech | null = null;
   /** stagger damage multiplier (elite armour) */
   poiseMul = 1;
+  /** height a flyer holds above its feet in the shooter stance (data/shooter-roles.ts) */
+  fly = 0;
+  private roleDef: RoleDef | null | undefined; private roleAtk: AttackDef[] | null = null; private laneL = 0;
+  /** What this robot does against a player holding a ranged weapon; null in the melee stance and for bosses. */
+  get role(): RoleDef | null {
+    if (this.mobs.game.combat.stance !== 'shooter' || this.isBoss) return null;
+    if (this.roleDef === undefined) this.roleDef = roleFor(this.kind, this.id);
+    return this.roleDef;
+  }
+  /**
+   * The share of a player shot's damage that gets through: a shield's front turns aside all but
+   * SHIELD_FRONT of it, unless the shot found a weak point. (dx, dz): from the shooter toward the robot.
+   */
+  shotMul(dx: number, dz: number, weak: boolean): number {
+    if (weak || this.role?.role !== 'shield' || this.state === 'broken' || this.state === 'stun') return 1;
+    const l = Math.hypot(dx, dz) || 1;
+    // the robot's forward against the way back to the shooter
+    const front = -(Math.sin(this.yaw) * dx + Math.cos(this.yaw) * dz) / l;
+    return front > Math.cos(SHIELD_ARC) ? SHIELD_FRONT : 1;
+  }
 
   constructor(public mobs: Mobs, kind: RobotKind, o: MobOpts) {
     const g = mobs.game;
@@ -119,7 +140,7 @@ export class Mob implements Hittable {
     if (this.seesT > 0) return this.seesV;
     this.seesT = 0.2 + Math.random() * 0.1;
     const g = this.mobs.game, pl = g.player;
-    _v.set(this.pos.x, this.pos.y + this.lift + Math.max(0.6, this.height * 0.8), this.pos.z);
+    _v.set(this.pos.x, this.pos.y + this.lift + this.fly + Math.max(0.6, this.height * 0.8), this.pos.z);
     _d.set(pl.pos.x, pl.pos.y + 1.2, pl.pos.z).sub(_v);
     const len = _d.length();
     if (len < 2) return (this.seesV = true);
@@ -178,7 +199,7 @@ export class Mob implements Hittable {
   get hpFrac() { return this.hp / this.maxHp; }
   get cls() { return this.def.boss ? 'boss' : this.variant === 'elite' || this.variant === 'nightElite' ? 'elite' : this.variant; }
   get isBoss() { return !!this.def.boss; }
-  center(out: THREE.Vector3) { return out.set(this.pos.x, this.pos.y + this.lift + this.height * (this.kind === 'titan' ? 0.3 : 0.55), this.pos.z); }
+  center(out: THREE.Vector3) { return out.set(this.pos.x, this.pos.y + this.lift + this.fly + this.height * (this.kind === 'titan' ? 0.3 : 0.55), this.pos.z); }
   private setState(s: MState) { this.state = s; this.stT = 0; }
   private endTele() { if (this.tele) { this.mobs.game.fx.endTelegraph(this.tele); this.tele = null; } }
   private ground() { return this.floor ?? this.mobs.game.terrain.h(this.pos.x, this.pos.z); }
@@ -300,13 +321,16 @@ export class Mob implements Hittable {
         if (!canSee || hd > this.leash || this.farT > 3 || this.blindT > 3.5) { this.aggro = false; this.farT = 0; this.blindT = 0; this.setState('return'); break; }
         face = toPlayer;
         const reach = this.radius + 0.5;
-        const keep = this.def.keep;
+        // against a ranged weapon some robots fight differently (data/shooter-roles.ts)
+        const role = this.role;
+        const keep = role?.keep ?? this.def.keep, sk = role?.strafe ?? 0.45;
+        if (role?.turn) turn *= role.turn;
         this.strafeT -= dt;
-        if (this.strafeT <= 0) { this.strafeT = rand(1.5, 3.5); this.strafe = Math.random() < 0.5 ? -1 : 1; }
+        if (this.strafeT <= 0) { this.strafeT = role?.strafe ? rand(0.9, 2.2) : rand(1.5, 3.5); this.strafe = Math.random() < 0.5 ? -1 : 1; }
         const dx = px / (dist || 1), dz = pz / (dist || 1);
         if (keep) {
           const s = dist < keep[0] ? -0.8 : dist > keep[1] ? 1 : 0;
-          wantVx = dx * speed * s + -dz * this.strafe * speed * 0.45; wantVz = dz * speed * s + dx * this.strafe * speed * 0.45;
+          wantVx = dx * speed * s + -dz * this.strafe * speed * sk; wantVz = dz * speed * s + dx * this.strafe * speed * sk;
         } else {
           // melee: close in. A pack does not queue in front of the player: whoever is waiting for its turn
           // works round to the player's flank or back, so the next attack can come from out of view.
@@ -330,7 +354,7 @@ export class Mob implements Hittable {
           const still = this.mobs.playerStill > 1.6;
           let total = 0;
           const ok: AttackDef[] = [];
-          for (const a of this.attacks) {
+          for (const a of this.attackList()) {
             if ((this.cds.get(a.id) ?? 0) > 0) continue;
             if (eff < a.range[0] || eff > a.range[1]) continue;
             if (a.minPhase && this.phase < a.minPhase) continue;
@@ -358,7 +382,11 @@ export class Mob implements Hittable {
         if (!this.locked) {
           face = toPlayer; turn = this.def.turn * 1.4;
           this.updateTelegraphAim(a, dist);
-          if (t >= lockAt) { this.locked = true; this.lockYaw = this.yaw; }
+          if (t >= lockAt) {
+            this.locked = true; this.lockYaw = this.yaw;
+            // a gunner's shot goes down the lane it marked, not after the player: stepping out of the red dodges it
+            if (a.type === 'shot' && this.tele) this.aimPt.set(pl.pos.x, pl.pos.y + 1.0, pl.pos.z);
+          }
         }
         if (t >= 1) { this.setState('active'); this.fired = 0; this.tick = 0; this.startPos.copy(this.pos); this.onActiveStart(a); }
         break;
@@ -434,6 +462,12 @@ export class Mob implements Hittable {
       }
     }
 
+    // a flyer climbs while it fights and comes down to dive, when stunned, broken or dead
+    const fr = this.role?.fly ?? 0, st = this.state, diving = this.atk?.type === 'leap' && (st === 'windup' || st === 'active');
+    const flyT = fr && this.aggro && (st === 'chase' || st === 'windup' || st === 'active' || st === 'recover' || st === 'stagger') && !diving ? fr : 0;
+    if (this.fly || flyT) this.fly = damp(this.fly, flyT, diving || !flyT ? 6 : 1.6, dt);
+    if (this.fly < 1e-3 && !flyT) this.fly = 0;
+
     // steering: simple wall avoidance + separation
     const moving = this.state === 'idle' || this.state === 'chase' || this.state === 'return';
     if (moving) {
@@ -504,7 +538,7 @@ export class Mob implements Hittable {
     else if (st === 'broken') { const t = clamp01(this.stT / 0.35); lean = 0.32 * t + Math.sin(this.pose.time * 2.2) * 0.03; sq = 0.14 * t; }
     if (this.isBoss) { lean *= 0.4; sq *= 0.4; }
     this.leanX = damp(this.leanX, lean, st === 'active' ? 30 : 14, dt); this.squash = damp(this.squash, sq, 14, dt);
-    root.position.set(this.pos.x, this.pos.y + this.lift, this.pos.z);
+    root.position.set(this.pos.x, this.pos.y + this.lift + this.fly, this.pos.z);
     root.rotation.y = this.yaw; root.rotation.x = this.leanX;
     const k = 1 - this.squash;
     root.scale.set(this.baseScale.x * (1 + this.squash * 0.4), this.baseScale.y * k, this.baseScale.z * (1 + this.squash * 0.4));
@@ -543,9 +577,16 @@ export class Mob implements Hittable {
     }
   }
 
+  /** The robot's attacks, plus its shooter-stance role's extra one. */
+  private attackList(): AttackDef[] {
+    const x = this.role?.extra;
+    if (!x) return this.attacks;
+    if (!this.roleAtk || this.roleAtk[this.roleAtk.length - 1] !== x) this.roleAtk = [...this.attacks, x];
+    return this.roleAtk;
+  }
   private beginAttack(a: AttackDef) {
     const g = this.mobs.game;
-    this.atk = a; this.locked = false;
+    this.atk = a; this.locked = false; this.laneL = 0;
     this.cds.set(a.id, a.cd * rand(0.9, 1.2));
     this.mobs.claim(this);
     this.setState('windup');
@@ -561,6 +602,13 @@ export class Mob implements Hittable {
       case 'leap': this.tele = fx.telegraph({ shape: 0, x: g.player.pos.x, y: g.player.pos.y, z: g.player.pos.z, radius: a.radius!, dur: dur + a.active, color: col }); break;
       case 'ring': this.tele = fx.telegraph({ shape: 0, x: this.pos.x, y, z: this.pos.z, radius: Math.min(5, a.radius!), dur, color: col }); break;
       case 'channel': case 'spin': this.tele = fx.telegraph({ shape: 2, x: this.pos.x, y, z: this.pos.z, w: a.width! * 1.6, l: a.length, yaw: this.yaw, dur: dur + a.active, color: col, hold: true }); break;
+      case 'shot':
+        // the shooter stance: a gunner marks its lane on the ground before it fires (data/shooter-roles.ts)
+        if (this.role) {
+          this.laneL = Math.min(a.range[1] + 2, Math.hypot(g.player.pos.x - this.pos.x, g.player.pos.z - this.pos.z) + 3);
+          this.tele = fx.telegraph({ shape: 2, x: this.pos.x, y, z: this.pos.z, w: 1.1 + (a.spread ?? 0) * 12, l: this.laneL, yaw: this.yaw, dur, color: col });
+        }
+        break;
       default: break;
     }
     g.sfx(this.isBoss ? 'boss_windup' : 'enemy_windup', { pos: this.pos, vol: 0.7 });
@@ -572,8 +620,8 @@ export class Mob implements Hittable {
     if (!t) return;
     const m = t.mesh;
     if (a.type === 'melee' || a.type === 'cone') { m.rotation.y = this.yaw; m.position.x = this.pos.x; m.position.z = this.pos.z; }
-    else if (a.type === 'charge' || a.type === 'beam' || a.type === 'channel' || a.type === 'spin') {
-      const l = a.length! / 2;
+    else if (a.type === 'charge' || a.type === 'beam' || a.type === 'channel' || a.type === 'spin' || a.type === 'shot') {
+      const l = (a.type === 'shot' ? this.laneL : a.length!) / 2;
       m.rotation.y = this.yaw;
       m.position.set(this.pos.x + Math.sin(this.yaw) * l, this.pos.y + 0.07, this.pos.z + Math.cos(this.yaw) * l);
     } else if (a.type === 'leap') {
@@ -744,9 +792,10 @@ export class Mob implements Hittable {
         while (this.fired < n && this.stT >= this.fired * iv) {
           this.fired++;
           const src = (this.rig.sockets.muzzle ?? this.rig.sockets.core).getWorldPosition(_v);
-          // lead the target a little
+          // lead the target a little (a gunner against a ranged weapon fires down the lane it marked)
           const tt = dist / (a.speed ?? 20);
-          _v2.set(pl.pos.x + pl.vel.x * tt * 0.6, pl.pos.y + 1.0, pl.pos.z + pl.vel.z * tt * 0.6).sub(src).normalize();
+          if (this.role && this.laneL > 0) _v2.copy(this.aimPt).sub(src).normalize();
+          else _v2.set(pl.pos.x + pl.vel.x * tt * 0.6, pl.pos.y + 1.0, pl.pos.z + pl.vel.z * tt * 0.6).sub(src).normalize();
           if (a.spread) { _v2.x += rand(-1, 1) * a.spread; _v2.y += rand(-1, 1) * a.spread * 0.5; _v2.z += rand(-1, 1) * a.spread; _v2.normalize(); }
           g.combat.enemyShot(src, _v2, a.speed ?? 20, this.dmg * a.dmg, a.radius ?? 0.3, a.color ?? 0xffb04a, this);
           fx.muzzle(src, _v2, a.color ?? 0xffb04a, 0.7);

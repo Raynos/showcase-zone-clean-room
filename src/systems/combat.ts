@@ -17,6 +17,10 @@ import type { StatusKind } from './status';
 import { traitHit, type TraitMove, type TraitOut } from '../data/traits';
 import { applyStatus } from './status';
 import { TELE_RED } from '../data/enemies';
+import { Shooter } from './shooter';
+import { WeakPoints, type WeakZone } from './weakpoints';
+import { cast } from './ballistics';
+import { setStance, stanceFor, type Stance } from './stance';
 
 export interface HitInfo {
   dmg: number; crit: boolean; dirX: number; dirZ: number; knock: number; heavy: boolean; stun?: number;
@@ -39,11 +43,15 @@ export interface Hittable {
 }
 /** One button of the action bar, as the combat-to-HUD contract in docs/COMBAT.md defines it. */
 export interface ActionSlot {
-  id: 'attack' | 'dodge' | 'jump' | 'skill1' | 'skill2' | 'skill3' | 'overdrive' | 'swap' | 'kit' | 'target' | 'mount';
+  /** `fire`, `fire2`, `aim` and `reload` are the shooter stance's (docs/COMBAT.md, "Combat to HUD interface") */
+  id: 'attack' | 'dodge' | 'jump' | 'skill1' | 'skill2' | 'skill3' | 'overdrive' | 'swap' | 'kit' | 'target' | 'mount'
+    | 'fire' | 'fire2' | 'aim' | 'reload';
   icon: string; label: string;
   state: 'ready' | 'cooldown' | 'noenergy' | 'locked' | 'hidden' | 'active';
-  /** cd: 0..1 of the cooldown left. charge: 0..1 of a held attack or the Overdrive meter. count: kits, ammunition. */
+  /** cd: 0..1 of the cooldown left. charge: 0..1 of a held attack or the Overdrive meter. count: kits, rounds in the magazine. */
   cd?: number; charge?: number; count?: number;
+  /** shooter stance: the magazine's size, beside `count` on `fire` and `reload` */
+  mag?: number;
   /** seconds of cooldown left: the HUD prints it over the sweep and runs both down smoothly between calls */
   cdSec?: number;
   /** the level that opens a locked slot */
@@ -56,6 +64,12 @@ interface Shot {
   pierce: boolean; hit: Set<Hittable> | null; kind: 'arrow' | 'bolt' | 'orb' | 'shell' | 'wave' | 'javelin'; ammo: AmmoId | null; crit: boolean;
   knock: number; stun: number; blast: number; near: boolean; status?: StatusKind;
   poise: number; heavy: boolean; src: HitInfo['source'] | null; zone: Zone['kind'] | null;
+  /** shooter stance: hit-test the animated mesh and weak points (systems/ballistics.ts) */
+  precise?: boolean;
+  /** what the crosshair was on when it was loosed, and where: a hit on that robot near that point takes that weak point */
+  aimH?: Hittable | null; aimPt?: THREE.Vector3; aimZone?: WeakZone | null;
+  /** the weapon's weak-point multiple, and the stagger of a weak-point hit */
+  weakK?: number; weakPoise?: number;
 }
 interface Strike { pos: THREE.Vector3; t: number; dur: number; radius: number; dmg: number; color: number; owner: Mob | null; kind: 'bolt' | 'crate' | 'shell'; from: THREE.Vector3 | null }
 /** Something a skill leaves on the ground: falling arrows, a jamming field, a mine. */
@@ -135,6 +149,12 @@ export class Combat {
   private hudSig = ''; private tgtSig = -1; private lastKind = '';
   /** set by the camera's engagement tracker while the player runs from a fight: no auto-targeting until they turn back */
   autoTargetOff = false;
+  /** melee or shooter (systems/stance.ts): follows the weapon; change it only through setStance */
+  stance: Stance = 'melee';
+  /** the shooter stance: aim, guns, crosshair (systems/shooter.ts) */
+  readonly shooter: Shooter;
+  /** every robot's weak points (systems/weakpoints.ts) */
+  readonly weak: WeakPoints;
 
   constructor(private game: Game) {
     const mk = (geo: THREE.BufferGeometry, emit: number, layer: number) => {
@@ -152,7 +172,17 @@ export class Combat {
     this.crateMesh = mk(new THREE.BoxGeometry(1, 1, 1), 0, T.CRATE);
     this.crateMesh.castShadow = true;
     this.hurtArc = new HurtArc(game);
+    this.weak = new WeakPoints(game);
+    this.shooter = new Shooter(game, this);
   }
+  /** a skill or ultimate is running (the shooter leaves the body's pose to it) */
+  get skillRunning() { return !!this.skill; }
+  /** Use up a buffered press of `a` (the shooter's trigger reads attack presses through the buffer). */
+  takePress(a: BufAct): boolean { if (this.buf !== a) return false; this.buf = null; return true; }
+  /** Spend Overcharge on this shot: true when it was up. */
+  takeOvercharge(): boolean { if (this.overcharge <= 0) return false; this.overcharge = 0; return true; }
+  /** Area damage at a point (concussion rounds). */
+  blastAt(p: THREE.Vector3, radius: number, mult: number, o: { heavy?: boolean; knock?: number; source: HitInfo['source']; stun?: number }) { return this.aoe(p.x, p.y, p.z, radius, mult, o); }
 
   get kind(): WeaponKind { return this.game.state.weapon.kind; }
   /** The slotted skills for the weapon in hand: three slots, null where empty or not yet open. */
@@ -171,7 +201,7 @@ export class Combat {
   get cd1() { return this.skillCd(this.skillSlots[0]?.id); }
   get cd2() { return this.skillCd(this.skillSlots[1]?.id); }
   get cd3() { return this.skillCd(this.skillSlots[2]?.id); }
-  get busy() { return !!this.swing || !!this.charging || !!this.skill || this.drawing || this.burstN > 0; }
+  get busy() { return !!this.swing || !!this.charging || !!this.skill || this.drawing || this.burstN > 0 || this.shooter.busy; }
   get inCombat() { return this.game.mobs.inCombat > 0 || this.sinceHurt < 4; }
   private get melee(): MeleeSet { return this.kind === 'spear' ? SPEAR : SWORD; }
   /**
@@ -219,6 +249,8 @@ export class Combat {
   }
   private ensureTarget(range: number): Hittable | null {
     const g = this.game, pl = g.player, p = pl.pos;
+    // the shooter stance has no target to turn to: the crosshair is the aim
+    if (this.stance === 'shooter') return null;
     const t = this.target;
     if (t && t.alive && Math.hypot(t.pos.x - p.x, t.pos.z - p.z) - t.radius < range + 2) return t;
     // prefer where the stick points, else where the camera looks
@@ -236,9 +268,17 @@ export class Combat {
     return { dmg: st.attackPower * mult * (crit ? CRIT_MULT : 1) * rand(0.92, 1.08), crit };
   }
   /** Apply a hit to something with all the feedback. */
-  strikeTarget(h: Hittable, mult: number, o: { heavy?: boolean; knock?: number; source: HitInfo['source']; crit?: boolean; stun?: number; poise?: number; fromX?: number; fromZ?: number; quiet?: boolean; status?: StatusKind; breaker?: boolean; move?: TraitMove }) {
+  strikeTarget(h: Hittable, mult: number, o: { heavy?: boolean; knock?: number; source: HitInfo['source']; crit?: boolean; stun?: number; poise?: number; fromX?: number; fromZ?: number; quiet?: boolean; status?: StatusKind; breaker?: boolean; move?: TraitMove;
+    /** shooter stance: where the shot struck, the weak point's name if it was one, and that it was a player shot (hit markers, light hit-stop) */
+    at?: THREE.Vector3; weak?: string; shot?: boolean }) {
     const g = this.game, pl = g.player, st = g.state;
     const mob0 = h as Partial<Mob>;
+    // a shielded front turns a shot aside unless it finds a weak point (systems/mobs.ts, shooter roles)
+    let deflect = false;
+    if (o.shot && mob0.shotMul) {
+      const fx = o.fromX ?? pl.pos.x, fz = o.fromZ ?? pl.pos.z, k = mob0.shotMul(h.pos.x - fx, h.pos.z - fz, !!o.weak);
+      if (k < 1) { mult *= k; deflect = true; }
+    }
     // perks and gear traits that change this blow
     const move: TraitMove = o.move ?? (o.source === 'skill' ? 'skill' : o.source === 'melee' ? 'light' : (o.poise ?? 1) >= 2.5 ? 'full' : 'shot');
     const broken = mob0.state === 'broken';
@@ -260,13 +300,26 @@ export class Combat {
     if (dealt > 0) this.afterHit(h, dealt, o.source, move, broken);
     if (dealt <= 0) { h.center(_c); g.hud.damage({ x: _c.x, y: _c.y + 0.6, z: _c.z }, 'IMMUNE', 'miss'); return 0; }
     h.center(_c);
+    if (o.shot) {
+      // a player shot: sparks where it struck, the number there too, the hit marker, almost no hit-stop
+      const killed = !h.alive;
+      if (o.at) _v.copy(o.at); else _v.set(_c.x - dx * h.radius * 0.7, _c.y, _c.z - dz * h.radius * 0.7);
+      _d.set(-dx, 0.35, -dz).normalize();
+      g.fx.hitSparks(_v, _d, o.weak ? 0xffd23a : deflect ? 0x9fb6c8 : color, o.weak ? 1.5 : deflect ? 0.6 : 0.9);
+      if (o.weak) g.fx.emit(_v, { count: 1, speed: [0, 0], life: [0.1, 0.12], size: [0.6, 0.6], grow: 0.4, color: 0xffd23a, glow: 5, sprite: SP.STAR });
+      if (st.d.settings.dmgNumbers) g.hud.damage({ x: _v.x + rand(-0.15, 0.15), y: _v.y + 0.25, z: _v.z + rand(-0.15, 0.15) }, String(dealt) + (crit ? '!' : ''), killed ? 'kill' : o.weak ? 'weak' : deflect ? 'deflect' : crit ? 'crit shot' : 'shot');
+      if (!o.quiet || killed) this.shooter.onHit(killed ? 'kill' : o.weak ? 'weak' : deflect ? 'deflect' : 'body');
+      if (g.time - this.lastHitSfx > 0.05) { this.lastHitSfx = g.time; g.sfx('hit_metal', { pos: h.pos, vol: 0.45, pitch: rand(1, 1.15) }); }
+      if (killed) { g.hitStop(0.04); g.cameraRig.shake(0.12); } else if (o.weak && !o.quiet) g.hitStop(0.018);
+    } else {
     // impact point on the near side
     _v.set(_c.x - dx * h.radius * 0.7, _c.y + rand(-0.2, 0.3), _c.z - dz * h.radius * 0.7);
     _d.set(-dx, 0.35, -dz).normalize();
     g.fx.hitSparks(_v, _d, color, o.heavy || crit ? 1.6 : 1);
     if (o.source === 'melee' || o.source === 'skill') g.fx.slashHit(_v, color, o.heavy ? 1.5 : 1);
     if (st.d.settings.dmgNumbers) g.hud.damage({ x: _c.x + rand(-0.3, 0.3), y: _c.y + h.height * 0.35, z: _c.z + rand(-0.3, 0.3) }, String(dealt) + (crit ? '!' : ''), crit ? 'crit' : '');
-    if (!o.quiet) {
+    }
+    if (!o.quiet && !o.shot) {
       const melee = o.source === 'melee' || o.source === 'skill';
       g.hitStop(o.heavy ? 0.11 : crit ? 0.09 : melee ? 0.055 : 0.03);
       g.cameraRig.shake(o.heavy ? 0.34 : crit ? 0.28 : melee ? 0.16 : 0.1);
@@ -278,7 +331,7 @@ export class Combat {
     pl.sinceCombat = 0; this.sinceHit = 0;
     // Overdrive: from damage dealt, from putting a robot on its heels, from kills
     this.addOverdrive(OD_DEALT * dealt / st.attackPower + (!h.alive ? OD_KILL : (mob.state !== was ? (mob.state === 'broken' ? OD_STAGGER * (st.perk('overclock') ? 6 : 3) : mob.state === 'stagger' || mob.state === 'stun' ? OD_STAGGER : 0) : 0)));
-    if (!h.alive) { if (this.target === h) this.target = null; g.hitStop(0.09); g.renderer.post.flash.w = Math.max(g.renderer.post.flash.w, 0.08); }
+    if (!h.alive) { if (this.target === h) this.target = null; if (!o.shot) { g.hitStop(0.09); g.renderer.post.flash.w = Math.max(g.renderer.post.flash.w, 0.08); } }
     return dealt;
   }
   private tOut: TraitOut = { poise: 1, dmg: 1, knock: 1 };
@@ -341,7 +394,7 @@ export class Combat {
     this.perfectT = 1.2;
     // an attack press in the next COUNTER_WINDOW (real time, so the slow-motion does not stretch it) is a counter
     this.counterT = COUNTER_WINDOW * (g.state.perk('quickdraw') ? 1.5 : 1);
-    if (g.state.perk('quickdraw')) { this.mag = XBOW.mag; this.reloadT = 0; g.state.d.energy = Math.min(g.state.maxEnergy, g.state.d.energy + 15); }
+    if (g.state.perk('quickdraw')) { this.mag = XBOW.mag; this.reloadT = 0; this.shooter.refill(); g.state.d.energy = Math.min(g.state.maxEnergy, g.state.d.energy + 15); }
     g.hud.damage(g.player.center, 'DODGED', 'miss');
     g.state.d.energy = Math.min(g.state.maxEnergy, g.state.d.energy + 12);
     this.addOverdrive(OD_DODGE * (g.state.perk('overclock') ? 2 : 1));
@@ -354,6 +407,7 @@ export class Combat {
     this.swing = null; this.charging = null; this.queued = false; this.skill = null; this.trail?.stop(); this.burstN = 0;
     if (this.drawing) pl.weaponModel?.setDraw?.(0);
     this.drawing = false; this.aiming = false; this.draw = 0;
+    this.shooter.interrupt();
     pl.action = null; pl.lungeT = 0; this.actDur = 0; pl.pose.charge = 0;
   }
   /**
@@ -392,8 +446,8 @@ export class Combat {
         pl.knockback(dx, dz, knock, knock > 7 ? 5 : 0);
         pl.invuln = Math.max(pl.invuln, 0.35);
         g.hitStop(0.05);
-        // interrupt a draw
-        if (this.drawing) { this.drawing = false; this.draw = 0; pl.weaponModel?.setDraw?.(0); }
+        // interrupt a draw (the shooter stance's bow holds through a flinch)
+        if (this.drawing && this.stance === 'melee') { this.drawing = false; this.draw = 0; pl.weaponModel?.setDraw?.(0); }
         // and a charge that has not reached its first level
         if (this.charging && this.chargeLv === 0) { this.charging = null; pl.action = null; pl.pose.charge = 0; }
       } else {
@@ -456,9 +510,11 @@ export class Combat {
     this.shots.push({
       x: from.x, y: from.y, z: from.z, vx: dir.x * speed, vy: dir.y * speed, vz: dir.z * speed, life: 2.2, grav: kind === 'arrow' ? 5 : 0,
       dmg: dmgMult, radius: 0.3, color: this.game.state.weapon.color, enemy: false, owner: null, pierce: false, hit: null, kind, ammo: null, crit: false, knock: 3, stun: 0, blast: 0, near: false,
-      poise: 1, heavy: false, src: null, zone: null, ...o,
+      poise: 1, heavy: false, src: null, zone: null, precise: this.stance === 'shooter' && (kind === 'arrow' || kind === 'bolt'), ...o,
     });
   }
+  /** A player projectile (the shooter fires its arrows and bolts through here). */
+  spawnShot(kind: Shot['kind'], from: THREE.Vector3, dir: THREE.Vector3, speed: number, dmgMult: number, o: Partial<Shot> = {}) { this.fire(kind, from, dir, speed, dmgMult, o); }
   enemyShot(from: THREE.Vector3, dir: THREE.Vector3, speed: number, dmg: number, radius: number, color: number, owner: Mob | null) {
     if (this.shots.length >= MAXS) return;
     this.shots.push({ x: from.x, y: from.y, z: from.z, vx: dir.x * speed, vy: dir.y * speed, vz: dir.z * speed, life: 3, grav: 0, dmg, radius, color, enemy: true, owner, pierce: false, hit: null, kind: 'orb', ammo: null, crit: false, knock: 3, stun: 0, blast: 0, near: false, poise: 1, heavy: false, src: null, zone: null });
@@ -473,8 +529,10 @@ export class Combat {
     this.game.fx.telegraph({ shape: 0, x: pos.x, y: pos.y, z: pos.z, radius, dur: delay, color: TELE_RED });
     this.strikes.push({ pos, t: 0, dur: delay, radius, dmg, color, owner, kind, from: null });
   }
-  private aimDir(from: THREE.Vector3, out: THREE.Vector3, speed: number, grav: number, t: Hittable | null = this.target): THREE.Vector3 {
+  private aimDir(from: THREE.Vector3, out: THREE.Vector3, speed: number, grav: number, t: Hittable | null = this.target, spread = 0): THREE.Vector3 {
     const g = this.game;
+    // the shooter stance aims where the crosshair is, never at a target
+    if (this.stance === 'shooter') return this.shooter.dirFrom(from, out, speed, grav, spread);
     if (t && t.alive) {
       t.center(_c);
       const d = _c.distanceTo(from), tt = d / speed;
@@ -492,7 +550,7 @@ export class Combat {
     _c.copy(_v2).addScaledVector(out, Math.max(8, dist));
     return out.copy(_c).sub(from).normalize();
   }
-  private muzzlePos(out: THREE.Vector3) {
+  muzzlePos(out: THREE.Vector3) {
     const pl = this.game.player, w = pl.weaponModel;
     // out of a roll or off the ground the weapon can be at the hero's feet: shoot from the chest instead
     if (w && w.tip.getWorldPosition(out).y > pl.pos.y + 0.6) return out;
@@ -511,13 +569,18 @@ export class Combat {
     if (this.overcharge > 0) this.overcharge -= dt;
     // the weapon changed under us (Loadout tab, a shop): whatever the old one was doing ends here
     if (this.kind !== this.lastKind) { if (this.lastKind) { this.clearAttack(); if (!this.skill) pl.action = null; this.mag = XBOW.mag; this.reloadT = 0; this.combo = 0; } this.lastKind = this.kind; }
+    // the stance follows the weapon in hand (systems/stance.ts)
+    if (stanceFor(this.kind) !== this.stance) setStance(g, stanceFor(this.kind));
+    const shoot = this.stance === 'shooter';
+    this.weak.update(rdt);
     // target upkeep
     const t = this.target;
     if (t && (!t.alive || !t.targetable || Math.hypot(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) > 55)) this.target = null;
-    for (const tap of inp.taps) this.tapTarget(tap.x, tap.y);
-    if (inp.pressed('target')) this.cycle();
+    // the shooter stance targets nothing: a tap on the view is a look, the target button is the aim (systems/shooter.ts)
+    if (!shoot) for (const tap of inp.taps) this.tapTarget(tap.x, tap.y);
+    if (!shoot && inp.pressed('target')) this.cycle();
     // auto-target the thing hitting us
-    if (!this.target && g.mobs.inCombat > 0 && !this.autoTargetOff) {
+    if (!shoot && !this.target && g.mobs.inCombat > 0 && !this.autoTargetOff) {
       this.autoT -= dt;
       if (this.autoT <= 0) { this.autoT = 0.4; this.target = this.acquire(this.kind === 'sword' || this.kind === 'spear' ? 9 : 30, g.cameraRig.yaw + Math.PI); }
     }
@@ -598,19 +661,22 @@ export class Combat {
     // ---- basic attacks ----
     pl.faceYaw = null; pl.actionSlow = 1;
     if (melee) this.updateMelee(dt, up);
+    else if (shoot) this.shooter.update(dt, rdt, up && !pl.rolling && !this.skill);
     else this.updateRanged(dt, up);
     if (this.skill === 'whirlwind') pl.actionSlow = 0.75;
     else if (this.skill?.startsWith('ult_')) pl.actionSlow = 0.1;
 
-    // face the target while fighting
-    if ((this.swing || this.charging || this.drawing || this.aiming || this.skill || this.burstN > 0) && this.target && this.target.alive && !pl.rolling) {
+    // face the target while fighting (the shooter stance faces its aim, set by the shooter)
+    if (shoot) { if (this.skill && !pl.rolling) pl.faceYaw = g.cameraRig.yaw + Math.PI; }
+    else if ((this.swing || this.charging || this.drawing || this.aiming || this.skill || this.burstN > 0) && this.target && this.target.alive && !pl.rolling) {
       pl.faceYaw = Math.atan2(this.target.pos.x - pl.pos.x, this.target.pos.z - pl.pos.z);
     } else if ((this.drawing || this.aiming) && !pl.rolling) pl.faceYaw = g.cameraRig.yaw + Math.PI;
 
     // pose
     pl.pose.weapon = this.kind;
-    pl.pose.drawn = pl.sinceCombat < 6 || this.busy;
-    if (this.drawing || this.aiming) {
+    pl.pose.drawn = pl.sinceCombat < 6 || this.busy || shoot;
+    if (shoot) { /* the shooter poses the body (aim pitch, shoulder, reload) */ }
+    else if (this.drawing || this.aiming) {
       const tt = this.target;
       if (tt && tt.alive) { tt.center(_c); pl.pose.aimPitch = clamp(Math.atan2(_c.y - (pl.pos.y + 1.4), Math.hypot(_c.x - pl.pos.x, _c.z - pl.pos.z)), -0.9, 0.9); }
       else pl.pose.aimPitch = clamp(-g.cameraRig.pitch + 0.12, -0.9, 0.9);
@@ -804,6 +870,14 @@ export class Combat {
   private quickAttack(counter: boolean) {
     const g = this.game, pl = g.player, k = this.kind;
     if (k === 'sword' || k === 'spear') { this.startSwing(counter ? this.melee.counter : this.melee.entry); return; }
+    // the shooter stance: a counter or a swap strike fires where the crosshair is, at once
+    if (this.stance === 'shooter') {
+      const sh = this.shooter;
+      if (k === 'bow') sh.loose({ mult: counter ? 2.0 : 1.4, crit: counter, poise: counter ? 3 : 1.5 });
+      else if (k === 'crossbow') sh.burst(XBOW.burst, counter ? 0.95 : 0.5, counter);
+      else if (k === 'rifle') sh.fireRifle({ mult: counter ? 2.0 : 1.4, crit: counter, poise: counter ? 3 : 1.5, free: true });
+      return;
+    }
     const t = this.ensureTarget(45);
     if (t) pl.yaw = Math.atan2(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z);
     if (k === 'bow') {
@@ -887,6 +961,7 @@ export class Combat {
       }
     }
   }
+  currentAmmo(): AmmoId { return this.ammo(); }
   private ammo(): AmmoId {
     const st = this.game.state;
     let a = st.d.ammo;
@@ -896,6 +971,7 @@ export class Combat {
   /** One bolt. Only a `special` bolt (the first of a burst) carries the selected ammunition and spends one. */
   private fireBolt(mult: number, spread = 0, special = true, crit = false) {
     const g = this.game, pl = g.player, st = g.state;
+    if (this.stance === 'shooter') { this.shooter.fireBolt({ mult, spread, free: true, special, crit }); return; }
     const a = special ? this.ammo() : 'bolt', A = AMMO[a];
     if (a !== 'bolt') st.removeItem(a, 1);
     this.muzzlePos(_v); this.aimDir(_v, _d, 78, 0);
@@ -913,6 +989,8 @@ export class Combat {
    */
   private fireRifle(mult: number, o: { steady?: boolean; full?: boolean; crit?: boolean; concussion?: boolean; rail?: boolean; poise?: number; knock?: number; stun?: number } = {}) {
     const g = this.game, pl = g.player, st = g.state;
+    // the shooter stance: hitscan along the crosshair (systems/shooter.ts); skills do not spend the magazine
+    if (this.stance === 'shooter') { this.shooter.fireRifle({ mult, free: true, crit: o.crit, concussion: o.concussion, rail: o.rail, poise: o.poise, knock: o.knock, stun: o.stun }); return; }
     const oc = this.overcharge > 0 && !o.rail;
     if (oc) { mult *= 3; this.overcharge = 0; }
     this.muzzlePos(_v); this.aimDir(_v, _d, 400, 0);
@@ -987,7 +1065,7 @@ export class Combat {
     this.cds[sk.id] = sk.cd;
     pl.sinceCombat = 0;
     this.skill = sk.id; this.skillT = 0; this.skillHits = 0;
-    const face = t && g.cameraRig.inView(t.pos) ? Math.atan2(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) : g.cameraRig.fp ? g.cameraRig.yaw + Math.PI : pl.moveHeading ?? (melee ? pl.yaw : g.cameraRig.yaw + Math.PI);
+    const face = t && g.cameraRig.inView(t.pos) ? Math.atan2(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) : g.cameraRig.fp || this.stance === 'shooter' ? g.cameraRig.yaw + Math.PI : pl.moveHeading ?? (melee ? pl.yaw : g.cameraRig.yaw + Math.PI);
     pl.yaw = face;
     const sf = Math.sin(face), cf = Math.cos(face);
     const td = t ? Math.hypot(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) : 0;
@@ -1036,7 +1114,13 @@ export class Combat {
       case 'shock_arrow': this.skillDur = 0.4; pl.action = 'bowRelease'; break;
       case 'arrow_rain': {
         this.skillDur = 0.45; pl.action = 'bowRelease';
-        const x = t ? t.pos.x : pl.pos.x + sf * 11, z = t ? t.pos.z : pl.pos.z + cf * 11;
+        let x = t ? t.pos.x : pl.pos.x + sf * 11, z = t ? t.pos.z : pl.pos.z + cf * 11;
+        if (this.stance === 'shooter') {
+          // where the crosshair meets the ground or a robot, no further than 34 m
+          this.shooter.solve(_v2);
+          const dx = _v2.x - pl.pos.x, dz = _v2.z - pl.pos.z, dl = Math.hypot(dx, dz), k = dl > 34 ? 34 / dl : 1;
+          x = pl.pos.x + dx * k; z = pl.pos.z + dz * k;
+        }
         this.addZone('rain', x, t ? t.pos.y : g.groundY(x, z, pl.pos.y + 2), z);
         g.sfx('bow_release'); g.sfx('skill_volley'); g.cameraRig.kick(0.02);
         break;
@@ -1087,7 +1171,7 @@ export class Combat {
     this.clearAttack();
     this.od = 0; this.skill = u.id; this.skillT = 0; this.skillHits = 0; this.ultSeen.clear();
     pl.sinceCombat = 0;
-    const face = t && g.cameraRig.inView(t.pos) ? Math.atan2(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) : g.cameraRig.fp ? g.cameraRig.yaw + Math.PI : pl.moveHeading ?? (melee ? pl.yaw : g.cameraRig.yaw + Math.PI);
+    const face = t && g.cameraRig.inView(t.pos) ? Math.atan2(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) : g.cameraRig.fp || this.stance === 'shooter' ? g.cameraRig.yaw + Math.PI : pl.moveHeading ?? (melee ? pl.yaw : g.cameraRig.yaw + Math.PI);
     pl.yaw = face;
     const col = st.weapon.color, c = pl.center;
     g.hud.damage({ x: c.x, y: c.y + 1.3, z: c.z }, u.name.toUpperCase(), 'crit');
@@ -1225,7 +1309,19 @@ export class Combat {
         pl.action = t < 0.7 ? 'bowDraw' : 'bowRelease'; pl.actionT = t < 0.7 ? t / 0.7 : (t - 0.7) / 0.3; pl.actionSlow = 0.3;
         pl.weaponModel?.setDraw?.(t < 0.7 ? t / 0.7 : 0);
         if (t < 0.7) { this.muzzlePos(_v); g.fx.emit(_v, { count: 1, speed: [1, 3], life: [0.15, 0.3], size: [0.05, 0.1], color: col, glow: 4, sprite: SP.STREAK, stretch: 0.1, radius: 0.3 }); }
-        if (crossed(0.7)) {
+        if (crossed(0.7) && this.stance === 'shooter') {
+          // a bolt of light down the crosshair: everything on the line, weak points counted
+          this.muzzlePos(_v); this.aimDir(_v, _d, 400, 0);
+          const hits = cast(g, _v, _d, 70, { pierce: 12, radius: 0.25 });
+          let n = 0;
+          for (const hh of hits) {
+            if (!hh.h) break;
+            this.strikeTarget(hh.h, 3.1 * (hh.zone ? hh.zone.def.mult : 1), { heavy: true, knock: 9, source: 'skill', quiet: n > 0, at: hh.point, weak: hh.zone?.def.name, shot: true, poise: hh.zone ? 3 : 2 }); n++;
+          }
+          _v2.copy(hits[hits.length - 1].point);
+          g.fx.beam(_v, _v2, col, 0.7, 0.3, 0, 5); g.fx.beam(_v, _v2, 0xffffff, 0.2, 0.2, 0, 6);
+          g.sfx('skill_pierce'); g.cameraRig.kick(0.04); g.cameraRig.shake(0.35); g.cameraRig.punch(4);
+        } else if (crossed(0.7)) {
           this.muzzlePos(_v); this.aimDir(_v, _d, 400, 0);
           const wh = g.physics.raycast(_v, _d, 70, RAY_SOLID), len = wh ? wh.dist : 70;
           const ox0 = _v.x, oy0 = _v.y, oz0 = _v.z, ax = _d.x, ay = _d.y, az = _d.z;
@@ -1294,9 +1390,10 @@ export class Combat {
       case 'ult_bow':
         pl.action = 'bowRelease'; pl.actionT = (t * 8) % 1; pl.actionSlow = 0.1;
         for (let i = 0; i < 14; i++) if (crossed(0.08 + i * 0.06)) {
-          const h = this.pickUnseen(45);
-          this.muzzlePos(_v); this.aimDir(_v, _d, 72, 4, h ?? this.target);
-          if (!h) { _d.x += rand(-0.08, 0.08); _d.z += rand(-0.08, 0.08); _d.normalize(); }
+          const h = this.stance === 'shooter' ? null : this.pickUnseen(45);
+          // the shooter stance: a storm of arrows round the crosshair, steered by the view
+          this.muzzlePos(_v); this.aimDir(_v, _d, 72, 4, h ?? this.target, 0.05);
+          if (!h && this.stance !== 'shooter') { _d.x += rand(-0.08, 0.08); _d.z += rand(-0.08, 0.08); _d.normalize(); }
           this.fire('arrow', _v, _d, 72, 0.72, { knock: 3, grav: 4 });
           g.sfx('bow_release', { pitch: 1 + i * 0.03, vol: 0.7 }); g.cameraRig.kick(0.006);
         }
@@ -1348,8 +1445,12 @@ export class Combat {
           if (this.hurtPlayer(s.dmg, _v2.set(s.x - _d.x, s.y, s.z - _d.z), s.knock, s.owner)) { g.fx.hitSparks(_v2.set(s.x + _d.x * tt, s.y + _d.y * tt, s.z + _d.z * tt), _d.clone().negate(), s.color, 0.8); continue; }
         } else if (miss < 1.6 && !s.near && pl.rolling) { s.near = true; this.evaded(); }
       } else {
-        let best: Hittable | null = null;
-        for (const h of this.candidates()) {
+        let best: Hittable | null = null, zone: WeakZone | null = null;
+        if (s.precise) {
+          // the shooter stance: the animated mesh and its weak points, as the crosshair saw them
+          const hh = cast(g, _v, _d, hitT, { pierce: 1, ignore: s.hit, world: false, radius: 0.04 })[0];
+          if (hh.h) { best = hh.h; hitT = hh.t; zone = hh.zone; }
+        } else for (const h of this.candidates()) {
           if (s.hit?.has(h)) continue;
           h.center(_c);
           const cx = _c.x - s.x, cy = _c.y - s.y, cz = _c.z - s.z;
@@ -1362,7 +1463,11 @@ export class Combat {
           _v2.set(s.x + _d.x * hitT, s.y + _d.y * hitT, s.z + _d.z * hitT);
           // the strike and what follows it reuse the scratch vectors: keep the direction and the impact point
           const ix = _v2.x, iy = _v2.y, iz = _v2.z, ax = _d.x, ay = _d.y, az = _d.z;
-          this.strikeTarget(best, s.dmg, { source: s.src ?? (s.kind === 'arrow' ? 'arrow' : 'bolt'), knock: s.knock, crit: s.crit || undefined, stun: s.stun || undefined, heavy: s.heavy, poise: s.poise, fromX: s.x - ax * 2, fromZ: s.z - az * 2, status: s.status });
+          // the crosshair was on a weak point of this robot and the shot came down where it was aimed: that weak point
+          if (!zone && s.aimZone && s.aimH === best && s.aimPt && s.aimPt.distanceTo(_v2) < 0.7) zone = s.aimZone;
+          const src = s.src ?? (s.kind === 'arrow' ? 'arrow' : 'bolt');
+          if (s.precise) this.strikeTarget(best, s.dmg * (zone ? zone.def.mult * (s.weakK ?? 1) : 1), { source: src, knock: s.knock, crit: s.crit || undefined, stun: s.stun || undefined, heavy: s.heavy, poise: zone ? s.weakPoise ?? s.poise * 2 : s.poise, fromX: s.x - ax * 2, fromZ: s.z - az * 2, status: s.status, at: _v2.clone(), weak: zone?.def.name, shot: true });
+          else this.strikeTarget(best, s.dmg, { source: src, knock: s.knock, crit: s.crit || undefined, stun: s.stun || undefined, heavy: s.heavy, poise: s.poise, fromX: s.x - ax * 2, fromZ: s.z - az * 2, status: s.status });
           if (s.blast) this.blast(_v2.set(ix, iy, iz), s.blast, s.dmg * 0.8);
           if (s.ammo === 'bolt_shock') this.chain(best, s.dmg * 0.6);
           if (s.zone) this.addZone(s.zone, ix, this.game.groundY(ix, iz, iy + 0.5), iz);
@@ -1535,6 +1640,7 @@ export class Combat {
     const pl = this.game.player;
     this.clearAttack(); this.skill = null;
     this.buf = null; this.counterT = 0;
+    this.shooter.reset();
     pl.action = null; pl.lungeT = 0; this.actDur = 0;
   }
   clearShots() { this.shots.length = 0; this.strikes.length = 0; this.zones.length = 0; }
@@ -1543,9 +1649,11 @@ export class Combat {
     this.cancel(); this.clearShots();
     this.cds = {}; this.od = 0; this.swapCd = 0; this.potionCd = 0; this.fireCd = 0; this.overcharge = 0;
     this.mag = XBOW.mag; this.reloadT = 0; this.combo = 0; this.perfectT = 0; this.sinceHit = 9;
+    this.shooter.reset(); this.shooter.refill();
   }
   /** HUD helper: ammo/magazine label for the attack button. */
   attackLabel(): string {
+    if (this.stance === 'shooter') return this.shooter.gun?.mag ? (this.shooter.reloading ? '…' : String(this.shooter.mag)) : '';
     if (this.kind === 'crossbow') return this.reloadT > 0 ? '…' : String(this.mag);
     return '';
   }
@@ -1561,6 +1669,9 @@ export class Combat {
   actionBar(): ActionSlot[] {
     const g = this.game, st = g.state, pl = g.player, k = this.kind, lvl = st.d.level, e = st.d.energy;
     const out: ActionSlot[] = [];
+    const shoot = this.stance === 'shooter';
+    if (shoot) this.shooter.slots(out);
+    else {
     // attack: the weapon in hand, what a hold does with it, and the hold itself as a 0..1 charge
     const atk: ActionSlot = { id: 'attack', icon: k === 'none' ? 'sword' : k, label: ATTACK_LABEL[k] ?? 'Strike', state: this.busy && !this.aiming ? 'active' : 'ready' };
     if (this.charging) { atk.charge = clamp01(this.chargeT / CHARGE_LV[1]); atk.label = this.chargeLv === 2 ? 'Full' : 'Charge'; }
@@ -1569,6 +1680,7 @@ export class Combat {
     else if (this.counterT > 0) { atk.state = 'active'; atk.label = 'Counter'; }
     if (k === 'crossbow') { atk.count = this.mag; if (this.reloadT > 0) { atk.state = 'cooldown'; atk.cd = clamp01(this.reloadT / XBOW.reload); } }
     out.push(atk);
+    }
     const dodge: ActionSlot = { id: 'dodge', icon: 'dodge', label: 'Dodge', state: pl.rollCd > 0 ? 'cooldown' : 'ready' };
     if (pl.rollCd > 0) dodge.cd = clamp01(pl.rollCd / 0.75);
     out.push(dodge, { id: 'jump', icon: 'jump', label: 'Jump', state: 'ready' });
@@ -1591,12 +1703,12 @@ export class Combat {
     out.push(kit);
     // swap lights up while it would bring the other weapon in with a strike
     if (st.d.loadout[1]) out.push({ id: 'swap', icon: 'swap', label: 'Swap', state: this.swapStrikeOpen ? 'active' : 'ready' });
-    out.push({ id: 'target', icon: 'nexttarget', label: 'Target', state: 'ready' });
+    if (!shoot) out.push({ id: 'target', icon: 'nexttarget', label: 'Target', state: 'ready' });
     // the mount button is not combat's: the mount system shows it through hud.setAct
     return out;
   }
   private feedHud() {
-    const hud = this.game.hud as unknown as { setActionBar?: (slots: ActionSlot[]) => void; setTargetState?: (s: { stagger: number; broken: boolean; effects: string[] } | null) => void };
+    const hud = this.game.hud as unknown as { setActionBar?: (slots: ActionSlot[], bar?: { stance: Stance }) => void; setTargetState?: (s: { stagger: number; broken: boolean; effects: string[] } | null) => void };
     // target frame: the stagger meter of the robot in the reticle, and whether it is on its heels
     if (typeof hud.setTargetState === 'function') {
       const t = this.target as (Hittable & Partial<Mob>) | null;
@@ -1609,11 +1721,11 @@ export class Combat {
     }
     if (typeof hud.setActionBar !== 'function') return;
     const slots = this.actionBar();
-    let sig = '';
-    for (const s of slots) sig += s.id + s.icon + s.label + s.state + Math.round((s.cd ?? 0) * 200) + ',' + Math.round((s.charge ?? 0) * 100) + ',' + (s.count ?? '') + ',' + Math.ceil((s.cdSec ?? 0) * 10) + '|';
+    let sig = this.stance;
+    for (const s of slots) sig += s.id + s.icon + s.label + s.state + Math.round((s.cd ?? 0) * 200) + ',' + Math.round((s.charge ?? 0) * 100) + ',' + (s.count ?? '') + ',' + (s.mag ?? '') + ',' + Math.ceil((s.cdSec ?? 0) * 10) + '|';
     if (sig === this.hudSig) return;
     this.hudSig = sig;
-    hud.setActionBar(slots);
+    hud.setActionBar(slots, { stance: this.stance });
   }
 }
 const _upY = new THREE.Vector3(0, 1, 0);

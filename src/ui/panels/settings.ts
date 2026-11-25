@@ -20,12 +20,18 @@ export const settingsPanel: PanelSpec = {
     const g = host.game, st = g.state, s = st.d.settings;
     let fpsEl: HTMLElement | null = null, fpsT = 0;
     let townWhy: string | null = null;
+    let gyroNote: string | null = null;
     const sliders: Record<string, { min: number; max: number; get: () => number; set: (v: number) => void; fmt: (v: number) => string }> = {
       sfx: { min: 0, max: 1, get: () => s.sfx, set: (v) => { s.sfx = v; g.audio?.setVolumes?.({ sfx: s.sfx, music: s.music }); }, fmt: (v) => Math.round(v * 100) + '%' },
       music: { min: 0, max: 1, get: () => s.music, set: (v) => { s.music = v; g.audio?.setVolumes?.({ sfx: s.sfx, music: s.music }); }, fmt: (v) => Math.round(v * 100) + '%' },
       sens: { min: 0.4, max: 2, get: () => s.sens, set: (v) => { s.sens = v; }, fmt: (v) => v.toFixed(2) + '×' },
       shake: { min: 0, max: 1.5, get: () => s.shake, set: (v) => { s.shake = v; }, fmt: (v) => Math.round(v * 100) + '%' },
       // first person: degrees on top of the default for the way the phone is held; shows the field of view it gives
+      // shooter stance (systems/shooter.ts): look speed while aimed; aim assist's slow-down and pull; gyroscope
+      adsSens: { min: 0.3, max: 1.5, get: () => s.adsSens ?? 0.8, set: (v) => { s.adsSens = v; }, fmt: (v) => v.toFixed(2) + '×' },
+      assistSlow: { min: 0, max: 1, get: () => s.assistSlow ?? 0.6, set: (v) => { s.assistSlow = v; }, fmt: (v) => Math.round(v * 100) + '%' },
+      assistPull: { min: 0, max: 1, get: () => s.assistPull ?? 0.5, set: (v) => { s.assistPull = v; }, fmt: (v) => Math.round(v * 100) + '%' },
+      gyroSens: { min: 0.3, max: 2.5, get: () => s.gyroSens ?? 1, set: (v) => { s.gyroSens = v; }, fmt: (v) => v.toFixed(2) + '×' },
       fpFov: { min: -10, max: 15, get: () => s.fpFov ?? 0, set: (v) => { s.fpFov = Math.round(v); }, fmt: (v) => Math.round((innerWidth < innerHeight ? FP_FOV.portrait : FP_FOV.landscape) + v) + '°' },
     };
     const slider = (id: string, label: string, ic: string) => {
@@ -50,6 +56,14 @@ export const settingsPanel: PanelSpec = {
         + (fp ? slider('fpFov', 'Field of view', 'target') + toggle('headBob', 'Head bob', 'jump', s.headBob !== false && !still, still ? 'Off: your device asks for reduced motion' : 'The view rises and falls with your stride') : '')).replace('pn-group bev', 'pn-group bev pad')
         + group(slider('sens', 'Look speed', 'target') + slider('shake', 'Screen shake', 'blast')
         + toggle('invertY', 'Invert vertical look', 'swap', s.invertY) + toggle('autoFollow', 'Camera follows movement', 'dash', s.autoFollow, 'Swings behind you as you run'));
+      // shooter stance: bows, crossbows and rifles aim through a crosshair (systems/shooter.ts)
+      const adsMode = s.adsMode ?? (g.input.isTouch ? 'tap' : 'hold'), assist = s.aimAssist !== false;
+      h += '<div class="pn-sec">Aiming · bows, crossbows, rifles</div>' + group(`<div class="pn-seg" role="radiogroup" aria-label="Aim button">${(['tap', 'hold'] as const).map((v) => `<div class="${adsMode === v ? 'on' : ''}" data-a="adsMode" data-v="${v}" role="radio" aria-checked="${adsMode === v}">${v === 'tap' ? 'Tap to aim' : 'Hold to aim'}</div>`).join('')}</div>`
+        + slider('adsSens', 'Look speed when aimed', 'target')).replace('pn-group bev', 'pn-group bev pad')
+        + group(toggle('aimAssist', 'Aim assist', 'target', assist, 'Touch only · the view slows over a robot, and aimed it eases toward a weak point. Never snaps')
+        + (assist ? slider('assistSlow', 'Slow-down', 'dash') + slider('assistPull', 'Pull to weak points', 'target') : '')
+        + toggle('gyro', 'Gyro aiming', 'swap', s.gyro === true, gyroNote ?? 'Turn the phone to fine-tune your aim')
+        + (s.gyro ? slider('gyroSens', 'Gyro speed', 'swap') : ''));
       let ctl = toggle('lefty', 'Left-handed controls', 'swap', s.lefty, 'Stick on the right, buttons on the left');
       ctl += toggle('haptics', 'Vibration', 'blast', s.haptics, g.input.isTouch && g.haptics.mode === 'none' ? 'This browser cannot vibrate, so this does nothing here' : 'A buzz on hits and button presses');
       ctl += toggle('dmgNumbers', 'Damage numbers', 'exclaim', s.dmgNumbers, 'Numbers over robots as you hit them');
@@ -64,6 +78,8 @@ export const settingsPanel: PanelSpec = {
       h += C('Dodge roll', 'Roll button · roll through hits', 'C / Ctrl');
       h += C('Jump', 'Jump button · press again in the air', 'Space');
       h += C('Target', 'Tap an enemy, or the target button for the next one · hold it to let go', 'Tab');
+      h += C('Shoot', 'Bows, crossbows, rifles: the crosshair is the aim · fire button, drag from it to aim', 'Left click');
+      h += C('Aim · Reload', 'Aim button pulls in close · reload button, or fire on empty', 'Right click · R');
       h += C('Swap · Kit · Mount', 'Small buttons', 'F · H · X');
       h += C('Sprint', 'Push the stick all the way', 'Shift');
       h += C('Interact', 'Prompt above the buttons', 'E');
@@ -108,6 +124,18 @@ export const settingsPanel: PanelSpec = {
       act(a, v) {
         if (a === 'view') { setView(g, v === 'first' ? 'first' : 'third'); g.sfx('ui_click'); render(); }
         else if (a === 'quality') { s.quality = v; st.touch(); g.sfx('ui_click'); applyQuality(); render(); }
+        else if (a === 'adsMode') { s.adsMode = v === 'hold' ? 'hold' : 'tap'; st.touch(); g.sfx('ui_click'); render(); }
+        else if (a === 'toggle' && v === 'aimAssist') { s.aimAssist = s.aimAssist === false; st.touch(); g.sfx('ui_click'); render(); }
+        else if (a === 'toggle' && v === 'gyro') {
+          g.sfx('ui_click');
+          if (s.gyro) { s.gyro = false; st.touch(); render(); return; }
+          // iOS asks for motion access, and only from a tap: this one
+          void g.combat.shooter.gyro.request().then((ok) => {
+            s.gyro = ok; st.touch();
+            gyroNote = ok ? null : 'This device did not allow motion access, or has no gyroscope';
+            render();
+          });
+        }
         else if (a === 'toggle') { (s as any)[v] = !(s as any)[v]; st.touch(); g.sfx('ui_click'); if (v === 'haptics' && s.haptics) { g.haptics.enabled = true; g.haptics.heavy(); } render(); }
         else if (a === 'save') { g.savePos(); g.sfx('ui_click'); g.hud.toast('Game saved', 'good'); }
         else if (a === 'town') {

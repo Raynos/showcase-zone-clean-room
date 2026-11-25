@@ -17,6 +17,18 @@ const FP_NECK = { fwd: 0.2, down: 0.07, back: 0.05 };
 const RAY_EYE = groups(0xffff, CG.WORLD | CG.PROP | CG.NOCAM);
 /** Vertical field of view in first person, before the player's offset. Chosen by looking (docs/UI-ENGINE-PLAN.md U4). */
 export const FP_FOV = { portrait: 72, landscape: 50 };
+/**
+ * Shooter stance in third person (docs/UI-ENGINE-PLAN.md U5): the pivot sits at eye height and
+ * `side` metres over the right shoulder, `dist` behind it, looking straight down the aim, so the
+ * crosshair at screen centre is the aim and the hero stands off to the left. Hip fire, then fully
+ * aimed down sights. Portrait is narrow: the shoulder sits closer so the hero stays in the frame.
+ */
+export const SHOULDER = {
+  portrait: { side: [0.5, 0.4], dist: [2.7, 1.45], lift: 0.62 },
+  landscape: { side: [0.7, 0.52], dist: [2.5, 1.35], lift: 0.58 },
+};
+/** Shooter pitch limits (up, down): flyers are shot from below. */
+const SH_UP = -1.0, SH_DOWN = 1.15;
 
 /** What the view system hands the camera each frame in first person (systems/view.ts builds it). */
 export interface FirstPersonFeed {
@@ -108,6 +120,30 @@ export class CameraRig {
   /** 1 when the picture is taken from the hero's eyes (first person, no cutscene), 0 when not */
   get eyeAmount() { return this.fpK * (1 - this.cineBlend); }
   get fp() { return this.view === 'first'; }
+
+  // ---- shooter stance (systems/stance.ts sets it; systems/shooter.ts feeds the aim)
+  /** combat stance; set through setStance in systems/stance.ts, never directly */
+  stance: 'melee' | 'shooter' = 'melee';
+  /** 0..1 aimed down sights, fed every frame by the shooter */
+  ads = 0;
+  /** degrees of third-person field of view taken off at full aim, and the first-person zoom factor (1 none, 0.36 a scope) */
+  adsFov = 14; adsZoom = 0.75;
+  /** which shoulder the lens sits over: 1 right, -1 left (left-handed setting) */
+  side = 1;
+  /** 0..1 blend from the orbit to the over-the-shoulder rig */
+  private shK = 0;
+  private shPitchT = 0;
+  private shoulderCfg = SHOULDER.portrait;
+  /** 0..1 how much of the shooter rig is in use this frame (third person only) */
+  get shoulderAmount() { return this.shK * (1 - this.fpK); }
+  /** Change stance. Only systems/stance.ts calls this. */
+  setStance(s: 'melee' | 'shooter') {
+    if (s === this.stance) return;
+    this.stance = s;
+    this.anchor = null; this.moveOff = 0; this.effOff = 0; this.reframe = false;
+    // the orbit looks down at the hero; a gun looks along the ground: ease the pitch level once
+    if (s === 'shooter') this.shPitchT = 0.45;
+  }
   /**
    * True when a point is in front of the view, near enough to aim a melee move at. Always true in
    * third person, where the hero turns to its target on its own.
@@ -127,6 +163,7 @@ export class CameraRig {
     this.fpFov = portrait ? FP_FOV.portrait : FP_FOV.landscape;
     this.dist = portrait ? 5.9 : 5.6;
     this.lift = portrait ? 0.9 : 0.45;
+    this.shoulderCfg = portrait ? SHOULDER.portrait : SHOULDER.landscape;
     this.cam.updateProjectionMatrix();
   }
   /** The first-person field of view for the current orientation, with the player's offset. */
@@ -243,19 +280,25 @@ export class CameraRig {
     this.time += dt;
     const first = this.view === 'first' && !!opts.fp;
     this.fpK = first ? (this.fpK > 0.995 ? 1 : damp(this.fpK, 1, 11, dt)) : this.fpK < 0.005 ? 0 : damp(this.fpK, 0, 11, dt);
+    const shooter = this.stance === 'shooter';
+    this.shK = shooter ? (this.shK > 0.995 ? 1 : damp(this.shK, 1, 9, dt)) : this.shK < 0.005 ? 0 : damp(this.shK, 0, 9, dt);
     this.steering = Math.abs(opts.lookX) + Math.abs(opts.lookY) > 0.0005;
     if (this.steering) this.idleLook = 0; else this.idleLook += dt;
     this.yaw += opts.lookX;
-    this.pitch = first ? clamp(this.pitch - opts.lookY, FP_UP, FP_DOWN) : clamp(this.pitch - opts.lookY, -0.62, 1.25);
-    if (!first) this.zoom = clamp(this.zoom + opts.zoom, 0.55, 1.7);
+    this.pitch = first ? clamp(this.pitch - opts.lookY, FP_UP, FP_DOWN) : shooter ? clamp(this.pitch - opts.lookY, SH_UP, SH_DOWN) : clamp(this.pitch - opts.lookY, -0.62, 1.25);
+    if (!first && !shooter) this.zoom = clamp(this.zoom + opts.zoom, 0.55, 1.7);
+    // a gun is carried level: coming into the stance, a pitch that looked down at the hero eases up once
+    if (this.shPitchT > 0) { this.shPitchT -= dt; if (shooter && !this.steering) this.pitch = damp(this.pitch, Math.min(this.pitch, 0.05), 7, dt); }
     // first person on a ride: the view drifts round to the heading once the player stops steering
     if (first && opts.fp!.heading !== null && this.autoFollow && this.idleLook > 0.7 && opts.speed > 1.5) {
       this.yaw = dampAngle(this.yaw, opts.fp!.heading + Math.PI, 1.5 * Math.min(1, opts.speed / 6), dt);
     }
 
-    // first person never turns the view by itself: no target framing, no swing behind a retreat
-    const aim = first ? null : opts.aimTarget ?? null, flee = aim || first ? 0 : opts.flee ?? 0;
-    const moving = !first && opts.moveHeading !== null && opts.speed > 1.5;
+    // first person and the shooter stance never turn the view by themselves: no target framing, no
+    // swing behind a retreat, no follow assist. The crosshair is the player's alone.
+    const own = first || shooter;
+    const aim = own ? null : opts.aimTarget ?? null, flee = aim || own ? 0 : opts.flee ?? 0;
+    const moving = !own && opts.moveHeading !== null && opts.speed > 1.5;
     // A latched turn is only for a thumb pulled back toward the lens: that is the one case plain
     // camera-relative control cannot follow (the heading would chase the camera for ever), and it
     // keeps the upper half of the stick meaning exactly what it always has.
@@ -286,7 +329,8 @@ export class CameraRig {
     } else if (!aim) this.reframe = false;
 
     // large-target framing
-    const baseDist = this.dist * this.zoom * (opts.distMul ?? 1);
+    const cfg = this.shoulderCfg, sh = this.shK;
+    const baseDist = lerp(this.dist * this.zoom * (opts.distMul ?? 1), lerp(cfg.dist[0], cfg.dist[1], this.ads), sh);
     let big = 0;
     if (aim && opts.aimHeight && opts.aimHeight > 2.4 && !this.cine) {
       const gap = Math.hypot(aim.x - focus.x, aim.z - focus.z);
@@ -303,7 +347,15 @@ export class CameraRig {
     this.smoothT.z = damp(this.smoothT.z, _t.z, 18, dt);
     this.smoothT.y = damp(this.smoothT.y, _t.y, 9, dt);
     const pivot = this.target.copy(this.smoothT);
-    pivot.y += lerp(this.lift, this.bigLift, this.bigK);
+    pivot.y += lerp(lerp(this.lift, this.bigLift, this.bigK), cfg.lift, sh);
+    if (sh > 0.001) {
+      // over the shoulder: the pivot moves out to the side (swept, so it never enters a wall) and the
+      // lens looks straight down the aim from behind it, so the hero stands off the crosshair
+      const off = this.side * lerp(cfg.side[0], cfg.side[1], this.ads) * sh, sg = Math.sign(off) || 1, m = Math.abs(off);
+      _v.set(Math.cos(this.yaw) * sg, 0, -Math.sin(this.yaw) * sg);
+      const room = this.physics.spherecast(pivot, _v, m, LENS_R * 0.8, RAY_WORLD);
+      pivot.addScaledVector(_v, room === null ? m : Math.max(0, room - 0.02));
+    }
 
     // orbit offset
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
@@ -383,7 +435,11 @@ export class CameraRig {
     // fov
     this.fovPunch = damp(this.fovPunch, 0, 7, dt);
     this.fovExtra = damp(this.fovExtra, opts.fovExtra ?? 0, 4, dt);
-    if (!this.cine && this.fpK > 0) fovTarget = lerp(fovTarget, this.fpFovNow, this.fpK);
+    if (!this.cine) {
+      // aiming down sights narrows the view: a few degrees over the shoulder, a factor at the eyes (a scope a lot)
+      const a = this.stance === 'shooter' ? this.ads : 0;
+      fovTarget = lerp(this.baseFov - this.adsFov * a * sh, this.fpFovNow * lerp(1, this.adsZoom, a), this.fpK);
+    }
     const fov = fovTarget + this.fovExtra + this.fovPunch + (this.cine ? 0 : this.bigFov * this.bigK);
     // at the eyes the hero's own arms and blade are a hand's breadth from the lens
     const near = lerp(0.3, FP_NEAR, this.eyeAmount);
