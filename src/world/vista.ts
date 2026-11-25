@@ -4,12 +4,13 @@ import { buildBeyond, type Beyond } from './vista/beyond';
 import { buildBeams } from './vista/skyline';
 import { startTraffic } from './vista/traffic';
 import { startWeather } from './vista/weather';
+import { startCinematics, type Cinematics } from './vista/cinematics';
 
 /**
  * World scale and drama: what lies beyond the wall, what stands on the skyline, what crosses the
  * sky, and the moments the camera is taken to show them. Each part lives in `vista/`.
  */
-export interface Vista { beyond?: Beyond; beams?: THREE.Mesh | null }
+export interface Vista { beyond?: Beyond; beams?: THREE.Mesh | null; cine?: Cinematics }
 
 export function build(game: Game) {
   const v: Vista = {};
@@ -20,6 +21,9 @@ export function build(game: Game) {
 }
 
 export function start(game: Game) {
+  const v = (game as any).vista as Vista;
   game.cratefall = startTraffic(game);
   startWeather(game);
+  v.cine = startCinematics(game);
+  (game as any).cine = v.cine;
 }
