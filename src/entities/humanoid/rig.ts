@@ -237,6 +237,9 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
         const parent = inHand ? (weapon.kind === 'bow' ? grip[L] : grip[R]) : backMount;
         if (weapon.object.parent !== parent) { parent.add(weapon.object); weapon.object.position.set(0, 0, 0); weapon.object.quaternion.identity(); }
         weapon.setDraw?.(inHand ? P.draw : 0);
+        // a thrown spear leaves the hand at the release (combat fires the javelin at 0.42) and is back for the recovery
+        const thrown = pose.action === 'spearThrow' && pose.actionT > 0.42 && pose.actionT < 0.9;
+        if (weapon.object.visible === thrown) weapon.object.visible = !thrown;
       }
 
       // ---- hands: closed around whatever they hold, loose otherwise
