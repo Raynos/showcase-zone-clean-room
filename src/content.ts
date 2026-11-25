@@ -3,7 +3,7 @@ import { Coach } from './systems/coach';
 import { Guide } from './systems/guide';
 
 // Optional modules are discovered with glob imports so the game still boots while a module is absent.
-const mods = import.meta.glob(['./world/town.ts', './world/roads.ts', './entities/robots/index.ts', './entities/humanoid/index.ts', './core/audio.ts', './ui/panels.ts', './systems/npcs.ts', './world/east.ts', './world/vault.ts', './world/arena.ts', './world/dressing.ts', './world/vista.ts', './world/encounters.ts']);
+const mods = import.meta.glob(['./world/town.ts', './world/roads.ts', './entities/robots/index.ts', './entities/humanoid/index.ts', './core/audio.ts', './ui/panels.ts', './systems/npcs.ts', './world/east.ts', './world/vault.ts', './world/arena.ts', './world/dressing.ts', './world/vista.ts', './world/encounters.ts', './systems/living.ts']);
 /** West-side activity modules: each may export build(game) (static geometry) and start(game) (systems). */
 const west = import.meta.glob('./world/west/*.ts');
 const westMods: any[] = [];
@@ -64,4 +64,7 @@ export async function startSystems(game: Game) {
   if (npcs?.Npcs) game.npcs = new npcs.Npcs(game);
   const panels = await opt('./ui/panels.ts');
   if (panels?.Panels) game.panels = new panels.Panels(game);
+  // the living zone: cratefall events, other adventurers, zone chat
+  const living = await opt('./systems/living.ts');
+  try { living?.start?.(game); } catch (e) { console.warn('start failed ./systems/living.ts', e); }
 }

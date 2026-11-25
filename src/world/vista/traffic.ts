@@ -46,6 +46,15 @@ export interface Cratefall {
    * as near to it as open ground allows
    */
   callPass(at?: { x: number; z: number }): void;
+  /**
+   * asked as each pass starts (unless callPass already aimed it): a point to aim one crate at, so a
+   * zone event can pick where the drop that matters lands; null leaves the pass to chance
+   */
+  aim: (() => { x: number; z: number } | null) | null;
+  /** seconds a landed crate has left before it is taken away (from now) */
+  setLife(id: number, left: number): void;
+  /** put a crate on the ground at once (a drop restored from a save); returns its id, or -1 */
+  placeLanded(x: number, z: number, life: number): number;
 }
 
 const DARK = 0x2a2d33;
@@ -155,8 +164,8 @@ function freighterGeo(): THREE.BufferGeometry {
 // The system
 // ---------------------------------------------------------------------------------------------
 interface Drop { id: number; t: number; lx: number; ly: number; lz: number; band: number; state: 0 | 1 | 2; ft: number; sx: number; sy: number; sz: number; spin: number; puff: number }
-interface Pass { cx: number; cz: number; dx: number; dz: number; alt: number; t: number; dur: number; drops: Drop[]; announced: boolean }
-interface Ground { id: number; x: number; y: number; z: number; band: number; age: number; yaw: number; tilt: number; col: unknown }
+interface Pass { cx: number; cz: number; dx: number; dz: number; alt: number; t: number; dur: number; drops: Drop[]; announced: boolean; aimed: boolean }
+interface Ground { id: number; x: number; y: number; z: number; band: number; age: number; ttl: number; yaw: number; tilt: number; col: unknown }
 interface DroneRun { ax: number; ay: number; az: number; bx: number; by: number; bz: number; mx: number; my: number; mz: number; t: number; dur: number; hold: number; node: number; yaw: number; ph: number }
 
 const MAX_FALL = 4, MAX_GROUND = 6, DRONES = 9;
@@ -243,7 +252,7 @@ export function startTraffic(game: Game): Cratefall {
     const h = rng.range(0, TAU), dx = Math.sin(h), dz = Math.cos(h);
     // the line passes over the combat half, or straight over the aim point
     const cx = aim ? aim.x - dx * 40 : rng.range(50, 190), cz = aim ? aim.z - dz * 40 : rng.range(-150, 150);
-    const p: Pass = { cx, cz, dx, dz, alt: rng.range(150, 185), t: 0, dur: (SHIP_REACH * 2) / SHIP_SPEED, drops: [], announced: false };
+    const p: Pass = { cx, cz, dx, dz, alt: rng.range(150, 185), t: 0, dur: (SHIP_REACH * 2) / SHIP_SPEED, drops: [], announced: false, aimed: !!aim };
     const along = aim ? [0, -130, 130] : [-150 + rng.range(-20, 20), rng.range(-25, 25), 150 + rng.range(-20, 20)];
     along.forEach((s, i) => {
       // a crate leaves the bay with the ship's speed and lands some way ahead of where it was let go
@@ -294,7 +303,7 @@ export function startTraffic(game: Game): Cratefall {
   };
   const ground: Ground[] = [];
   const asDrop = (d: Drop, eta: number): CrateDrop => ({ id: d.id, eta, x: d.lx, y: d.ly, z: d.lz, band: d.band });
-  const asLanded = (c: Ground): LandedCrate => ({ id: c.id, x: c.x, y: c.y, z: c.z, band: c.band, age: c.age, ttl: CRATE_TTL });
+  const asLanded = (c: Ground): LandedCrate => ({ id: c.id, x: c.x, y: c.y, z: c.z, band: c.band, age: c.age, ttl: c.ttl });
 
   const land = (d: Drop) => {
     d.state = 2;
@@ -313,7 +322,7 @@ export function startTraffic(game: Game): Cratefall {
     let col: unknown = null;
     if (dist > 3) col = game.physics.addBox(d.lx, d.ly + 0.95, d.lz, 1.15, 1.15, 1.15, d.spin);
     if (ground.length >= MAX_GROUND) expire(0);
-    ground.push({ id: d.id, x: d.lx, y: d.ly, z: d.lz, band: d.band, age: 0, yaw: d.spin, tilt: rng.range(-0.1, 0.1), col });
+    ground.push({ id: d.id, x: d.lx, y: d.ly, z: d.lz, band: d.band, age: 0, ttl: CRATE_TTL, yaw: d.spin, tilt: rng.range(-0.1, 0.1), col });
     ev.emit('land', asDrop(d, 0));
   };
   const expire = (i: number) => {
@@ -333,7 +342,7 @@ export function startTraffic(game: Game): Cratefall {
       // ---- the pass
       if (!pass) {
         wait -= dt;
-        if (wait <= 0) { pass = plan; plan = makePlan(); wait = api.period; }
+        if (wait <= 0) { const at = !plan.aimed && api.aim ? api.aim() : null; pass = at ? makePlan(at) : plan; plan = makePlan(); wait = api.period; }
       }
       let n = 0;
       nCards = 0;
@@ -386,10 +395,10 @@ export function startTraffic(game: Game): Cratefall {
       for (let i = ground.length - 1; i >= 0; i--) {
         const c = ground[i];
         c.age += dt;
-        if (c.age >= CRATE_TTL) { expire(i); continue; }
+        if (c.age >= c.ttl) { expire(i); continue; }
       }
       for (const c of ground) {
-        const left = CRATE_TTL - c.age, sink = left < 2.5 ? (1 - left / 2.5) : 0, pop = Math.min(1, c.age / 0.25);
+        const left = c.ttl - c.age, sink = left < 2.5 ? (1 - left / 2.5) : 0, pop = Math.min(1, c.age / 0.25);
         _e.set(c.tilt, c.yaw, c.tilt * 0.6);
         _m.compose(_p.set(c.x, c.y - 0.28 - sink * 2.4 + (1 - pop) * 0.3, c.z), _q.setFromEuler(_e), _s.set(1, 1, 1));
         crates.setMatrixAt(n++, _m);
@@ -419,6 +428,17 @@ export function startTraffic(game: Game): Cratefall {
     onLand: (fn) => ev.on('land', fn),
     onExpire: (fn) => ev.on('expire', fn),
     callPass: (at) => { if (at) plan = makePlan(at); wait = 0; },
+    aim: null,
+    setLife: (id, left) => { const c = ground.find((g) => g.id === id); if (c) c.ttl = c.age + Math.max(0, left); },
+    placeLanded: (x, z, life) => {
+      if (game.interior) return -1;
+      const y = terrain.h(x, z), id = ids++, spin = rng.range(0, TAU);
+      if (ground.length >= MAX_GROUND) expire(0);
+      // a crate already sitting there: no flash, no thud, it is just where it was left
+      const col = game.physics.addBox(x, y + 0.95, z, 1.15, 1.15, 1.15, spin);
+      ground.push({ id, x, y, z, band: bandAt(x, z)?.id ?? 0, age: 0.3, ttl: Math.max(1, life), yaw: spin, tilt: rng.range(-0.1, 0.1), col });
+      return id;
+    },
   };
   return api;
 }
