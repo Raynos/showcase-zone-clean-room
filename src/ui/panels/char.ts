@@ -6,6 +6,7 @@ import { icon } from '../icons';
 import { art, btn, cap, itemTile, playTime, weaponTile, type PanelSpec } from './common';
 import './loadout.css';
 import { perksAct, perksHtml, perksSig } from './perks';
+import { livePortrait } from '../portrait';
 
 const COURSES: Record<string, string> = { range: 'Weapon Range · Target Rush', physics: 'Physics Yard · Lock-up', riding: 'Riding Course', movers: 'Movers Run', grapple: 'Grapple Course', climb: 'Climb Yard · Summit', hover_score: 'Hoverboard Park · Session' };
 /** point scores (higher is better) rather than times */
@@ -95,6 +96,8 @@ export const charPanel: PanelSpec = {
       }
       const top = host.body.scrollTop;
       host.body.innerHTML = h;
+      // the portrait is the live model when it can be taken (ui/portrait.ts); the still stays otherwise
+      if (tab === 'stats') livePortrait(g, host.body.querySelector<HTMLImageElement>('.ch-port img'));
       host.body.scrollTop = top;
     };
     return {
