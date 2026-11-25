@@ -73,6 +73,8 @@ export interface HumanPose {
   lookYaw: number; lookPitch: number;
   /** accumulates with distance climbed (m) for ladder/climb hand-foot cycles */
   climbPhase: number;
+  /** 0..1 while sliding into a melee strike: feet stay planted in a long lunge stance (speed should read 0) */
+  lunge?: number;
 }
 
 export interface HumanLook {

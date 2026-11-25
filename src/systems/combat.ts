@@ -41,6 +41,12 @@ const SPEAR: Swing[] = [
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _d = new THREE.Vector3(), _c = new THREE.Vector3();
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _col = new THREE.Color(), _up = new THREE.Vector3(0, 0, 1);
 const MAXS = 96;
+/** Seconds a press of a buffered action waits for the first frame it is legal. */
+const BUFFER = 0.2;
+/** A melee swing slides at most this far toward its target, at no more than this average speed (peak is 1.2x). */
+const LUNGE_MAX = 3, LUNGE_SPEED = 15;
+type BufAct = 'attack' | 'dodge' | 'skill1' | 'skill2' | 'swap';
+const BUFFERED: BufAct[] = ['attack', 'dodge', 'skill1', 'skill2', 'swap'];
 
 /** Player offence and defence: targeting, weapons, skills, projectiles, getting hurt. */
 export class Combat {
@@ -53,7 +59,11 @@ export class Combat {
   private crateMesh: THREE.InstancedMesh;
   // melee
   private swing: Swing | null = null; private swingT = 0; private swingHit = false; private combo = 0; private comboT = 0; private queued = false;
+  /** wind-up rate of the current swing: below 1 when a long lunge has to arrive before the blade does */
+  private windK = 1;
   private trail: Trail | null = null;
+  /** the one shared input buffer: the latest press of a buffered action and how long it has left */
+  private buf: BufAct | null = null; private bufT = 0;
   // ranged
   drawing = false; draw = 0; private fullT = 0; private fireCd = 0; private mag = 5; private reloadT = 0;
   aiming = false;
@@ -69,6 +79,8 @@ export class Combat {
   perfectT = 0;
   private lastHitSfx = 0;
   enabled = true;
+  /** set by the camera's engagement tracker while the player runs from a fight: no auto-targeting until they turn back */
+  autoTargetOff = false;
 
   constructor(private game: Game) {
     const mk = (geo: THREE.BufferGeometry, emit: number, layer: number) => {
@@ -305,7 +317,7 @@ export class Combat {
     for (const tap of inp.taps) this.tapTarget(tap.x, tap.y);
     if (inp.pressed('target')) this.cycle();
     // auto-target the thing hitting us
-    if (!this.target && g.mobs.inCombat > 0) {
+    if (!this.target && g.mobs.inCombat > 0 && !this.autoTargetOff) {
       this.autoT -= dt;
       if (this.autoT <= 0) { this.autoT = 0.4; this.target = this.acquire(this.kind === 'sword' || this.kind === 'spear' ? 9 : 30, g.cameraRig.yaw + Math.PI); }
     }
@@ -336,17 +348,22 @@ export class Combat {
       if (pl.actionT >= 1) { pl.action = null; this.actDur = 0; }
     }
 
+    // ---- input buffer: the newest press replaces the last and waits up to BUFFER for its first legal frame ----
+    for (const a of BUFFERED) if (inp.pressed(a)) { this.buf = a; this.bufT = BUFFER; }
+
     // ---- dodge ----
-    if (can && !pl.mode && inp.pressed('dodge') && !this.skill) {
+    if (this.buf === 'dodge' && can && !pl.mode && !this.skill) {
       g.cameraRig.forward(_v); _v2.set(-_v.z, 0, _v.x);
       const mx = _v2.x * inp.moveX + _v.x * inp.moveY, mz = _v2.z * inp.moveX + _v.z * inp.moveY;
       if (pl.startRoll(mx, mz)) {
+        this.buf = null;
         this.swing = null; this.queued = false; this.trail?.stop(); this.drawing = false; this.aiming = false; pl.action = null; pl.lungeT = 0;
         g.sfx('dodge'); g.fx.dust(pl.pos, 4, 0.8);
       }
     }
     // ---- swap / potion ----
-    if (can && inp.pressed('swap') && !this.busy) {
+    if (this.buf === 'swap' && can && !this.busy) {
+      this.buf = null;
       if (st.swapWeapon()) { g.sfx('swap'); this.combo = 0; this.mag = 5; this.reloadT = 0; }
       else g.hud.toast('No second weapon equipped', 'warn');
     }
@@ -355,8 +372,9 @@ export class Combat {
     // ---- skills ----
     if (can && !pl.rolling && !this.skill) {
       const sk = this.skills;
-      if (inp.pressed('skill1')) this.cast(0, sk[0]);
-      else if (inp.pressed('skill2')) this.cast(1, sk[1]);
+      // a press that finds the skill still cooling stays buffered; anything else uses the press up
+      if (this.buf === 'skill1') { if (this.cast(0, sk[0])) this.buf = null; }
+      else if (this.buf === 'skill2') { if (this.cast(1, sk[1])) this.buf = null; }
     }
     if (this.skill) this.updateSkill(dt);
 
@@ -386,6 +404,7 @@ export class Combat {
     }
     this.updateShots(dt);
     this.updateStrikes(dt);
+    if (this.buf && (this.bufT -= dt) <= 0) this.buf = null;
   }
 
   private updateMelee(dt: number, can: boolean) {
@@ -393,13 +412,16 @@ export class Combat {
     const set = this.kind === 'sword' ? SWORD : SPEAR;
     this.comboT -= dt;
     if (this.comboT <= 0 && !this.swing) this.combo = 0;
-    const want = can && !pl.rolling && !this.skill && (inp.pressed('attack') || (inp.down('attack') && inp.heldFor('attack') > 0.25));
+    const ok = can && !pl.rolling && !this.skill;
+    const press = ok && this.buf === 'attack';
+    const want = press || (ok && inp.down('attack') && inp.heldFor('attack') > 0.25);
     if (this.swing) {
       const s = this.swing;
-      this.swingT += dt / s.dur;
+      this.swingT += (dt / s.dur) * (this.swingHit ? 1 : this.windK);
       pl.action = s.anim; pl.actionT = Math.min(1, this.swingT);
       pl.actionSlow = 0.25;
-      if (want && this.swingT > 0.3) this.queued = true;
+      // a press at any point of a swing chains the next one; it no longer has to land after the first 30%
+      if (want) { this.queued = true; if (press) this.buf = null; }
       if (!this.swingHit && this.swingT >= s.hitAt) {
         this.swingHit = true;
         this.meleeHit(s);
@@ -410,7 +432,7 @@ export class Combat {
         this.comboT = 0.55;
         if (this.queued) { this.queued = false; this.startSwing(set); }
       }
-    } else if (want) this.startSwing(set);
+    } else if (want) { if (press) this.buf = null; this.startSwing(set); }
   }
   private startSwing(set: Swing[]) {
     const g = this.game, pl = g.player;
@@ -419,16 +441,22 @@ export class Combat {
     this.swing = s; this.swingT = 0; this.swingHit = false; this.queued = false;
     pl.action = s.anim; pl.actionT = 0; pl.sinceCombat = 0;
     const t = this.ensureTarget(s.range + 6);
-    // close the gap
-    let yaw = pl.moveHeading ?? pl.yaw, step = s.step;
+    // close the gap: a short slide that arrives before the blade does. With nothing to hit it is only a
+    // weight shift, so a string swung at the air stays roughly where it started.
+    let yaw = pl.moveHeading ?? pl.yaw, step = s.step * 0.4;
     if (t) {
       const dx = t.pos.x - pl.pos.x, dz = t.pos.z - pl.pos.z, d = Math.hypot(dx, dz) - t.radius;
       yaw = Math.atan2(dx, dz);
-      step = clamp(d - (s.range - 1.3), 0, 5.5);
+      step = clamp(d - (s.range - 1.3), 0, LUNGE_MAX);
       pl.yaw = yaw;
     } else if (pl.moveHeading !== null) pl.yaw = yaw;
-    const lt = s.dur * s.hitAt * 0.85;
-    if (step > 0.05 && pl.grounded) { pl.lunge.set(Math.sin(yaw) * step / lt, 0, Math.cos(yaw) * step / lt); pl.lungeT = lt; }
+    // the slide normally takes 85% of the wind-up; a longer one stretches the wind-up so the hit waits for arrival
+    const lt = s.dur * s.hitAt * 0.85, ld = Math.max(lt, step / LUNGE_SPEED);
+    this.windK = lt / ld;
+    if (step > 0.05 && pl.grounded) {
+      pl.startLunge(Math.sin(yaw), Math.cos(yaw), step, ld);
+      if (step > 1.2) g.fx.dust(pl.pos, 3, 0.7);
+    }
     this.trail = g.fx.trail();
     this.trail.life = s.heavy ? 0.26 : 0.18;
     this.trail.start(g.state.weapon.color);
@@ -452,7 +480,7 @@ export class Combat {
     const g = this.game, pl = g.player, inp = g.input, st = g.state, k = this.kind;
     const ok = can && !pl.rolling && !this.skill;
     if (k === 'bow') {
-      if (!this.drawing && ok && inp.pressed('attack') && this.fireCd <= 0) { this.drawing = true; this.draw = 0; this.fullT = 0; this.ensureTarget(42); g.sfx('bow_draw'); }
+      if (!this.drawing && ok && this.buf === 'attack' && this.fireCd <= 0) { this.buf = null; this.drawing = true; this.draw = 0; this.fullT = 0; this.ensureTarget(42); g.sfx('bow_draw'); }
       if (this.drawing) {
         this.draw = Math.min(1, this.draw + dt / 0.62);
         if (this.draw >= 1) { if (this.fullT === 0) { g.sfx('bow_full'); pl.weaponModel && g.fx.emit(pl.weaponModel.tip.getWorldPosition(_v), { count: 1, speed: [0, 0], life: [0.18, 0.18], size: [0.7, 0.7], grow: 0.2, color: st.weapon.color, glow: 4, sprite: SP.STAR }); } this.fullT += dt; }
@@ -486,7 +514,7 @@ export class Combat {
       }
       if (inp.down('attack') && ok) pl.actionSlow = Math.min(pl.actionSlow, 0.7);
     } else if (k === 'rifle') {
-      if (!this.aiming && ok && inp.pressed('attack') && this.fireCd <= 0) { this.aiming = true; this.draw = 0; this.ensureTarget(60); g.sfx('rifle_aim'); }
+      if (!this.aiming && ok && this.buf === 'attack' && this.fireCd <= 0) { this.buf = null; this.aiming = true; this.draw = 0; this.ensureTarget(60); g.sfx('rifle_aim'); }
       if (this.aiming) {
         this.draw = Math.min(1, this.draw + dt / 0.55);
         pl.action = 'rifleAim'; pl.actionT = this.draw; pl.actionSlow = 0.4;
@@ -563,16 +591,17 @@ export class Combat {
   }
 
   // ------------------------------------------------------------------ skills
-  private cast(slot: 0 | 1, sk: SkillDef) {
+  /** Returns false only when the skill is still cooling down, so the press can stay buffered. */
+  private cast(slot: 0 | 1, sk: SkillDef): boolean {
     const g = this.game, pl = g.player, st = g.state;
     const cd = slot === 0 ? this.cd1 : this.cd2;
-    if (cd > 0) return;
-    if (st.d.energy < sk.energy) { g.hud.toast('Not enough energy', 'warn'); g.sfx('ui_deny'); return; }
+    if (cd > 0) return false;
+    if (st.d.energy < sk.energy) { g.hud.toast('Not enough energy', 'warn'); g.sfx('ui_deny'); return true; }
     if (this.swing) { this.swing = null; this.trail?.stop(); }
     if (this.drawing || this.aiming) { this.drawing = false; this.aiming = false; this.draw = 0; }
     const melee = this.kind === 'sword' || this.kind === 'spear';
     const t = sk.id === 'cycle_ammo' ? null : this.ensureTarget(melee ? 13 : 45);
-    if (sk.id === 'skewer_leap' && !t) { g.hud.toast('No target', 'warn'); return; }
+    if (sk.id === 'skewer_leap' && !t) { g.hud.toast('No target', 'warn'); return true; }
     st.d.energy -= sk.energy;
     if (slot === 0) this.cd1 = sk.cd; else this.cd2 = sk.cd;
     pl.sinceCombat = 0;
@@ -619,6 +648,7 @@ export class Combat {
       case 'concussion': this.skillDur = 0.3; this.fireRifle(1, false, true); break;
     }
     pl.actionT = 0;
+    return true;
   }
   private dashFrom = new THREE.Vector3(); private dashYaw = 0;
   private updateSkill(dt: number) {
@@ -838,6 +868,7 @@ export class Combat {
   cancel() {
     const pl = this.game.player;
     this.swing = null; this.skill = null; this.drawing = false; this.aiming = false; this.draw = 0; this.queued = false; this.trail?.stop();
+    this.buf = null;
     pl.action = null; pl.lungeT = 0; this.actDur = 0;
   }
   clearShots() { this.shots.length = 0; this.strikes.length = 0; }

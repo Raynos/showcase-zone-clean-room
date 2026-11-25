@@ -50,6 +50,10 @@ export class Player {
   actionSlow = 1;
   /** when set, movement input is ignored and this velocity is used (attack lunges) */
   lunge = new THREE.Vector3(); lungeT = 0;
+  /** length of the eased lunge in progress (0 for a plain constant-velocity one) */
+  private lungeDur = 0;
+  /** 0..1 while sliding into a strike: the body holds a planted stance instead of running */
+  private lungeK = 0;
   /** external knockback, decays */
   private knock = new THREE.Vector3();
   /** velocity of the platform under our feet */
@@ -167,6 +171,15 @@ export class Player {
     return g;
   }
 
+  /**
+   * Slide `dist` metres along (dx, dz) in `dur` seconds, quick off the mark and braking into the
+   * strike. The speed profile runs from 1.2 to 0.8 of the average, so the distance is exact.
+   */
+  startLunge(dx: number, dz: number, dist: number, dur: number) {
+    const l = Math.hypot(dx, dz) || 1, v = dist / Math.max(dur, 1e-3);
+    this.lunge.set((dx / l) * v, 0, (dz / l) * v); this.lungeT = dur; this.lungeDur = dur;
+  }
+
   startRoll(dirX: number, dirZ: number) {
     if (this.rolling || this.rollCd > 0 || !this.grounded && this.airTime > 0.15) return false;
     const l = Math.hypot(dirX, dirZ);
@@ -197,7 +210,10 @@ export class Player {
     const turn = angleDiff(this.lastYaw, this.yaw) / Math.max(dt, 1e-3);
     this.lastYaw = this.yaw;
     this.lean = damp(this.lean, clamp(-turn * 0.09, -1, 1) * Math.min(1, sp / 5), 8, dt);
-    p.speed = sp; p.vy = this.vel.y; p.landT = this.landT; p.lean = this.lean;
+    // a lunge is a slide in a planted stance, not a sprint: hide its speed from the gait
+    this.lungeK = damp(this.lungeK, this.lungeT > 0 && !this.rolling && !this.mode ? 1 : 0, this.lungeT > 0 ? 40 : 14, dt);
+    p.lunge = this.lungeK;
+    p.speed = sp * (1 - this.lungeK); p.vy = this.vel.y; p.landT = this.landT; p.lean = this.lean;
     if (!this.mode) p.locomotion = this.dead ? 'dead' : this.rolling ? 'roll' : this.grounded || this.airTime < 0.08 ? 'ground' : 'air';
     else p.locomotion = this.dead ? 'dead' : this.mode.name;
     p.rollT = this.rollT;
@@ -241,9 +257,10 @@ export class Player {
       this.vel.x = this.rollDir.x * sp; this.vel.z = this.rollDir.z * sp;
       if (this.rollT >= 1) { this.rolling = false; this.vel.x = this.rollDir.x * this.runSpeed; this.vel.z = this.rollDir.z * this.runSpeed; }
     } else if (this.lungeT > 0) {
+      const k = this.lungeDur > 0 ? 1.2 - 0.4 * clamp(1 - this.lungeT / this.lungeDur, 0, 1) : 1;
       this.lungeT -= dt;
-      this.vel.x = this.lunge.x; this.vel.z = this.lunge.z;
-      if (this.lungeT <= 0) { this.vel.x *= 0.3; this.vel.z *= 0.3; }
+      this.vel.x = this.lunge.x * k; this.vel.z = this.lunge.z * k;
+      if (this.lungeT <= 0) { this.vel.x *= 0.3; this.vel.z *= 0.3; this.lungeDur = 0; }
     } else {
       const tx = mag > 0.01 ? (wx / Math.hypot(wx, wz)) * maxSp * mag : 0, tz = mag > 0.01 ? (wz / Math.hypot(wx, wz)) * maxSp * mag : 0;
       const acc = this.grounded ? (mag > 0.01 ? 58 : 46) : 16;

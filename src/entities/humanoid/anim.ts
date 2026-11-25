@@ -539,14 +539,19 @@ function twist(P: Pose, hipsYaw: number, chestYaw: number, chestPitch: number, h
   qmul(P.headQ, -chestPitch * 0.7, -(chestYaw + hipsYaw) * 0.8, 0);
   P.hipsPos.y += hipsY; P.hipsPos.z += hipsZ;
 }
+/** 0..1 for the pose being evaluated: sliding into a strike (set once per evaluate) */
+let LUNGE = 0;
 function combatFeet(P: Pose, pl: number, lead: number, hipsYaw: number) {
   if (pl <= 0) return;
+  // a lunge is a long, low fencing stance: lead foot reaching, rear leg trailing on its toe, hips sunk between
+  const lg = LUNGE * pl;
   // left foot leads; `lead` pushes it forward for a lunge
-  _v1.set(0.13, SK.ankle, 0.16 + lead);
-  P.footPos[L].lerp(_v1, pl); qe(_q2, 0, 0.1 + hipsYaw * 0.3); P.footQ[L].slerp(_q2, pl);
-  _v1.set(-0.17, SK.ankle, -0.2 + lead * 0.15);
-  P.footPos[R].lerp(_v1, pl); qe(_q2, 0.25 * clamp01(lead * 3), -0.5 + hipsYaw * 0.4); P.footQ[R].slerp(_q2, pl);
+  _v1.set(0.13, SK.ankle, 0.16 + lead + 0.3 * lg);
+  P.footPos[L].lerp(_v1, pl); qe(_q2, -0.12 * lg, 0.1 + hipsYaw * 0.3); P.footQ[L].slerp(_q2, pl);
+  _v1.set(-0.17, SK.ankle + 0.03 * lg, -0.2 + lead * 0.15 - 0.3 * lg);
+  P.footPos[R].lerp(_v1, pl); qe(_q2, 0.25 * clamp01(lead * 3) + 0.55 * lg, -0.5 + hipsYaw * 0.4); P.footQ[R].slerp(_q2, pl);
   P.knee[R].set(-0.5, 0, 1);
+  if (lg > 0) { P.hipsPos.y -= 0.13 * lg; P.hipsPos.z += 0.07 * lg; qmul(P.hipsQ, 0.12 * lg); }
 }
 /** Free arm counterbalance (chest space). */
 function offhand(P: Pose, x: number, y: number, z: number) {
@@ -973,6 +978,7 @@ export function evaluate(hp: HumanPose, st: AnimState, dt: number): Pose {
     else st.ridePhase = frac(st.ridePhase + dt * horseCycleHz(hp.speed));
   }
   const P = tmpPose;
+  LUNGE = hp.locomotion === 'ground' ? clamp01(hp.lunge ?? 0) : 0;
   switch (hp.locomotion) {
     case 'ground': ground(P, hp, st); break;
     case 'air': air(P, hp); break;
