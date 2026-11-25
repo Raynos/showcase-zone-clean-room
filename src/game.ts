@@ -21,7 +21,7 @@ import { Movers, Triggers, type Course } from './systems/world';
 import { Hud } from './ui/hud';
 import { Chunks } from './world/chunks';
 import { Environment } from './world/environment';
-import { scatterFlora } from './world/flora';
+import { FLORA_KEEPOUT, scatterFlora } from './world/flora';
 import { Rain } from './gfx/rain';
 import { Grass } from './world/grass';
 import { BANDS, PADS, ROCK, SPAWN, TOWN, bandAt, inTown } from './world/layout';
@@ -97,7 +97,6 @@ export class Game {
     this.chunks = new Chunks();
     progress(0.4, 'PLANTING');
     await tick();
-    scatterFlora(this.chunks, this.terrain);
     this.env = new Environment(this.scene);
     this.env.hour = this.state.d.hour;
     this.input = new Input(canvas);
@@ -120,6 +119,9 @@ export class Game {
     await tick();
     const content = await import('./content');
     await content.buildWorld(this, progress);
+    // flora goes in last so trees keep clear of everything the world modules placed
+    for (const k of [[92, -11, 13], [46, 152, 11], [206, 174, 13], [166, 14, 24], [205, -126, 24], [56, -160, 17], [-148, 25, 10], [-104, -156, 7], [22, -38, 5]] as Array<[number, number, number]>) FLORA_KEEPOUT.push(k);
+    scatterFlora(this.chunks, this.terrain);
     progress(0.86, 'SOWING GRASS');
     await tick();
     const st = this.chunks.build(this.physics);

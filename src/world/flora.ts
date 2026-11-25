@@ -164,6 +164,12 @@ export function reeds(g: Geo, r: Rng) {
 // ---- scatter --------------------------------------------------------------------------------
 
 /** Keep-out for anything decorative: buildings, courses, roads and gates own that ground. */
+/** Circles [x, z, r] that trees and bushes stay out of: filled by set dressing before flora is scattered. */
+export const FLORA_KEEPOUT: Array<[number, number, number]> = [];
+function keptOut(x: number, z: number, margin: number) {
+  for (const k of FLORA_KEEPOUT) { const dx = x - k[0], dz = z - k[1], r = k[2] + margin; if (dx * dx + dz * dz < r * r) return true; }
+  return false;
+}
 export function freeGround(x: number, z: number, margin = 2): boolean {
   if (Math.abs(x) > HALF - 3 || Math.abs(z) > HALF - 3) return false;
   if (inTown(x, z, margin + 2)) return false;
@@ -184,7 +190,7 @@ export function scatterFlora(chunks: Chunks, terrain: Terrain) {
     const px = x + rng.range(0, cell), pz = z + rng.range(0, cell);
     const roll = rng.next(), kind = rng.next(), yaw = rng.range(0, TAU), sc = rng.range(0.85, 1.25);
     const treeSeed = rng.int(1, 1e9);
-    if (!freeGround(px, pz, 1.5)) continue;
+    if (!freeGround(px, pz, 1.5) || keptOut(px, pz, 0.6)) continue;
     const h = terrain.h(px, pz), slope = terrain.slope(px, pz);
     const ld = Math.hypot(px - LAKE.x, pz - LAKE.z);
     const band = bandAt(px, pz);

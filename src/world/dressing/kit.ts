@@ -3,7 +3,7 @@ import { CAMPS, ELITES } from '../../data/enemies';
 import type { Game } from '../../game';
 import type { Geo } from '../../gfx/geo';
 import { T } from '../../gfx/textures';
-import { freeGround } from '../flora';
+import { FLORA_KEEPOUT, freeGround } from '../flora';
 import { FLATS, HALF, LAKE, PAL, ROCK } from '../layout';
 import { BEACONS } from '../east';
 
@@ -131,6 +131,7 @@ export class Ctx {
   put(x: number, z: number, yaw: number, f: (g: Geo) => void, dy = 0, leaf = false) {
     const ch = this.game.chunks, g = leaf ? ch.leaf(x, z) : ch.solid(x, z);
     const v0 = g.idx.length;
+    if (!leaf) FLORA_KEEPOUT.push([x, z, 2.4]);
     g.at(x, this.h(x, z) + dy, z, yaw, () => f(g));
     this.info.tris += (g.idx.length - v0) / 3;
   }
@@ -138,6 +139,7 @@ export class Ctx {
   putY(x: number, y: number, z: number, yaw: number, f: (g: Geo) => void, leaf = false) {
     const ch = this.game.chunks, g = leaf ? ch.leaf(x, z) : ch.solid(x, z);
     const v0 = g.idx.length;
+    if (!leaf) FLORA_KEEPOUT.push([x, z, 2.4]);
     g.at(x, y, z, yaw, () => f(g));
     this.info.tris += (g.idx.length - v0) / 3;
   }
