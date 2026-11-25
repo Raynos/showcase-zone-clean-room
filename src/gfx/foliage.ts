@@ -151,12 +151,18 @@ export function foliageDepthMaterial(): THREE.MeshDepthMaterial {
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uLeaf = FOLIAGE.uLeaf;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec4 aNL; varying float vCard; varying vec2 vCUv;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCard = aNL.w * 127.0; vCUv = uv;');
+      .replace('#include <common>', '#include <common>\nattribute vec4 aNL; varying float vCard; varying vec2 vCUv; varying vec2 vDap;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCard = aNL.w * 127.0; vCUv = uv;\n'
+        // where the vertex sits across the light (rotation only, so the pattern stays put as the cascade follows the player)
+        + 'vDap = (mat3(viewMatrix) * (modelMatrix * vec4(transformed, 1.0)).xyz).xy;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform sampler2D uLeaf; varying float vCard; varying vec2 vCUv;')
-      .replace('#include <map_fragment>', '{ float la = texture2D(uLeaf, vCUv).a; if (vCard > 99.5 && la < 0.4) discard; }');
+      .replace('#include <common>', '#include <common>\nuniform sampler2D uLeaf; varying float vCard; varying vec2 vCUv; varying vec2 vDap;')
+      .replace('#include <map_fragment>', '{ float la = texture2D(uLeaf, vCUv).a; if (vCard > 99.5 && la < 0.4) discard;\n'
+        // a crown lets the sun through in gaps, the same ones along every ray whatever card or core the ray
+        // meets, so the shade under a tree is dappled instead of one blot
+        + '  { vec2 c = vDap * 1.5, f = fract(c) - 0.5; float h = fract(sin(dot(floor(c), vec2(127.1, 311.7))) * 43758.5453);\n'
+        + '    if (h > 0.45 && dot(f, f) < 0.06 + 0.19 * fract(h * 7.0)) discard; } }');
   };
-  m.customProgramCacheKey = () => 'foliage-depth';
+  m.customProgramCacheKey = () => 'foliage-depth-dapple2';
   return m;
 }
