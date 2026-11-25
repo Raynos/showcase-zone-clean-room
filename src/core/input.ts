@@ -13,6 +13,8 @@ const KEYMAP: Record<string, Btn> = {
   Digit1: 'skill1', Digit2: 'skill2', Digit3: 'potion', Digit4: 'swap',
 };
 
+const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+
 /**
  * One input surface for touch and desktop. Gameplay reads: move (camera-relative stick), look
  * deltas, and edge-triggered buttons. Touch: floating stick bottom-left, drag elsewhere to look,
@@ -163,6 +165,12 @@ export class Input {
       this.pinchDist = 0;
       if (e.pointerType === 'mouse') this.mouseLook = false;
     }
+  }
+  /** true while a finger rests on the stick or a movement key is down (a scripted `stick` does not count) */
+  get holdingMove() {
+    if (this.stickId >= 0) return true;
+    for (const k of MOVE_KEYS) if (this.keys.has(k)) return true;
+    return false;
   }
   private endStick() { this.stickId = -1; this.stick.active = false; this.stick.x = 0; this.stick.y = 0; }
 

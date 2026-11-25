@@ -12,6 +12,7 @@ import { QUALITY, Renderer } from './gfx/renderer';
 import { buildNoiseTexture, buildTextureArrays, loadPaintedArrays } from './gfx/textures';
 import { MODEL_NAMES, loadModels } from './gfx/models';
 import { Combat } from './systems/combat';
+import { Engagement } from './systems/engage';
 import { Interact } from './systems/interact';
 import { Loot } from './systems/loot';
 import { Mobs } from './systems/mobs';
@@ -51,6 +52,8 @@ export class Game {
   fx!: FX;
   hud!: Hud;
   combat!: Combat;
+  /** engaged-or-fleeing tracker that tells the camera whether to frame the target */
+  engage!: Engagement;
   mobs!: Mobs;
   loot!: Loot;
   interact!: Interact;
@@ -117,6 +120,7 @@ export class Game {
     this.player.setRig(placeholderHumanoid());
     this.hud = new Hud(this);
     this.combat = new Combat(this);
+    this.engage = new Engagement(this);
     this.mobs = new Mobs(this);
     this.loot = new Loot(this);
     this.interact = new Interact(this);
@@ -400,6 +404,7 @@ export class Game {
     inp.lookSensitivity = this.state.d.settings.sens; inp.invertY = this.state.d.settings.invertY;
     this.cameraRig.autoFollow = this.state.d.settings.autoFollow;
     inp.update(rdt);
+    this.cameraRig.setStick(inp.moveX, inp.moveY);
 
     // time scale: hit-stop freezes the simulation for a few frames; slow-mo stretches it
     let scale = 1;
@@ -430,11 +435,13 @@ export class Game {
     }
 
     // camera
-    const tgt = this.combat.target;
-    const aim = tgt && tgt.alive && this.mobs.inCombat > 0 ? tgt.pos : null;
+    const eng = this.engage;
+    eng.update(rdt);
     const sp = pl.speed2d;
     this.cameraRig.update(rdt, pl.pos.clone().setY(pl.pos.y + 1.0), {
-      lookX: inp.lookX, lookY: inp.lookY, zoom: inp.zoom, moveHeading: pl.moveHeading, speed: sp, aimTarget: aim,
+      lookX: inp.lookX, lookY: inp.lookY, zoom: inp.zoom, moveHeading: pl.moveHeading, speed: sp,
+      aimTarget: eng.framed ? eng.framed.pos : null, aimHeight: eng.framed ? eng.framed.height + ((eng.framed as Partial<import('./systems/mobs').Mob>).lift ?? 0) : 0,
+      flee: eng.flee, latch: inp.holdingMove,
       fovExtra: (pl.sprinting ? 5 : 0) + (this.combat.aiming ? -16 * this.combat.draw : 0) + this.fovExtra,
       distMul: this.camDist * (this.combat.aiming ? 0.62 : this.mobs.inCombat > 2 ? 1.12 : 1),
     });
@@ -489,7 +496,7 @@ export class Game {
         }
       }
     }
-    this.audio?.update?.(rdt, this.camera.position, this.cameraRig.forward(_v));
+    this.audio?.update?.(rdt, this.camera.position, this.cameraRig.viewForward(_v));
     this.updateAmbience(rdt);
 
     this.chunks.update(this.camera, this.renderer.height * this.renderer.pixelRatio, this.renderer.quality.viewDist);
