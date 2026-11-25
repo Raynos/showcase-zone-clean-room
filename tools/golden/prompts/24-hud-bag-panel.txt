@@ -1,0 +1,14 @@
+## scene
+This frame shows the inventory panel open: a dark sheet titled PACK covers most of the screen with a grid of item slots, a slot counter, a coin total and an item detail row at the bottom, over a dimmed view of the game world and HUD.
+
+## improve
+- premium panel styling: the sheet reads as a crafted object with subtle depth - a fine bevelled edge, a soft inner shadow, a faint brushed-metal or dark-glass surface, a clean accent line along the top
+- item slots with clear depth, a rarity-coloured rim and a gentle glow on the selected slot
+- item icons painted as small detailed objects (medkit, core, lens, cell, wire, plate, servo) instead of thin line icons, each still recognisable as the same item in the same slot
+- crisp, well-spaced typography and a refined header with the bag emblem and the coin pill
+- the dimmed world and HUD behind the sheet get the same remaster treatment, still dimmed
+
+## hud
+Keep the panel layout exactly: the same header, the same number of slots in the same grid, the same items in the same slots with the same counts, the same slot counter, coin total, close button and item detail text, all in the same place, sharp and legible. Keep the dimmed HUD at the top in place.
+
+## nohero

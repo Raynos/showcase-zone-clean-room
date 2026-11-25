@@ -1,0 +1,1 @@
+Keep the whole HUD: every HUD element stays in the same place at the same size with the same icons, numbers and words, sharp and legible (portrait and bars top left, menu buttons, minimap top right, name plates and health bars, the round action buttons bottom right and the movement stick bottom left).

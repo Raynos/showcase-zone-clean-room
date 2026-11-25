@@ -1,0 +1,10 @@
+## scene
+It is night. The hero stands on the main street of the town, facing a stone clock-tower arch hung with string lights and cyan lanterns, with a glowing pixel sign BRASSWICK above the arch.
+
+## improve
+- local lights that really light the scene: each lantern and string bulb throws a soft pool of warm or cyan light on the stone and paving, with falloff and coloured shadows
+- the paving slightly damp so it catches streaks of reflected lamp light
+- deep blue night ambient with readable detail in the shadows rather than flat black, and ambient occlusion in the arch and under ledges
+- hand-painted stone blocks with chipped edges and mortar lines; the pixel sign as a real lamp board with glow and spill on the wall
+- a night sky with stars and thin moonlit clouds, and light haze around the lamps
+- a cool rim light on the hero so the silhouette reads against the dark street

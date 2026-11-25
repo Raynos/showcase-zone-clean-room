@@ -1,0 +1,10 @@
+## scene
+The hero stands on pale blue-grey ground facing a giant glowing cyan coil tower with smaller pylons, sagging cables, cyan crystal shards on the ground and an orange circular portal on the left.
+
+## improve
+- energy VFX: the coil rings glow with a hot core and soft bloom, thin electric arcs crawl between rings and pylons, and the air around the coil has a faint glow
+- the cyan light really lights the scene: pale ground, pylons and the hero pick up cyan light and cast soft shadows away from the coil
+- the crystal shards as translucent glass with inner glow and sharp facets
+- the coil and pylons as engineered hardware: insulators, ceramic rings, bolted steel, cables with clamps
+- the ground as cracked, scorched hardpan with fine gravel and burn marks
+- the far wall, portal and cliffs separated by haze, and a sky with volumetric clouds

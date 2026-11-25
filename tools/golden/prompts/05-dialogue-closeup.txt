@@ -1,0 +1,14 @@
+## scene
+This frame is a dialogue close-up: a quest giver in a yellow hard hat and blue work shirt stands in a town street, framed in the upper half, with a dark dialogue panel covering the lower half.
+
+## improve
+- the quest giver becomes a heroic stylised character with believable proportions and a sculpted, expressive face: eyes with highlights, brows, nose, mouth, weathered skin
+- layered clothing: a stitched cotton work shirt with rolled sleeves and folds, a leather belt with a buckle, a scuffed hard hat, a metal shoulder plate with scratches
+- soft portrait lighting: a warm key from one side, a cool rim light, ambient occlusion under the hat brim and collar
+- a shallow depth of field on the street behind, with detailed awnings, timber and stone
+- the dialogue panel gains a premium finish (subtle bevel, soft inner shadow, crisp type) without changing its layout or words
+
+## hud
+Keep the dialogue panel exactly: the portrait disc, the name YARDMASTER ODELL, the subtitle, the close button, the line of speech, the two quest rows with their yellow markers, and the GOODBYE button, all in the same place with the same words, sharp and legible. Keep the same pose, hat, shirt colours and shoulder plate on the character.
+
+## nohero

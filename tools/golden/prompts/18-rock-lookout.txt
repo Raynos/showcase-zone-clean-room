@@ -1,0 +1,15 @@
+## scene
+This frame is a cinematic vista with black bars above and below and no HUD: a high view over a valley with a wooden water tower, autumn trees and pines in the foreground, a long town wall and course yard in the middle distance, and ranges of orange and grey mountains behind.
+
+## improve
+- the big vista: mountains with real structure - layered strata, ridges, scree and snow patches - in several depth bands fading to blue with haze
+- a wide afternoon light with cloud shadows drifting across the valley floor
+- trees with branch structure and dense layered foliage in orange, gold and teal; meadow ground with fine grass, paths and scattered rocks
+- the water tower as weathered planks and steel bands; the wall and buildings with clear small-scale detail
+- a dramatic sky with volumetric clouds
+- soft ambient occlusion and contact shadows under every tree and building
+
+## hud
+There is no HUD in this frame. Keep the black cinematic bars at the top and bottom exactly as they are.
+
+## nohero

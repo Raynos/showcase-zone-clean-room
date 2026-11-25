@@ -1,0 +1,10 @@
+## scene
+This is the impact frame of a heavy sword finisher: the hero is mid-swing in a grass field, a wide glowing blade arc sweeps overhead, and a forklift-like robot in front is caught in a bright hit flash with damage numbers, near a tower of stacked crates.
+
+## improve
+- the blade arc as a painterly energy streak with a hot core, soft falloff and motion smear, not a flat polygon
+- the impact as layered VFX: a bright core, radial sparks, small shards and dust kicked from the ground, a faint shockwave ring, with the struck robot still readable through the flash
+- a sense of weight: the hero in a strong, clear attack pose with cloth and scarf whipping, and the grass bent by the blast
+- rim light from the flash on the hero and nearby grass
+- lush, fine grass; hand-painted wooden crates; cliffs with strata and atmospheric depth; a sky with volumetric clouds
+- the robots with crisp mechanical detail

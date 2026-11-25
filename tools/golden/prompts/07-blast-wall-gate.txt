@@ -1,0 +1,10 @@
+## scene
+The hero stands inside the town at the foot of a tall concrete blast wall, looking east through its open gate (raised portcullis, cyan light strips) to the wild fields beyond: a tower of stacked crates, a far gate and industrial chimneys.
+
+## improve
+- a sense of scale: the wall towers overhead with weathered cast concrete, formwork lines, bolt holes, stains and chipped hazard stripes
+- the portcullis and gate frame as heavy painted steel with rivets and worn edges; the cyan strips as real lights that spill onto the concrete
+- strong contrast between the shaded gate passage and the sunlit vista, with ambient occlusion in the corners and bounce light from the paving
+- the vista beyond with atmospheric depth: layered cliffs fading to blue, the crate tower and chimneys clearly separated by haze
+- a sky with volumetric clouds seen through the gate
+- flagstones with worn edges and grime in the joints

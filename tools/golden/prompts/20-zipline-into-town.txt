@@ -1,0 +1,10 @@
+## scene
+The hero rides a zipline at speed, hanging from a cable, flying over a field and autumn trees toward a walled town with a gate, pavilion roofs and banners, with a speed blur at the frame edges.
+
+## improve
+- speed: a clean radial motion blur at the edges with a sharp centre, the cable and trolley crisp with sparks, the hero's scarf and gear streaming
+- the town as detailed architecture: stone wall blocks, tiled pavilion roofs, timber, banners, lamps
+- late-afternoon warm key light with long soft shadows and ambient occlusion along the wall
+- trees with dense layered autumn foliage; fine grass on the field
+- atmospheric depth to the mountains behind the town
+- a sky with volumetric clouds

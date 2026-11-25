@@ -1,0 +1,10 @@
+## scene
+The hero faces a tall elite robot (a welder with a cyan visor, a hazard-striped skirt and a welding flame) on a cobbled path, in front of a glowing red force-field gate set between concrete pylons in a rocky ridge.
+
+## improve
+- enemy design: the elite robot with crisp mechanical detail - hydraulic joints, layered armour panels with seams and chipped paint, cables, a glowing visor, a hot welding flame with sparks
+- the force-field as a translucent energy wall with a soft glow that tints the ground and pylons
+- clear daylight with soft contact shadows under the robot and the hero, ambient occlusion and bounce light
+- concrete pylons with weathering and hazard stripes; a ridge of layered rock
+- cobbles with worn tops and dark joints, scattered stones
+- a sky with volumetric clouds

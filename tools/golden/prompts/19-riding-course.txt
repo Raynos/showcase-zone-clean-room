@@ -1,0 +1,13 @@
+## scene
+The hero gallops on a brown horse along a grassy lakeshore track toward a row of glowing cyan rings, with a lake on the left, a small timer panel at the top and mountains ahead in late-afternoon haze.
+
+## improve
+- the horse as a well-drawn stylised animal: correct anatomy and muscle, a flowing mane and tail, leather saddle and tack with buckles
+- motion: the gallop pose reads clearly, with dust and torn grass kicked up behind the hooves and a slight speed blur at the frame edges
+- the lake as real water: soft reflections of sky and mountains, sun glitter, ripples at the shore, reeds and lily pads
+- lush, fine, dense grass lit warm by the low sun
+- the rings as glowing energy hoops with soft bloom
+- mountains with strata in depth bands and warm atmospheric haze, and a sky with volumetric clouds
+
+## hud
+Keep the whole HUD including the RIDING COURSE timer panel: every HUD element stays in the same place at the same size with the same icons, numbers and words, sharp and legible.

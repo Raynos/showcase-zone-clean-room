@@ -1,0 +1,13 @@
+## scene
+The hero fights a crowd of small spider-legged crate robots in a walled arena court with a dark diamond-plate floor, with a wide sword arc, orange and cyan attack rings on the floor, a red glowing doorway behind, and a WAVE 1 / 5 panel at the top.
+
+## improve
+- crowd combat that stays readable: every robot is a separate crisp silhouette with jointed legs, panel seams and lit sensors, with a contact shadow
+- the sword arc and hit flashes as layered painterly VFX with sparks, without hiding the hero
+- the attack rings as clean glowing ground decals with soft bloom that light the floor
+- the floor as worn diamond-plate steel with scuffs and reflections of the glows
+- the walls and doorway as heavy painted steel with hazard stripes, vents and a red light that spills onto the floor
+- clear top light with ambient occlusion at the wall base
+
+## hud
+Keep the whole HUD including the target frame and the WAVE 1 / 5 panel: every HUD element stays in the same place at the same size with the same icons, numbers and words, sharp and legible.

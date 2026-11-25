@@ -1,0 +1,10 @@
+## scene
+The hero stands in a town square in early morning, facing a large brass orrery fountain with a cyan core and water jets, with half-timbered houses behind it and a glowing cyan guide line on the paving.
+
+## improve
+- low warm morning sun with long soft shadows, ambient occlusion under the fountain rim and eaves, and bounce light on the house fronts
+- the fountain as polished and aged brass with reflections, patina and engraved gear teeth; water jets and a basin with real translucency, splashes and caustics
+- hand-painted flagstones with worn edges, moss in the joints and subtle wet patches near the fountain
+- houses with detailed timber, plaster, tiles and warm lit windows
+- atmospheric depth behind the houses and a sky with soft volumetric clouds
+- townsfolk as stylised characters with sculpted faces and layered clothes, same colours and places

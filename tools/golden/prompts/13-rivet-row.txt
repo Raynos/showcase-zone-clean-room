@@ -1,0 +1,10 @@
+## scene
+The hero stands in a gravel shipyard facing a yellow gantry crane holding large dark-blue steel hull plates, with scaffolding, crates and hazard barriers, under grey cliffs.
+
+## improve
+- industrial detail: hull plates with rows of rivets, weld seams, primer patches and scratches; the gantry as heavy yellow steel with chipped paint, bolts, pulleys and cables
+- clear afternoon key light with soft-edged shadows under the suspended plates, ambient occlusion in the scaffolding, cool bounce from the steel
+- the ground as crushed gravel and cobbles with oil stains, tyre ruts and scattered bolts
+- scaffolding, crates and barriers as hand-painted wood and worn metal
+- cliffs with rock strata and atmospheric depth
+- a sky with volumetric clouds

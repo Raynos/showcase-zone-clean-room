@@ -1,0 +1,13 @@
+## scene
+Indoors. The small hero faces a gigantic robot boss built from wooden crates with a glowing white core in its chest, in a round industrial hall with cyan light columns, wall fans and an orange lane on the floor, with a boss health bar CRATE TITAN at the top.
+
+## improve
+- boss scale: the Titan towers over the hero, with atmospheric haze between them and light shafts from above
+- the Titan as an engineered machine: heavy mechanical joints, pistons and cables between the crates, straps, hazard plates, planks with nails and stencils, and a blazing core that lights its chest and the floor
+- interior light: the cyan columns and warm lamps are real light sources with pools, coloured shadows and reflections on the floor
+- the hall as riveted steel and concrete with fans, catwalks, grates and wear
+- the floor lane and grating with scuffs and reflected glow
+- small dust and sparks drifting down from the boss
+
+## hud
+Keep the whole HUD including the CRATE TITAN boss bar and its small caption: every HUD element stays in the same place at the same size with the same icons, numbers and words, sharp and legible.

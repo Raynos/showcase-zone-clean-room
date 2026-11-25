@@ -1,0 +1,9 @@
+## scene
+This frame is about the HUD and touch controls in play: the hero fights a crate robot on a paved road in a field, with the full HUD visible - portrait and bars, menu buttons, a target frame, a quest tracker, the minimap, damage numbers, the movement stick and the round action-button cluster with one skill on cooldown.
+
+## improve
+- a clearer, more premium action-button cluster: the round buttons keep their positions, sizes and icons, but gain depth - bevelled metal rims, dark glass faces, bolder and more legible icons, a soft glow on the large orange attack button, and a clean cooldown sweep with a readable number on the skill that is cooling down
+- the same premium finish on the rest of the HUD: the portrait ring, health and energy bars, menu buttons, target frame, quest tracker and minimap frame get subtle bevels, soft shadows and crisp type, with layout and words unchanged
+- the movement stick as a clear glassy thumb pad
+- the world behind gets the remaster treatment: rich midday light with ambient occlusion and contact shadows, lush fine grass, a hand-painted crate tower, cliffs with strata, a sky with volumetric clouds
+- the robots with crisp mechanical detail

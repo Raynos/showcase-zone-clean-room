@@ -1,0 +1,10 @@
+## scene
+The hero stands on a sandy loading apron facing a tall orange lattice dock crane, with shipping containers, pallets, barrels and a distant glowing gate under blue-grey cliffs.
+
+## improve
+- hard-surface detail: the crane as riveted steel lattice with chipped orange paint, rust streaks, cables and a readable cab; containers with corrugation, door gear and faded stencils
+- clear midday key light with crisp but soft-edged shadows of the lattice across the ground, ambient occlusion under containers and pallets
+- the ground as packed sand and cracked concrete with tyre marks, oil stains and scattered debris
+- pallets, barrels and crates as hand-painted wood and dented metal
+- atmospheric depth to the far gate and cliffs with rock strata
+- a sky with volumetric clouds

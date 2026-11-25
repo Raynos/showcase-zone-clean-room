@@ -1,0 +1,13 @@
+## scene
+Indoors. The hero swings a sword at a heavy white-and-blue robot boss with a cyan core, in a dark metal vault with cyan floor light strips, a red glowing doorway, and a boss health bar VAULT WARDEN at the top.
+
+## improve
+- interior light: the cyan floor strips, the red doorway and the robot's core are real light sources that pool on the metal floor and walls, with coloured shadows and soft falloff
+- the metal diamond-plate floor reflects the lights; a thin volumetric haze hangs in the room
+- wall panels as painted steel with vents, bolts, seams, hazard stripes and wear
+- the boss with crisp mechanical detail: armour plates, joints, cables, a glowing core
+- the sword arc as a painterly energy streak
+- ambient occlusion in panel gaps and a rim light on the hero
+
+## hud
+Keep the whole HUD including the VAULT WARDEN boss bar: every HUD element stays in the same place at the same size with the same icons, numbers and words, sharp and legible.

@@ -1,0 +1,10 @@
+## scene
+It is dusk. The hero stands on a paved road in an industrial smelter yard: a huge dark red furnace chimney with glowing orange windows on the right, a cyan circular portal on the left, and purple cliffs behind.
+
+## improve
+- emissive light that really lights the scene: the furnace windows and molten glow throw orange light and long shadows across the paving and the hero; the portal throws cyan light on its frame and the ground
+- heat haze, drifting embers and thin smoke around the furnace
+- the dark ground stays dark but readable: slag, ash and wet paving with texture and reflected glow, not flat black
+- the furnace as riveted iron plate with soot, rust and banding; scaffolds and pipes with detail
+- a dusk sky with a purple-to-orange gradient, lit cloud edges and the first stars
+- a warm rim light on the hero from the furnace

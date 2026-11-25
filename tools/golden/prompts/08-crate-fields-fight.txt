@@ -1,0 +1,10 @@
+## scene
+The hero stands in a golden grass field at midday with small spider-legged crate robots closing in and an orange attack marker on the ground, in front of a tall tower of stacked crates and blue-grey cliffs.
+
+## improve
+- rich midday lighting with soft ambient occlusion and bounce light, and a soft dark contact shadow under every crate, rock, robot and foot
+- lush, fine, dense grass with seed heads and small flowers, lit warm on top and dark at the roots
+- the crate tower as detailed hand-painted wood: planks, nails, stencils, straps and tarps
+- cliffs with layered rock strata and three depth bands fading to blue
+- a dramatic sky with volumetric clouds
+- enemy robots with crisp mechanical detail: jointed legs, panel seams, lit sensors

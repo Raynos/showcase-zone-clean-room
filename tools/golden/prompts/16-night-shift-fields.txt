@@ -1,0 +1,10 @@
+## scene
+It is night. The hero stands on a paved road with neon-lit night-shift robots (spider-legged crates and a forklift robot glowing magenta and cyan) and an orange attack marker on the ground, in front of a dark crate tower and a glowing yellow gate.
+
+## improve
+- night readability: a cool moonlit key with a clear rim light on the hero and the robots, so every silhouette reads against the dark
+- the robots' neon lights really light the scene: magenta and cyan pools on the paving and on nearby surfaces
+- deep blue night ambient with detail in the shadows rather than flat black; the crate tower readable as wood in moonlight
+- the gate sign and street lamp as real light sources with glow, spill and light haze
+- a night sky with stars, a soft moon glow and thin clouds
+- the robots with crisp mechanical detail; the paving with worn stone and damp reflections

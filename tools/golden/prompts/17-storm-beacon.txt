@@ -1,0 +1,10 @@
+## scene
+A storm at dusk. The hero stands on a paved road in heavy rain beside a tall dark beacon tower with a brightly lit lamp at the top, with fences, a distant industrial skyline and low storm clouds.
+
+## improve
+- weather drama: layered storm clouds with depth and movement, lit from inside by distant lightning
+- rain as fine wind-blown streaks with splashes and ripples on the ground, and mist close to the ground
+- wet surfaces: the paving and the tower gleam and reflect the beacon light and the sky
+- the beacon lamp as a strong warm light with a volumetric glow and visible beams through the rain, lighting the tower top and the hero's outline
+- the tower as dark painted steel with rivets and a lamp housing; fences as wet wood
+- the distant skyline as separated silhouettes in the rain haze with small lights

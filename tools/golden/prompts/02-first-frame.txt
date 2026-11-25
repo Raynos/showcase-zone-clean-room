@@ -1,0 +1,10 @@
+## scene
+This is the first frame of play: the hero stands on a paved town square in morning light, facing a clock tower and a half-timbered workshop, with the zone banner BRASSWICK across the upper third and a quest giver standing to the right.
+
+## improve
+- clear morning key light from one side with soft-edged cool shadows, ambient occlusion in corners and under roofs, warm bounce light from the paving
+- hand-painted stylised materials: brick, plaster, timber, roof tiles, cobbles and flagstones with worn edges and grime in the joints
+- the forge glow, shop sign and string lights read as real light sources
+- depth down the street: light haze, a detailed gate arch and distant cliffs
+- a sky with soft volumetric clouds
+- the quest giver becomes a stylised character with a sculpted face and layered work clothes, same colours and place

@@ -1,0 +1,10 @@
+## scene
+The hero stands on an orange sandstone slope in late afternoon, looking across a survey site of tall tripod rigs with hanging brass plumb bobs, cables and a small autumn tree, backed by red-orange cliffs.
+
+## improve
+- a deep vista: sandstone mesas with layered strata, cracks and scree, in three depth bands fading with warm haze
+- low warm afternoon sun with long soft shadows across the slope and cool shadowed cliff faces, plus bounce light from the sand
+- the survey rigs as painted steel with bolts and guy cables; the plumb bobs as polished brass with a cyan glow that lights the ground beneath
+- the ground as wind-rippled sand and rock with sparse dry grass tufts and small stones
+- the tree with real branches and dense leaves; the crate as painted wood
+- a sky with volumetric clouds catching the late light

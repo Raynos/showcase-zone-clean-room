@@ -1,0 +1,15 @@
+## scene
+This frame is the title screen: the game logo and a Start button over an aerial morning view of a small walled town with orange tile roofs.
+
+## improve
+- soft low morning sun raking across the roofs, with ambient occlusion under the eaves and between the houses, and warm bounce light on the walls
+- hand-painted stylised materials: clay roof tiles with chipped edges, plaster, timber framing, cut stone
+- atmospheric haze between the town and layered distant mountains
+- a richer sky with soft volumetric clouds behind the logo
+- warm lit windows and small cyan lamp glows
+- the logo, the START button and the menu text gain a premium finish (subtle bevel, clean glow) without changing their words, size or place
+
+## hud
+There is no gameplay HUD in this frame. Keep the CRATEFALL logo and crate emblem, the subtitle THE PROVING YARD, the START button with its small caption, SETTINGS, TAP TO START and the footer line exactly where they are, with the same words, crisp and legible. Keep the dark vignette behind the menu.
+
+## nohero
