@@ -5,6 +5,7 @@ import { buildBeams } from './vista/skyline';
 import { startTraffic } from './vista/traffic';
 import { startWeather } from './vista/weather';
 import { startCinematics, type Cinematics } from './vista/cinematics';
+import { startTrophyWall } from './trophies';
 
 /**
  * World scale and drama: what lies beyond the wall, what stands on the skyline, what crosses the
@@ -26,4 +27,6 @@ export function start(game: Game) {
   startWeather(game);
   v.cine = startCinematics(game);
   (game as any).cine = v.cine;
+  // the plaza's trophy wall shows what the player has won (it is town dressing, started here with the rest)
+  startTrophyWall(game);
 }
