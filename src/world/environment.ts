@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { SunLight } from 'three/addons/lights/SunLight.js';
 import { clamp01, damp, lerp, rand, smooth } from '../core/util';
+import { setCloudNoise, YARD } from '../gfx/lighting';
 import { FOGX, GU } from '../gfx/material';
 import type { Renderer } from '../gfx/renderer';
 import { Sky } from '../gfx/sky';
@@ -30,7 +31,7 @@ const KEYS: Key[] = [
   { t: 10.5, ...DAY },
   { t: 15.2, ...DAY },
   { t: 17.0, zenith: 0x3070cc, horizon: 0xffd2a2, haze: 0xeac292, light: 0xffbe72, lightI: 3.2, hemiSky: 0x9fb8e8, hemiGround: 0x82664c, hemiI: 0.86, fog: 0xeecaa2, fogSun: 0xffc282, fogD: 0.00193, exposure: 1.0, sunset: 0.5, night: 0, cloudLit: 0xffeaca, cloudDark: 0x8c86a2 },
-  { t: 18.15, zenith: 0x2c4a9c, horizon: 0xff965a, haze: 0xca8a6a, light: 0xff7e3e, lightI: 2.1, hemiSky: 0x7c8aca, hemiGround: 0x5c423a, hemiI: 0.82, fog: 0xda9272, fogSun: 0xff9252, fogD: 0.00260, exposure: 1.1, sunset: 1, night: 0.05, cloudLit: 0xffb282, cloudDark: 0x5c4c6a },
+  { t: 18.15, zenith: 0x2c4a9c, horizon: 0xff965a, haze: 0xca8a6a, light: 0xff7e3e, lightI: 2.1, hemiSky: 0x7c8aca, hemiGround: 0x5c423a, hemiI: 0.82, fog: 0xb07c7e, fogSun: 0xff9252, fogD: 0.00200, exposure: 1.1, sunset: 1, night: 0.05, cloudLit: 0xffb282, cloudDark: 0x5c4c6a },
   { t: 19.1, zenith: 0x121c48, horizon: 0x8c526a, haze: 0x423a4e, light: 0xa2aaff, lightI: 0.75, hemiSky: 0x42528c, hemiGround: 0x241e26, hemiI: 0.85, fog: 0x423a5c, fogSun: 0xa26272, fogD: 0.00244, exposure: 1.25, sunset: 0.6, night: 0.6, cloudLit: 0xa27292, cloudDark: 0x1e1e36 },
   { t: 20.2, ...NIGHT },
   { t: 24, ...NIGHT },
@@ -104,6 +105,7 @@ export class Environment {
     this.envSky = new THREE.Mesh(this.sky.mesh.geometry, this.sky.mesh.material);
     this.envSky.frustumCulled = false;
     this.envScene.add(this.envSky);
+    if (GU.uNoise.value) setCloudNoise(GU.uNoise.value);
     this.tuneCascades();
   }
 
@@ -275,6 +277,13 @@ export class Environment {
     mixHex(this.hemi.color, a.hemiSky, b.hemiSky, t);
     mixHex(this.hemi.groundColor, a.hemiGround, b.hemiGround, t);
     { const l = (this.hemi.color.r + this.hemi.color.g + this.hemi.color.b) / 3; this.hemi.color.lerp(cA.setRGB(l, l, l), 0.3); }
+    {
+      // shade is the sky's blue leaning violet, and sunlit ground throws its warmth back up at what stands on it
+      const day = sunUp * (1 - k.night) * (1 - Math.min(1, this.w.dim * 2.4));
+      this.hemi.color.lerp(cA.setHex(0x8f9cf2), 0.42 * day);
+      cA.copy(this.lightColor).multiply(cB.setRGB(0.86, 0.66, 0.44));
+      this.hemi.groundColor.lerp(cA, 0.5 * day * Math.min(1, this.sunDir.y * 2.5 + 0.25));
+    }
     let hemiI = k.hemiI * (1 - this.w.dim * 0.45) + this.flash * 1.5;
     if (im > 0.001 && il) {
       this.hemi.color.lerp(cA.setHex(il.hemiSky), im); this.hemi.groundColor.lerp(cA.setHex(il.hemiGround), im);
@@ -323,12 +332,27 @@ export class Environment {
     let hf = 0.05, linD = 0.00022 * this.w.fogMul;
     if (im > 0.001 && il) {
       this.fog.color.lerp(cA.setHex(il.fog), im); cB.lerp(cA, im);
-      fogD = lerp(fogD, il.fogD, im); hf = lerp(hf, 0.0, im); linD = lerp(linD, il.fogD, im);
+      // the rooms were tuned when this term was stuck at the dense air of a camera 40 m underground: keep that weight
+      fogD = lerp(fogD, il.fogD, im); hf = lerp(hf, 0.0, im); linD = lerp(linD, il.fogD * 5, im);
     }
     this.fog.density = fogD;
     FOGX[0].set(this.sunDir.x, this.sunDir.y, this.sunDir.z, hf);
     fogSun.set(cB.r, cB.g, cB.b, 10);
     FOGX[2].set(-2, 0.97, linD, 0);
+
+    // baked lamp light (gfx/lighting.ts): pools at night, in storms and indoors; by day it only shows in shade
+    const dark = Math.min(1, Math.max(k.night, this.w.dim * 1.6));
+    YARD[8] = lerp(lerp(0.3, 1, dark), 1, im);
+    YARD[12] = this.lightDir.x; YARD[13] = this.lightDir.y; YARD[14] = this.lightDir.z;
+    // cloud shadows drift with the sky's own cloud field; under a closed deck there is nothing left to shadow
+    const open = (1 - Math.min(1, dim * 3)) * (1 - im);
+    YARD[0] = GU.uTime.value * 0.0032; YARD[1] = GU.uTime.value * 0.0018;
+    // the noise's broad channel sits between 0.2 and 0.7: this puts about a quarter of the ground in shadow on a clear day
+    YARD[2] = 0.5 - (this.w.cover - 0.5) * 0.5;
+    YARD[3] = (useSun ? 0.5 * sunUp : 0.3 * moonUp) * open;
+    // a sun shadow's edge runs warm, most at the ends of the day; moonlight and lamps have none
+    const edge = (useSun ? sunUp : 0) * (1 - k.night) * open * (0.75 + 0.6 * k.sunset);
+    YARD[4] = 0.24 * edge; YARD[5] = 0.045 * edge; YARD[6] = -0.09 * edge;
 
     // wind + wetness
     GU.uWind.value.z = damp(GU.uWind.value.z, this.w.wind, 0.5, dt);
