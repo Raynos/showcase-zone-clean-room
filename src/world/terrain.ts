@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { clamp, clamp01 } from '../core/util';
 import { GU } from '../gfx/material';
 import { T } from '../gfx/textures';
-import { HALF, groundAt, heightRaw } from './layout';
+import { HALF, LAKE, groundAt, heightRaw } from './layout';
 
 export const TN = 250;          // cells per side
 export const TCELL = (HALF * 2) / TN; // 2 m
@@ -13,7 +13,7 @@ export class Terrain {
   heights = new Float32Array(TV * TV);
   group = new THREE.Group();
   colorMap!: THREE.DataTexture;   // rgb ground colour, a grass density
-  splatMap!: THREE.DataTexture;   // r dirt, g rock, b gravel
+  splatMap!: THREE.DataTexture;   // r dirt, g rock, b gravel, a sand
   heightTex!: THREE.DataTexture;  // R float heights for vertex-shader lookups
   material!: THREE.MeshStandardMaterial;
   /** grass density grid for CPU queries (same res as colour map) */
@@ -80,7 +80,10 @@ export class Terrain {
       col[o] = Math.round(clamp01(g.r) * 255); col[o + 1] = Math.round(clamp01(g.g) * 255); col[o + 2] = Math.round(clamp01(g.b) * 255);
       col[o + 3] = Math.round(clamp01(g.grass) * 255);
       this.grassGrid[j * MAP + i] = col[o + 3];
-      spl[o] = Math.round(clamp01(g.dirt) * 255); spl[o + 1] = Math.round(clamp01(g.rock) * 255); spl[o + 2] = Math.round(clamp01(g.gravel) * 255); spl[o + 3] = 255;
+      spl[o] = Math.round(clamp01(g.dirt) * 255); spl[o + 1] = Math.round(clamp01(g.rock) * 255); spl[o + 2] = Math.round(clamp01(g.gravel) * 255);
+      // the lake shore is sand: the same band groundAt colours pale
+      const shore = Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r + 20 ? clamp01((LAKE.level + 1.3 - h) / 1.1) : 0;
+      spl[o + 3] = Math.round(shore * 255);
     }
     const mk = (d: Uint8Array, srgb: boolean) => {
       const t = new THREE.DataTexture(d, MAP, MAP, THREE.RGBAFormat);
@@ -119,19 +122,32 @@ vec3 gTerrN; float gTerrR;`)
   vec3 wn = normalize(vWNor);
   float slope = 1.0 - wn.y;
   float rockW = clamp(max(sp.g, smoothstep(0.24, 0.46, slope)), 0.0, 1.0);
-  vec2 uvG = vWPos.xz * 0.31;
   float macro = texture2D(uNoise, vWPos.xz * 0.011).r;
   float macro2 = texture2D(uNoise, vWPos.xz * 0.063 + 0.4).g;
-  // soft ground: grass tufts / dirt / gravel by splat
+  // each layer has its own scale and heading so no two repeat on the same grid
+  vec2 uvG = mat2(0.92, 0.39, -0.39, 0.92) * vWPos.xz * 0.39;
+  vec2 uvD = mat2(0.80, -0.60, 0.60, 0.80) * vWPos.xz * 0.43;
+  vec2 uvV = mat2(0.97, 0.26, -0.26, 0.97) * vWPos.xz * 0.52;
   vec4 gA = texture(uTexA, vec3(uvG, ${T.GRASS}.0));
   vec4 gN = texture(uTexN, vec3(uvG, ${T.GRASS}.0));
-  vec4 dA = texture(uTexA, vec3(uvG * 0.8, ${T.DIRT}.0));
-  vec4 dN = texture(uTexN, vec3(uvG * 0.8, ${T.DIRT}.0));
-  vec4 vA = texture(uTexA, vec3(uvG * 0.9, ${T.GRAVEL}.0));
-  vec4 vN = texture(uTexN, vec3(uvG * 0.9, ${T.GRAVEL}.0));
-  float dW = clamp(sp.r + (dA.r - 0.5) * 0.5 * step(0.02, sp.r), 0.0, 1.0);
-  vec4 sA = mix(gA, dA, dW); vec4 sN = mix(gN, dN, dW);
-  sA = mix(sA, vA, sp.b); sN = mix(sN, vN, sp.b);
+  vec4 dA = texture(uTexA, vec3(uvD, ${T.DIRT}.0));
+  vec4 dN = texture(uTexN, vec3(uvD, ${T.DIRT}.0));
+  vec4 vA = texture(uTexA, vec3(uvV, ${T.GRAVEL}.0));
+  vec4 vN = texture(uTexN, vec3(uvV, ${T.GRAVEL}.0));
+  vec4 nA = texture(uTexA, vec3(uvD.yx * 0.9, ${T.SAND}.0));
+  // ragged edges: a mid-scale noise and each layer's own light and dark decide who wins near a
+  // boundary, so paths fray into the turf in tongues and islands instead of a soft gradient
+  vec2 fray = texture2D(uNoise, vWPos.xz * 0.19).gb;
+  float edge = (fray.x - 0.5) * 0.9 + (fray.y - 0.5) * 0.35;
+  float dW = smoothstep(0.38, 0.62, sp.r + (edge + (dA.r - gA.r) * 0.6) * step(0.02, sp.r) * (1.0 - smoothstep(0.85, 1.0, sp.r)));
+  // drifts of small stones lying on bare earth
+  float stones = smoothstep(0.6, 0.72, texture2D(uNoise, vWPos.xz * 0.047 + 0.71).r + (vA.r - 0.5) * 0.25);
+  vec4 eA = mix(dA, vec4(vA.rgb * 1.05, vA.a), stones * 0.85); vec4 eN = mix(dN, vN, stones * 0.85);
+  vec4 sA = mix(gA, eA, dW); vec4 sN = mix(gN, eN, dW);
+  float vW = smoothstep(0.38, 0.62, sp.b + (edge + (vA.r - 0.5) * 0.5) * step(0.02, sp.b) * (1.0 - smoothstep(0.85, 1.0, sp.b)));
+  sA = mix(sA, vA, vW); sN = mix(sN, vN, vW);
+  float nW = smoothstep(0.3, 0.7, sp.a + edge * step(0.02, sp.a) * (1.0 - smoothstep(0.85, 1.0, sp.a)));
+  sA = mix(sA, nA, nW); sN = mix(sN, vec4(0.5, 0.5, sN.b, 1.0), nW * 0.7);
   // rock: biplanar on the steep axis
   vec3 an = abs(wn);
   float bx = smoothstep(0.35, 0.65, an.x / (an.x + an.z + 1e-4));
