@@ -3,6 +3,8 @@ import { RAY_WORLD, type Physics } from './physics';
 import { angleDiff, clamp, damp, dampAngle, lerp, vnoise } from './util';
 
 const _v = new THREE.Vector3(), _dir = new THREE.Vector3(), _t = new THREE.Vector3();
+/** radius of the ball swept for camera collision, metres */
+const LENS_R = 0.3;
 
 export interface CineShot {
   /** camera position and look-at, both evaluated every frame */
@@ -42,6 +44,8 @@ export class CameraRig {
   autoFollow = true;
   /** true when the last manual look happened this frame */
   steering = false;
+  /** how much of the picture a cutscene owns right now, 0..1 */
+  get cineAmount() { return this.cineBlend; }
 
   constructor(cam: THREE.PerspectiveCamera, private physics: Physics) { this.cam = cam; }
 
@@ -105,15 +109,31 @@ export class CameraRig {
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
     _dir.set(Math.sin(this.yaw) * cp, sp, Math.cos(this.yaw) * cp);
     this.distWant = this.dist * this.zoom * (opts.distMul ?? 1) * lerp(1, 0.86, clamp(-this.pitch / 0.6, 0, 1));
-    // collision: pull in fast, ease out slowly
+    // collision: sweep a ball the size of the lens from the pivot; pull in fast, ease out slowly
     let maxD = this.distWant;
-    const hit = this.physics.raycast(pivot, _dir, this.distWant + 0.4, RAY_WORLD);
-    if (hit) maxD = Math.max(0.9, hit.dist - 0.35);
+    const sweep = this.physics.spherecast(pivot, _dir, this.distWant, LENS_R, RAY_WORLD);
+    if (sweep !== null) {
+      if (sweep > 0.02) maxD = sweep;
+      else {
+        // the pivot itself is touching something (a low ceiling, a wall at the hero's shoulder): thin ray instead
+        const hit = this.physics.raycast(pivot, _dir, this.distWant + 0.4, RAY_WORLD);
+        if (hit) maxD = hit.dist - 0.35;
+      }
+      // right down to the pivot if it must: the hero dissolves near the lens, a wall would not
+      maxD = clamp(maxD, 0.08, this.distWant);
+    }
+    const blocked = maxD < this.distWant - 0.05;
     if (maxD < this.distCur) this.distCur = damp(this.distCur, maxD, 40, dt);
     else this.distCur = damp(this.distCur, maxD, 4.5, dt);
     const cam = this.cam;
     cam.position.copy(pivot).addScaledVector(_dir, this.distCur);
-    if (this.shoulder) cam.position.addScaledVector(_v.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw)), this.shoulder);
+    if (Math.abs(this.shoulder) > 0.01) {
+      // the shoulder offset is collided too, so the lens never slides sideways into a wall
+      const sg = Math.sign(this.shoulder);
+      _v.set(Math.cos(this.yaw) * sg, 0, -Math.sin(this.yaw) * sg);
+      const room = this.physics.spherecast(cam.position, _v, Math.abs(this.shoulder), LENS_R * 0.8, RAY_WORLD);
+      cam.position.addScaledVector(_v, room === null ? Math.abs(this.shoulder) : Math.max(0, room - 0.02));
+    }
 
     // look
     _v.copy(pivot);
@@ -142,8 +162,10 @@ export class CameraRig {
       cam.rotateX((vnoise(t, 1.3, 1) - 0.5) * 0.11 * s);
       cam.rotateY((vnoise(t, 7.7, 2) - 0.5) * 0.11 * s);
       cam.rotateZ((vnoise(t, 3.1, 3) - 0.5) * 0.09 * s);
-      cam.position.x += (vnoise(t, 11.1, 4) - 0.5) * 0.3 * s;
-      cam.position.y += (vnoise(t, 5.5, 5) - 0.5) * 0.3 * s;
+      // the swept ball leaves 0.3 m around the lens: the shake stays inside it, and well inside when hemmed in
+      const room = blocked ? 0.08 : 0.3;
+      cam.position.x += (vnoise(t, 11.1, 4) - 0.5) * room * s;
+      cam.position.y += (vnoise(t, 5.5, 5) - 0.5) * room * s;
     }
     this.kickPitch = damp(this.kickPitch, 0, 11, dt); this.kickYaw = damp(this.kickYaw, 0, 11, dt);
     cam.rotateX(this.kickPitch); cam.rotateY(this.kickYaw);

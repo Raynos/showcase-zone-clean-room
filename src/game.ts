@@ -438,6 +438,8 @@ export class Game {
       fovExtra: (pl.sprinting ? 5 : 0) + (this.combat.aiming ? -16 * this.combat.draw : 0) + this.fovExtra,
       distMul: this.camDist * (this.combat.aiming ? 0.62 : this.mobs.inCombat > 2 ? 1.12 : 1),
     });
+    // things within a metre of the lens dissolve, except in cutscenes, which frame their own close-ups
+    { const k = 1 - this.cameraRig.cineAmount; GU.uNearFade.value.set(0.38 * k, k); }
     this.cameraRig.shoulder = damp(this.cameraRig.shoulder, this.combat.aiming ? 0.7 : 0, 8, rdt);
     if (this.state.d.settings.shake !== 1) this.cameraRig.trauma *= 0.5 + 0.5 * this.state.d.settings.shake;
 

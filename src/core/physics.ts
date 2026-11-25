@@ -18,6 +18,8 @@ export const G_NOCAM = groups(CG.NOCAM, CG.PLAYER | CG.PROP);
 export const RAY_SOLID = groups(0xffff, CG.WORLD | CG.PROP);
 export const RAY_WORLD = groups(0xffff, CG.WORLD);
 
+const IDENT = { x: 0, y: 0, z: 0, w: 1 };
+
 export interface RayHit { dist: number; point: THREE.Vector3; normal: THREE.Vector3; collider: RAPIER.Collider }
 
 export class Physics {
@@ -87,6 +89,17 @@ export class Physics {
     o.normal.set(h.normal.x, h.normal.y, h.normal.z);
     o.collider = h.collider;
     return o;
+  }
+
+  private ball: RAPIER.Ball | null = null;
+  /**
+   * Sweep a ball from `origin` along the unit vector `dir`. Returns how far its centre travels
+   * before touching something, 0 when it starts out touching, or null when the way is clear.
+   */
+  spherecast(origin: THREE.Vector3, dir: THREE.Vector3, maxDist: number, radius: number, filter = RAY_SOLID): number | null {
+    if (!this.ball || this.ball.radius !== radius) this.ball = new RAPIER.Ball(radius);
+    const h = this.world.castShape(origin, IDENT, dir, this.ball, 0, maxDist, true, undefined, filter);
+    return h ? h.time_of_impact : null;
   }
 
   remove(c: RAPIER.Collider | null | undefined) {

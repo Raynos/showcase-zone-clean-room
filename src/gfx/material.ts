@@ -11,6 +11,8 @@ export const GU = {
   uEmitBoost: { value: 3.2 },
   /** flat fill light on characters (rim materials) so they read at night and in storms */
   uCharFill: { value: new THREE.Vector3(0, 0, 0) },
+  /** near-lens dissolve: fully gone inside x metres of the camera, solid beyond y. Off (0, 0) until the game's camera sets it. */
+  uNearFade: { value: new THREE.Vector2(0, 0) },
 };
 
 /**
@@ -186,6 +188,7 @@ export class WorldMaterial extends THREE.MeshStandardMaterial {
       sh.uniforms.uTime = GU.uTime; sh.uniforms.uWind = GU.uWind; sh.uniforms.uNoise = GU.uNoise;
       sh.uniforms.uWet = GU.uWet; sh.uniforms.uEmitBoost = GU.uEmitBoost; sh.uniforms.uCharFill = GU.uCharFill;
       sh.uniforms.uFlash = this.flash; sh.uniforms.uRim = this.rim; sh.uniforms.uEmitMul = this.emitMul;
+      sh.uniforms.uNearFade = GU.uNearFade;
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', /* glsl */ `#include <common>
 attribute float aLayer; attribute float aEmit;
@@ -210,7 +213,7 @@ ${wind ? /* glsl */ `vSway = aSway;
         .replace('#include <common>', /* glsl */ `#include <common>
 precision highp sampler2DArray;
 uniform sampler2DArray uTexA; uniform sampler2DArray uTexN; uniform sampler2D uNoise;
-uniform vec4 uFlash; uniform vec4 uRim; uniform float uEmitBoost; uniform float uEmitMul; uniform float uWet; uniform vec3 uCharFill; uniform vec2 uNearFade;
+uniform vec4 uFlash; uniform vec4 uRim; uniform float uEmitBoost; uniform float uEmitMul; uniform float uWet; uniform vec3 uCharFill; uniform vec2 uNearFade; uniform vec2 uNearFade;
 varying float vLayer; varying float vEmit; varying vec2 vWUv;
 ${wind ? 'varying float vSway;' : ''}
 vec4 gTA; vec4 gTN;`)
@@ -222,6 +225,15 @@ vec4 gTA; vec4 gTN;`)
     if (smoothstep(2.5, 8.0, nd) < dn) discard;
   }
 }` : ''}
+{
+  // anything about to fill the lens (a prop the camera backed into, the hero's own head) dissolves
+  // characters start earlier: a head at arm's length hides more of a portrait screen than a wall does
+  float nl = length(vViewPosition)${rim ? ' * 0.625' : ''};
+  if (nl < uNearFade.y) {
+    float dn = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    if (smoothstep(uNearFade.x, uNearFade.y, nl) < dn) discard;
+  }
+}
 {
   float lay = floor(vLayer + 0.5);
   gTA = texture(uTexA, vec3(vWUv, lay));
