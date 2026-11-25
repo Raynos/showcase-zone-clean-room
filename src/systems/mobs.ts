@@ -5,6 +5,7 @@ import { CAMPS, ELITES, ENEMIES, type AttackDef, type CampDef, type EliteDef, ty
 import type { RobotKind, RobotPose, RobotRig, RobotVariant } from '../entities/robots/types';
 import type { Game } from '../game';
 import type { Telegraph } from '../gfx/fx';
+import { inTown } from '../world/layout';
 import { SP } from '../gfx/fx';
 import type { HitInfo, Hittable } from './combat';
 
@@ -21,6 +22,8 @@ interface Wave { x: number; y: number; z: number; r: number; max: number; speed:
 interface Pending { t: number; fn: () => void; owner: Mob | null }
 
 let NEXT_ID = 1;
+/** Outdoor mobs drop a chase once the player has been further than this (m) for 3 s. Longer than any attack range out there. */
+const GIVE_UP = 30;
 
 export class Mob implements Hittable {
   id = NEXT_ID++;
@@ -42,6 +45,8 @@ export class Mob implements Hittable {
   floor: number | null; leash: number; hover: number; lift = 0;
   phase = 1; invuln = false; noLoot: boolean; xpMul: number;
   private avoidT = 0; private avoid = 0;
+  /** seconds the player has been out of reach while we chase (outdoors) */
+  private farT = 0;
   /** hooks for boss scripting */
   onPhase: ((p: number) => void) | null = null;
   onDeath: (() => void) | null = null;
@@ -89,6 +94,7 @@ export class Mob implements Hittable {
     this.hp -= dmg;
     this.flash = this.isBoss ? 0.4 : this.variant === 'elite' || this.variant === 'nightElite' ? 0.7 : 1; // a screen-filling boss must not white out
     if (!this.aggro) { this.aggro = true; this.mobs.alertNear(this); }
+    this.farT = 0;   // being shot at keeps a mob interested however far off the shooter stands
     if (this.state === 'idle') this.setState('chase');
     // knockback (bosses barely budge)
     const kb = h.knock * (this.isBoss ? 0.06 : this.variant === 'elite' || this.variant === 'nightElite' ? 0.35 : 1);
@@ -133,7 +139,9 @@ export class Mob implements Hittable {
     const px = pl.pos.x - this.pos.x, pz = pl.pos.z - this.pos.z;
     const dist = Math.hypot(px, pz);
     const toPlayer = Math.atan2(px, pz);
-    const canSee = !pl.dead && this.mobs.playerHostile && Math.abs(pl.pos.y - this.pos.y) < (this.isBoss ? 40 : 9);
+    // the town is a safe zone: nothing out in the yard hunts a player who is inside it
+    const outdoors = this.floor === null;
+    const canSee = !pl.dead && this.mobs.playerHostile && Math.abs(pl.pos.y - this.pos.y) < (this.isBoss ? 40 : 9) && !(outdoors && inTown(pl.pos.x, pl.pos.z));
     let wantVx = 0, wantVz = 0, face: number | null = null, turn = this.def.turn;
     const speed = this.def.speed * (this.variant === 'night' || this.variant === 'nightElite' ? 1.1 : 1);
 
@@ -154,8 +162,11 @@ export class Mob implements Hittable {
         }
         const wx = this.wanderX - this.pos.x, wz = this.wanderZ - this.pos.z, wd = Math.hypot(wx, wz);
         if (wd > 0.6 && !this.isBoss) { wantVx = (wx / wd) * speed * 0.3; wantVz = (wz / wd) * speed * 0.3; face = Math.atan2(wx, wz); this.pose.action = 'move'; }
+        // home and unbothered: mend, and forget an alert that can no longer be acted on
+        if (!this.aggro && this.hp < this.maxHp) { this.hp = Math.min(this.maxHp, this.hp + this.maxHp * 0.35 * dt); if (this.hp >= this.maxHp) this.phase = 1; }
+        if (this.aggro && !canSee && outdoors) this.aggro = false;
         if (canSee && (dist < this.def.aggro * (this.level + 4 < g.state.d.level ? 0.6 : 1) || this.aggro)) {
-          this.aggro = true; this.setState('chase'); this.gcd = rand(0.3, 0.9);
+          this.aggro = true; this.farT = 0; this.setState('chase'); this.gcd = rand(0.3, 0.9);
           this.mobs.alertNear(this);
           g.sfx('enemy_alert', { pos: this.pos, vol: 0.6 });
         }
@@ -164,7 +175,9 @@ export class Mob implements Hittable {
       case 'chase': {
         this.pose.action = 'move'; this.pose.charge = 0;
         const hd = Math.hypot(this.pos.x - this.home.x, this.pos.z - this.home.z);
-        if (!canSee || hd > this.leash) { this.aggro = false; this.setState('return'); break; }
+        // give up on a player who has got away: out of sight, past the leash, or more than GIVE_UP metres off for 3 s
+        this.farT = outdoors && dist > GIVE_UP ? this.farT + dt : 0;
+        if (!canSee || hd > this.leash || this.farT > 3) { this.aggro = false; this.farT = 0; this.setState('return'); break; }
         face = toPlayer;
         const reach = this.radius + 0.5;
         const keep = this.def.keep;
