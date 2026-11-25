@@ -265,6 +265,8 @@ export class Chunks {
 
   /** Triangles pushed into a Geo by hand (road ribbons, custom shapes): each goes to the cell under it. */
   private flushLoose(g: Geo, a: number, b: number, leaf: boolean, named?: Store) {
+      // decals (gfx/decals.ts) are marks on a surface, not things: no shadow
+      if (!named && g.lay[v0] >= 64 && g.lay[v0] < 99) key = KEY_FLAT;
     const pos = g.pos, idx = g.idx, ground = named ? null : this.ground;
     const maps = new Map<Store, Map<number, number>>();
     for (let i = a; i + 2 < b; i += 3) {

@@ -1,0 +1,11 @@
+Use your image generation tool to paint a square 1024x1024 texture for a video game and save it as timber.png in the current directory.
+
+Subject: A dark stained timber beam surface for half-timbered houses: old oak planks running horizontally, the full width of the image, deep brown, with long flowing grain, a few knots and splits, adze marks, and pale worn edges where boards meet.
+
+Style: a hand-painted stylised game texture, as in a top-tier stylised fantasy MMO. Chunky readable shapes, a painted light bevel on the upper edge of every raised form and a soft painted shadow in every crease, visible confident brushwork, rich but natural colour with small hue shifts. No photographic noise, no photo-realism.
+
+View: perfectly flat and straight on (orthographic), evenly lit, with no perspective, no cast shadows from outside the surface, no vignette, no border or frame, no text, no logo, no watermark. The surface fills the whole image edge to edge.
+
+It must tile seamlessly in both directions: whatever touches the left edge continues exactly on the right edge, and whatever touches the top edge continues exactly on the bottom edge. Keep brightness and colour even across the whole image, with no large light or dark patches and no single eye-catching feature, so the repeat is not obvious when it is laid side by side many times.
+
+After saving, reply with one line stating the file path and its size in pixels. If you have no image generation tool available, say so plainly and do not draw the image with code.

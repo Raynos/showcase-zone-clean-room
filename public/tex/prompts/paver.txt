@@ -1,6 +1,6 @@
 Use your image generation tool to paint a square 1024x1024 texture for a video game and save it as paver.png in the current directory.
 
-Subject: Rectangular flagstone paving for a road: four horizontal rows of large dressed stone slabs, about two slabs per row, with the joints staggered from one row to the next and slab lengths varying. Warm grey stone, tone varying slab to slab, softly bevelled worn edges, a few chips and cracks, narrow dark joints with a little sand.
+Subject: Rectangular flagstone paving for an old town road: four horizontal rows of large worn stone slabs, about two slabs per row, with the joints staggered from one row to the next and slab lengths varying. The slabs differ clearly in tone from one to the next: warm buff, cool grey, a few darker brown-grey. Every slab is strongly bevelled, with a broad painted highlight along its upper edge, a dark shadow along its lower edge, a slightly domed worn face with brush texture, and here and there a chipped corner or a crack. Deep dark joints with a little sand and a few specks of moss.
 
 Style: a hand-painted stylised game texture, as in a top-tier stylised fantasy MMO. Chunky readable shapes, a painted light bevel on the upper edge of every raised form and a soft painted shadow in every crease, visible confident brushwork, rich but natural colour with small hue shifts. No photographic noise, no photo-realism.
 

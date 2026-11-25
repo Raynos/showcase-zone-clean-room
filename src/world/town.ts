@@ -147,7 +147,7 @@ function plaza(c: Ctx) {
     g.torus(4.2, 0.04, 4, 28, { at: [0, 0.635, 0], rot: [PI / 2, 0, 0], color: 0xbff3ff, emit: 0.45, col: 'none' });
     for (let i = 0; i < 12; i++) {
       const a = (i / 12) * PI * 2;
-      g.ico(0.17, 0, { at: [Math.sin(a) * 5.02, 1.05, Math.cos(a) * 5.02], color: BRASS, layer: T.METAL, flat: true, col: 'none' });
+      g.ico(0.17, 0, { at: [Math.sin(a) * 5.02, 1.05, Math.cos(a) * 5.02], color: BRASS, layer: T.BRASS, flat: true, col: 'none' });
     }
     // drum with a great horizontal gear
     g.cylUp(2.2, 2.5, 1.5, 16, { color: STONE, layer: T.BRICK, uvScale: 0.5, col: true, grad: 0.75 });
@@ -164,7 +164,7 @@ function plaza(c: Ctx) {
     // column
     g.cylUp(0.62, 0.9, 3.3, 10, { at: [0, 1.5, 0], color: 0xa67c2e, layer: T.METAL, uvScale: 0.6, col: true });
     for (const yy of [1.75, 2.9, 4.5]) g.torus(yy > 4 ? 0.74 : 0.86, 0.11, 6, 14, { at: [0, yy, 0], rot: [PI / 2, 0, 0], color: 0xe0b455, layer: T.METAL, col: 'none' });
-    g.cylUp(1.25, 0.6, 0.5, 10, { at: [0, 4.75, 0], color: BRASS, layer: T.METAL, col: 'none' });
+    g.cylUp(1.25, 0.6, 0.5, 10, { at: [0, 4.75, 0], color: BRASS, layer: T.BRASS, col: 'none' });
     g.cyl(1.05, 1.05, 0.05, 10, { at: [0, 5.2, 0], color: 0x2c93ad, emit: 0.4, col: 'none' });
     // water arcs
     for (let i = 0; i < 4; i++) {
@@ -213,7 +213,7 @@ function plazaPaving(c: Ctx) {
   const y = 0.05;
   ring(c, g, cx, cz, 0, 5.4, y, 0x8f8576, T.COBBLE, 0.4);
   ring(c, g, cx, cz, 5.4, 7.3, y, 0xdbcfb9, T.PAVER, 0.5);
-  ring(c, g, cx, cz, 7.3, 7.75, y + 0.008, BRASS, T.METAL, 0.5);
+  ring(c, g, cx, cz, 7.3, 7.75, y + 0.008, BRASS, T.BRASS, 0.5);
   ring(c, g, cx, cz, 7.75, 12.0, y, 0xb3a58e, T.PAVER, 0.5);
   ring(c, g, cx, cz, 12.0, 12.45, y + 0.008, 0x4f5761, T.BRICK, 0.8);
   ring(c, g, cx, cz, 12.45, R - 0.7, y, 0xcdc1ab, T.PAVER, 0.5);
@@ -221,7 +221,7 @@ function plazaPaving(c: Ctx) {
   // the plaza is a clock face: twelve brass hour studs and four light channels to the gates
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * PI * 2, big = i % 3 === 0;
-    g.box(big ? 0.5 : 0.28, 0.05, big ? 1.5 : 0.9, { at: [cx + Math.sin(a) * 9.9, y + 0.01, cz + Math.cos(a) * 9.9], rot: [0, a, 0], color: BRASS, layer: T.METAL, col: 'none' });
+    g.box(big ? 0.5 : 0.28, 0.05, big ? 1.5 : 0.9, { at: [cx + Math.sin(a) * 9.9, y + 0.01, cz + Math.cos(a) * 9.9], rot: [0, a, 0], color: BRASS, layer: T.BRASS, col: 'none' });
   }
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * PI * 2, sa = Math.sin(a), ca = Math.cos(a), len = R - 0.9 - 7.9, mid = 7.9 + len / 2;
@@ -296,7 +296,7 @@ function pavilion(c: Ctx, g: Geo, lg: Geo, x: number, y: number, z: number, w: n
   g.push().translate(x, y + 3.1, z);
   hipRoof(g, w - 0.3, d - 0.3, roofH, { color: roofCol, ridge: Math.max(0, w - d) * 0.8 });
   g.cylUp(0.05, 0.09, 1.9, 5, { at: [0, roofH - 0.1, 0], color: IRON, layer: T.METAL, col: 'none' });
-  g.ico(0.16, 0, { at: [0, roofH + 0.1, 0], color: BRASS, layer: T.METAL, flat: true, col: 'none' });
+  g.ico(0.16, 0, { at: [0, roofH + 0.1, 0], color: BRASS, layer: T.BRASS, flat: true, col: 'none' });
   g.pop();
   lanternBody(g, x, y + 2.86, z, PAL.cyan, 1.5);
   addLantern(c, g, x, y + 2.5, z);
@@ -393,7 +393,7 @@ function bastion(c: Ctx, x: number, z: number) {
   }
   g.cyl(RR, RR, 0.1, N, { at: [0, y0 - 0.3, 0], color: TIMBER, layer: T.PLANKS, uvScale: 0.3, col: 'none' });
   g.cylUp(0.05, 0.09, 2.2, 5, { at: [0, y0 + RH - 0.1, 0], color: IRON, layer: T.METAL, col: 'none' });
-  g.ico(0.2, 0, { at: [0, y0 + RH + 0.1, 0], color: BRASS, layer: T.METAL, flat: true, col: 'none' });
+  g.ico(0.2, 0, { at: [0, y0 + RH + 0.1, 0], color: BRASS, layer: T.BRASS, flat: true, col: 'none' });
   lanternBody(g, 0, y0 - 0.1, 0, PAL.cyan, 1.8);
   addLantern(c, g, 0, y0 - 0.6, 0);
   lg.push().translate(0, y0 + RH + 2.0, 0);
@@ -689,7 +689,7 @@ function tree(c: Ctx, x: number, z: number, s: number, kind: 'ember' | 'poplar' 
 function swordProp(g: Geo, x: number, y: number, z: number, rz: number, len = 1.1) {
   g.push().translate(x, y, z).rotateZ(rz);
   g.box(0.09, len, 0.03, { at: [0, len / 2 + 0.14, 0], color: 0xcfd6de, layer: T.METAL, col: 'none' });
-  g.box(0.34, 0.06, 0.06, { at: [0, 0.12, 0], color: BRASS, layer: T.METAL, col: 'none' });
+  g.box(0.34, 0.06, 0.06, { at: [0, 0.12, 0], color: BRASS, layer: T.BRASS, col: 'none' });
   g.box(0.06, 0.24, 0.05, { at: [0, 0, 0], color: 0x5a3a24, col: 'none' });
   g.pop();
 }
@@ -713,8 +713,8 @@ function weaponsShop(c: Ctx) {
     for (let i = 0; i < 4; i++) swordProp(g, -4.0 + i * 0.62, 1.25, zb + 0.14, i % 2 ? 0.08 : -0.06, 1.0 + (i % 3) * 0.14);
     for (let i = 0; i < 2; i++) {
       g.cyl(0.52, 0.52, 0.08, 12, { at: [-0.7 + i * 1.35, 2.15, zb + 0.16], rot: [PI / 2, 0, 0], color: i ? PAL.teal : PAL.orange, layer: T.PLANKS, uvScale: 1, col: 'none' });
-      g.torus(0.52, 0.05, 4, 14, { at: [-0.7 + i * 1.35, 2.15, zb + 0.18], color: BRASS, layer: T.METAL, col: 'none' });
-      g.ico(0.12, 0, { at: [-0.7 + i * 1.35, 2.15, zb + 0.24], color: BRASS, layer: T.METAL, flat: true, col: 'none' });
+      g.torus(0.52, 0.05, 4, 14, { at: [-0.7 + i * 1.35, 2.15, zb + 0.18], color: BRASS, layer: T.BRASS, col: 'none' });
+      g.ico(0.12, 0, { at: [-0.7 + i * 1.35, 2.15, zb + 0.24], color: BRASS, layer: T.BRASS, flat: true, col: 'none' });
     }
     for (let i = 0; i < 2; i++) {
       g.torus(0.62, 0.035, 4, 10, { at: [1.75 + i * 0.55, 2.0, zb + 0.14], rot: [0, 0, -PI / 2], arc: PI, color: 0x8a5a34, col: 'none' });
@@ -764,8 +764,8 @@ function tinkerShop(c: Ctx) {
     g.cylUp(0.5, 0.56, 0.3, 10, { at: [4.1, 0.12, zf - 0.9], color: PAL.slateDark, layer: T.METAL, col: true });
     g.cylUp(0.42, 0.42, 1.5, 10, { at: [4.1, 0.42, zf - 0.9], color: PAL.cyan, emit: 1.0, col: 'none' });
     g.cylUp(0.5, 0.5, 0.2, 10, { at: [4.1, 1.92, zf - 0.9], color: PAL.slateDark, layer: T.METAL, col: 'none' });
-    for (const a of [0, 2.1, 4.2]) g.box(0.06, 1.5, 0.06, { at: [4.1 + Math.sin(a) * 0.46, 1.17, zf - 0.9 + Math.cos(a) * 0.46], color: BRASS, layer: T.METAL, col: 'none' });
-    g.tube([[4.1, 2.1, zf - 0.9], [4.1, 2.9, zf - 0.9], [3.6, 3.3, zf - 1.6], [3.0, 3.4, zb + 0.2]], 0.07, 6, { color: BRASS, layer: T.METAL, col: 'none', div: 10 });
+    for (const a of [0, 2.1, 4.2]) g.box(0.06, 1.5, 0.06, { at: [4.1 + Math.sin(a) * 0.46, 1.17, zf - 0.9 + Math.cos(a) * 0.46], color: BRASS, layer: T.BRASS, col: 'none' });
+    g.tube([[4.1, 2.1, zf - 0.9], [4.1, 2.9, zf - 0.9], [3.6, 3.3, zf - 1.6], [3.0, 3.4, zb + 0.2]], 0.07, 6, { color: BRASS, layer: T.BRASS, col: 'none', div: 10 });
     addLantern(c, g, 4.1, 1.3, zf - 0.9);
     // interlocking gears on the facade
     g.push().translate(0, h0 + 1.5, zf + 0.16); gear(g, 1.15, 12, 0.2, BRASS); g.pop();
@@ -838,7 +838,7 @@ function questHall(c: Ctx) {
     g.cylUp(0.4, 0.47, H - 1.35, 12, { at: [px, Y0 + 0.3, -0.6], color: 0xefe7d6, layer: T.PLASTER, uvScale: 0.6, col: 'none', grad: 0.85 });
     g.colCyl(0.47, H, { at: [px, Y0 + H / 2, -0.6] });
     g.box(1.15, 0.3, 1.15, { at: [px, top - 0.9, -0.6], color: STONE_L, layer: T.BRICK, uvScale: 0.5, col: 'none' });
-    g.torus(0.46, 0.07, 5, 12, { at: [px, top - 1.12, -0.6], rot: [PI / 2, 0, 0], color: BRASS, layer: T.METAL, col: 'none' });
+    g.torus(0.46, 0.07, 5, 12, { at: [px, top - 1.12, -0.6], rot: [PI / 2, 0, 0], color: BRASS, layer: T.BRASS, col: 'none' });
   }
   g.box(W + 0.5, 0.8, 2.5, { at: [0, top - 0.35, -0.95], color: STONE_L, layer: T.BRICK, uvScale: 0.5, col: 'none' });
   g.box(W + 0.8, 0.16, 11.3, { at: [0, top + 0.08, -5.2], color: STONE, layer: T.BRICK, uvScale: 0.5, col: 'none' });
@@ -944,7 +944,7 @@ function clockTower(c: Ctx) {
     const ha = (7.25 / 12) * PI * 2, ma = PI / 2;
     g.box(0.18, 1.2, 0.05, { at: [Math.sin(ha) * 0.5, Math.cos(ha) * 0.5, 0.19], rot: [0, 0, -ha], color: 0x2a2420, col: 'none' });
     g.box(0.12, 1.8, 0.05, { at: [Math.sin(ma) * 0.8, Math.cos(ma) * 0.8, 0.23], rot: [0, 0, -ma], color: 0x2a2420, col: 'none' });
-    g.cyl(0.2, 0.2, 0.3, 10, { at: [0, 0, 0.16], rot: [PI / 2, 0, 0], color: BRASS, layer: T.METAL, col: 'none' });
+    g.cyl(0.2, 0.2, 0.3, 10, { at: [0, 0, 0.16], rot: [PI / 2, 0, 0], color: BRASS, layer: T.BRASS, col: 'none' });
     g.pop();
   }
   bbox(g, 7.8, 0.6, 7.8, { at: [0, C2 + 0.3, 0], bevel: 0.1, color: STONE_L, layer: T.BRICK, uvScale: 0.5, col: 'none' });
@@ -977,10 +977,10 @@ function clockTower(c: Ctx) {
     g.pop(); c.info.windows++;
   }
   g.cylUp(0.07, 0.16, 3.2, 6, { at: [0, RH - 0.2, 0], color: IRON, layer: T.METAL, col: 'none' });
-  g.ico(0.3, 1, { at: [0, RH + 0.5, 0], color: BRASS, layer: T.METAL, col: 'none' });
+  g.ico(0.3, 1, { at: [0, RH + 0.5, 0], color: BRASS, layer: T.BRASS, col: 'none' });
   g.ico(0.36, 1, { at: [0, RH + 1.6, 0], color: PAL.cyan, emit: 1.4, col: 'none' });
-  g.box(1.5, 0.08, 0.08, { at: [0, RH + 2.4, 0], color: BRASS, layer: T.METAL, col: 'none' });
-  g.cone(0.16, 0.4, 4, { at: [0.85, RH + 2.4, 0], rot: [0, 0, -PI / 2], color: BRASS, layer: T.METAL, col: 'none' });
+  g.box(1.5, 0.08, 0.08, { at: [0, RH + 2.4, 0], color: BRASS, layer: T.BRASS, col: 'none' });
+  g.cone(0.16, 0.4, 4, { at: [0.85, RH + 2.4, 0], rot: [0, 0, -PI / 2], color: BRASS, layer: T.BRASS, col: 'none' });
   g.pop();
   addLantern(c, g, 0, R0 + RH + 1.6, 0);
   lg.push().translate(0, R0 + RH + 2.9, 0); cloth(lg, 2.6, 1.3, PAL.orange, 'flag', 0.6, PAL.cyan); lg.pop();
@@ -1061,7 +1061,7 @@ function zipline(c: Ctx) {
   for (const sx of [-1, 1]) g.box(0.24, 4.4, 0.24, { at: [sx * 1.95, Y + 2.2, 2.0], color: TIMBER, layer: T.PLANKS, uvScale: 0.3, col: 'none' });
   g.box(4.5, 0.26, 0.26, { at: [0, Y + 4.3, 2.0], color: TIMBER, layer: T.PLANKS, uvScale: 0.3, col: 'none' });
   for (const sx of [-1, 1]) g.box(0.14, 1.3, 0.14, { at: [sx * 1.5, Y + 3.9, 2.0], rot: [0, 0, sx * 0.8], color: TIMBER, layer: T.PLANKS, col: 'none' });
-  g.cyl(0.3, 0.3, 0.14, 10, { at: [0, Y + 3.95, 2.0], rot: [0, 0, PI / 2], color: BRASS, layer: T.METAL, col: 'none' });
+  g.cyl(0.3, 0.3, 0.14, 10, { at: [0, Y + 3.95, 2.0], rot: [0, 0, PI / 2], color: BRASS, layer: T.BRASS, col: 'none' });
   g.box(0.5, 0.1, 0.1, { at: [0, Y + 3.95, 2.0], color: IRON, layer: T.METAL, col: 'none' });
   g.ico(0.14, 0, { at: [1.95, Y + 4.55, 2.0], color: PAL.cyan, emit: 1.3, flat: true, col: 'none' });
   g.ico(0.14, 0, { at: [-1.95, Y + 4.55, 2.0], color: PAL.cyan, emit: 1.3, flat: true, col: 'none' });
@@ -1107,7 +1107,7 @@ function board(c: Ctx) {
     g.translate(0, 0.1, 0.012); pixelIcon(g, icon, 0.065, { color: 0x3a2a1c, depth: 0.012 });
     g.box(0.5, 0.04, 0.012, { at: [0, -0.36, 0.004], color: 0x3a2a1c, col: 'none' });
     g.cyl(0.07, 0.07, 0.03, 8, { at: [0.26, -0.44, 0.01], rot: [PI / 2, 0, 0], color: PAL.red, col: 'none' });
-    g.ico(0.035, 0, { at: [0, 0.34, 0.01], color: BRASS, layer: T.METAL, flat: true, col: 'none' });
+    g.ico(0.035, 0, { at: [0, 0.34, 0.01], color: BRASS, layer: T.BRASS, flat: true, col: 'none' });
     g.pop();
   }
   // the elite contract glows
@@ -1132,14 +1132,14 @@ function trophyWall(c: Ctx) {
   g.push().translate(0, H, 0).rotateY(PI / 2); gableRoof(g, 1.6, W - 1.2, 0.8, { color: 0xd9641a, ov: 0.15, ovG: 0, thick: 0.12, gable: null }); g.pop();
   // display field
   g.box(W - 1.6, 3.5, 0.1, { at: [0, 2.55, 0.5], color: 0x2e5863, layer: T.CANVAS, uvScale: 2.4, col: 'none' });
-  g.box(W - 1.4, 0.16, 0.16, { at: [0, 4.35, 0.52], color: BRASS, layer: T.METAL, col: 'none' });
-  g.box(W - 1.4, 0.16, 0.16, { at: [0, 0.78, 0.52], color: BRASS, layer: T.METAL, col: 'none' });
+  g.box(W - 1.4, 0.16, 0.16, { at: [0, 4.35, 0.52], color: BRASS, layer: T.BRASS, col: 'none' });
+  g.box(W - 1.4, 0.16, 0.16, { at: [0, 0.78, 0.52], color: BRASS, layer: T.BRASS, col: 'none' });
   for (let r = 0; r < 2; r++) for (let i = 0; i < 5; i++) {
     const px = (i - 2) * 1.5, py = 1.75 + r * 1.55;
     g.cyl(0.42, 0.42, 0.06, 10, { at: [px, py, 0.57], rot: [PI / 2, 0, 0], color: 0xc9a06a, layer: T.PLANKS, uvScale: 2.6, col: 'none' });
-    g.torus(0.42, 0.045, 4, 12, { at: [px, py, 0.6], color: BRASS, layer: T.METAL, col: 'none' });
+    g.torus(0.42, 0.045, 4, 12, { at: [px, py, 0.6], color: BRASS, layer: T.BRASS, col: 'none' });
     g.box(0.08, 0.12, 0.08, { at: [px, py + 0.1, 0.62], color: IRON, layer: T.METAL, col: 'none' });
-    g.box(0.5, 0.13, 0.03, { at: [px, py - 0.58, 0.57], color: BRASS, layer: T.METAL, col: 'none' });
+    g.box(0.5, 0.13, 0.03, { at: [px, py - 0.58, 0.57], color: BRASS, layer: T.BRASS, col: 'none' });
   }
   g.push().translate(0, H + 0.2, 0.5); gear(g, 0.95, 12, 0.18, BRASS); g.translate(0, 0, 0.14); pixelIcon(g, 'sword', 0.11, { color: 0xfff1d6, emit: 0.4, depth: 0.04 }); g.pop();
   g.push().translate(0, 4.02, 0.56); pixelText(g, 'YARD TROPHIES', 0.06, { color: BRASS, emit: 0.3, depth: 0.03 }); g.pop();

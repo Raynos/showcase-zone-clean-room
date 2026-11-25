@@ -523,7 +523,7 @@ export function scaffold(g: Geo, r: Rng, w = 5, levels = 2, d = 1.6) {
 }
 /** Smelter chimney: brick base with a furnace mouth, banded steel stack, glowing lip. Returns local top. */
 export function smelterStack(g: Geo, h = 26, rb = 3.2): [number, number, number] {
-  g.cyl(rb * 1.15, rb * 1.35, 5, 10, { at: [0, 2.5, 0], color: 0x7a4a36, layer: T.BRICK, uvScale: 0.3, col: true, grad: 0.6 });
+  g.cyl(rb * 1.15, rb * 1.35, 5, 10, { at: [0, 2.5, 0], color: 0x9a5a42, layer: T.REDBRICK, uvScale: 0.3, col: true, grad: 0.6 });
   g.cyl(rb * 1.25, rb * 1.25, 0.5, 10, { at: [0, 5.2, 0], color: PAL.slateDark, layer: T.METAL, col: 'none' });
   g.cyl(rb * 0.62, rb, h - 5.4, 12, { at: [0, 5.4 + (h - 5.4) / 2, 0], color: 0x4a4d54, layer: T.METAL, uvScale: 0.25, col: 'none', grad: 0.75 });
   for (let i = 1; i <= 4; i++) { const t = i / 5, r = rb + (rb * 0.62 - rb) * t; g.cyl(r + 0.1, r + 0.12, 0.35, 12, { at: [0, 5.4 + (h - 5.4) * t, 0], color: i % 2 ? PAL.orangeDeep : PAL.slateDark, layer: i % 2 ? T.STRIPE : T.METAL, uv: 'fit', col: 'none' }); }

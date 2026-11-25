@@ -394,19 +394,19 @@ export function gear(g: Geo, R: number, teeth = 10, thick = 0.2, color = 0xc9973
   const e = o.emit ?? 0;
   g.push().rotateX(Math.PI / 2);
   if (o.ring) {
-    g.torus(R * 0.9, R * 0.085, 6, 28, { rot: [Math.PI / 2, 0, 0], layer: T.METAL, color, col: 'none', emit: e, scale: [1, 1, thick / (R * 0.17)] });
+    g.torus(R * 0.9, R * 0.085, 6, 28, { rot: [Math.PI / 2, 0, 0], layer: T.BRASS, color, col: 'none', emit: e, scale: [1, 1, thick / (R * 0.17)] });
   } else if (o.spokes !== false && R > 0.7) {
-    g.torus(R * 0.86, R * 0.1, 6, 24, { rot: [Math.PI / 2, 0, 0], layer: T.METAL, color, col: 'none', emit: e, scale: [1, 1, thick / (R * 0.2)] });
-    g.cyl(R * 0.26, R * 0.26, thick * 1.25, 10, { layer: T.METAL, color, col: 'none', emit: e });
-    for (let i = 0; i < 4; i++) g.box(R * 1.7, thick * 0.7, R * 0.12, { rot: [0, (i / 4) * Math.PI, 0], layer: T.METAL, color, col: 'none', emit: e });
+    g.torus(R * 0.86, R * 0.1, 6, 24, { rot: [Math.PI / 2, 0, 0], layer: T.BRASS, color, col: 'none', emit: e, scale: [1, 1, thick / (R * 0.2)] });
+    g.cyl(R * 0.26, R * 0.26, thick * 1.25, 10, { layer: T.BRASS, color, col: 'none', emit: e });
+    for (let i = 0; i < 4; i++) g.box(R * 1.7, thick * 0.7, R * 0.12, { rot: [0, (i / 4) * Math.PI, 0], layer: T.BRASS, color, col: 'none', emit: e });
   } else {
-    g.cyl(R * 0.9, R * 0.9, thick, 16, { layer: T.METAL, color, col: 'none', emit: e });
-    g.cyl(R * 0.25, R * 0.25, thick * 1.4, 8, { layer: T.METAL, color: 0x8a6a2a, col: 'none' });
+    g.cyl(R * 0.9, R * 0.9, thick, 16, { layer: T.BRASS, color, col: 'none', emit: e });
+    g.cyl(R * 0.25, R * 0.25, thick * 1.4, 8, { layer: T.BRASS, color: 0x8a6a2a, col: 'none' });
   }
   const tw = (TAU * R / teeth) * 0.48;
   for (let i = 0; i < teeth; i++) {
     const a = (i / teeth) * TAU;
-    g.box(tw, thick, R * 0.26, { at: [Math.sin(a) * R * 1.0, 0, Math.cos(a) * R * 1.0], rot: [0, a, 0], layer: T.METAL, color, col: 'none', emit: e });
+    g.box(tw, thick, R * 0.26, { at: [Math.sin(a) * R * 1.0, 0, Math.cos(a) * R * 1.0], rot: [0, a, 0], layer: T.BRASS, color, col: 'none', emit: e });
   }
   g.pop();
 }
@@ -645,7 +645,7 @@ export function house(g: Geo, r: Rng, sp: HouseSpec): HouseOut {
   const roofCol = sp.roofCol ?? r.pick(ROOFS), jet = floors > 1 ? (sp.jetty ?? 0) : 0, open = sp.open ?? 0;
   const lit = sp.lit ?? 0.55, upH = (floors - 1) * hu, wallH = h0 + upH, zf = d / 2, dU = d + jet, zfU = zf + jet;
   const out: HouseOut = { lanterns: [], windows: 0, wallH, ridgeY: wallH };
-  const baseMat = base === 'stone' ? { color: 0xb9b0a2, layer: T.BRICK, uvScale: 0.42 } : base === 'brick' ? { color: 0xc77a4e, layer: T.BRICK, uvScale: 0.8 }
+  const baseMat = base === 'stone' ? { color: 0xb9b0a2, layer: T.BRICK, uvScale: 0.42 } : base === 'brick' ? { color: 0xc06a48, layer: T.REDBRICK, uvScale: 0.42 }
     : base === 'planks' ? { color: 0xb5824a, layer: T.PLANKS, uvScale: 1.1 } : { color: wall, layer: T.PLASTER, uvScale: 0.4 };
 
   // ---- masses
@@ -658,18 +658,18 @@ export function house(g: Geo, r: Rng, sp: HouseSpec): HouseOut {
     const np = Math.max(2, Math.round(w / 4.5) + 1);
     for (let i = 0; i < np; i++) {
       const px = -w / 2 + 0.2 + (i / (np - 1)) * (w - 0.4);
-      g.box(0.3, h0, 0.3, { at: [px, h0 / 2, zf - 0.15], color: timber, layer: T.PLANKS, uvScale: 0.3, col: i === 0 || i === np - 1 });
+      g.box(0.3, h0, 0.3, { at: [px, h0 / 2, zf - 0.15], color: timber, layer: T.TIMBER, uvScale: 0.5, col: i === 0 || i === np - 1 });
       for (const s of [-1, 1]) if ((s < 0 && i > 0) || (s > 0 && i < np - 1))
-        g.box(0.14, 0.9, 0.14, { at: [px + s * 0.34, h0 - 0.42, zf - 0.15], rot: [0, 0, s * 0.75], color: timber, layer: T.PLANKS, uvScale: 0.3, col: 'none' });
+        g.box(0.14, 0.9, 0.14, { at: [px + s * 0.34, h0 - 0.42, zf - 0.15], rot: [0, 0, s * 0.75], color: timber, layer: T.TIMBER, uvScale: 0.5, col: 'none' });
     }
-    if (floors === 1) g.box(w, 0.3, open, { at: [0, h0 - 0.15, zf - open / 2], color: timber, layer: T.PLANKS, uvScale: 0.3, col: 'none' });
+    if (floors === 1) g.box(w, 0.3, open, { at: [0, h0 - 0.15, zf - open / 2], color: timber, layer: T.TIMBER, uvScale: 0.5, col: 'none' });
     // lamplit interior: a faintly glowing back wall and ceiling stand in for the lantern's light
     g.box(w - 0.3, h0 - 0.5, 0.06, { at: [0, h0 / 2 + 0.1, zf - open + 0.03], ...baseMat, emit: 0.2, col: 'none' });
     g.box(w - 0.3, 0.06, open - 0.3, { at: [0, h0 - (floors === 1 ? 0.34 : 0.04), zf - open / 2], color: 0xc9a476, layer: T.PLANKS, uvScale: 0.5, emit: 0.16, col: 'none' });
   }
   // ---- timber frame
   const beam = (x: number, y: number, z: number, bw: number, bh: number, bd: number, rot?: P3) =>
-    g.box(bw, bh, bd, { at: [x, y, z], rot, color: timber, layer: T.PLANKS, uvScale: 0.3, col: 'none', jit: 0.08 });
+    g.box(bw, bh, bd, { at: [x, y, z], rot, color: timber, layer: T.TIMBER, uvScale: 0.5, col: 'none', jit: 0.08 });
   const framed = floors > 1 || base === 'plaster';
   if (framed) {
     const yA = floors > 1 ? h0 : 0.6, yB = wallH, zc = floors > 1 ? jet / 2 : 0, dd = floors > 1 ? dU : d, zF = floors > 1 ? zfU : zf;
@@ -687,17 +687,17 @@ export function house(g: Geo, r: Rng, sp: HouseSpec): HouseOut {
       const y0 = floors > 1 ? h0 + f * hu : yA, fh = floors > 1 ? hu : yB - yA;
       for (const s of [-1, 1]) {
         beam(s * (w / 2 - 0.62), y0 + fh * 0.36, zF + 0.02, 0.14, fh * 0.78, 0.09, [0, 0, s * 0.6]);
-        for (const sx of [-1, 1]) g.box(0.09, fh * 0.78, 0.14, { at: [sx * (w / 2 + 0.02), y0 + fh * 0.36, zc + s * (dd / 2 - 0.62)], rot: [s * -0.6, 0, 0], color: timber, layer: T.PLANKS, uvScale: 0.3, col: 'none' });
+        for (const sx of [-1, 1]) g.box(0.09, fh * 0.78, 0.14, { at: [sx * (w / 2 + 0.02), y0 + fh * 0.36, zc + s * (dd / 2 - 0.62)], rot: [s * -0.6, 0, 0], color: timber, layer: T.TIMBER, uvScale: 0.5, col: 'none' });
       }
-      for (const sx of [-1, 1]) g.box(0.1, fh, 0.16, { at: [sx * (w / 2 + 0.02), y0 + fh / 2, zc], color: timber, layer: T.PLANKS, uvScale: 0.3, col: 'none' });
+      for (const sx of [-1, 1]) g.box(0.1, fh, 0.16, { at: [sx * (w / 2 + 0.02), y0 + fh / 2, zc], color: timber, layer: T.TIMBER, uvScale: 0.5, col: 'none' });
     }
   }
   if (jet > 0) {
     const nb = Math.max(3, Math.round(w / 1.8));
     for (let i = 0; i < nb; i++) {
       const bx = -w / 2 + 0.3 + (i / (nb - 1)) * (w - 0.6);
-      g.box(0.18, 0.2, jet + 0.3, { at: [bx, h0 - 0.1, zf + jet / 2 - 0.1], color: timber, layer: T.PLANKS, uvScale: 0.3, col: 'none' });
-      if (open === 0) g.box(0.14, 0.6, 0.14, { at: [bx, h0 - 0.36, zf + jet * 0.42], rot: [0.75, 0, 0], color: timber, layer: T.PLANKS, uvScale: 0.3, col: 'none' });
+      g.box(0.18, 0.2, jet + 0.3, { at: [bx, h0 - 0.1, zf + jet / 2 - 0.1], color: timber, layer: T.TIMBER, uvScale: 0.5, col: 'none' });
+      if (open === 0) g.box(0.14, 0.6, 0.14, { at: [bx, h0 - 0.36, zf + jet * 0.42], rot: [0.75, 0, 0], color: timber, layer: T.TIMBER, uvScale: 0.5, col: 'none' });
     }
   }
   // ---- windows
@@ -749,10 +749,10 @@ export function house(g: Geo, r: Rng, sp: HouseSpec): HouseOut {
   if (sp.balcony && floors > 1) {
     const by = h0 + 0.12, bz = zfU + 0.55;
     g.box(2.8, 0.12, 1.1, { at: [0, by, bz], color: timber, layer: T.PLANKS, uvScale: 0.5, col: 'none' });
-    for (const s of [-1, 1]) g.box(0.14, 0.7, 0.14, { at: [s * 1.2, by - 0.38, bz - 0.1], rot: [0.7, 0, 0], color: timber, layer: T.PLANKS, uvScale: 0.3, col: 'none' });
+    for (const s of [-1, 1]) g.box(0.14, 0.7, 0.14, { at: [s * 1.2, by - 0.38, bz - 0.1], rot: [0.7, 0, 0], color: timber, layer: T.TIMBER, uvScale: 0.5, col: 'none' });
     for (let i = 0; i <= 6; i++) g.box(0.07, 0.85, 0.07, { at: [-1.35 + i * 0.45, by + 0.48, bz + 0.5], color: timber, layer: T.PLANKS, col: 'none' });
-    g.box(2.9, 0.1, 0.12, { at: [0, by + 0.93, bz + 0.5], color: timber, layer: T.PLANKS, uvScale: 0.3, col: 'none' });
-    for (const s of [-1, 1]) g.box(0.1, 0.1, 1.1, { at: [s * 1.4, by + 0.93, bz], color: timber, layer: T.PLANKS, uvScale: 0.3, col: 'none' });
+    g.box(2.9, 0.1, 0.12, { at: [0, by + 0.93, bz + 0.5], color: timber, layer: T.TIMBER, uvScale: 0.5, col: 'none' });
+    for (const s of [-1, 1]) g.box(0.1, 0.1, 1.1, { at: [s * 1.4, by + 0.93, bz], color: timber, layer: T.TIMBER, uvScale: 0.5, col: 'none' });
     g.push().translate(0, h0 + 0.02, zfU); doorUnit(g, 1.1, 2.05, { color: 0x466a78, frame: timber, step: false }); g.pop();
   }
   // ---- sign
@@ -770,8 +770,8 @@ export function house(g: Geo, r: Rng, sp: HouseSpec): HouseOut {
   if (kind === 'front') {
     gableRoof(g, w, dU, rh, { color: roofCol, gable: gab, trim: timber });
     // gable dressing: collar beam, king post, attic window, barge boards
-    g.box(w * 0.5, 0.16, 0.1, { at: [0, rh * 0.5, dU / 2 + 0.03], color: timber, layer: T.PLANKS, uvScale: 0.3, col: 'none' });
-    g.box(0.16, rh - 0.1, 0.1, { at: [0, rh / 2, dU / 2 + 0.02], color: timber, layer: T.PLANKS, uvScale: 0.3, col: 'none' });
+    g.box(w * 0.5, 0.16, 0.1, { at: [0, rh * 0.5, dU / 2 + 0.03], color: timber, layer: T.TIMBER, uvScale: 0.5, col: 'none' });
+    g.box(0.16, rh - 0.1, 0.1, { at: [0, rh / 2, dU / 2 + 0.02], color: timber, layer: T.TIMBER, uvScale: 0.5, col: 'none' });
     if (rh > 2.2) { g.push().translate(0, rh * 0.26, dU / 2 + 0.03); windowUnit(g, 0.7, 0.7, { lit: r.chance(lit), frame: timber, bars: false }); g.pop(); out.windows++; }
   } else if (kind === 'side') {
     g.push().rotateY(Math.PI / 2);

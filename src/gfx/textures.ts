@@ -6,9 +6,9 @@ export const T = {
   FLAT: 0, METAL: 1, PLANKS: 2, CRATE: 3, CONCRETE: 4, COBBLE: 5, BRICK: 6, ROOF: 7,
   STRIPE: 8, CANVAS: 9, ROCK: 10, GRASS: 11, DIRT: 12, PLATE: 13, GRATE: 14, BARK: 15,
   GRAVEL: 16, TILE: 17, RUBBER: 18, LEAF: 19, PAVER: 20, PLASTER: 21, CRATE2: 22, PANEL: 23,
-  SAND: 24, LITTER: 25,
+  SAND: 24, LITTER: 25, REDBRICK: 26, TIMBER: 27, BRASS: 28,
 } as const;
-export const LAYER_COUNT = 26;
+export const LAYER_COUNT = 29;
 
 const S = 256; // texel size of each layer
 
@@ -381,6 +381,22 @@ def(T.LITTER, 0.8, (u, v, o) => {
   o.r = 0.9;
 });
 
+// REDBRICK: small bricks in running bond (painted tile replaces it)
+def(T.REDBRICK, 1.6, (u, v, o) => {
+  const row = Math.floor(v * 8), uu = u * 4 + (row & 1) * 0.5, fu = uu - Math.floor(uu), fv = v * 8 - row;
+  const e = Math.min(Math.min(fu, 1 - fu) * 2, Math.min(fv, 1 - fv));
+  const k = smooth(0.03, 0.12, e), id = h2(Math.floor(uu) & 3, row, 270);
+  o.h = k * 0.8; o.a = (0.78 + id * 0.3) * (0.7 + 0.3 * k); o.r = 0.9;
+});
+// TIMBER: adzed beams (painted tile replaces it)
+def(T.TIMBER, 1.2, (u, v, o) => planks(u, v, o, 4, 271));
+
+// BRASS: hammered plate (painted tile replaces it)
+def(T.BRASS, 0.9, (u, v, o) => {
+  const n = tfbm(u, v, 12, 3, 272);
+  o.h = n * 0.5; o.a = 0.82 + n * 0.3; o.r = 0.4; o.m = 1;
+});
+
 export interface TexArrays { albedo: THREE.DataArrayTexture; normal: THREE.DataArrayTexture; size: number }
 
 /** Builds the albedo(+roughness) and normal(+metal) texture arrays. */
@@ -462,8 +478,8 @@ interface Paint {
 }
 const PAINT: Record<number, Paint> = {
   [T.COBBLE]: { file: 'cobble', bump: 1.5, rough: 0.78, roughK: 0.3, contrast: 1.35 },
-  [T.PAVER]: { file: 'paver', bump: 1.5, rough: 0.76, roughK: 0.3, contrast: 1.6 },
-  [T.BRICK]: { file: 'stonewall', bump: 1.5, rough: 0.86, roughK: 0.2, contrast: 1.5 },
+  [T.PAVER]: { file: 'paver', bump: 1.5, rough: 0.76, roughK: 0.3, contrast: 1.05, hue: 0.5 },
+  [T.BRICK]: { file: 'stonewall', bump: 1.5, rough: 0.86, roughK: 0.2, contrast: 1.15, hue: 0.7 },
   [T.ROOF]: { file: 'roof', bump: 1.6, rough: 0.72, roughK: 0.3, contrast: 1.3 },
   [T.PLANKS]: { file: 'planks', bump: 1.2, rough: 0.8, roughK: 0.2, contrast: 1.3 },
   [T.CRATE]: { file: 'crate', bump: 1.4, rough: 0.8, roughK: 0.2, contrast: 1.35 },
@@ -482,6 +498,9 @@ const PAINT: Record<number, Paint> = {
   [T.TILE]: { file: 'tile', bump: 1.2, rough: 0.42, roughK: 0.5, metal: 0.35 },
   [T.PANEL]: { file: 'panel', bump: 1.3, rough: 0.46, roughK: 0.5, metal: 0.7, rust: true },
   [T.LITTER]: { file: 'leaflitter', bump: 0.9, rough: 0.88, raw: true },
+  [T.BRASS]: { file: 'brass', bump: 1.3, rough: 0.36, roughK: 0.5, metal: 0.95, contrast: 1.35 },
+  [T.REDBRICK]: { file: 'redbrick', bump: 1.4, rough: 0.86, roughK: 0.2, contrast: 1.35 },
+  [T.TIMBER]: { file: 'timber', bump: 1.3, rough: 0.82, roughK: 0.2, contrast: 1.5 },
 };
 
 /** Writes one painted tile (sRGB RGBA bytes, S×S) into layer `layer` of the two arrays. */

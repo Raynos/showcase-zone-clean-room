@@ -387,7 +387,7 @@ const V4: Vig[] = [
   { r: 5.4, w: 2, hx: 4.5, hz: 3.2, f: (c, x, z, yaw, r, b) => { // kiln with a channel and catch basin
     dirt(c, b, x, z, 6.2, 0.6);
     c.plinth(x, z, yaw, 9, 6.4, (g, y) => {
-      g.box(3.4, 3.4, 3.2, { at: [-2.4, 1.7, -1], color: 0x7a4a36, layer: T.BRICK, uvScale: 0.35, col: true, grad: 0.65 });
+      g.box(3.4, 3.4, 3.2, { at: [-2.4, 1.7, -1], color: 0x9a5a42, layer: T.REDBRICK, uvScale: 0.35, col: true, grad: 0.65 });
       g.box(3.7, 0.3, 3.5, { at: [-2.4, 3.5, -1], color: PAL.slateDark, layer: T.METAL, col: 'none' });
       g.cyl(0.5, 0.7, 4.6, 8, { at: [-2.9, 5.9, -1.4], color: 0x4a4d54, layer: T.METAL, col: 'none', grad: 0.8 });
       g.cyl(0.4, 0.4, 0.1, 8, { at: [-2.9, 8.22, -1.4], color: 0xff7a1a, emit: 2.4, col: 'none' });
@@ -430,7 +430,7 @@ function smelter(c: Ctx) {
     const t2 = smelterStack(g.push().translate(4.5, 0, -3.5), 25, 2.8); g.pop();
     for (const [t, lx, lz] of [[t1, -6.5, -2.5], [t2, 4.5, -3.5]] as const) { const [wx, wz] = rel(x, z, yaw, lx, lz); c.info.stacks.push({ x: wx, y: y + t[1], z: wz }); c.info.lamps.push({ x: wx, y: y + t[1] - 2, z: wz, color: PAL.red }); }
     // furnace hall between the stacks with a sawtooth roof
-    g.box(6.4, 6, 5.5, { at: [-1, 3, -4.6], color: 0x6a4234, layer: T.BRICK, uvScale: 0.3, col: true, grad: 0.6 });
+    g.box(6.4, 6, 5.5, { at: [-1, 3, -4.6], color: 0x8a5040, layer: T.REDBRICK, uvScale: 0.3, col: true, grad: 0.6 });
     for (let i = 0; i < 3; i++) g.prism(2.14, 1.4, 5.7, { at: [-3.14 + i * 2.14, 6.7, -4.6], color: PAL.slateDark, layer: T.ROOF, uvScale: 0.5, col: 'none' });
     g.box(2.2, 3, 0.2, { at: [-1, 1.6, -1.8], color: 0xff6a14, emit: 2.2, col: 'none' });
     for (let i = 0; i < 5; i++) g.box(0.12, 3.1, 0.26, { at: [-1.9 + i * 0.45, 1.6, -1.74], color: 0x18191c, col: 'none' });

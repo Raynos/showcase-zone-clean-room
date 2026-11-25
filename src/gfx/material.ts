@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { DECALS, ensureDecals } from './decals';
 import { FOLIAGE, ensureFoliage } from './foliage';
 
 /** Uniforms shared by reference across every world material. */
@@ -192,6 +193,7 @@ export class WorldMaterial extends THREE.MeshStandardMaterial {
       sh.uniforms.uFlash = this.flash; sh.uniforms.uRim = this.rim; sh.uniforms.uEmitMul = this.emitMul;
       sh.uniforms.uNearFade = GU.uNearFade;
       if (wind) { ensureFoliage(); sh.uniforms.uLeaf = FOLIAGE.uLeaf; }
+      if (!wind && !rim) { ensureDecals(); sh.uniforms.uDecal = DECALS.uDecal; }
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', /* glsl */ `#include <common>
 attribute float aLayer; attribute float aEmit;
@@ -219,6 +221,7 @@ uniform sampler2DArray uTexA; uniform sampler2DArray uTexN; uniform sampler2D uN
 uniform vec4 uFlash; uniform vec4 uRim; uniform float uEmitBoost; uniform float uEmitMul; uniform float uWet; uniform vec3 uCharFill; uniform vec2 uNearFade; uniform vec2 uNearFade;
 varying float vLayer; varying float vEmit; varying vec2 vWUv;
 ${wind ? 'varying float vSway; uniform sampler2D uLeaf; float gLeaf;' : ''}
+${!wind && !rim ? 'uniform sampler2D uDecal;' : ''}
 vec4 gTA; vec4 gTN;`)
         .replace('#include <map_fragment>', /* glsl */ `${wind ? /* glsl */ `if (vSway > 0.02) {
   // leaves between the camera and the hero dissolve instead of filling the screen
@@ -248,7 +251,38 @@ ${wind ? /* glsl */ `  // foliage cards (gfx/foliage.ts): a painted clump from t
     if (lf.a < mix(0.5, 0.3, smoothstep(14.0, 60.0, length(vViewPosition)))) discard;
     gTA = vec4(lf.rgb, 0.82); gTN = vec4(0.5, 0.5, 0.0, 1.0);
   }
-` : ''}  diffuseColor.rgb *= gTA.rgb * mix(1.0, 0.8, uWet);
+` : ''}${!wind && !rim ? /* glsl */ `  // decals (gfx/decals.ts): layers from 64 up are cells of the decal atlas, cut out by its alpha
+  if (lay > 63.5) {
+    float di = lay - 64.0;
+    if (length(vViewPosition) > 95.0) discard;
+    if (di > 15.5) {
+      // a drift of fallen leaves: the painted litter tile, keeping only its leaves, thinning to the rim
+      vec2 lc = vWUv - 0.5;
+      float a = (di - 16.0) * 1.7, ca = cos(a), sa = sin(a);
+      vec2 luv = mat2(ca, -sa, sa, ca) * lc * 2.6 + (di - 16.0) * 0.37;
+      vec4 lt = texture(uTexA, vec3(luv, 25.0));
+      float leafy = max(lt.r, lt.g) - lt.b * 0.5;
+      float rim = length(lc) * 2.0 + (texture2D(uNoise, vWUv * 0.9 + di * 0.21).r - 0.5) * 0.7;
+      if (leafy < mix(0.3, 0.75, smoothstep(0.25, 1.0, rim)) || rim > 1.0) discard;
+      gTA = vec4(lt.rgb * 1.15, 0.9); gTN = vec4(0.5, 0.5, 0.0, 1.0);
+    } else {
+      vec4 dk = texture2D(uDecal, (vec2(mod(di, 4.0), floor(di * 0.25)) + vec2(vWUv.x, 1.0 - vWUv.y)) * 0.25);
+      if (dk.a < 0.5) discard;
+      gTA = vec4(dk.rgb, 0.86); gTN = vec4(0.5, 0.5, 0.0, 1.0);
+    }
+  }
+  {
+    // edge wear: where a surface turns sharply within a few centimetres (a bevel, a rim) the
+    // paint is rubbed pale. Curvature is the change of normal per metre across the pixel.
+    float curv = length(fwidth(vNormal)) / max(length(fwidth(vViewPosition)), 1e-5);
+    float worn = smoothstep(7.0, 22.0, curv) * (1.0 - smoothstep(30.0, 70.0, length(vViewPosition)));
+    gTA.rgb = mix(gTA.rgb, gTA.rgb * 1.3 + 0.09, worn * 0.75);
+    gTA.a = mix(gTA.a, gTA.a * 0.8, worn);
+  }
+` : ''}${rim ? '' : /* glsl */ `  // slow drift in tone and warmth, so a wall or a square is never one flat fill
+  vec2 mv = texture2D(uNoise, vWUv * 0.037).rg;
+  gTA.rgb *= (0.78 + 0.44 * mv.x) * mix(vec3(1.05, 1.0, 0.94), vec3(0.95, 1.0, 1.07), mv.y);`}
+  diffuseColor.rgb *= gTA.rgb * mix(1.0, 0.8, uWet);
 }`)
         .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = roughness * gTA.a * mix(1.0, 0.5, uWet);')
         .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = metalness * gTN.b;')

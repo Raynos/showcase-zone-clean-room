@@ -1,6 +1,6 @@
 Use your image generation tool to paint a square 1024x1024 texture for a video game and save it as stonewall.png in the current directory.
 
-Subject: A wall of large dressed stone blocks in running bond: four horizontal courses, about two blocks per course, joints staggered from course to course. Pale warm grey stone, tone varying block to block, each block individually bevelled with chipped corners, a few cracks, dark recessed mortar.
+Subject: A wall of rough-hewn dressed stone blocks in running bond: four horizontal courses, about two blocks per course, joints staggered from course to course. The blocks differ clearly in tone: pale grey, warm buff, a few darker blue-grey. Each block is individually bevelled with a painted highlight on its upper edge and a shadow beneath, a chiselled face with visible tool marks, chipped corners and a few cracks. Deep dark recessed mortar joints.
 
 Style: a hand-painted stylised game texture, as in a top-tier stylised fantasy MMO. Chunky readable shapes, a painted light bevel on the upper edge of every raised form and a soft painted shadow in every crease, visible confident brushwork, rich but natural colour with small hue shifts. No photographic noise, no photo-realism.
 
