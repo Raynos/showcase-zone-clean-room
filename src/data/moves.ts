@@ -126,21 +126,21 @@ export interface GunDef {
 export const GUNS: Record<'bow' | 'crossbow' | 'rifle', GunDef> = {
   // drawn: hold to draw (BOW_DRAW s), let go to loose; full draw is accurate and staggers, a quick loose is weak and wide
   bow: {
-    mag: 0, reload: 0, rof: 0.3, auto: false, dmg: 1.3, weak: 1.0, poise: 1.2, weakPoise: 2.6,
+    mag: 0, reload: 0, rof: 0.3, auto: false, dmg: 1.3, weak: 1.3, poise: 1.2, weakPoise: 2.6,
     speed: 74, grav: 9, zero: 32,
     hip: 0.012, adsMul: 0.35, move: 0.004, air: 0.03, bloom: 0, bloomMax: 0, bloomDecay: 1,
     kick: 0.018, side: 0.004, recover: 7, adsSlow: 0.6, fireSlow: 0.62, adsFov: 13, adsZoom: 0.74, adsTime: 0.2,
   },
   // the automatic: holds a stream of light bolts; climbs and blooms, so long strings at range need pulling down
   crossbow: {
-    mag: 18, reload: 1.7, rof: 0.13, auto: true, dmg: 0.34, weak: 1.0, poise: 0.8, weakPoise: 1.6,
+    mag: 18, reload: 1.7, rof: 0.13, auto: true, dmg: 0.4, weak: 1.35, poise: 0.8, weakPoise: 1.6,
     speed: 96, grav: 3.5, zero: 45,
     hip: 0.02, adsMul: 0.45, move: 0.004, air: 0.035, bloom: 0.0045, bloomMax: 0.035, bloomDecay: 0.1,
     kick: 0.0095, side: 0.0055, recover: 5, adsSlow: 0.62, fireSlow: 0.82, adsFov: 12, adsZoom: 0.78, adsTime: 0.18,
   },
   // the scoped precision weapon: hitscan through up to three robots; steady after RIFLE_STEADY s aimed
   rifle: {
-    mag: 5, reload: 2.3, rof: 0.85, auto: false, dmg: 1.55, weak: 1.3, poise: 1.4, weakPoise: 3,
+    mag: 5, reload: 2.3, rof: 0.85, auto: false, dmg: 1.55, weak: 1.6, poise: 1.4, weakPoise: 3,
     speed: 0, grav: 0, zero: 0,
     hip: 0.04, adsMul: 0.06, move: 0.009, air: 0.06, bloom: 0.025, bloomMax: 0.03, bloomDecay: 0.05,
     kick: 0.065, side: 0.012, recover: 4, adsSlow: 0.45, fireSlow: 0.85, adsFov: 22, adsZoom: 0.36, adsTime: 0.26,

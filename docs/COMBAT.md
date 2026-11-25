@@ -245,11 +245,11 @@ recoil, reload), `ballistics.ts` (hit solving), `weakpoints.ts`,
   appear where the shot struck: white, gold and larger for weak points, red
   for kills. Kills alone get a short hit-stop.
 
-| Gun      | Mag | Reload | Rate  | Dmg  | Weak | Hip    | Aimed | Kick   |
-|----------|-----|--------|-------|------|------|--------|-------|--------|
-| Bow      | -   | -      | draw  | 1.3  | ×1.0 | 0.012  | ×0.35 | 0.018  |
-| Crossbow | 18  | 1.7 s  | 0.13s | 0.34 | ×1.0 | 0.02   | ×0.45 | 0.0095 |
-| Rifle    | 5   | 2.3 s  | 0.85s | 1.55 | ×1.3 | 0.04   | ×0.06 | 0.065  |
+| Gun      | Mag | Reload | Rate   | Dmg  | Weak  | Hip   | Aimed | Kick   |
+|----------|-----|--------|--------|------|-------|-------|-------|--------|
+| Bow      | -   | -      | draw   | 1.3  | ×1.3  | 0.012 | ×0.35 | 0.018  |
+| Crossbow | 18  | 1.7 s  | 0.13 s | 0.4  | ×1.35 | 0.02  | ×0.45 | 0.0095 |
+| Rifle    | 5   | 2.3 s  | 0.85 s | 1.55 | ×1.6  | 0.04  | ×0.06 | 0.065  |
 
 Dmg is the multiple of attack power per shot; Weak multiplies the weak
 point's own multiple (below); Hip is the spread half-angle in radians
@@ -260,6 +260,12 @@ blooms 0.0045 a bolt to 0.035, and every third bolt carries the selected
 special ammunition. The rifle held aimed and still for 0.5 s is steady
 (×1.3). Projectiles: bow 74 m/s, gravity 9, zeroed at 32 m; crossbow 96 m/s,
 gravity 3.5, zeroed at 45 m. Aimed, movement is ×0.45 to ×0.62.
+
+Measured kill times (level 5, each weapon at its class's level-5 power,
+perfect aim, basic attacks only; seconds, then damage the camp tried to
+deal): three shielded Pallet Jacks: sword 6.5 / 87; weak points bow 5.6 / 0,
+crossbow 6.6 / 67, rifle 6.8 / 0; body shots 13.5 to 28.9. Four Crate Mites,
+which rush in: sword 4.1 / 0; weak points 5.2 to 5.9; body 6.3 to 9.6.
 
 ### Weak points
 
