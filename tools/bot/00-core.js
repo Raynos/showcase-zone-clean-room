@@ -1,0 +1,205 @@
+// Playthrough bot, part 0: namespace, clock, report, frame loop, input.
+// Runs inside the page. Everything hangs off window.__pb so single parts can be re-injected.
+//
+// The bot plays through the same paths a player does:
+//   movement  -> game.input.stick fields (the virtual stick)
+//   camera    -> game.input.lookX / lookY (the look-drag accumulator the camera reads)
+//   actions   -> game.input.press() / release()
+//   menus     -> pointer events dispatched on the real DOM buttons
+// It reads any game state it likes, and writes none.
+(() => {
+  const B = (window.__pb = window.__pb || {});
+  const TAU = Math.PI * 2;
+  B.G = () => window.game;
+  B.DEAD = B.DEAD || { name: 'dead' };
+  B.ABORT = B.ABORT || { name: 'abort' };
+  B.REPLAN = B.REPLAN || { name: 'replan' };
+
+  // ---------------------------------------------------------------- math
+  B.adiff = (a, b) => { let d = (b - a) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
+  B.clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  B.d2 = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+  B.r1 = (n) => Math.round(n * 10) / 10;
+  B.pos = () => { const p = B.G().player.pos; return { x: B.r1(p.x), y: B.r1(p.y), z: B.r1(p.z) }; };
+
+  // ---------------------------------------------------------------- clocks
+  /** Seconds of game-loop time (frame deltas capped by the game, so a loaded machine does not skew it). */
+  B.now = () => B.G().time;
+  /** In-game time played on this save. */
+  B.playTime = () => B.G().state.d.playTime;
+
+  // ---------------------------------------------------------------- report
+  const KEY = 'cratefall.bot.report';
+  const BANDS = ['1-3', '4-6', '7-9', '10-12', '13-15', '16-18', '19-20'];
+  B.bandOf = (lvl) => BANDS[Math.min(6, Math.floor((lvl - 1) / 3))];
+  B.newReport = (cfg) => ({
+    v: 1, runId: cfg.runId, url: location.href.replace(/[?&]dev\b/, ''), startMode: cfg.from === 'fresh' ? 'fresh' : cfg.from === 'resume' ? 'resume' : 'checkpoint', checkpoint: cfg.from === 'fresh' || cfg.from === 'resume' ? null : cfg.from,
+    startedAt: new Date().toISOString(), startLevel: B.G().state.d.level, startPlayTime: B.playTime(),
+    wallSec: 0, gameSec: 0, reloads: 0, restores: 0,
+    levels: { [B.G().state.d.level]: { wall: 0, game: 0 } },
+    bands: {}, quests: {}, deaths: [], stalls: [], notes: [], purchases: [],
+    kills: 0, outcome: { result: 'running', titanDead: false, where: '', why: '' },
+  });
+  B.save = () => { try { if (B.rep) localStorage.setItem(KEY, JSON.stringify({ rep: B.rep, mem: B.mem })); } catch { /* ignore */ } };
+  B.load = () => { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { return null; } };
+  B.clearSaved = () => { try { localStorage.removeItem(KEY); } catch { /* ignore */ } };
+  B.band = () => {
+    const k = B.bandOf(B.G().state.d.level), b = B.rep.bands;
+    return (b[k] = b[k] || { wallSec: 0, gameSec: 0, kills: 0, deaths: 0, damageTaken: 0, kitsUsed: 0 });
+  };
+  B.stamp = () => ({ wall: Math.round(B.rep.wallSec), game: Math.round(B.rep.gameSec) });
+  B.note = (text) => {
+    const n = B.rep.notes, last = n[n.length - 1];
+    if (last && last.text === text) { last.n = (last.n || 1) + 1; return; }
+    if (n.length < 400) n.push({ ...B.stamp(), level: B.G().state.d.level, pos: B.pos(), text });
+    console.log('[bot] ' + text);
+  };
+  B.where = () => { const g = B.G(); return g.interior ? g.interior : g.zoneName || 'unknown'; };
+  B.goal = B.goal || 'starting';
+  B.setGoal = (s) => { if (s !== B.goal) { B.goal = s; B.goalAt = B.now(); console.log('[bot] goal: ' + s); } };
+  B.progress = (why) => { B.lastProgress = B.playTime(); B.lastProgressWhy = why; B.stallRun = 0; };
+
+  // ---------------------------------------------------------------- telemetry hooks (listeners only)
+  B.hook = () => {
+    const g = B.G(), ev = g.state.events;
+    if (g.__pbHooked) return;
+    g.__pbHooked = true;
+    ev.on('levelUp', (e) => { if (!B.rep) return; B.rep.levels[e.level] = B.stamp(); B.lastHp = g.state.maxHp; B.progress('level'); });
+    ev.on('kill', (k) => {
+      if (!B.rep) return;
+      B.rep.kills++; B.band().kills++; B.progress('kill');
+      if (k.kind === 'titan') { B.rep.outcome.titanDead = true; B.rep.outcome.titanAt = B.stamp(); B.note('Crate Titan destroyed'); }
+    });
+    ev.on('questUpdate', () => { if (B.rep) B.progress('quest'); });
+    ev.on('respawn', () => { B.lastHp = g.state.d.hp; });
+    window.addEventListener('pagehide', () => B.save());
+  };
+  /** Diff the quest log into accept / turn-in times. */
+  B.scanQuests = () => {
+    const d = B.G().state.d.quests, r = B.rep.quests;
+    for (const id in d) {
+      const q = (r[id] = r[id] || { name: (B.questNames && B.questNames[id]) || id });
+      const pre = B.rep.startMode !== 'fresh' && !B.started;     // already in the save we started from: not measured
+      if (!q.accept) q.accept = pre ? 'checkpoint' : B.stamp();
+      if (d[id].state === 'done' && !q.turnIn) q.turnIn = pre ? 'checkpoint' : B.stamp();
+    }
+  };
+
+  // ---------------------------------------------------------------- input
+  B.want = { x: 0, z: 0, mag: 0, sprint: false, lookX: null, lookZ: null };
+  B.stop = () => { B.want.x = 0; B.want.z = 0; B.want.mag = 0; B.want.sprint = false; };
+  /** Walk in a world direction. */
+  B.move = (dx, dz, mag = 1, sprint = false) => { const l = Math.hypot(dx, dz); if (l < 1e-4) { B.stop(); return; } B.want.x = dx / l; B.want.z = dz / l; B.want.mag = mag; B.want.sprint = sprint; };
+  B.moveTo = (x, z, mag = 1, sprint = false) => { const p = B.G().player.pos; B.move(x - p.x, z - p.z, mag, sprint); };
+  B.look = (x, z) => { B.want.lookX = x; B.want.lookZ = z; };
+  const held = new Map();
+  B.hold = (b, on) => { const inp = B.G().input; if (on) inp.press(b); else inp.release(b); };
+  /** Press a button and let go a few frames later. */
+  B.tapBtn = (b, sec = 0.08) => { B.G().input.press(b); held.set(b, B.now() + sec); };
+  B.applyInput = (dt) => {
+    const g = B.G(), inp = g.input, cam = g.cameraRig, w = B.want, pl = g.player;
+    for (const [b, t] of held) if (B.now() >= t) { inp.release(b); held.delete(b); }
+    // camera: steer toward the look point at a human-ish rate through the look-delta accumulator
+    if (w.lookX !== null && !cam.cine && !inp.uiCapture) {
+      const dx = w.lookX - pl.pos.x, dz = w.lookZ - pl.pos.z;
+      if (Math.hypot(dx, dz) > 1.2) {
+        const err = B.adiff(cam.yaw, Math.atan2(dx, dz) + Math.PI);
+        if (Math.abs(err) > 0.04) inp.lookX = B.clamp(err, -6 * dt, 6 * dt);
+        const pe = 0.24 - cam.pitch;
+        if (Math.abs(pe) > 0.05) inp.lookY = -B.clamp(pe, -2 * dt, 2 * dt) * (inp.invertY ? -1 : 1);
+      }
+    }
+    // stick: world direction -> camera-relative axes (x right, y is screen-down so forward is negative)
+    const s = inp.stick;
+    if (w.mag > 0.01) {
+      const fx = -Math.sin(cam.yaw), fz = -Math.cos(cam.yaw), rx = -fz, rz = fx;
+      const m = 0.14 + 0.86 * B.clamp(w.mag, 0, 1);
+      s.active = true; s.x = (w.x * rx + w.z * rz) * m; s.y = -(w.x * fx + w.z * fz) * m;
+    } else if (s.active) { s.active = false; s.x = 0; s.y = 0; }
+    // sprint is a hold button; the game only honours it out of combat
+    const sp = w.sprint && w.mag > 0.9;
+    if (sp !== B.sprintHeld) { B.sprintHeld = sp; B.hold('sprint', sp); }
+  };
+  B.releaseAll = () => {
+    const g = B.G(); if (!g) return;
+    B.stop(); B.want.lookX = null;
+    for (const b of ['attack', 'skill1', 'skill2', 'dodge', 'jump', 'interact', 'swap', 'sprint', 'potion', 'target', 'mount']) g.input.release(b);
+    held.clear(); B.sprintHeld = false;
+    g.input.stick.active = false; g.input.stick.x = 0; g.input.stick.y = 0;
+  };
+
+  // ---------------------------------------------------------------- coroutine ticks
+  B.waiters = B.waiters || [];
+  /** Resolves on the next think tick. Throws DEAD / REPLAN / ABORT so any behaviour unwinds cleanly. */
+  B.tick = () => new Promise((res, rej) => B.waiters.push([res, rej, false]));
+  /** Like tick() but never throws for death or replans (used by the death and UI handlers). */
+  B.rawTick = () => new Promise((res, rej) => B.waiters.push([res, rej, true]));
+  B.sleep = async (sec) => { const t = B.now() + sec; while (B.now() < t) await B.tick(); };
+  B.rawSleep = async (sec) => { const t = B.now() + sec; while (B.now() < t) await B.rawTick(); };
+  /** Wait until fn() is truthy; returns its value, or null on timeout. */
+  B.until = async (fn, sec = 10) => { const t = B.now() + sec; for (;;) { const v = fn(); if (v) return v; if (B.now() > t) return null; await B.tick(); } };
+  B.rawUntil = async (fn, sec = 10) => { const t = B.now() + sec; for (;;) { const v = fn(); if (v) return v; if (B.now() > t) return null; await B.rawTick(); } };
+
+  // ---------------------------------------------------------------- frame
+  let lastT = 0, lastThink = 0, lastWall = 0, lastSave = 0, lastPT = 0;
+  B.frame = () => {
+    if (!B.running) return;
+    requestAnimationFrame(B.frame);
+    const g = B.G();
+    if (!g) return;
+    B.lastFrameWall = performance.now();
+    const t = g.time, dt = Math.min(0.1, Math.max(0.001, t - lastT)); lastT = t;
+    const wall = performance.now() / 1000, st = g.state, pl = g.player, rep = B.rep;
+    // ---- accounting
+    const dw = Math.min(1, wall - (lastWall || wall)); lastWall = wall;
+    const pt = st.d.playTime, dg = Math.max(0, Math.min(1, pt - (lastPT || pt))); lastPT = pt;
+    if (B.started) {
+      rep.wallSec += dw; rep.gameSec += dg;
+      const b = B.band(); b.wallSec += dw; b.gameSec += dg;
+      // damage taken: every downward step in health that is not a respawn
+      const hp = st.d.hp;
+      if (B.lastHp !== undefined && hp < B.lastHp - 0.01 && !pl.dead) { b.damageTaken += B.lastHp - hp; B.lastHurt = { t, by: B.blame ? B.blame() : '' }; }
+      B.lastHp = hp;
+      // kits: the count drops while the kit cooldown restarts
+      const kits = st.count('kit');
+      if (B.lastKits !== undefined && kits === B.lastKits - 1 && g.combat.potionCd > 10 * (1 - 0.1 * st.up('kitcap'))) b.kitsUsed++;
+      B.lastKits = kits;
+      // deaths
+      if (pl.dead && !B.wasDead) {
+        b.deaths++;
+        const by = (B.lastHurt && t - B.lastHurt.t < 3 && B.lastHurt.by) || (B.blame ? B.blame() : '') || 'unknown';
+        rep.deaths.push({ ...B.stamp(), level: st.d.level, where: B.where(), pos: B.pos(), killer: by, goal: B.goal });
+        console.log('[bot] died to ' + by + ' at ' + B.where());
+        B.deathsAtGoal = B.deathsAtGoal || {};
+        B.deathsAtGoal[B.goalKey || B.goal] = (B.deathsAtGoal[B.goalKey || B.goal] || 0) + 1;
+      }
+      B.wasDead = pl.dead;
+      // boss health falling counts as progress (a long boss fight has no kills in it)
+      const boss = g.bossMob;
+      if (boss && boss.alive) { const f = boss.hp / boss.maxHp; if (B.bossMin === undefined || B.bossRef !== boss) { B.bossRef = boss; B.bossMin = f; } if (f < B.bossMin - 0.02) { B.bossMin = f; B.progress('boss'); } }
+      // stall watchdog: three minutes of play with no quest, level or kill progress
+      if (pt - B.lastProgress > 180) {
+        const id = 'stall-' + (rep.stalls.length + 1);
+        rep.stalls.push({ ...B.stamp(), level: st.d.level, goal: B.goal, where: B.where(), pos: B.pos(), shot: null, shotId: id });
+        B.shotQueue.push(id);
+        B.lastProgress = pt; B.stallRun = (B.stallRun || 0) + 1; B.replanWanted = true;
+        B.stalledGoals = B.stalledGoals || {}; B.stalledGoals[B.goalKey || B.goal] = (B.stalledGoals[B.goalKey || B.goal] || 0) + 1;
+        console.log('[bot] STALL while: ' + B.goal);
+      }
+      if (wall - lastSave > 5) { lastSave = wall; B.scanQuests(); B.save(); }
+    }
+    B.applyInput(dt);
+    // ---- think tick (about 20 Hz)
+    if (t - lastThink >= 0.045) {
+      lastThink = t;
+      const ws = B.waiters; B.waiters = [];
+      const replan = B.replanWanted; B.replanWanted = false;
+      for (const [res, rej, raw] of ws) {
+        if (!raw && pl.dead) rej(B.DEAD);
+        else if (!raw && replan) rej(B.REPLAN);
+        else res();
+      }
+    }
+  };
+  B.shotQueue = B.shotQueue || [];
+})();
