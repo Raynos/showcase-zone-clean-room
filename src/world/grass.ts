@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Rng } from '../core/util';
+import { LAMP_MAX } from '../gfx/lighting';
 import { GU } from '../gfx/material';
 import { HALF } from './layout';
 import type { Terrain } from './terrain';
@@ -230,6 +231,7 @@ attribute vec2 aOff; attribute vec4 aRnd;
 attribute vec4 aTile; attribute vec4 aTileRnd; // origin.xz, pattern shift.xz | random re-roll (sign of x: trampled)
 uniform vec3 uCam; uniform vec4 uPush[${MAXPUSH}]; uniform int uPushN; uniform float uTime; uniform vec4 uWind;
 uniform sampler2D uColorMap; uniform sampler2D uCellH; uniform sampler2D uNoise;
+uniform highp sampler2DArray uYardLamp[1]; uniform vec4 uYard[6]; varying vec3 vLamp;
 varying vec3 vGCol; varying float vTip; varying float vWave; varying vec3 vGW; varying float vRnd; varying vec2 vTuft; varying float vFar;
 float terrH(vec2 p) {
   vec2 f = clamp((p + ${HALF.toFixed(1)}) / ${TCELL.toFixed(1)}, 0.0, ${(TN - 0.001).toFixed(3)});
@@ -286,10 +288,13 @@ if (aTileRnd.x < 0.0) {
   }
 }
 vec3 transformed = vec3(wxz.x, terrH(wxz) - 0.03, wxz.y) + p;
-vGCol = cm.rgb; vTip = y; vWave = gust; vGW = transformed; vRnd = rnd.w; vFar = dist;`);
+vGCol = cm.rgb; vTip = y; vWave = gust; vGW = transformed; vRnd = rnd.w; vFar = dist;
+{ vec4 lc = textureLod(uYardLamp[0], vec3(wxz * ${(1 / 500).toFixed(6)} + 0.5, 0.0), 0.0); vLamp = lc.rgb * lc.rgb * (${LAMP_MAX.toFixed(1)} * 0.3 * uYard[2].x); }`);
+      // lighting: the ground contact map darkens grass against walls; lamps come per vertex, not per fragment
+      sh.fragmentShader = '#define YARD_GAO\n#define YARD_NO_LAMP\n' + sh.fragmentShader;
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', /* glsl */ `#include <common>
-varying vec3 vGCol; varying float vTip; varying float vWave; varying vec3 vGW; varying float vRnd; varying vec2 vTuft; varying float vFar;
+varying vec3 vGCol; varying float vTip; varying float vWave; varying vec3 vGW; varying float vRnd; varying vec2 vTuft; varying float vFar; varying vec3 vLamp;
 uniform vec3 uSunDir; uniform vec3 uSunCol; uniform sampler2D uTuft;`)
         .replace('#include <map_fragment>', /* glsl */ `
 vec4 tuft = texture2D(uTuft, vTuft);
@@ -312,6 +317,8 @@ gc = mix(gc, mix(vec3(0.85, 0.82, 0.76), vec3(0.6, 0.5, 0.8), step(0.5, vRnd)), 
 gc = mix(gc, vec3(1.0, 0.78, 0.2), petal * smoothstep(0.5, 0.75, tuft.g));
 diffuseColor.rgb = gc;`)
         .replace('#include <emissivemap_fragment>', /* glsl */ `
+// lamp light, sampled per vertex (gfx/lighting.ts)
+totalEmissiveRadiance += vLamp * diffuseColor.rgb;
 {
   vec3 vd = normalize(vGW - cameraPosition);
   float back = pow(max(dot(vd, uSunDir), 0.0), 3.0);

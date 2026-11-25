@@ -51,22 +51,13 @@ function look(x: number, z: number, tx: number, tz: number) { return Math.atan2(
 // =============================================================================================
 // Ground
 // =============================================================================================
-/** Lamplight reaching the ground at (x,z): [emission, tint r, g, b]. Filled in once every lantern is placed. */
+/**
+ * Lamplight painted into the paving at (x,z): [emission, tint r, g, b]. It used to fake the pools
+ * under the lanterns; the lamp map (gfx/lighting.ts) lights the paving for real now, so this
+ * returns none. `c.glow` is still filled for anything that wants the lantern list.
+ */
 const _gl: [number, number, number, number] = [0, 1, 1, 1];
-function glowAt(c: Ctx, x: number, z: number) {
-  let w = 0, r = 0, g = 0, b = 0;
-  for (const L of c.glow) {
-    const dx = x - L.x, dz = z - L.z, d2 = dx * dx + dz * dz;
-    if (d2 >= L.R * L.R) continue;
-    const k = 1 - Math.sqrt(d2) / L.R, wk = k * k * L.w;
-    w += wk; r += wk * L.r; g += wk * L.g; b += wk * L.b;
-  }
-  if (w <= 0) { _gl[0] = 0; _gl[1] = _gl[2] = _gl[3] = 1; return _gl; }
-  const t = Math.min(1, w * 1.6) * 0.7;
-  _gl[0] = Math.min(0.23, w * 0.2);
-  _gl[1] = 1 - t + t * (0.3 + r / w); _gl[2] = 1 - t + t * (0.3 + g / w); _gl[3] = 1 - t + t * (0.3 + b / w);
-  return _gl;
-}
+function glowAt(_c: Ctx, _x: number, _z: number) { return _gl; }
 function pave(c: Ctx, x0: number, z0: number, x1: number, z1: number, y: number, color: number, layer: number, us = 0.3, swap = false, seed = 5, emit = 0) {
   const nx = Math.max(1, Math.ceil((x1 - x0) / 2.4)), nz = Math.max(1, Math.ceil((z1 - z0) / 2.4));
   const g = c.chunks.solid((x0 + x1) / 2, (z0 + z1) / 2);

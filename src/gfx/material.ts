@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { installLighting } from './lighting';
 import { DECALS, ensureDecals } from './decals';
 import { FOLIAGE, ensureFoliage } from './foliage';
 
@@ -55,6 +56,7 @@ export function installFog() {
   if (fogInstalled) return;
   fogInstalled = true;
   installFlashLights();
+  installLighting();
   const C = THREE.ShaderChunk as Record<string, string>;
   C.fog_pars_vertex = /* glsl */ `
 #ifdef USE_FOG

@@ -179,6 +179,8 @@ vec3 gTerrN; float gTerrR;`)
 }`)
         .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = roughness * gTerrR;')
         .replace('#include <normal_fragment_maps>', 'normal = normalize((viewMatrix * vec4(gTerrN, 0.0)).xyz);');
+      // lighting: the ground takes the baked contact map (gfx/lighting.ts)
+      sh.fragmentShader = '#define YARD_GAO\n' + sh.fragmentShader;
     };
     mat.customProgramCacheKey = () => 'terrain';
     this.material = mat;

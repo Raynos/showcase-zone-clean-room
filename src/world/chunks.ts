@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Physics } from '../core/physics';
 import { foliageDepthMaterial } from '../gfx/foliage';
 import { Geo, type ColliderSpec } from '../gfx/geo';
+import { addLamp, bakeLamps, GroundOcc, lampLayer } from '../gfx/lighting';
 import { WorldMaterial } from '../gfx/material';
 import { HALF } from './layout';
 
@@ -37,6 +38,10 @@ const COLOR_MAX = 2, EMIT_MAX = 6.25;
 const KEY_FLAT = 1e9, KEY_ALWAYS = 1e6;
 /** A slab whose top is within this of the terrain throws no shadow worth drawing. */
 const FLAT_TOP = 0.08;
+/** Primitive flags kept for the occlusion bake. */
+const P_LEAF = 1, P_NAMED = 2, P_FLAT = 4, P_GLOW = 8;
+/** Emission from which a primitive counts as a light source for the lamp bake (a lit window is 0.5). */
+const LAMP_EMIT = 0.45;
 
 function growF32(a: Float32Array, len: number) { const n = new Float32Array(len); n.set(a); return n; }
 function growI8(a: Int8Array, len: number) { const n = new Int8Array(len); n.set(a); return n; }
@@ -44,15 +49,17 @@ function growU8(a: Uint8Array, len: number) { const n = new Uint8Array(len); n.s
 function growU32(a: Uint32Array, len: number) { const n = new Uint32Array(len); n.set(a); return n; }
 
 /**
- * Packed vertex storage for one render cell: 28 bytes a vertex (32 with sway) against the 56 of
+ * Packed vertex storage for one render cell: 32 bytes a vertex (36 with sway) against the 56 of
  * the float layout. Position and UV stay float; normal + texture layer are four signed bytes;
- * colour + emission four unsigned bytes.
+ * colour + emission four unsigned bytes; baked occlusion two shorts.
  */
 class Store {
   nv = 0; ni = 0;
   P = new Float32Array(3 * 192); U = new Float32Array(2 * 192);
   NL = new Int8Array(4 * 192); CE = new Uint8Array(4 * 192);
   SW: Uint8Array | null;
+  /** occlusion: height above what the vertex stands on, distance to what hangs over it, in 1/256 m */
+  AO = new Int16Array(2 * 192);
   I = new Uint32Array(768);
   /** primitive runs: first index, index count, size key */
   pI: number[] = []; pN: number[] = []; pS: number[] = [];
@@ -65,6 +72,7 @@ class Store {
       this.P = growF32(this.P, cap * 3); this.U = growF32(this.U, cap * 2);
       this.NL = growI8(this.NL, cap * 4); this.CE = growU8(this.CE, cap * 4);
       if (this.SW) this.SW = growU8(this.SW, cap * 4);
+      const ao = new Int16Array(cap * 2); ao.set(this.AO); this.AO = ao;
     }
     const ni = this.ni + indices;
     if (ni > this.I.length) this.I = growU32(this.I, Math.max(ni, Math.ceil(this.I.length * 1.5)));
@@ -80,6 +88,7 @@ class Store {
     CE[o4] = packSqrt(g.col[v3], COLOR_MAX); CE[o4 + 1] = packSqrt(g.col[v3 + 1], COLOR_MAX); CE[o4 + 2] = packSqrt(g.col[v3 + 2], COLOR_MAX);
     CE[o4 + 3] = packSqrt(g.emi[v], EMIT_MAX);
     if (this.SW) this.SW[o4] = Math.round(Math.min(1, Math.max(0, g.swy[v] || 0)) * 255);
+    this.AO[o * 2] = AO_NONE; this.AO[o * 2 + 1] = AO_NONE;
   }
   /** Record `count` indices ending at the write head as a primitive of the given size key. */
   prim(count: number, key: number) {
@@ -94,11 +103,15 @@ class Store {
     this.P.set(s.P.subarray(0, s.nv * 3), b * 3); this.U.set(s.U.subarray(0, s.nv * 2), b * 2);
     this.NL.set(s.NL.subarray(0, s.nv * 4), b * 4); this.CE.set(s.CE.subarray(0, s.nv * 4), b * 4);
     if (this.SW && s.SW) this.SW.set(s.SW.subarray(0, s.nv * 4), b * 4);
+    this.AO.set(s.AO.subarray(0, s.nv * 2), b * 2);
     for (let i = 0; i < s.ni; i++) this.I[this.ni + i] = s.I[i] + b;
     for (let p = 0; p < s.pI.length; p++) { this.pI.push(s.pI[p] + this.ni); this.pN.push(s.pN[p]); this.pS.push(s.pS[p]); }
     this.nv += s.nv; this.ni += s.ni;
   }
 }
+/** "nothing near": far enough above any support, and below any overhang, to take no occlusion */
+const AO_NONE = 32767;
+function packAO(metres: number) { return Math.max(-32767, Math.min(32767, Math.round(metres * 256))); }
 function packSqrt(v: number, max: number) { return Math.round(Math.sqrt(Math.min(max, Math.max(0, v)) / max) * 255); }
 
 /** The shared world shaders, reading the packed attributes instead of the float ones. */
@@ -110,8 +123,10 @@ function packedMaterial(wind: boolean): WorldMaterial {
     const decl = 'attribute float aLayer; attribute float aEmit;', colour = '#include <color_vertex>';
     if (!sh.vertexShader.includes(decl) || !sh.vertexShader.includes(colour)) console.error('chunks: world vertex shader changed, packed attributes are not wired up');
     sh.vertexShader = sh.vertexShader
-      .replace(decl, `attribute vec4 aNL; attribute vec4 aCE;\n#define aLayer (aNL.w * 127.0)\n#define aEmit (aCE.a * aCE.a * ${EMIT_MAX.toFixed(2)})`)
-      .replace(colour, `${colour}\nvColor.rgb = aCE.rgb * aCE.rgb * ${COLOR_MAX.toFixed(1)};`);
+      .replace(decl, `attribute vec4 aNL; attribute vec4 aCE; attribute vec2 aAO; varying vec2 vYardAO;\n#define aLayer (aNL.w * 127.0)\n#define aEmit (aCE.a * aCE.a * ${EMIT_MAX.toFixed(2)})`)
+      .replace(colour, `${colour}\nvColor.rgb = aCE.rgb * aCE.rgb * ${COLOR_MAX.toFixed(1)}; vYardAO = aAO * ${(1 / 256).toFixed(8)};`);
+    // baked occlusion (gfx/lighting.ts): per-vertex foot and eave distances, and the ground contact map for what lies flat
+    sh.fragmentShader = '#define YARD_VAO\n#define YARD_GAO\n' + sh.fragmentShader;
   };
   const key = m.customProgramCacheKey();
   m.customProgramCacheKey = () => key + '|packed';
@@ -250,6 +265,8 @@ export class Chunks {
       else if (ground && big >= 0.8
         && y1 - ground(x0, z0) <= FLAT_TOP && y1 - ground(x1, z0) <= FLAT_TOP && y1 - ground(x0, z1) <= FLAT_TOP && y1 - ground(x1, z1) <= FLAT_TOP
         && y1 - ground((x0 + x1) / 2, (z0 + z1) / 2) <= FLAT_TOP) key = KEY_FLAT;
+      // decals (gfx/decals.ts) are marks on a surface, not things: no shadow
+      if (!named && g.lay[v0] >= 64 && g.lay[v0] < 99) key = KEY_FLAT;
       const st = named ?? (Math.max(ex, ez) > LONG ? this.longStore((x0 + x1) / 2, (z0 + z1) / 2, leaf) : this.store((x0 + x1) / 2, (z0 + z1) / 2, leaf));
       st.reserve(vc, i1 - i0);
       const base = st.nv - v0;
@@ -259,16 +276,51 @@ export class Chunks {
       for (let i = i0; i < i1; i++) I[w++] = idx[i] + base;
       st.ni = w;
       st.prim(i1 - i0, key);
+      this.pBox.push(x0, y0, z0, x1, y1, z1);
+      this.pSt.push(st); this.pRef.push(base + v0, vc, w - (i1 - i0), i1 - i0);
+      this.pFlag.push((leaf ? P_LEAF : 0) | (named ? P_NAMED : 0) | (key === KEY_FLAT ? P_FLAT : 0) | (glow >= LAMP_EMIT ? P_GLOW : 0));
+      if (glow >= LAMP_EMIT) this.lampFrom(g, v0, vc, glow, ex, ey, ez);
+      // the widest low slab of an interior is its floor: lamp light is baked falling onto it
+      if (named && ex * ez > 30 && ey < 2) { const l = lampLayer(y1); if (y1 < this.floorY[l]) this.floorY[l] = y1; }
     }
     this.clear(g);
   }
 
+  /** every primitive flushed so far: box, where its vertices and indices sit in which store, flags */
+  private pBox: number[] = []; private pSt: Store[] = []; private pRef: number[] = []; private pFlag: number[] = [];
+  /** floor height of each lamp-map layer (surface is the terrain) */
+  private floorY = [0, Infinity, Infinity];
+
+  /** A glowing primitive lights its surroundings: register it with the lamp bake, long ones as a row of lamps. */
+  private lampFrom(g: Geo, v0: number, vc: number, glow: number, ex: number, ey: number, ez: number) {
+    const pos = g.pos, col = g.col, emi = g.emi;
+    const big = Math.max(ex, ey, ez), small = Math.min(ex, ey, ez), mid = ex + ey + ez - big - small;
+    const axis = big === ex ? 0 : big === ez ? 2 : 1;
+    const n = big > 5 ? Math.min(16, Math.ceil(big / 3.5)) : 1;
+    const acc = new Float64Array(n * 7);
+    let lo = Infinity;
+    for (let v = v0, e = v0 + vc; v < e; v++) if (pos[v * 3 + axis] < lo) lo = pos[v * 3 + axis];
+    for (let v = v0, e = v0 + vc; v < e; v++) {
+      if (emi[v] < glow * 0.5) continue;
+      const b = Math.min(n - 1, Math.floor(((pos[v * 3 + axis] - lo) / Math.max(big, 1e-4)) * n)) * 7;
+      acc[b] += pos[v * 3]; acc[b + 1] += pos[v * 3 + 1]; acc[b + 2] += pos[v * 3 + 2];
+      acc[b + 3] += col[v * 3]; acc[b + 4] += col[v * 3 + 1]; acc[b + 5] += col[v * 3 + 2]; acc[b + 6]++;
+    }
+    const area = Math.min(9, Math.max(0.004, big * Math.max(mid, 0.03)));
+    // a lit pane spills a soft patch, a fairy bulb a little; lanterns, signs and slag carry the street
+    const kind = glow < 0.9 ? 0.3 : area < 0.03 ? 0.5 : 1;
+    const power = (Math.min(glow, 4) * Math.sqrt(area) * kind) / n;
+    for (let b = 0; b < n * 7; b += 7) {
+      const k = acc[b + 6];
+      if (k > 0) addLamp(acc[b] / k, acc[b + 1] / k, acc[b + 2] / k, acc[b + 3] / k, acc[b + 4] / k, acc[b + 5] / k, power);
+    }
+  }
+
   /** Triangles pushed into a Geo by hand (road ribbons, custom shapes): each goes to the cell under it. */
   private flushLoose(g: Geo, a: number, b: number, leaf: boolean, named?: Store) {
-      // decals (gfx/decals.ts) are marks on a surface, not things: no shadow
-      if (!named && g.lay[v0] >= 64 && g.lay[v0] < 99) key = KEY_FLAT;
     const pos = g.pos, idx = g.idx, ground = named ? null : this.ground;
     const maps = new Map<Store, Map<number, number>>();
+    const glowCells = new Map<string, number[]>();
     for (let i = a; i + 2 < b; i += 3) {
       const va = idx[i], vb = idx[i + 1], vc = idx[i + 2];
       const cx = (pos[va * 3] + pos[vb * 3] + pos[vc * 3]) / 3, cz = (pos[va * 3 + 2] + pos[vb * 3 + 2] + pos[vc * 3 + 2]) / 3;
@@ -276,15 +328,34 @@ export class Chunks {
       let m = maps.get(st);
       if (!m) { m = new Map(); maps.set(st, m); }
       st.reserve(3, 3);
-      let flat = !!ground;
+      let flat = !!ground, glow = 0;
       for (let k = 0; k < 3; k++) {
         const v = idx[i + k];
         let d = m.get(v);
-        if (d === undefined) { d = st.nv; st.put(g, v); m.set(v, d); }
+        // hand-laid ground (roads, paving) carries its height over the terrain, so it takes the ground contact map
+        if (d === undefined) { d = st.nv; st.put(g, v); m.set(v, d); if (ground) st.AO[d * 2] = packAO(pos[v * 3 + 1] - ground(pos[v * 3], pos[v * 3 + 2])); }
         st.I[st.ni++] = d;
         if (flat) { const dy = pos[v * 3 + 1] - ground!(pos[v * 3], pos[v * 3 + 2]); if (dy > FLAT_TOP || dy < -1) flat = false; }
+        if (g.emi[v] > glow) glow = g.emi[v];
       }
       st.prim(3, flat ? KEY_FLAT : KEY_ALWAYS);
+      if (glow >= LAMP_EMIT) {
+        // glowing ribbons (slag, light channels): one lamp per 4 m cell they cross
+        const ax = pos[va * 3], ay = pos[va * 3 + 1], az = pos[va * 3 + 2];
+        const ux = pos[vb * 3] - ax, uy = pos[vb * 3 + 1] - ay, uz = pos[vb * 3 + 2] - az, wx = pos[vc * 3] - ax, wy = pos[vc * 3 + 1] - ay, wz = pos[vc * 3 + 2] - az;
+        const area = 0.5 * Math.hypot(uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx);
+        const cy = (ay + pos[vb * 3 + 1] + pos[vc * 3 + 1]) / 3;
+        const key = `${Math.floor(cx / 4)},${Math.floor(cy / 4)},${Math.floor(cz / 4)}`;
+        let a = glowCells.get(key);
+        if (!a) { a = [0, 0, 0, 0, 0, 0, 0, 0]; glowCells.set(key, a); }
+        const col = g.col;
+        a[0] += cx * area; a[1] += cy * area; a[2] += cz * area; a[6] += area; a[7] += area * Math.min(glow, 4);
+        a[3] += ((col[va * 3] + col[vb * 3] + col[vc * 3]) / 3) * area; a[4] += ((col[va * 3 + 1] + col[vb * 3 + 1] + col[vc * 3 + 1]) / 3) * area; a[5] += ((col[va * 3 + 2] + col[vb * 3 + 2] + col[vc * 3 + 2]) / 3) * area;
+      }
+    }
+    for (const a of glowCells.values()) {
+      const k = a[6];
+      if (k > 1e-6) addLamp(a[0] / k, a[1] / k, a[2] / k, a[3] / k, a[4] / k, a[5] / k, (a[7] / k) * Math.sqrt(Math.min(9, k)));
     }
   }
 
@@ -294,8 +365,13 @@ export class Chunks {
     g.prims!.length = 0;
   }
 
-  build(physics: Physics): { tris: number; meshes: number; colliders: number } {
+  build(physics: Physics): { tris: number; meshes: number; colliders: number; bakeMs: number } {
     this.flush();
+    const t0 = performance.now();
+    this.bakeOcclusion();
+    const terrain = this.ground ?? (() => 0), floor = this.floorY;
+    bakeLamps([terrain, () => floor[1], () => floor[2]]);
+    const bakeMs = Math.round(performance.now() - t0);
     let tris = 0, meshes = 0;
     const solidMat = packedMaterial(false), leafMat = packedMaterial(true);
     const emit = (st: Store, mat: THREE.Material, name?: string) => {
@@ -330,7 +406,84 @@ export class Chunks {
     const colliders = this.colliders.length;
     physics.addStatic(this.colliders);
     this.colliders = [];
-    return { tris, meshes, colliders };
+    return { tris, meshes, colliders, bakeMs };
+  }
+
+  /**
+   * Baked occlusion, from the primitives' boxes. For every vertex of the static world: how far it
+   * is above what it stands on (the terrain, or the top of a primitive below it) and how far below
+   * what hangs over it (an eave, a jetty, a crate stacked on top). Both are measured a hand's
+   * width out from the surface along its normal, so a flush stack takes none and an overhang
+   * does; both are linear along a face, so the shader's falloff is per pixel. The same pass draws
+   * the footprint of everything that stands on the ground into the ground contact map.
+   */
+  private bakeOcclusion() {
+    const B = this.pBox, F = this.pFlag, R = this.pRef, n = F.length, ground = this.ground;
+    const CELL = 4, GW = Math.ceil((HALF * 2) / CELL);
+    const grid: Array<number[] | undefined> = new Array(GW * GW);
+    const cellOf = (v: number) => Math.min(GW - 1, Math.max(0, Math.floor((v + HALF) / CELL)));
+    for (let p = 0; p < n; p++) {
+      const f = F[p];
+      if (f & (P_LEAF | P_GLOW)) continue;
+      const b = p * 6, ex = B[b + 3] - B[b], ez = B[b + 5] - B[b + 2];
+      // only things with a footprint hold anything up or hang over anything; zone-wide sheets are neither
+      if (Math.min(ex, ez) < 0.3 || ex * ez < 0.2 || Math.max(ex, ez) > 160) continue;
+      for (let cz = cellOf(B[b + 2]), z1 = cellOf(B[b + 5]); cz <= z1; cz++) for (let cx = cellOf(B[b]), x1 = cellOf(B[b + 3]); cx <= x1; cx++) (grid[cz * GW + cx] ??= []).push(p);
+    }
+    const occ = ground ? new GroundOcc() : null;
+    const seen = new Int32Array(n).fill(-1);
+    const sup: number[] = [], ceil: number[] = [];
+    const OUT = 0.3;
+    for (let p = 0; p < n; p++) {
+      const f = F[p], b = p * 6, st = this.pSt[p], v0 = R[p * 4], vc = R[p * 4 + 1];
+      const x0 = B[b], y0 = B[b + 1], z0 = B[b + 2], x1 = B[b + 3], y1 = B[b + 4], z1 = B[b + 5];
+      const P = st.P, NL = st.NL, AO = st.AO, named = !!(f & P_NAMED), g = named ? null : ground;
+      if (f & P_FLAT) {
+        for (let v = v0, e = v0 + vc; v < e; v++) AO[v * 2] = packAO(P[v * 3 + 1] - g!(P[v * 3], P[v * 3 + 2]));
+        continue;
+      }
+      sup.length = 0; ceil.length = 0;
+      const tol = Math.min(0.35, 0.35 * (y1 - y0));
+      for (let cz = cellOf(z0 - OUT), cz1 = cellOf(z1 + OUT); cz <= cz1; cz++) for (let cx = cellOf(x0 - OUT), cx1 = cellOf(x1 + OUT); cx <= cx1; cx++) {
+        const list = grid[cz * GW + cx];
+        if (!list) continue;
+        for (const q of list) {
+          if (q === p || seen[q] === p) continue;
+          seen[q] = p;
+          const c = q * 6;
+          if (B[c] > x1 + OUT || B[c + 3] < x0 - OUT || B[c + 2] > z1 + OUT || B[c + 5] < z0 - OUT) continue;
+          if (B[c + 4] <= y0 + tol && B[c + 4] > y0 - 4) sup.push(q);
+          else if (B[c + 1] >= y1 - tol && B[c + 1] < y1 + 1.6 && !(F[q] & P_FLAT) && (B[c + 3] - B[c]) * (B[c + 5] - B[c + 2]) > 0.5) ceil.push(q);
+        }
+      }
+      for (let v = v0, e = v0 + vc; v < e; v++) {
+        const x = P[v * 3], y = P[v * 3 + 1], z = P[v * 3 + 2];
+        const sx = x + (NL[v * 4] / 127) * OUT, sz = z + (NL[v * 4 + 2] / 127) * OUT;
+        let S = g ? g(sx, sz) : -Infinity;
+        for (const q of sup) { const c = q * 6; if (B[c + 4] > S && sx >= B[c] && sx <= B[c + 3] && sz >= B[c + 2] && sz <= B[c + 5]) S = B[c + 4]; }
+        if (S > -Infinity) AO[v * 2] = packAO(y - S);
+        let C = Infinity;
+        for (const q of ceil) { const c = q * 6; if (B[c + 1] < C && sx >= B[c] && sx <= B[c + 3] && sz >= B[c + 2] && sz <= B[c + 5]) C = B[c + 1]; }
+        if (C < Infinity) AO[v * 2 + 1] = packAO(Math.max(0, C - y));
+      }
+      // what stands on the ground darkens it: undersides within a metre of the terrain go into the contact map
+      if (!occ || named || (f & (P_LEAF | P_GLOW))) continue;
+      const top = y1 - g!((x0 + x1) / 2, (z0 + z1) / 2);
+      if (top < 0.15) continue;
+      const strength = Math.min(1, (top - 0.15) / 0.55) * 255;
+      const I = st.I;
+      for (let i = R[p * 4 + 2], ie = i + R[p * 4 + 3]; i < ie; i += 3) {
+        const a = I[i] * 3, bb = I[i + 1] * 3, c = I[i + 2] * 3;
+        const ax = P[a], ay = P[a + 1], az = P[a + 2], bx = P[bb], by = P[bb + 1], bz = P[bb + 2], cx = P[c], cy = P[c + 1], cz = P[c + 2];
+        const nx = (by - ay) * (cz - az) - (bz - az) * (cy - ay), ny = (bz - az) * (cx - ax) - (bx - ax) * (cz - az), nz = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+        if (ny >= -0.35 * Math.hypot(nx, ny, nz)) continue;
+        const h = Math.min(ay - g!(ax, az), by - g!(bx, bz), cy - g!(cx, cz));
+        if (h >= 1) continue;
+        occ.tri(ax, az, bx, bz, cx, cz, Math.round(strength * (1 - Math.max(0, (h - 0.15) / 0.85))));
+      }
+    }
+    occ?.finish();
+    this.pBox = []; this.pSt = []; this.pRef = []; this.pFlag = [];
   }
 
   /** per render cell: lowest ground, and the top of whatever stands there */
@@ -412,6 +565,7 @@ export class Chunks {
     geo.setAttribute('aNL', nl);
     geo.setAttribute('aCE', drop(new THREE.BufferAttribute(st.CE.subarray(0, nv * 4), 4, true)));
     if (st.SW) geo.setAttribute('aSway', drop(new THREE.BufferAttribute(st.SW.subarray(0, nv * 4), 4, true)));
+    geo.setAttribute('aAO', drop(new THREE.BufferAttribute(st.AO.subarray(0, nv * 2), 2)));
     geo.setIndex(drop(new THREE.BufferAttribute(I, 1), true));
     geo.boundingBox = box;
     geo.boundingSphere = box.getBoundingSphere(new THREE.Sphere());
@@ -471,7 +625,7 @@ export class Chunks {
     for (const c of this.cells) {
       const g = c.mesh.geometry;
       tris += c.total / 3; if (!c.name) drawn += c.main / 3; verts += g.attributes.position.count;
-      bytes += g.attributes.position.count * (g.attributes.aSway ? 32 : 28) + c.total * (g.attributes.position.count > 65535 ? 4 : 2);
+      bytes += g.attributes.position.count * (g.attributes.aSway ? 36 : 32) + c.total * (g.attributes.position.count > 65535 ? 4 : 2);
       if (!c.uploaded) waiting++;
     }
     return { meshes: this.cells.length, tris, lodTris: drawn, verts, gpuMB: +(bytes / 1048576).toFixed(1), waiting };
