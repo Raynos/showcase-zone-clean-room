@@ -1,10 +1,14 @@
 /**
- * Humanoid rig: a rigid-part skeleton (no skinning) posed every frame from the procedural
- * animation in anim.ts. Faces +Z, feet at the origin.
+ * Humanoid rig: one skinned model (art/people) posed every frame from the procedural animation
+ * in anim.ts. Faces +Z, feet at the origin.
  *
- *   root > body(scale = height) > hips > spine > chest > head
- *                                                 chest > upper arm > forearm > hand   (IK in chest space)
- *                               > thigh > shin > foot                                  (IK in root space)
+ *   root > body(scale = height) > hips > spine > chest > head > eyes, lids, brows, mouth
+ *                                                 chest > upper arm > forearm > hand > fingers, thumb   (IK in chest space)
+ *                               > thigh > shin > foot                                                    (IK in root space)
+ *
+ * The bones carry no rest rotation, so they take the pose exactly as pivot groups did. On top of
+ * the body pose this file adds what anim.ts does not write: blinks, eye direction, brows, the
+ * mouth, and how far the fingers close.
  *
  * Weapons: `setWeapon(model)` then drive `pose.drawn`. Drawn weapons sit in the right hand
  * (bows in the LEFT hand, the right draws the string); sheathed ones hang on a per-kind back mount.
@@ -12,9 +16,10 @@
  */
 import * as THREE from 'three';
 import { WorldMaterial } from '../../gfx/material';
+import { instantiate } from '../../gfx/models';
 import { AnimState, evaluate, L, R, SK } from './anim';
+import { applyFit, fitLook } from './fit';
 import { basisYZ, solve2 as solve } from './ik';
-import { buildParts } from './parts';
 import { Ribbon } from './ribbon';
 import type { HumanLook, HumanPose, HumanoidRig, WeaponKind, WeaponModel } from './types';
 
@@ -34,63 +39,64 @@ const BACK_MOUNT: Record<Exclude<WeaponKind, 'none'>, { pos: [number, number, nu
   rifle: { pos: [-0.06, -0.14, 0.03], y: [0, 0, -1], z: [0.4, 0.917, 0] },
 };
 
+/** Actions that set the jaw and lower the brows. */
+const EFFORT = /^(sword|spear|xbow|rifle|bow|hit|stagger|hammer)/;
+/** Locomotion that hangs the body from the hands. */
+const HANGING = new Set(['zipline', 'ladder', 'climb', 'grapple']);
+
 /** The rig plus a couple of look-dev extras (triangle stats, animation state). */
-export type HumanoidDevRig = HumanoidRig & { stats: { meshes: number; tris: number }; anim: AnimState };
+export type HumanoidDevRig = HumanoidRig & {
+  stats: { meshes: number; tris: number };
+  anim: AnimState;
+  /** The low-detail surface in its current pose as plain geometry in root space: what a far, unskinned stand-in is made of. */
+  bake(): THREE.BufferGeometry;
+};
 
 export function makeHumanoid(look: HumanLook): HumanoidDevRig {
-  const mat = new WorldMaterial({ rim: true });
+  const fit = fitLook(look);
+  const inst = instantiate(fit.model, fit.palette, fit.hide, 2.4, { shadowDist: Infinity });
+  applyFit(inst, fit);
+  const mat = inst.material;
   mat.rim.value.w = 0.65;
-  const parts = buildParts(look);
   const H = look.height ?? 1;
   const root = new THREE.Group();
   const body = new THREE.Group();
   body.scale.setScalar(H);
   root.add(body);
-  const geos: THREE.BufferGeometry[] = [];
-  let tris = 0, meshes = 0;
-  const mesh = (g: { mesh(m: THREE.Material, s?: boolean): THREE.Mesh }, parent: THREE.Object3D) => {
-    const m = g.mesh(mat, true);
-    m.castShadow = true; m.receiveShadow = true;
-    parent.add(m); geos.push(m.geometry);
-    tris += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3; meshes++;
-    return m;
-  };
-  const grp = (parent: THREE.Object3D, x = 0, y = 0, z = 0) => { const g = new THREE.Group(); g.position.set(x, y, z); parent.add(g); return g; };
+  body.add(inst.root);
+  const B = inst.bones;
+  let tris = inst.tris, meshes = 1;
 
-  const hips = grp(body, 0, SK.hipY, 0);
-  const spine = grp(hips, 0, SK.spine, 0);
-  const chest = grp(spine, 0, SK.chest, 0);
-  const head = grp(chest, 0, SK.neck, 0);
-  mesh(parts.pelvis, hips); mesh(parts.torso, chest); mesh(parts.head, head);
+  const hips = B.hips, spine = B.spine, chest = B.chest, head = B.head;
+  const side = <T>(f: (s: 'L' | 'R') => T): [T, T] => [f('L'), f('R')];
+  const armU = side((s) => B[`armU_${s}`]), armF = side((s) => B[`armF_${s}`]), hand = side((s) => B[`hand_${s}`]);
+  const thigh = side((s) => B[`thigh_${s}`]), shin = side((s) => B[`shin_${s}`]), foot = side((s) => B[`foot_${s}`]);
+  const fingA = side((s) => B[`fingA_${s}`]), fingB = side((s) => B[`fingB_${s}`]), thumb = side((s) => B[`thumb_${s}`]);
+  const eye = side((s) => B[`eye_${s}`]), lid = side((s) => B[`lid_${s}`]), brow = side((s) => B[`brow_${s}`]);
+  const mouth = B.mouth;
+  const browY = brow[0].position.y;
+  for (let s = 0; s < 2; s++) { brow[s].scale.set(1, fit.face.browThick, 1); eye[s].scale.setScalar(fit.face.eye); lid[s].scale.setScalar(fit.face.eye); }
+  if (B.nose) B.nose.scale.setScalar(fit.face.nose);
+  const grip = side((s) => { const g = new THREE.Object3D(); g.position.set(0, 0, 0.06); B[`hand_${s}`].add(g); return g; });
+  const shX = fit.shoulderX, hipX = fit.hipX;
 
-  const shX = parts.shoulderX, hipX = parts.hipX;
-  const armU: THREE.Group[] = [], armF: THREE.Group[] = [], hand: THREE.Group[] = [], grip: THREE.Object3D[] = [];
-  const thigh: THREE.Group[] = [], shin: THREE.Group[] = [], foot: THREE.Group[] = [];
-  for (let s = 0; s < 2; s++) {
-    const k = s === L ? 1 : -1;
-    const u = grp(chest, k * shX, SK.shY, 0), f = grp(u, 0, -SK.upper, 0), h = grp(f, 0, -SK.fore, 0);
-    mesh(parts.upper[s], u); mesh(parts.fore[s], f);
-    if (parts.hand) mesh(parts.hand[s], h);
-    const gr = new THREE.Object3D(); gr.position.set(0, 0, 0.06); h.add(gr);
-    armU.push(u); armF.push(f); hand.push(h); grip.push(gr);
-    const t = grp(body), sh = grp(t, 0, -SK.thigh, 0), ft = grp(sh, 0, -SK.shin, 0);
-    mesh(parts.thigh[s], t); mesh(parts.shin[s], sh); mesh(parts.foot[s], ft);
-    thigh.push(t); shin.push(sh); foot.push(ft);
-  }
-  const fixedHands = !parts.hand;
-
-  const headSock = new THREE.Object3D(); headSock.position.set(0, parts.headY, 0); head.add(headSock);
-  const back = new THREE.Object3D(); back.position.set(0, 0.04, -parts.backDepth); chest.add(back);
+  const headSock = new THREE.Object3D(); headSock.position.set(0, fit.headY, 0); head.add(headSock);
+  const back = new THREE.Object3D(); back.position.set(0, 0.04, -fit.backDepth); chest.add(back);
   const backMount = new THREE.Object3D(); back.add(backMount);
 
   // cloth is flat, so the fresnel rim would wash it out: it gets its own rim-less material
-  const clothMat = parts.ribbons.length ? new WorldMaterial() : null;
-  const ribbons = parts.ribbons.map((spec) => { const r = new Ribbon(spec, clothMat!); body.add(r.mesh); geos.push(r.mesh.geometry); meshes++; tris += spec.n * 4; return r; });
+  const clothMat = fit.ribbons.length ? new WorldMaterial() : null;
+  const ribbons = fit.ribbons.map((spec) => { const r = new Ribbon(spec, clothMat!); r.mesh.castShadow = false; body.add(r.mesh); meshes++; tris += spec.n * 4; return r; });
 
   const st = new AnimState();
   let weapon: WeaponModel | null = null;
   let time = 0;
   const shoulder = [new THREE.Vector3(shX, SK.shY, 0), new THREE.Vector3(-shX, SK.shY, 0)];
+  // face and hands
+  let blinkIn = 1.5 + Math.random() * 3, blink = 0;
+  const curl = [0, 0];
+  let effort = 0, talk = 0, glance = 0, glanceIn = 2 + Math.random() * 4;
+  const phase = Math.random() * 10;
 
   const rig: HumanoidDevRig = {
     root,
@@ -122,12 +128,7 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
         solve(shoulder[s], P.handPos[s], P.elbow[s], SK.upper, SK.fore, _q1, _q2);
         armU[s].quaternion.copy(_q1);
         armF[s].quaternion.copy(_q3.copy(_q1).invert()).multiply(_q2);
-        if (fixedHands) {
-          // mitt is part of the forearm; the grip socket still takes the animated orientation
-          hand[s].quaternion.copy(_q3.copy(_q2).invert()).multiply(P.handQ[s]);
-          _a.set(0, -0.055, 0).applyQuaternion(_q3.copy(hand[s].quaternion).invert());
-          grip[s].position.copy(_a);
-        } else hand[s].quaternion.copy(_q3.copy(_q2).invert()).multiply(P.handQ[s]);
+        hand[s].quaternion.copy(_q3.copy(_q2).invert()).multiply(P.handQ[s]);
         // leg, in root space
         _a.set((s === L ? 1 : -1) * hipX, -SK.hipDrop, 0).applyQuaternion(P.hipsQ).add(P.hipsPos);
         thigh[s].position.copy(_a);
@@ -137,12 +138,61 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
         foot[s].quaternion.copy(_q3.copy(_q2).invert()).multiply(P.footQ[s]);
       }
       // weapon placement
+      const inHand = !!weapon && pose.drawn && pose.weapon !== 'none' && pose.locomotion !== 'dead';
       if (weapon) {
-        const inHand = pose.drawn && pose.weapon !== 'none' && pose.locomotion !== 'dead';
         const parent = inHand ? (weapon.kind === 'bow' ? grip[L] : grip[R]) : backMount;
         if (weapon.object.parent !== parent) { parent.add(weapon.object); weapon.object.position.set(0, 0, 0); weapon.object.quaternion.identity(); }
         weapon.setDraw?.(inHand ? P.draw : 0);
       }
+
+      // ---- hands: closed around whatever they hold, loose otherwise
+      const act = pose.action ?? '', dead = pose.locomotion === 'dead';
+      const hang = HANGING.has(pose.locomotion);
+      const two = inHand && weapon!.kind !== 'sword';
+      for (let s = 0; s < 2; s++) {
+        const holding = grip[s].children.length > 0;
+        let want = holding ? 1 : hang ? 1 : 0.5 + 0.1 * Math.sin(time * 0.7 + s * 2 + phase);
+        if (two) want = Math.max(want, 0.85);
+        if (pose.locomotion === 'ground' && pose.speed > 4 && !holding) want = 0.75;      // running fists
+        if (act === 'cheer' || act === 'carry' || act === 'sweep') want = Math.max(want, 0.9);
+        if (act === 'wave' || act === 'point') want = holding ? 1 : 0.05;
+        if (act === 'talk' && !holding) want = 0.3;
+        if (dead) want = 0.3;
+        curl[s] += (want - curl[s]) * Math.min(1, dt * 14);
+        const k = s === L ? 1 : -1, c = curl[s];
+        fingA[s].rotation.y = -k * c * 0.92;
+        fingB[s].rotation.y = -k * c * 0.8;
+        thumb[s].rotation.set(c * 0.25, -k * c * 0.6, 0);
+        if (act === 'point' && s === R && !holding) { fingA[s].rotation.y = -k * 0.2; fingB[s].rotation.y = k * 0.5; }
+      }
+
+      // ---- face
+      blinkIn -= dt;
+      if (blinkIn <= 0) { blink = 0.17; blinkIn = 2.2 + Math.random() * 4.2; }
+      let shut = 0;
+      if (blink > 0) { blink -= dt; const u = 1 - Math.max(0, blink) / 0.17; shut = u < 0.4 ? u / 0.4 : 1 - (u - 0.4) / 0.6; }
+      if (dead || pose.locomotion === 'down') shut = 1;
+      effort += ((EFFORT.test(act) || pose.locomotion === 'roll' ? 1 : 0) - effort) * Math.min(1, dt * 10);
+      talk += ((act === 'talk' || act === 'cheer' ? 1 : 0) - talk) * Math.min(1, dt * 8);
+      // the eyes lead the head, and wander a little when nothing holds them
+      glanceIn -= dt;
+      if (glanceIn <= 0) { glance = (Math.random() - 0.5) * 0.5; glanceIn = 1.5 + Math.random() * 3.5; }
+      const ey = THREE.MathUtils.clamp(pose.lookYaw * 0.55 + (Math.abs(pose.lookYaw) < 0.08 ? glance * (1 - effort) * (1 - talk) : 0), -0.5, 0.5);
+      const ep = THREE.MathUtils.clamp(pose.lookPitch * 0.5, -0.35, 0.35);
+      const surprise = act === 'cheer' || act === 'wave' ? 1 : 0;
+      for (let s = 0; s < 2; s++) {
+        const k = s === L ? 1 : -1;
+        eye[s].rotation.set(-ep, ey, 0);
+        lid[s].rotation.x = shut * 1.7 + effort * 0.22 - ep * 0.5 - surprise * 0.12;
+        brow[s].rotation.z = k * (effort * 0.34 + fit.face.browTilt - surprise * 0.1);
+        brow[s].position.y = browY - effort * 0.007 + surprise * 0.008 + talk * 0.003 * Math.sin(time * 3.1 + phase) - shut * 0.002;
+      }
+      const open = talk * Math.max(0, 0.5 + 0.5 * Math.sin(time * 12.5 + phase) * Math.sin(time * 4.3 + phase * 2)) + (act === 'cheer' ? 0.5 : 0) + (act === 'drink' ? 0.4 : 0);
+      mouth.scale.set(fit.face.mouthW * (1 - open * 0.22 + effort * 0.12), (1 + open * 2.6) * (1 - effort * 0.3), 1);
+      // the mouth's arc is a smile; turning it over is a frown, and effort flattens it
+      mouth.rotation.z = fit.face.smile < 0 ? Math.PI : 0;
+      mouth.scale.y *= Math.max(0.25, Math.abs(fit.face.smile)) * (1 - effort * 0.35);
+
       // cloth
       if (ribbons.length) {
         root.updateWorldMatrix(true, true);
@@ -152,19 +202,57 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
         _back.setFromMatrixColumn(cw, 2).normalize().multiplyScalar(-1);
         _ws.setFromMatrixScale(body.matrixWorld);
         const sc = _ws.y;
-        _c0.setFromMatrixPosition(hips.matrixWorld).addScaledVector(_back, parts.backDepth * 0.42 * sc);
-        _c1.setFromMatrixPosition(cw).addScaledVector(_back, parts.backDepth * 0.42 * sc);
+        _c0.setFromMatrixPosition(hips.matrixWorld).addScaledVector(_back, fit.backDepth * 0.42 * sc);
+        _c1.setFromMatrixPosition(cw).addScaledVector(_back, fit.backDepth * 0.42 * sc);
         _c1.y -= 0.02 * sc; _c0.y -= 0.12 * sc;
         const floorY = _a.setFromMatrixPosition(root.matrixWorld).y - (pose.locomotion === 'ground' || pose.locomotion === 'dead' || pose.locomotion === 'roll' ? 0 : 100);
-        const rad = (0.075 + parts.backDepth * 0.36) * sc;
+        const rad = (0.075 + fit.backDepth * 0.36) * sc;
         for (const r of ribbons) {
           _anchor.set(r.spec.anchor[0], r.spec.anchor[1], r.spec.anchor[2]).applyMatrix4(cw);
           r.update(dt, time, _anchor, _side, _back, _c0, _c1, rad, floorY, _inv, sc);
         }
       }
     },
+    bake() {
+      root.updateWorldMatrix(true, true);
+      const sk = inst.mesh.skeleton;
+      sk.update();
+      const src = inst.low(), M = sk.boneMatrices as Float32Array;
+      const pos = src.getAttribute('position'), nor = src.getAttribute('normal'), si = src.getAttribute('skinIndex'), sw = src.getAttribute('skinWeight');
+      const n = pos.count, P = new Float32Array(n * 3), N = new Int8Array(n * 3);
+      const e = _inv.copy(root.matrixWorld).invert().elements;
+      for (let i = 0; i < n; i++) {
+        const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+        let wx = 0, wy = 0, wz = 0, top = -1, best = 0;
+        for (let j = 0; j < 4; j++) {
+          const w = sw.getComponent(i, j);
+          if (w <= 0) continue;
+          const o = si.getComponent(i, j) * 16;
+          if (w > top) { top = w; best = o; }
+          wx += w * (M[o] * x + M[o + 4] * y + M[o + 8] * z + M[o + 12]);
+          wy += w * (M[o + 1] * x + M[o + 5] * y + M[o + 9] * z + M[o + 13]);
+          wz += w * (M[o + 2] * x + M[o + 6] * y + M[o + 10] * z + M[o + 14]);
+        }
+        P[i * 3] = e[0] * wx + e[4] * wy + e[8] * wz + e[12];
+        P[i * 3 + 1] = e[1] * wx + e[5] * wy + e[9] * wz + e[13];
+        P[i * 3 + 2] = e[2] * wx + e[6] * wy + e[10] * wz + e[14];
+        // the normal rides the vertex's strongest bone, which is all a distant stand-in needs
+        const a = nor.getX(i), b = nor.getY(i), c = nor.getZ(i), o = best;
+        const nx = M[o] * a + M[o + 4] * b + M[o + 8] * c, ny = M[o + 1] * a + M[o + 5] * b + M[o + 9] * c, nz = M[o + 2] * a + M[o + 6] * b + M[o + 10] * c;
+        _b.set(e[0] * nx + e[4] * ny + e[8] * nz, e[1] * nx + e[5] * ny + e[9] * nz, e[2] * nx + e[6] * ny + e[10] * nz).normalize();
+        N[i * 3] = Math.round(_b.x * 127); N[i * 3 + 1] = Math.round(_b.y * 127); N[i * 3 + 2] = Math.round(_b.z * 127);
+      }
+      const out = new THREE.BufferGeometry();
+      out.setAttribute('position', new THREE.BufferAttribute(P, 3));
+      out.setAttribute('normal', new THREE.BufferAttribute(N, 3, true));
+      for (const k of ['uv', 'aMRE', 'aSlot']) out.setAttribute(k, src.getAttribute(k));
+      out.setIndex(src.index);
+      out.computeBoundingSphere();
+      return out;
+    },
     dispose() {
-      for (const g of geos) g.dispose();
+      for (const r of ribbons) r.mesh.geometry.dispose();
+      inst.mesh.skeleton.dispose();
       mat.dispose(); clothMat?.dispose();
       root.removeFromParent();
     },

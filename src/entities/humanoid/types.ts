@@ -101,8 +101,17 @@ export const DOWN = { fall: 0.3, rollAt: 0.42, lie: 0.8, end: 1.2 } as const;
 export interface HumanLook {
   /** preset body: the hero or a townsperson archetype */
   kind: 'hero' | 'townsfolk';
-  skin?: number; hair?: number; hairStyle?: 'short' | 'bun' | 'mohawk' | 'bald' | 'long';
+  skin?: number; hair?: number; hairStyle?: 'short' | 'bun' | 'mohawk' | 'bald' | 'long' | 'ponytail' | 'curly' | 'bob';
   top?: number; bottom?: number; accent?: number; boots?: number;
+  /** iris colour; second shirt colour (yoke, collar); second trouser-family colour (vest, bib). Defaults derive from the others. */
+  eyes?: number; top2?: number; cloth2?: number;
+  /** what is worn over the shirt, and whether its sleeves are rolled (default) or down */
+  outfit?: 'shirt' | 'vest' | 'overalls';
+  sleeves?: 'rolled' | 'long';
+  /** face proportions, each around 1 (tilt and smile are signed); anything left out is picked from a hash of the look */
+  face?: { nose?: number; browTilt?: number; browThick?: number; mouthW?: number; smile?: number; eye?: number };
+  /** head size multiplier */
+  head?: number;
   hat?: 'none' | 'goggles' | 'hardhat' | 'cap' | 'hood' | 'weldmask' | 'strawhat' | 'bandana';
   extra?: Array<'scarf' | 'apron' | 'backpack' | 'toolbelt' | 'cape' | 'pauldron' | 'beard' | 'glasses'>;
   /** overall height multiplier (1 = 1.75 m) and build (0.8 slim .. 1.25 stocky) */
