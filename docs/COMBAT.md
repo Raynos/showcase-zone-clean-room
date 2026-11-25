@@ -59,11 +59,77 @@ Touch is the primary input; every action also has a key.
 ## Player reactions
 
 - **Flinch.** Small hits. Visual only.
-- **Stagger.** A hit of 12% of maximum health or more interrupts the
-  current action and removes control for 0.25 s.
-- **Knockdown.** The heaviest hits. About 0.9 s on the ground; a dodge press
-  gets up early with a roll.
+- **Stagger.** A hit of 9.5% of maximum health or more interrupts the
+  current action and removes control for 0.25 s. (Tuned down from 12% so a
+  common robot's big telegraphed attack staggers and its basic one does
+  not.)
+- **Knockdown.** A hit of 22% of maximum health or more, or any hit thrown
+  with 9 or more knockback (charges, quakes). Thrown down by 0.3 s, up by
+  1.2 s, safe until standing; a dodge press from 0.42 s rolls out early.
+- **Armour.** A released heavy, and any ultimate, turn a stagger into a
+  flinch. A knockdown still floors a heavy.
 - A directional arc on screen shows where each hit came from.
+
+## As built
+
+Numbers that were tuned in play. Damage is a multiple of attack power.
+The tables live in `src/data/moves.ts` and `src/data/weapons.ts`.
+
+**Tap and hold.** A press starts a light at once. If that same press is
+still down at the top of the wind-up the swing waits there, and at 0.28 s
+it becomes the heavy for that point of the string. Holding does not repeat
+lights. A heavy must be held coiled for at least 0.12 s; it lets go by
+itself after 2.4 s. From release until 0.2 s after it lands there is no
+dodge and no skill.
+
+**Lunge.** A melee move slides at most 3 m toward its target at 15 m/s on
+average (18 peak), and the hit waits for arrival. With no target the step
+is 40% of the move's own.
+
+| Sword | Damage | Reach | Shape | Stagger |
+|---|---|---|---|---|
+| Lights 1, 2, 3 | 1.0, 1.1, 1.8 | 2.9 to 3.2 m | Wide arc | x1, x1, x1.5 |
+| Heavy | 2.4 / 3.3 / 4.6 | 3.5 m | Overhead | x2 |
+| Sweep | 2.0 / 2.5 / 3.1 | 3.6 m | 320 degrees | x1.5 |
+| Breaker | 2.8 / 3.3 / 3.9 | 3.1 m | Leaping chop | x3.5 |
+
+| Spear | Damage | Reach | Shape | Stagger |
+|---|---|---|---|---|
+| Lights 1, 2, 3 | 1.15, 1.25, 1.75 | 4.7 m | Narrow, sweep | x1, x1, x1.5 |
+| Heavy | 2.3 / 3.1 / 4.3 | 6.6 m | Line, pierces | x2 |
+| Sweep | 1.5 / 1.9 / 2.3 | 4.8 m | Full turn | x1.2 |
+| Breaker | 3.4 / 4.0 / 4.7 | 3.3 m | 2.4 m burst | x4.5 |
+
+The three damage values are uncharged, level 1 and level 2; each charge
+level adds a quarter to the stagger multiplier. Spear lights land at 0.14 s
+(sword 0.15 s) but can be cancelled later (80% against 78%, on longer
+clips), so the spear pokes faster and recovers slower.
+
+- **Bow.** A full draw staggers a common robot and carries x2.5 stagger. A
+  release within 0.3 s of full is still a critical.
+- **Crossbow.** A press looses three bolts at 0.6 each from a magazine of
+  six; the first bolt of a burst carries the selected ammunition at full
+  value.
+- **Rifle.** A round goes through up to three robots at 100%, 60% and 35%.
+  Steady at 0.55 s (up to 1.5); full charge at 1.1 s (2.0, x3 stagger).
+- **Counter.** 2.0, always critical, x3 stagger, for every weapon (the
+  crossbow fires a burst of 0.95 with a critical first bolt).
+- **Swap strike.** 1.4 from the incoming weapon (crossbow: three at 0.5).
+- **Skills.** The third is learned at level 4 and the fourth at level 9;
+  the third bar slot opens at level 6. Loadouts are saved per weapon kind
+  in `SaveData.skills`.
+- **Overdrive.** Opens at level 10. Gains: 0.45 per attack power of damage
+  dealt, 40 per health bar lost, 8 for a perfect dodge, 4 for a stagger or
+  stun caused, 2 for a kill. Ultimates: Bladestorm (sword), Meteor Drive
+  (spear), Storm Volley (bow), Bolt Storm (crossbow), Rail Lance (rifle).
+
+**HUD feed.** `Combat.actionBar()` builds the slots and `hud.setActionBar`
+receives them when anything visible changes. Conventions the interface
+left open: a `locked` slot carries its unlock level in `label` ("Level 6");
+the Overdrive slot is `noenergy` with `charge` while filling; the swap slot
+is `active` while a swap would strike and its `cd` is the strike cooldown;
+the attack slot is `active` with `charge` while a heavy, draw or aim is
+held, and `active` with label "Counter" during the counter window.
 
 ## Enemy states
 
