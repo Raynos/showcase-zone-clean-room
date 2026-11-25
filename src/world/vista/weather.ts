@@ -4,16 +4,18 @@ import type { Game } from '../../game';
 import { GU } from '../../gfx/material';
 import { Rng, clamp } from '../../core/util';
 import { beyondH } from './beyond';
+import { startGlow } from './glow';
 
 /**
  * Weather you can see happen: the lightning bolt itself (the flash that lights the scene, and the
  * thunder that follows it, are the environment's), and rain rings on the ground around the camera.
- * Wet ground reads by its darker tint and these rings, never by mirror reflections (docs/LOOK.md).
+ * The wet ground itself (gloss, puddles, the lamps' streaks) is gfx/lighting.ts and ./glow.ts.
  */
 const _v = new THREE.Vector3(), _w = new THREE.Vector3();
 
 export function startWeather(game: Game) {
   const env = game.env;
+  startGlow(game);
 
   // ---- the bolt -----------------------------------------------------------------------------
   // a jagged main channel from the cloud deck to the ground and a few forks, as camera-facing ribbons

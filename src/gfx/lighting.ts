@@ -46,6 +46,36 @@ export function lampLayer(y: number) { return y < ARENA_TOP ? 2 : y < VAULT_TOP 
 export const YARD = new Float32Array(6 * 4);
 YARD.set([0, 0, 0.5, 0, 0.22, 0.04, -0.08, 0.5, 0, 0.6, 0.5, 1, 0, 1, 0, 0.0034]);
 
+/**
+ * Wet ground and the light it answers with, `uniform vec4 uYardW[3]`:
+ *  [0] rain wetness 0..1, puddle amount 0..1, strength of the sky's sheen, roughness of standing water
+ *      (a mirror under a clear night, a soft sheen under a storm that has no sun to glint)
+ *  [1] the streak map's frame: camera forward on the ground (x, z), 0.5 / its half-width in
+ *      tan(azimuth), 1 while the map is live
+ *  [2] rgb of the cool fill warm surfaces answer after dark (moonlit wood reads slate, not black)
+ */
+export const YARDW = new Float32Array(3 * 4);
+/**
+ * The two hero lights nearest the player, `uniform vec4 uYardHero[4]`: [2i] world position and
+ * reach, [2i + 1] colour × strength (w > 0 while lit). Real point lights without shadows: a beacon
+ * or a furnace mouth lights the tower, the rock and the people beside it, not only the ground.
+ */
+export const HEROL = new Float32Array(4 * 4);
+
+/**
+ * The streak map: what every lamp lays on wet ground this frame, as the camera sees it. Columns
+ * are azimuth across the view (tan of the angle off the camera's heading), rows the log of the
+ * ground distance from the eye, so a lamp's streak is a short run of texels down one column: a
+ * vertical smear under the lamp on screen, at the cost of one fetch per floor pixel and no pass.
+ * world/vista/glow.ts fills it on the CPU each frame from the lamp list.
+ */
+export const STREAK_W = 512, STREAK_H = 32, STREAK_R0 = 0.75, STREAK_R1 = 96, STREAK_MAX = 4;
+export const streakData = new Uint8Array(STREAK_W * STREAK_H * 4);
+export const streakTex = new THREE.DataTexture(streakData, STREAK_W, STREAK_H, THREE.RGBAFormat, THREE.UnsignedByteType);
+streakTex.minFilter = streakTex.magFilter = THREE.LinearFilter;
+streakTex.wrapS = streakTex.wrapT = THREE.ClampToEdgeWrapping;
+streakTex.needsUpdate = true;
+
 const lampData = new Uint8Array(LAMP_RES * LAMP_RES * 4 * 6);
 for (let i = 0; i < LAMP_RES * LAMP_RES * 3; i++) { const o = (LAMP_RES * LAMP_RES * 3 + i) * 4; lampData[o] = 128; lampData[o + 1] = 128; }
 export const lampTex = new THREE.DataArrayTexture(lampData, LAMP_RES, LAMP_RES, 6);
@@ -71,7 +101,7 @@ blank.wrapS = blank.wrapT = THREE.RepeatWrapping; blank.needsUpdate = true;
  * uploader only needs indices and a length.
  */
 const lampSlot: { [i: number]: THREE.Texture; length: number } = { 0: lampTex, length: 1 };
-const mapSlot: { [i: number]: THREE.Texture; length: number } = { 0: gaoTex, 1: blank, length: 2 };
+const mapSlot: { [i: number]: THREE.Texture; length: number } = { 0: gaoTex, 1: blank, 2: streakTex, length: 3 };
 /** The tiling noise the sky draws its clouds from; cloud shadows read the same texture. Call before the first frame. */
 export function setCloudNoise(t: THREE.Texture) { mapSlot[1] = t; }
 
@@ -83,12 +113,14 @@ export function installLighting() {
   const C = THREE.ShaderChunk as Record<string, string>;
   C.lights_pars_begin += /* glsl */ `
 uniform vec4 uYard[6];
+uniform vec4 uYardW[3];
+uniform vec4 uYardHero[4];
 uniform highp sampler2DArray uYardLamp[1];
-uniform sampler2D uYardMap[2];
+uniform sampler2D uYardMap[3];
 #ifdef YARD_VAO
   varying vec2 vYardAO;
 #endif
-vec3 gYardW; vec3 gYardN; float gYardAO; float gYardFar;
+vec3 gYardW; vec3 gYardN; float gYardAO; float gYardFar; float gYardGloss; float gYardPud;
 float yardCloud(vec3 w) {
   if (uYard[0].w <= 0.0) return 1.0;
   // the shadow of the cloud deck, slid along the sun's direction so it leans as the sun drops
@@ -140,6 +172,41 @@ if ( gYardW.y > ${VAULT_TOP.toFixed(1)} ) {
     gYardFar = 1.0 - yFar * tall;
   }
 }
+#endif
+gYardGloss = 0.0; gYardPud = 0.0;
+#if defined( STANDARD ) && defined( YARD_GAO ) && !defined( YARD_NO_LAMP )
+if ( uYard[4].x > 0.0 ) {
+  // Wet floors. After dark, in rain and indoors whatever faces up turns glossy and a shade darker
+  // (the light it no longer scatters is the light it mirrors); puddles stand in patches on the
+  // ground itself, flat and dark, and show the lamps and the sky cleanly.
+  float yGl = uYard[4].x * smoothstep( 0.6, 0.92, gYardN.y );
+  #ifdef YARD_SOIL
+    // turf never shines; bare earth and gravel do
+    yGl *= YARD_SOIL;
+  #endif
+  if ( yGl > 0.0 ) {
+    float yPud = 0.0;
+    #ifndef FLAT_SHADED
+    if ( uYardW[0].y > 0.0 ) {
+      float yLevel = smoothstep( 0.955, 0.992, normalize( inverseTransformDirection( vNormal, viewMatrix ) ).y );
+      #ifdef YARD_VAO
+        yLevel *= 1.0 - smoothstep( 0.12, 0.4, vYardAO.x );
+      #endif
+      float yN = texture2D( uYardMap[1], gYardW.xz * 0.043 ).r * 0.62 + texture2D( uYardMap[1], gYardW.xz * 0.131 + 0.31 ).g * 0.38;
+      float yThr = mix( 0.74, 0.46, uYardW[0].y );
+      yPud = smoothstep( yThr, yThr + 0.028, yN ) * yLevel * step( 0.5, yGl + uYardW[0].y );
+    }
+    #endif
+    material.roughness = mix( max( material.roughness * mix( 1.0, 0.42, yGl ), 0.08 ), uYardW[0].w, yPud );
+    float yDark = ( 1.0 - 0.56 * yGl ) * ( 1.0 - 0.45 * uYardW[0].x * yGl ) * mix( 1.0, 0.52, yPud );
+    material.diffuseColor *= yDark; material.diffuseContribution *= yDark;
+    if ( yPud > 0.0 ) {
+      geometryNormal = normalize( mix( geometryNormal, vec3( viewMatrix[0].y, viewMatrix[1].y, viewMatrix[2].y ), yPud * 0.94 ) );
+      gYardN = normalize( mix( gYardN, vec3( 0.0, 1.0, 0.0 ), yPud * 0.94 ) );
+    }
+    gYardGloss = yGl; gYardPud = yPud;
+  }
+}
 #endif`);
   src = src.replace(sunInfo, `${sunInfo}
 		directLight.color *= yardCloud( gYardW ) * mix( 1.0, gYardAO, uYard[1].w ) * gYardFar;`);
@@ -159,30 +226,79 @@ if ( gYardW.y > ${VAULT_TOP.toFixed(1)} ) {
       float yAtt = min( ( yD2 + yHl * yHl + 0.5 ) / ( yD2 + yUp * yUp + 0.5 ), 2.0 );
       vec3 yL = normalize( vec3( yOff.x, yUp, yOff.y ) );
       // lamps are many and wide: wrap the light a little round the form
-      yL = normalize( yL + gYardN * 0.55 );
+      #ifdef YARD_VAO
+        // ...but the pool was measured on the ground. A wall is not lit by the lamp bolted to it (no
+        // wrap for light that only grazes it), and nothing far above the lamp is lit by it at all.
+        yL = normalize( yL + gYardN * mix( 0.1, 0.55, saturate( gYardN.y * 1.6 + 0.15 ) ) );
+        yAtt *= 1.0 - smoothstep( 1.5, 6.5, - yUp );
+      #else
+        yL = normalize( yL + gYardN * 0.55 );
+      #endif
       directLight.direction = normalize( ( viewMatrix * vec4( yL, 0.0 ) ).xyz );
       directLight.color = yC.rgb * yC.rgb * ( ${LAMP_MAX.toFixed(1)} * uYard[2].x * yAtt ) * mix( 1.0, gYardAO, 0.6 );
       directLight.visible = true;
       RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
+      #ifdef STANDARD
+        // bare metal has no diffuse to light and, with no lamp in the sky probe, nothing to mirror:
+        // steel and robots would stay black beside a lantern. Painted steel takes the lamp as colour.
+        reflectedLight.directDiffuse += directLight.color * diffuseColor.rgb * ( metalnessFactor * saturate( dot( geometryNormal, directLight.direction ) ) * 0.25 );
+      #endif
     }
-    #ifdef STANDARD
-    // Lamps answered by the floor. The mean light direction above cannot give a highlight under a
-    // row of lamps (it points straight up), so a glossy floor looks the lamp map up where its
-    // mirror ray would meet lamp height: each pool of light shows again as a streak running from
-    // under its lamp toward the eye, broken up by the surface's own bumps. Two fetches, no pass.
-    if ( uYard[4].x > 0.0 && gYardN.y > 0.55 && material.roughness < 0.7 ) {
-      vec3 yV = inverseTransformDirection( -geometryViewDir, viewMatrix );
-      vec3 yR = reflect( yV, gYardN );
-      vec2 yRo = yR.xz / max( yR.y, 0.1 );
-      vec3 yP1 = texture( uYardLamp[0], vec3( yUv + yRo * ${(3.4 / ZONE).toFixed(6)}, yLay ) ).rgb;
-      vec3 yP2 = texture( uYardLamp[0], vec3( yUv + yRo * ${(1.5 / ZONE).toFixed(6)}, yLay ) ).rgb;
-      float yGloss = smoothstep( 0.7, 0.26, material.roughness );
-      float yFres = 0.05 + 0.95 * pow( 1.0 - saturate( dot( geometryNormal, geometryViewDir ) ), 4.0 );
-      // only the bright heart of a pool mirrors: the general wash of a lit street does not
-      vec3 yS = yP1 * yP1 * smoothstep( 0.13, 0.3, max( yP1.r, max( yP1.g, yP1.b ) ) ) + 0.5 * yP2 * yP2 * smoothstep( 0.15, 0.32, max( yP2.r, max( yP2.g, yP2.b ) ) );
-      reflectedLight.directSpecular += yS * ( ${LAMP_MAX.toFixed(1)} * uYard[4].x * uYard[4].y * yGloss * yFres * mix( 1.0, gYardAO, 0.6 ) );
+  }
+#endif
+#if defined( RE_Direct ) && !defined( YARD_NO_LAMP )
+  // hero lights: the nearest beacon, furnace mouth or sign, as a point light on everything
+  if ( uYardHero[1].w + uYardHero[3].w > 0.0 ) {
+    for ( int yI = 0; yI < 4; yI += 2 ) {
+      if ( uYardHero[yI + 1].w <= 0.0 ) continue;
+      vec3 yHv = ( viewMatrix * vec4( uYardHero[yI].xyz, 1.0 ) ).xyz - geometryPosition;
+      float yHd = length( yHv ), yHr = yHd / uYardHero[yI].w;
+      if ( yHr >= 1.0 ) continue;
+      float yHa = 1.0 - yHr * yHr;
+      directLight.direction = normalize( yHv / max( yHd, 1e-3 ) + geometryNormal * 0.4 );
+      directLight.color = uYardHero[yI + 1].rgb * ( yHa * yHa / ( 1.0 + yHd * yHd * 0.004 ) ) * mix( 1.0, gYardAO, 0.6 );
+      directLight.visible = true;
+      RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
+      #ifdef STANDARD
+        // (dark iron above a furnace mouth takes its glow whatever its own colour)
+        reflectedLight.directDiffuse += directLight.color * ( diffuseColor.rgb * 0.4 + 0.03 ) * ( metalnessFactor * ( 0.3 + 0.7 * saturate( dot( geometryNormal, directLight.direction ) ) ) );
+      #endif
+      // and it draws an edge down whatever stands in it: the tower's flank, a fence rail, a shoulder
+      float yRim = 1.0 - saturate( dot( geometryNormal, geometryViewDir ) );
+      reflectedLight.directSpecular += directLight.color * ( yRim * yRim * yRim * saturate( dot( geometryNormal, yHv ) / max( yHd, 1e-3 ) + 0.55 ) * 0.07 );
     }
+  }
+#endif
+#if defined( STANDARD ) && defined( YARD_GAO ) && !defined( YARD_NO_LAMP )
+  if ( gYardGloss > 0.004 ) {
+    // What a wet floor mirrors. Each lamp lies on it as a streak running from under the lamp toward
+    // the eye (the streak map: one fetch, slid about by the surface's own bumps so cobbles break it
+    // and a puddle shows it whole), and the sky lies on it wherever the view grazes.
+    vec3 yE = gYardW - cameraPosition;
+    float yShine = gYardGloss * mix( 0.25 + 0.75 * smoothstep( 0.55, 0.14, material.roughness ), 1.0, gYardPud ) * mix( 1.0, gYardAO, 0.7 );
+    if ( uYardW[1].w > 0.0 ) {
+      vec2 yFw = uYardW[1].xy, ySd = vec2( - yFw.y, yFw.x );
+      float yZ = dot( yE.xz, yFw ), yX = dot( yE.xz, ySd );
+      vec2 yUv = vec2( 0.5 + ( yX / max( yZ, 0.5 ) + dot( gYardN.xz, ySd ) * 0.07 ) * uYardW[1].z,
+        ( log2( max( length( yE.xz ), 0.01 ) ) - ${Math.log2(STREAK_R0).toFixed(4)} ) * ${(1 / (Math.log2(STREAK_R1) - Math.log2(STREAK_R0))).toFixed(5)} - dot( gYardN.xz, yFw ) * 0.22 );
+      vec3 yT = texture2D( uYardMap[2], yUv ).rgb;
+      // stone holds the water unevenly: the streak comes and goes slab by slab; standing water shows it whole
+      float yBreak = mix( 0.25 + 1.25 * smoothstep( 0.3, 0.62, texture2D( uYardMap[1], gYardW.xz * 0.27 + 0.13 ).g ), 1.15, gYardPud );
+      reflectedLight.directSpecular += yT * yT * ( ${STREAK_MAX.toFixed(1)} * uYard[4].y * yShine * yBreak );
+    }
+    #ifdef USE_FOG
+      float yFres = pow( 1.0 - saturate( dot( geometryNormal, geometryViewDir ) ), 4.0 );
+      reflectedLight.indirectSpecular += mix( fogColor, uFogX[3].rgb, 0.6 ) * ( uYardW[0].z * yFres * yShine );
     #endif
+  }
+#endif
+#if defined( RE_IndirectDiffuse ) && defined( STANDARD ) && defined( YARD_VAO )
+  {
+    // after dark, wood, brick and tile have no blue to give back to a blue sky and would go black:
+    // they answer the night with their value instead, so a moonlit stack reads cool, not gone
+    // (and bare steel, which has only a black sky to mirror, answers it as rough metal would)
+    vec3 yA = material.diffuseContribution;
+    reflectedLight.indirectDiffuse += uYardW[2].rgb * ( ( max( dot( yA, vec3( 0.5, 0.42, 0.08 ) ) - yA.b, 0.0 ) + metalnessFactor * ( dot( diffuseColor.rgb, vec3( 0.3 ) ) + 0.02 ) ) * gYardAO * ( 0.55 + 0.45 * gYardN.y ) );
   }
 #endif
 #if defined( RE_IndirectDiffuse )
@@ -198,10 +314,10 @@ if ( gYardW.y > ${VAULT_TOP.toFixed(1)} ) {
 #endif`;
   for (const k in THREE.ShaderLib) {
     const lib = (THREE.ShaderLib as any)[k];
-    if (lib.uniforms && lib.uniforms.ambientLightColor) { lib.uniforms.uYard = { value: YARD }; lib.uniforms.uYardLamp = { value: lampSlot }; lib.uniforms.uYardMap = { value: mapSlot }; }
+    if (lib.uniforms && lib.uniforms.ambientLightColor) { lib.uniforms.uYard = { value: YARD }; lib.uniforms.uYardW = { value: YARDW }; lib.uniforms.uYardHero = { value: HEROL }; lib.uniforms.uYardLamp = { value: lampSlot }; lib.uniforms.uYardMap = { value: mapSlot }; }
   }
   const L = THREE.UniformsLib.lights as any;
-  L.uYard = { value: YARD }; L.uYardLamp = { value: lampSlot }; L.uYardMap = { value: mapSlot };
+  L.uYard = { value: YARD }; L.uYardW = { value: YARDW }; L.uYardHero = { value: HEROL }; L.uYardLamp = { value: lampSlot }; L.uYardMap = { value: mapSlot };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -213,11 +329,31 @@ const lamps: number[] = [];
  * Register a static light. `power` is emission × the emitter's apparent size: about 0.6 for a
  * street lantern, 1.5 for a lit window, 6 for a sign or a slag pool.
  */
-export function addLamp(x: number, y: number, z: number, r: number, g: number, b: number, power: number) {
+export function addLamp(x: number, y: number, z: number, r: number, g: number, b: number, power: number, width = 0) {
   const m = Math.max(r, g, b, 1e-4);
   // a lamp lights with its hue: a white-hot core still reads as its colour on the ground
   const k = power / (m * 1.12);
   lamps.push(x, y, z, (r + m * 0.12) * k, (g + m * 0.12) * k, (b + m * 0.12) * k, Math.min(24, 6 + 9 * Math.sqrt(power)));
+  lampWidths.push(width > 0 ? width : 0.25 + 0.45 * Math.sqrt(power));
+}
+/** how wide each registered lamp is across (metres): the width of the streak it lays on wet ground */
+const lampWidths: number[] = [];
+export function lampWidthList(): readonly number[] { return lampWidths; }
+
+/**
+ * A light the game switches or places itself (a beacon, a portal), and the few static hero lights.
+ * It gets a halo, a streak on wet ground and, with `reach`, lights what stands near it as a point
+ * light (the two nearest the player are live). `rays` adds shafts to its glow in rain and fog.
+ */
+export interface Glow { x: number; y: number; z: number; r: number; g: number; b: number; power: number; size: number; rays: number; reach: number; on: boolean }
+export const GLOWS: Glow[] = [];
+const _gc = new THREE.Color();
+export function addGlow(x: number, y: number, z: number, color: number, o: Partial<Pick<Glow, 'power' | 'size' | 'rays' | 'reach' | 'on'>> = {}): Glow {
+  _gc.setHex(color);
+  const m = Math.max(_gc.r, _gc.g, _gc.b, 1e-4);
+  const g: Glow = { x, y, z, r: _gc.r / m, g: _gc.g / m, b: _gc.b / m, power: o.power ?? 2, size: o.size ?? 1, rays: o.rays ?? 0, reach: o.reach ?? 0, on: o.on ?? true };
+  GLOWS.push(g);
+  return g;
 }
 /** Bake settings; `ground` is kept so a dev console can re-bake with another gain. */
 export const BAKE = { gain: 13, ground: null as Array<(x: number, z: number) => number> | null };

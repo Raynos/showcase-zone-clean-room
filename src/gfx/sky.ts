@@ -240,7 +240,7 @@ export class Sky {
                 float ph = uTime * 0.6, fl = fract(ph);
                 float sheet = smoothstep(0.55, 0.72, texture2D(uNoise, sq * 0.23 + floor(ph) * 0.37).r)
                   * smoothstep(0.0, 0.06, fl) * smoothstep(0.5, 0.1, fl) * (0.65 + 0.35 * sin(uTime * 47.0));
-                st += vec3(0.42, 0.36, 1.0) * sheet * (1.0 - roll * 0.7) * 1.6 * smoothstep(0.8, 1.0, uStorm);
+                st += vec3(0.46, 0.6, 1.0) * sheet * (1.0 - roll * 0.7) * 1.6 * smoothstep(0.8, 1.0, uStorm);
                 cc = mix(cc, st, uStorm);
               }
               // lightning lights the deck from inside: brightest around the strike, in the hollows of the cloud
@@ -273,7 +273,8 @@ export class Sky {
               rc = mix(rc * mix(vec3(0.84, 0.88, 1.0), vec3(1.0), 0.3), rc + uSunColor * 0.16 * dayL, lit);
               // snow lies on the tops of the far range and thins out down its faces
               float snow = fi * 0.5 * smoothstep(0.058, 0.085, rh) * smoothstep(rh - 0.02 - pk2 * 0.016, rh - 0.006, h);
-              rc = mix(rc, mix(uHorizon, vec3(1.0), 0.6 * dayL) * (0.78 + 0.22 * lit) * (0.5 + 0.5 * dayL), snow);
+              // (under a closed deck no sun reaches it: it is the horizon's grey, a shade lighter)
+              rc = mix(rc, mix(uHorizon, vec3(1.0), 0.6 * dayL * (1.0 - 0.9 * uDeck)) * (0.78 + 0.22 * lit) * (0.5 + 0.5 * dayL), snow);
               rc += uSunColor * uSunset * pow(sd, 3.0) * 0.2;
               // after dark the ranges are shapes a little darker than the sky behind them
               rc = mix(rc, mix(uZenith, uHorizon, 0.25) * 0.8, uNight * 0.75);

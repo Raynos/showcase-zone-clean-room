@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { SunLight } from 'three/addons/lights/SunLight.js';
 import { clamp01, damp, lerp, rand, smooth } from '../core/util';
-import { setCloudNoise, YARD } from '../gfx/lighting';
+import { setCloudNoise, YARD, YARDW } from '../gfx/lighting';
 import { FOGX, GU } from '../gfx/material';
 import type { Renderer } from '../gfx/renderer';
 import { Sky } from '../gfx/sky';
@@ -46,8 +46,16 @@ export const GRADE = {
   expDay: 1.1, expNight: 0.9, vibDay: 0.38, vibNight: 0.3, satDay: 1.12, satNight: 1.05, conDay: 1.06, conNight: 1.04,
   /** baked lamp light: gain by day, after dark and indoors */
   lampDay: 0.3, lampNight: 0.85, lampIn: 1.2,
-  /** glossy answer of floors to lamp light */
-  sheenNight: 0.85, sheenIn: 1, streak: 1.0,
+  /** floor gloss after dark, indoors and in the Slagworks (hosed down, never dry); rain is its own term */
+  sheenNight: 0.85, sheenIn: 1, sheenSlag: 0.8, streak: 1.0,
+  /** how much of the ground stands in puddles: after dark (dew), in the Slagworks, indoors, in full rain */
+  pudNight: 0.3, pudSlag: 0.55, pudIn: 0.35, pudRain: 1.0,
+  /** the sky's sheen on wet ground at a grazing view */
+  skySheen: 0.5,
+  /** what warm surfaces (wood, brick, tile) give back to the night sky: rgb, strength */
+  nightFill: [0.5, 0.56, 0.8, 0.28],
+  /** storm: the slate everything is pulled to, and the cold key */
+  stormSlate: [0.15, 0.2, 0.27], stormKey: [0.66, 0.8, 1.0],
   /** key-light rim on characters */
   rimDay: 0.55, rimNight: 0.7, rimIn: 0.6,
   farShade: 0.8,
@@ -90,6 +98,9 @@ export class Environment {
   forcedHour: number | null = null;
   w: WeatherParams = { ...WEATHER.clear };
   private nextWeatherAt = 240;
+  /** how wet the ground is (rain soaks it in seconds, it dries over minutes) and how full the puddles are */
+  wetness = 0; puddles = 0;
+  private slagMix = 0;
   private elapsed = 0;
   sunDir = new THREE.Vector3(0, 1, 0);
   moonDir = new THREE.Vector3(0, -1, 0);
@@ -308,6 +319,10 @@ export class Environment {
       this.tmp.set(il.lightDir[0], il.lightDir[1], il.lightDir[2]).normalize();
       this.lightDir.lerp(this.tmp, im).normalize();
     }
+    // under a storm deck what light is left is cold
+    const storm = smooth(0.3, 0.42, this.w.dim) * (1 - im);
+    this.lightColor.lerp(cA.setRGB(GRADE.stormKey[0], GRADE.stormKey[1], GRADE.stormKey[2]), storm);
+    lightI *= 1 + 0.8 * storm;
     this.sun.color.copy(this.lightColor);
     if (this.flash > 0.01) this.sun.color.lerp(cA.setRGB(0.8, 0.9, 1), Math.min(1, this.flash));
     this.sun.intensity = lightI;
@@ -324,6 +339,11 @@ export class Environment {
       this.hemi.color.lerp(cA.setHex(0x8f9cf2), 0.42 * day);
       cA.copy(this.lightColor).multiply(cB.setRGB(0.86, 0.66, 0.44));
       this.hemi.groundColor.lerp(cA, 0.5 * day * Math.min(1, this.sunDir.y * 2.5 + 0.25));
+    }
+    if (storm > 0) {
+      // slate, not violet: the dusk's pink and the night's indigo are both shut out
+      this.hemi.color.lerp(cA.setRGB(0.42, 0.56, 0.74), 0.8 * storm);
+      this.hemi.groundColor.lerp(cA.setRGB(0.2, 0.25, 0.32), 0.8 * storm);
     }
     let hemiI = k.hemiI * (1 - this.w.dim * 0.45) + this.flash * 1.5;
     if (im > 0.001 && il) {
@@ -350,11 +370,13 @@ export class Environment {
     // overcast greys everything toward a flat slate
     const dim = this.w.dim;
     // (a storm goes past slate to navy: the deck is thick enough to shut the daylight out)
-    const grey = cB.setRGB(0.36, 0.4, 0.46).lerp(cA.setRGB(0.064, 0.088, 0.145), smooth(0.3, 0.42, dim)).multiplyScalar(lerp(1, 0.16, k.night));
+    const grey = cB.setRGB(0.36, 0.4, 0.46).lerp(cA.setRGB(0.07, 0.1, 0.145), smooth(0.3, 0.42, dim)).multiplyScalar(lerp(1, lerp(0.16, 0.34, storm), k.night));
     su.uZenith.value.lerp(grey, dim * 1.5 > 1 ? 1 : dim * 1.5);
-    su.uHorizon.value.lerp(cA.copy(grey).multiplyScalar(1.5), Math.min(1, dim * 1.6));
-    su.uCloudLit.value.lerp(cA.copy(grey).multiplyScalar(1.7), Math.min(1, dim * 1.9));
-    su.uCloudDark.value.lerp(cA.copy(grey).multiplyScalar(0.55), Math.min(1, dim * 1.9));
+    su.uHorizon.value.lerp(cA.copy(grey).multiplyScalar(1.5), Math.max(storm, Math.min(1, dim * 1.6)));
+    su.uHaze.value.lerp(cA.copy(grey).multiplyScalar(1.3), Math.max(storm, Math.min(1, dim * 1.6)));
+    su.uSunColor.value.lerp(cA.setRGB(GRADE.stormKey[0], GRADE.stormKey[1], GRADE.stormKey[2]), storm);
+    su.uCloudLit.value.lerp(cA.copy(grey).multiplyScalar(1.7), Math.max(storm, Math.min(1, dim * 1.9)));
+    su.uCloudDark.value.lerp(cA.copy(grey).multiplyScalar(0.55), Math.max(storm, Math.min(1, dim * 1.9)));
     su.uSunGlow.value = sunUp * (1 - Math.min(1, dim * 2.2));
     su.uSunset.value = k.sunset * (1 - Math.min(1, dim * 2));
     su.uNight.value = k.night * (1 - Math.min(1, dim * 2.4));
@@ -378,11 +400,14 @@ export class Environment {
     // fog
     mixHex(this.fog.color, a.fog, b.fog, t);
     this.fog.color.lerp(cA.copy(su.uHorizon.value), Math.min(1, dim * 1.2));
+    this.fog.color.lerp(cA.setRGB(GRADE.stormSlate[0], GRADE.stormSlate[1], GRADE.stormSlate[2]).multiplyScalar(lerp(1, 0.55, k.night)), 0.85 * storm);
     let fogD = k.fogD * this.w.fogMul;
     const fogSun = FOGX[1];
     mixHex(cB, a.fogSun, b.fogSun, t);
     cB.lerp(this.fog.color, 1 - su.uSunGlow.value * 0.9);
-    let hf = 0.05, linD = SKYLOOK.airLin * this.w.fogMul;
+    // rain lays a mist on the ground: the air thickens most in the first few metres
+    let hf = 0.05 + 0.07 * this.w.rain, linD = SKYLOOK.airLin * this.w.fogMul;
+    fogD *= 1 + 0.9 * this.w.rain;
     if (im > 0.001 && il) {
       this.fog.color.lerp(cA.setHex(il.fog), im); cB.lerp(cA, im);
       // the rooms were tuned when this term was stuck at the dense air of a camera 40 m underground: keep that weight
@@ -404,9 +429,21 @@ export class Environment {
     // lamps and furnaces already carry the street at dusk, while the sun is still on the horizon
     const lampK = Math.min(1, Math.max(dark, k.sunset * 0.7));
     YARD[8] = lerp(lerp(GRADE.lampDay, GRADE.lampNight, lampK), GRADE.lampIn, im);
-    // floors turn glossy enough to catch that light after dark and indoors; rain has its own wetness term
-    GU.uSheen.value = Math.max(Math.max(k.night, lampK * 0.8) * GRADE.sheenNight, im * GRADE.sheenIn) * (1 - 0.45 * GU.uWet.value);
-    YARD[16] = Math.max(GU.uSheen.value, GU.uWet.value); YARD[17] = GRADE.streak;
+    {
+      // wet ground (gfx/lighting.ts): floors are glossy enough to mirror the lamps after dark, indoors and
+      // in the Slagworks; rain soaks everything, fills the puddles and lays the sky on the ground
+      const wet = GU.uWet.value, out = 1 - im;
+      this.slagMix = damp(this.slagMix, !this.interior && focus.x > 120 && Math.abs(focus.z) < 82 ? 1 : 0, 1.2, dt);
+      const base = Math.max(Math.max(k.night, lampK * 0.8) * GRADE.sheenNight * out, im * GRADE.sheenIn, this.slagMix * out * GRADE.sheenSlag);
+      GU.uSheen.value = base;
+      YARD[16] = Math.max(base * (1 - 0.3 * wet), wet); YARD[17] = GRADE.streak;
+      YARDW[0] = wet;
+      YARDW[1] = Math.max(this.puddles * GRADE.pudRain * out, GRADE.pudNight * k.night * out, GRADE.pudSlag * this.slagMix * out, GRADE.pudIn * im);
+      YARDW[2] = GRADE.skySheen * Math.max(wet, 0.45 * base * out);
+      YARDW[3] = lerp(0.1, 0.34, Math.min(1, this.w.dim * 2.4));
+      const nf = GRADE.nightFill, nk = nf[3] * dark * out;
+      YARDW[8] = nf[0] * nk; YARDW[9] = nf[1] * nk; YARDW[10] = nf[2] * nk;
+    }
     {
       // the rim on every character: the key light's own hue by day and indoors, moon blue after dark
       cA.copy(this.lightColor).multiplyScalar(1 / Math.max(this.lightColor.r, this.lightColor.g, this.lightColor.b, 1e-3));
@@ -429,7 +466,12 @@ export class Environment {
 
     // wind + wetness
     GU.uWind.value.z = damp(GU.uWind.value.z, this.w.wind, 0.5, dt);
-    GU.uWet.value = damp(GU.uWet.value, this.w.wet * (1 - im), 0.15, dt);
+    {
+      const tw = this.w.wet, raining = this.w.rain > 0.05;
+      this.wetness = damp(this.wetness, tw, tw > this.wetness ? 0.15 : 0.012, dt);
+      this.puddles = damp(this.puddles, raining ? Math.min(1, this.w.rain * 1.3) : 0, raining ? 0.07 : 0.006, dt);
+      GU.uWet.value = this.wetness * (1 - im);
+    }
 
     // gusts: in rain and storm the wind comes in surges that bend cloth, crowns and grass further, then lets go
     {
@@ -486,7 +528,6 @@ export class Environment {
     this.sky.mesh.updateMatrixWorld();
 
     this.updateEnvMap(renderer);
-    void focus;
   }
   private lastInterior: InteriorLook | null = null;
 

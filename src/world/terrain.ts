@@ -130,6 +130,9 @@ precision highp sampler2DArray;
 uniform sampler2DArray uTexA; uniform sampler2DArray uTexN; uniform sampler2D uColorMap; uniform sampler2D uSplat; uniform sampler2D uNoise; uniform float uWet;
 varying vec3 vWPos; varying vec3 vWNor;
 vec3 gTerrN; float gTerrR;
+// how much of this ground can shine and hold a puddle when wet (gfx/lighting.ts): bare earth yes, turf no
+float gTerrSoil;
+#define YARD_SOIL gTerrSoil
 ${STORY_GLSL}`)
         .replace('#include <map_fragment>', /* glsl */ `{
   vec2 muv = (vWPos.xz + ${HALF.toFixed(1)}) / ${(HALF * 2).toFixed(1)};
@@ -205,6 +208,7 @@ ${STORY_GLSL}`)
   storyGround(st, vWPos, alb, gTerrR, stTilt, 1.0 - rw, length(vWPos - cameraPosition));
   diffuseColor.rgb *= alb * mix(1.0, 0.78, uWet);
   gTerrR *= mix(1.0, 0.55, uWet);
+  gTerrSoil = (1.0 - cm.a) * (1.0 - 0.5 * rw);
   // tangent-ish normal perturbation in world space
   vec2 nxy = mix(sN.xy, rN.xy, rw) * 2.0 - 1.0;
   vec3 tx = normalize(cross(wn, vec3(0.0, 0.0, 1.0)) + vec3(1e-4, 0.0, 0.0));

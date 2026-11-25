@@ -323,7 +323,8 @@ export class Chunks {
     const power = (Math.min(glow, 4) * Math.sqrt(area) * kind) / n;
     for (let b = 0; b < n * 7; b += 7) {
       const k = acc[b + 6];
-      if (k > 0) addLamp(acc[b] / k, acc[b + 1] / k, acc[b + 2] / k, acc[b + 3] / k, acc[b + 4] / k, acc[b + 5] / k, power);
+      // (its width across: what its streak on wet ground is as wide as)
+      if (k > 0) addLamp(acc[b] / k, acc[b + 1] / k, acc[b + 2] / k, acc[b + 3] / k, acc[b + 4] / k, acc[b + 5] / k, power, Math.min(3.5, axis === 1 ? Math.max(mid, 0.12) : big / n));
     }
   }
 

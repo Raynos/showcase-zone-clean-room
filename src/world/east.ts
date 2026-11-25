@@ -7,6 +7,7 @@ import type { Game, System } from '../game';
 import { barrierMat, portalMat, shaftMat } from '../gfx/energy';
 import { SP } from '../gfx/fx';
 import type { Geo } from '../gfx/geo';
+import { addGlow, type Glow } from '../gfx/lighting';
 import { T } from '../gfx/textures';
 import type { Mob } from '../systems/mobs';
 import { BANDS, BAND_GATES, GAUNTLET, PAL, TITAN_GATE, VAULT_PORTAL, type BandGate } from './layout';
@@ -197,7 +198,7 @@ export class East implements System {
   private doors: Door[] = [];
   private titanDoor!: Door;
   private beaconLit: boolean[] = [];
-  private beaconFx: Array<{ shaft: THREE.Mesh; lamp: THREE.Mesh; x: number; y: number; z: number }> = [];
+  private beaconFx: Array<{ shaft: THREE.Mesh; lamp: THREE.Mesh; glow: Glow; x: number; y: number; z: number }> = [];
   private t = 0; private checkT = 0;
   // gauntlet
   gWave = -1; private gMobs: Mob[] = []; private gDelay = 0; private gRun = 0; private gState: 'idle' | 'pre' | 'fight' | 'between' | 'done' = 'idle';
@@ -264,7 +265,9 @@ export class East implements System {
       lamp.position.set(b.x, y + 8.8, b.z); g.scene.add(lamp);
       const shaft = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 0.9, 150, 14, 1, true), shaftMat(0xffb04a, 1.6));
       shaft.position.set(b.x, y + 8.8 + 75, b.z); shaft.visible = false; shaft.renderOrder = 4; g.scene.add(shaft);
-      this.beaconFx.push({ shaft, lamp, x: b.x, y: y + 8.8, z: b.z });
+      // a lit beacon is a hero light: it rays through rain and lights its tower, the ground and whoever stands by it (gfx/lighting.ts)
+      const glow = addGlow(b.x, y + 8.8, b.z, 0xffa64a, { power: 4.2, size: 1.7, rays: 1, reach: 44, on: false });
+      this.beaconFx.push({ shaft, lamp, glow, x: b.x, y: y + 8.8, z: b.z });
       addEmitter(g, { loop: 'fire', x: b.x, y: y + 4, z: b.z, r: 24, vol: 0.7, on: () => this.beaconLit[i] });   // a lit beacon burns
       this.beaconLit[i] = !!st.flag('beacon_' + i);
       if (this.beaconLit[i]) this.lightBeacon(i, true);
@@ -353,13 +356,14 @@ export class East implements System {
     m.position.set(x, y, z); m.rotation.y = yaw; this.game.scene.add(m);
     addEmitter(this.game, { loop: 'portal', x, y, z, r: 20, vol: 0.7 });
     this.portals.push({ mat });
+    addGlow(x, y, z, c1, { power: 2.2, size: r * 0.8 });
     return mat;
   }
   private lightBeacon(i: number, silent: boolean) {
     const g = this.game, b = this.beaconFx[i];
     this.beaconLit[i] = true;
     (b.lamp.material as THREE.MeshBasicMaterial).color.setRGB(6, 3.2, 1.0);
-    b.shaft.visible = true;
+    b.shaft.visible = true; b.glow.on = true;
     if (!silent) {
       _v.set(b.x, b.y, b.z);
       g.fx.explosion(_v, 1.6, 0xffb04a); g.cameraRig.shake(0.3); g.sfx('beacon_lit');
