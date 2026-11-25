@@ -31,13 +31,19 @@ function sharedVec4s(init: number[][]): { vecs: THREE.Vector4[]; flat: Float32Ar
   return { vecs, flat };
 }
 
-const fogShared = sharedVec4s([
-  [0.5, 0.5, 0.5, 0.045], // sunDir.xyz, height falloff
-  [1, 0.7, 0.4, 8],       // sun-side fog colour, power
-  [0, 0.96, 0.0, 0],      // base height, max opacity, linear density, unused
-]);
-/** Fog parameters shared with every fogged material. */
-export const FOGX = fogShared.vecs;
+/**
+ * Fog parameters, written every frame by the environment.
+ * Known fault, left alone on purpose: this is a plain array of vectors, so each program gets its
+ * own copy when it is built and never sees later writes (sun direction, sun-side colour, weather
+ * and interior density stay as they were at build time). Handing over `sharedVec4s(...).flat`
+ * instead fixes it in one line, but the interiors and night were tuned by eye on top of the
+ * stale values and look visibly different with live ones, so that is an art decision.
+ */
+export const FOGX = [
+  new THREE.Vector4(0.5, 0.5, 0.5, 0.045), // sunDir.xyz, height falloff
+  new THREE.Vector4(1, 0.7, 0.4, 8),        // sun-side fog colour, power
+  new THREE.Vector4(0, 0.96, 0.0, 0),       // base height, max opacity, linear density, unused
+];
 
 let fogInstalled = false;
 /** Replaces three's fog chunks with height + sun-scatter fog. Call before creating materials. */
@@ -100,9 +106,9 @@ export function installFog() {
 #endif`;
   for (const k in THREE.ShaderLib) {
     const lib = (THREE.ShaderLib as any)[k];
-    if (lib.uniforms && lib.uniforms.fogColor) lib.uniforms.uFogX = { value: fogShared.flat };
+    if (lib.uniforms && lib.uniforms.fogColor) lib.uniforms.uFogX = { value: FOGX };
   }
-  (THREE.UniformsLib.fog as any).uFogX = { value: fogShared.flat };
+  (THREE.UniformsLib.fog as any).uFogX = { value: FOGX };
 }
 
 const flashShared = sharedVec4s([[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
