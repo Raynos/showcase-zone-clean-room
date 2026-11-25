@@ -226,6 +226,7 @@ body.desktop .abtn .key { display: block; }
   padding: 9px 18px 9px 12px !important; border-radius: 26px; background: linear-gradient(180deg, #2a313bee, #14171cee) !important; border: 1.5px solid var(--cyan) !important; box-shadow: 0 4px 16px #000a, 0 0 18px #5ef0ff44;
   display: flex !important; align-items: center; gap: 8px; font-size: 15px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #fff !important; white-space: nowrap; }
 .ibtn.on { opacity: 1; transform: translate(-50%, 0) scale(1); pointer-events: auto; }
+.ibtn.on.down { transform: translate(-50%, 0) scale(.94); filter: brightness(1.5); transition: none; }
 /* landscape: the buttons are off to the side, so the prompt can sit low, above the tip strip */
 @media (max-height: 520px) { .ibtn { bottom: calc(104px + var(--sab)); } }
 .ibtn svg { color: var(--cyan); }

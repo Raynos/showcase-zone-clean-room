@@ -36,6 +36,8 @@ export const settingsPanel: PanelSpec = {
       h += toggle('invertY', 'Invert vertical look', 'swap', s.invertY) + toggle('autoFollow', 'Camera follows movement', 'dash', s.autoFollow);
       h += '<div class="pn-sec">Interface</div>' + toggle('dmgNumbers', 'Damage numbers', 'exclaim', s.dmgNumbers);
       h += toggle('lefty', 'Left-handed controls', 'swap', s.lefty);
+      h += toggle('haptics', 'Vibration on hits and presses', 'blast', s.haptics);
+      if (g.input.isTouch && g.haptics.mode === 'none') h += '<div class="pn-note">This browser offers no way to vibrate, so the vibration switch does nothing here.</div>';
       h += '<div class="pn-sec">Controls</div><div class="pn-ctl">';
       const C = (a: string, b: string, c: string) => `<div><b>${a}</b><span>${b}</span><em>${c}</em></div>`;
       h += C('Move', 'Left thumb, anywhere low-left', 'W A S D');
@@ -89,7 +91,7 @@ export const settingsPanel: PanelSpec = {
       dispose() { st.save(); },
       act(a, v) {
         if (a === 'quality') { s.quality = v; st.touch(); g.sfx('ui_click'); applyQuality(); render(); }
-        else if (a === 'toggle') { (s as any)[v] = !(s as any)[v]; st.touch(); g.sfx('ui_click'); render(); }
+        else if (a === 'toggle') { (s as any)[v] = !(s as any)[v]; st.touch(); g.sfx('ui_click'); if (v === 'haptics' && s.haptics) { g.haptics.enabled = true; g.haptics.heavy(); } render(); }
         else if (a === 'save') { g.savePos(); g.sfx('ui_click'); g.hud.toast('Game saved', 'good'); }
         else if (a === 'town') {
           host.confirm('Return to Brasswick?<small>You will be taken to the town square. Anything you are in the middle of out there is abandoned.</small>', 'Return', 'Stay')

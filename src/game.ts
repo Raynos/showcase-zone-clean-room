@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CameraRig } from './core/camera';
 import { Input } from './core/input';
+import { Haptics } from './core/haptics';
 import { Physics } from './core/physics';
 import { clamp, damp } from './core/util';
 import { placeholderHumanoid, placeholderRobot } from './entities/placeholder';
@@ -261,7 +262,9 @@ export class Game {
     a.loop?.('rain', inside ? 0 : env.w.rain * 0.9);
     a.loop?.('storm', inside ? 0 : storm ? 0.7 : 0);
   }
-  haptic(ms: number) { try { if (this.input.isTouch) navigator.vibrate?.(ms); } catch { /* unsupported */ } }
+  haptics = new Haptics();
+  /** A haptic tick: under 15 ms is a light tap, 45 and over a heavy pattern (core/haptics). */
+  haptic(ms: number) { if (this.input.isTouch) this.haptics.fire(ms); }
   hitStop(sec: number) { this.stopT = Math.max(this.stopT, sec); }
   slowMo(scale: number, sec: number) { this.slowK = scale; this.slowT = Math.max(this.slowT, sec); }
   makeRobot(kind: RobotKind, look: RobotLook): RobotRig {
@@ -402,6 +405,7 @@ export class Game {
     const inp = this.input;
     inp.lookSensitivity = this.state.d.settings.sens; inp.invertY = this.state.d.settings.invertY;
     this.hud.setMirror(this.state.d.settings.lefty);
+    this.haptics.enabled = this.state.d.settings.haptics;
     this.cameraRig.autoFollow = this.state.d.settings.autoFollow;
     inp.update(rdt);
     this.cameraRig.setStick(inp.moveX, inp.moveY);

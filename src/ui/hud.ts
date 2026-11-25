@@ -190,9 +190,11 @@ export class Hud {
     // interact prompt
     this.ibtn = el('button', 'ibtn', `<span class="ii">${icon('interact', 22)}</span><span class="il"></span><small>E</small>`);
     this.ibtnLabel = this.ibtn.querySelector('.il')!; this.ibtnIcon = this.ibtn.querySelector('.ii')!;
-    this.ibtn.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); g.input.press('interact'); });
-    this.ibtn.addEventListener('pointerup', () => g.input.release('interact'));
-    this.ibtn.addEventListener('pointercancel', () => g.input.release('interact'));
+    this.ibtn.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); this.ibtn.classList.add('down'); g.sfx('ui_click', { vol: 0.5 }); g.input.press('interact'); });
+    this.ibtn.addEventListener('pointerup', () => { this.ibtn.classList.remove('down'); g.input.release('interact'); });
+    this.ibtn.addEventListener('pointercancel', () => { this.ibtn.classList.remove('down'); g.input.release('interact'); });
+    // every HUD button answers a press with a tick (the action buttons send their own)
+    h.addEventListener('pointerdown', (e) => { const b = (e.target as Element | null)?.closest?.('button, .portrait, .mini, .tracker'); if (b && !b.classList.contains('abtn')) g.haptic(8); }, true);
     h.appendChild(this.ibtn);
 
     this.timerEl = el('div', 'ctimer', '<div class="cl"></div><div class="ct"></div><div class="cs"></div>'); h.appendChild(this.timerEl);
