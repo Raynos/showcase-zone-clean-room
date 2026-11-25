@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Physics } from '../core/physics';
 import { Geo } from '../gfx/geo';
 import { GU, installFog, worldMat } from '../gfx/material';
+import { loadModels } from '../gfx/models';
 import { QUALITY, Renderer } from '../gfx/renderer';
 import { buildNoiseTexture, buildTextureArrays, T } from '../gfx/textures';
 import { Chunks } from '../world/chunks';
@@ -39,6 +40,7 @@ export class Stage {
     const tex = buildTextureArrays(s.renderer.gl.capabilities.getMaxAnisotropy());
     GU.uTexA.value = tex.albedo; GU.uTexN.value = tex.normal; GU.uNoise.value = buildNoiseTexture();
     s.physics = await Physics.init();
+    await loadModels();
     if (opts.world) {
       s.terrain = new Terrain();
       s.terrain.build();

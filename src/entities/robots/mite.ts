@@ -1,72 +1,14 @@
 import type { RobotLook, RobotPose, RobotRig } from './types';
-import { Rig, T, addCrown, addFlag, addLight, bx, bump, easeOutBack, bounceOut, joint, recoil, ss, strike, strut } from './common';
+import { Rig, bump, easeOutBack, bounceOut, recoil, ss, strike } from './common';
 
 /** Crate Mite: a crate that grew legs and an appetite. */
 export function makeMite(look: RobotLook): RobotRig {
   const rig = new Rig('mite', look, 0.7, 0.42);
   const p = rig.paint, v = look.variant;
-  const chassis = rig.pivot(rig.inner, 0, 0.42, 0);
-
-  rig.part('body', chassis, 0, 0, 0, (g) => {
-    bx(g, 0.5, 0.36, 0.5, { bevel: 0.025, uv: 'fit', layer: T.CRATE, color: p.wood, grad: 0.72 });
-    // dark maw + tongue-red glow deep inside
-    g.box(0.4, 0.03, 0.4, { at: [0, 0.172, 0], color: 0x120c0a, layer: T.FLAT });
-    g.box(0.22, 0.02, 0.2, { at: [0, 0.19, -0.02], color: p.glow2 === p.glow ? 0xff6a3a : p.glow2, emit: 0.5, layer: T.FLAT });
-    // eyes peeking over the rim
-    for (const s of [-1, 1]) {
-      g.sphere(0.062, 8, 6, { at: [s * 0.11, 0.175, 0.13], color: p.glow, emit: p.e, layer: T.FLAT });
-      g.sphere(0.028, 6, 4, { at: [s * 0.105, 0.19, 0.182], color: 0x0c1014, layer: T.FLAT });
-    }
-    // lower teeth
-    for (let i = 0; i < 5; i++) g.cone(0.028, 0.075, 4, { at: [-0.18 + i * 0.09, 0.21, 0.225], color: 0xf6ecd6, layer: T.FLAT });
-    // iron corner straps
-    for (const sx of [-1, 1]) for (const sz of [-1, 1])
-      bx(g, 0.07, 0.38, 0.07, { at: [sx * 0.225, 0, sz * 0.225], bevel: 0.012, color: v === 'rare' ? p.trim : p.dark, layer: T.METAL });
-    // hip sockets
-    for (const s of [-1, 1]) for (const z of [0.17, 0, -0.17]) joint(g, s * 0.26, -0.09, z, 0.05, p.body);
-    if (v === 'night' || v === 'nightElite') {
-      addLight(g, 0, -0.13, 0.253, 0.34, 0.025, 0.012, p.glow2);
-      for (const s of [-1, 1]) addLight(g, s * 0.253, -0.13, 0, 0.012, 0.025, 0.34, p.glow);
-    }
-    if (v === 'elite') g.box(0.52, 0.09, 0.52, { at: [0, -0.06, 0], color: 0xffc23a, layer: T.STRIPE, uvScale: 3 });
-    if (v === 'nightElite') {
-      // Sir Nibbles' toothpick lance + pennant, couched on the right
-      strut(g, [-0.3, -0.02, -0.25], [-0.3, 0.06, 0.78], 0.03, 0.008, 6, { color: 0xe9d7ae, layer: T.PLANKS });
-      g.cone(0.07, 0.1, 8, { at: [-0.3, 0.0, 0.02], rot: [Math.PI / 2, 0, 0], color: p.trim, layer: T.METAL });
-      g.box(0.012, 0.09, 0.16, { at: [-0.3, 0.1, 0.5], color: 0xd8342a, layer: T.CANVAS });
-    }
-  });
-
-  const lid = rig.part('lid', chassis, 0, 0.18, -0.25, (g) => {
-    bx(g, 0.54, 0.09, 0.54, { at: [0, 0.045, 0.27], bevel: 0.022, uv: 'fit', layer: T.CRATE2, color: p.wood, grad: 0.85 });
-    g.box(0.44, 0.02, 0.44, { at: [0, -0.005, 0.27], color: 0x1a110d, layer: T.FLAT });
-    for (let i = 0; i < 4; i++) g.cone(0.028, 0.075, 4, { at: [-0.135 + i * 0.09, -0.04, 0.5], rot: [Math.PI, 0, 0], color: 0xf6ecd6, layer: T.FLAT });
-    // hinges
-    for (const s of [-1, 1]) g.cyl(0.03, 0.03, 0.1, 6, { at: [s * 0.16, 0.01, 0.0], rot: [0, 0, Math.PI / 2], color: p.dark, layer: T.METAL });
-    g.box(0.1, 0.05, 0.03, { at: [0, 0.03, 0.545], color: v === 'rare' ? p.trim : p.steel, layer: T.METAL }); // latch
-    if (v === 'rare') addFlag(g, 0.16, 0.09, 0.12, 0.34, p);
-    if (v === 'elite') addCrown(g, 0, 0.09, 0.27, 0.13, p);
-    if (v === 'nightElite') {
-      // tiny knight helm with a plume
-      g.sphere(0.17, 10, 6, { at: [0, 0.1, 0.27], scale: [1, 0.9, 1.05], color: 0xb9c2cc, layer: T.METAL });
-      g.box(0.24, 0.035, 0.03, { at: [0, 0.13, 0.435], color: 0x0c1014, layer: T.FLAT });
-      bx(g, 0.03, 0.2, 0.34, { at: [0, 0.2, 0.25], bevel: 0.01, color: p.trim, layer: T.METAL });
-      for (let i = 0; i < 4; i++) g.sphere(0.07 - i * 0.008, 6, 5, { at: [0, 0.32 + i * 0.035 - i * i * 0.012, 0.2 - i * 0.085], color: 0xd8342a, layer: T.CANVAS });
-    }
-  });
-
-  const legGeo = (set: number) => (g: Parameters<Parameters<typeof rig.part>[5]>[0]) => {
-    const zs = [0.17, 0, -0.17];
-    for (let i = 0; i < 3; i++) {
-      const s = (i + set) % 2 === 0 ? 1 : -1, z = zs[i];
-      const hip: [number, number, number] = [s * 0.26, -0.09, z], knee: [number, number, number] = [s * 0.47, 0.09, z * 1.35], foot: [number, number, number] = [s * 0.53, -0.42, z * 1.6];
-      strut(g, hip, knee, 0.034, 0.028, 5, { color: p.dark, layer: T.METAL });
-      strut(g, knee, foot, 0.03, 0.012, 5, { color: p.steel, layer: T.METAL });
-      joint(g, knee[0], knee[1], knee[2], 0.045, p.body);
-    }
-  };
-  const legsA = rig.part('legsA', chassis, 0, 0, 0, legGeo(0));
-  const legsB = rig.part('legsB', chassis, 0, 0, 0, legGeo(1));
+  // body: art/robots/mite.py. The bones are the parts this file has always animated.
+  const b = rig.useModel('mite', { glow2: p.glow2 === p.glow ? 0xff6a3a : p.glow2 });
+  const chassis = b.chassis, lid = b.lid, legsA = b.legsA, legsB = b.legsB;
+  void v;
 
   rig.socket('core', chassis, 0, 0, 0);
   rig.socket('head', lid, 0, 0.12, 0.27);

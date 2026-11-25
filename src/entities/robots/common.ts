@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { clamp01, damp } from '../../core/util';
 import { Geo } from '../../gfx/geo';
 import { WorldMaterial } from '../../gfx/material';
+import { instantiate } from '../../gfx/models';
+import type { Palette } from '../../gfx/models';
 import { T } from '../../gfx/textures';
 import type { RobotLook, RobotPose, RobotRig, RobotVariant } from './types';
 
@@ -68,6 +70,29 @@ export class Rig implements RobotRig {
     this.root.add(this.inner);
   }
 
+  /**
+   * Build the body from an authored model (art/robots/*.py). Returns its bones by name: they
+   * are posed exactly like the pivot groups and part meshes of the procedural rigs. Bones named
+   * `opt_<variant>` carry variant dressing and are dropped unless this rig is that variant
+   * (night dressing also shows on night elites).
+   */
+  useModel(name: string, extra: Palette = {}): Record<string, THREE.Bone> {
+    const p = this.paint, v = p.variant;
+    const unused = (bone: string) => {
+      if (!bone.startsWith('opt_')) return false;
+      const tag = bone.split('_')[1];
+      return !(tag === v || (tag === 'night' && v === 'nightElite'));
+    };
+    const inst = instantiate(name, { body: p.body, body2: p.body2, steel: p.steel, dark: p.dark, rubber: p.rubber, glow: p.glow, glow2: p.glow2, trim: p.trim, wood: p.wood, woodDark: p.woodDark, ...extra }, unused);
+    inst.material.rim.value.copy(this.mat.rim.value);
+    this.mat.dispose();
+    this.mat = inst.material; this.materials = [this.mat];
+    this.skinned = inst.mesh;
+    this.inner.add(inst.root);
+    this.stats.meshes++; this.stats.tris += inst.tris;
+    return inst.bones;
+  }
+  private skinned: THREE.SkinnedMesh | null = null;
   /** Empty pivot group. */
   pivot(parent: THREE.Object3D, x = 0, y = 0, z = 0): THREE.Group {
     const g = new THREE.Group();
@@ -121,6 +146,7 @@ export class Rig implements RobotRig {
   dispose() {
     this.root.removeFromParent();
     this.mat.dispose();
+    this.skinned?.skeleton.dispose();
   }
 }
 

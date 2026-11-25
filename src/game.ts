@@ -10,6 +10,7 @@ import { FX, SP } from './gfx/fx';
 import { GU, installFog } from './gfx/material';
 import { QUALITY, Renderer } from './gfx/renderer';
 import { buildNoiseTexture, buildTextureArrays, loadPaintedArrays } from './gfx/textures';
+import { MODEL_NAMES, loadModels } from './gfx/models';
 import { Combat } from './systems/combat';
 import { Interact } from './systems/interact';
 import { Loot } from './systems/loot';
@@ -87,6 +88,9 @@ export class Game {
     await tick();
     const tex = buildTextureArrays(this.renderer.gl.capabilities.getMaxAnisotropy());
     GU.uTexA.value = tex.albedo; GU.uTexN.value = tex.normal; GU.uNoise.value = buildNoiseTexture();
+    // characters and robots are authored models: they download now and are awaited before anything spawns
+    let modelsDone = 0, modelsTotal = 0;
+    const models = loadModels(MODEL_NAMES, this.renderer.gl.capabilities.getMaxAnisotropy(), (d, n) => { modelsDone = d; modelsTotal = n; });
     progress(0.25, 'RAISING THE YARD');
     await tick();
     this.physics = await Physics.init();
@@ -119,6 +123,8 @@ export class Game {
     this.quests = new Quests(this);
     this.movers = new Movers(this.physics);
     this.triggers = new Triggers(this);
+    progress(0.46, `UNCRATING THE CAST ${modelsDone}/${modelsTotal || MODEL_NAMES.length}`);
+    await models;
     progress(0.5, 'BUILDING BRASSWICK');
     await tick();
     const content = await import('./content');
