@@ -13,13 +13,31 @@
       if (!m.alive || m.state === 'dead' || m.state === 'spawn' && !m.aggro) continue;
       const d = Math.hypot(m.pos.x - p.x, m.pos.z - p.z);
       if (d > range || Math.abs(m.pos.y - p.y) > 12) continue;
+      m.__d = d;
       if (pred && !pred(m)) continue;
-      m.__d = d; out.push(m);
+      out.push(m);
     }
     return out.sort((a, b) => a.__d - b.__d);
   };
-  B.hostiles = (range = 30) => B.mobs(range, (m) => m.aggro && m.state !== 'return' && m.targetable);
-  B.threatened = (range = 13) => { const g = G(); return !g.player.dead && g.combat.enabled && B.hostiles(range).length > 0; };
+  /**
+   * Robots that are after us and that we would go and fight. One shooting across a ridge from a band whose
+   * gate is still shut is not chased over the ridge: its shots are dodged and that is all.
+   */
+  B.hostiles = (range = 30) => {
+    const g = G(), open = !g.interior && B.bandOpen && B.bandAt;
+    return B.mobs(range, (m) => m.aggro && m.state !== 'return' && m.targetable && (!open || m.__d < 6 || B.bandOpen(B.bandAt(m.pos.x, m.pos.z))));
+  };
+  /**
+   * Is something nearby worth stopping for? Robots far below our level are not: a level-12 player crossing the
+   * Crate Fields does not stop to fight every mite, they just keep running (unless hurt).
+   */
+  B.threatened = (range = 13) => {
+    const g = G(), st = g.state;
+    if (g.player.dead || !g.combat.enabled) return false;
+    const hurt = st.d.hp < st.maxHp * 0.5, lvl = st.d.level;
+    for (const m of B.hostiles(range)) if (hurt || m.level >= lvl - 4 || m.elite || m.isBoss) return true;
+    return false;
+  };
   /** Best guess at what just hurt us (for the death log). */
   B.blame = () => {
     const g = G(), p = g.player.pos;
@@ -308,9 +326,11 @@
   B.fight = async (opts = {}) => {
     const g = G(), st = g.state;
     let quiet = B.now(), unreached = B.now(), bestNear = 1e9;
+    const t0 = B.now();
     try {
       for (;;) {
         if (opts.until && opts.until()) return 'until';
+        if (opts.maxSec && B.now() - t0 > opts.maxSec) return 'budget';
         const hs = B.hostiles(opts.range ?? 28);
         let m = B.pickTarget(hs, opts.prefer);
         if (!m && opts.focus && opts.focus.alive && opts.focus.targetable) { m = opts.focus; m.__d = B.d2(m.pos, g.player.pos); }
@@ -330,7 +350,7 @@
         if (near < bestNear - 0.5) { bestNear = near; unreached = B.now(); }
         if (near > 6 && B.now() - unreached > 4 && !g.interior) {
           B.setAttack(false);
-          await B.goTo(m.pos.x, m.pos.z, { r: 4, fight: false, timeout: 6, noAvoid: true, until: () => !m.alive });
+          await B.goTo(m.pos.x, m.pos.z, { r: 4, fight: false, timeout: 6, noAvoid: true, roadOnly: true, until: () => !m.alive });
           unreached = B.now(); bestNear = 1e9;
         }
         if (opts.focus && !opts.focus.aggro && B.now() - unreached > 15) return 'clear';

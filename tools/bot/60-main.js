@@ -47,7 +47,8 @@
     else { B.rep = B.newReport(B.cfg); B.mem = {}; }
     B.done = false; B.started = false; B.running = true;
     B.hook();
-    g.state.events.on('flag', () => B.nav.invalidate());
+    // a gate opening (an elite dies, level 10 unlocks the service gate) changes where we may walk
+    if (!g.__pbNavHook) { g.__pbNavHook = true; g.state.events.on('flag', () => B.nav.invalidate()); g.state.events.on('levelUp', () => B.nav.invalidate()); }
     requestAnimationFrame(B.frame);
     B.main();
     return B.resumed ? 'resumed' : 'started';

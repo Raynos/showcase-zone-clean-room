@@ -185,9 +185,7 @@
       case 'ascent': case 'bossWait': {
         B.setGoal('Training Vault: the climb (height ' + Math.round(pl.pos.y - VY) + ' m)');
         if (v.stage === 'ascent') await B.rest(0.9, 20);
-        const f0 = pl.pos.y;
-        await vaultClimb();
-        if (pl.pos.y > f0 + 1 && pl.grounded) B.progress('vault climb');
+        await vaultClimb();      // no progress credit here: a climb that takes three minutes is a stall worth a screenshot
         break;
       }
       case 'intro': B.setGoal('Training Vault: Vault Warden'); B.stop(); await B.sleep(0.5); break;

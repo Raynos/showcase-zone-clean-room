@@ -55,11 +55,25 @@
     if (ray(ax - px, ha + 0.95, az - pz, bx - px, hb + 0.95, bz - pz)) return false;
     return true;
   };
+  /**
+   * The six combat bands are divided by ridges a determined player can scramble over in places. The bot
+   * does not: like someone following the roads, it only changes band through a gate that stands open.
+   */
+  const bandOf = (x, z) => (x < 10 ? 0 : x < 120 ? (z > 80 ? 2 : z < -80 ? 6 : 1) : z > 80 ? 3 : z < -80 ? 5 : 4);
+  const lawful = (ax, az, bx, bz) => {
+    const a = bandOf(ax, az), b = bandOf(bx, bz);
+    if (a === b || nav.offRoad) return true;
+    const mx = (ax + bx) / 2, mz = (az + bz) / 2;
+    if (a === 0 || b === 0) return Math.abs(mz) < 14;       // the blast wall: Brasswick's east gate
+    for (const t of B.G().east.gates) if (t.want && Math.hypot(t.def.x - mx, t.def.z - mz) < 9) return true;
+    return false;
+  };
   const edgeOpen = (ix, iz, d) => {
     const i = (iz * N + ix) * 8 + d, v = nav.edge[i];
     if (v) return v > 0;
     const jx = ix + DX[d], jz = iz + DZ[d];
     let ok = jx >= 1 && jz >= 1 && jx <= N - 2 && jz <= N - 2;
+    if (ok) ok = lawful(nav.cx(ix), nav.cx(iz), nav.cx(jx), nav.cx(jz));
     if (ok) ok = nav.hop(nav.cx(ix), nav.cx(iz), nav.cx(jx), nav.cx(jz), H(ix, iz), H(jx, jz));
     nav.edge[i] = ok ? 1 : -1;
     if (jx >= 0 && jz >= 0 && jx < N && jz < N) nav.edge[(jz * N + jx) * 8 + ((d + 4) & 7)] = ok ? 1 : -1;
@@ -77,7 +91,7 @@
     let px = ax, pz = az, ph = nav.ground(ax, az);
     for (let i = 1; i <= n; i++) {
       const x = ax + (bx - ax) * i / n, z = az + (bz - az) * i / n, h = nav.ground(x, z);
-      if (!nav.hop(px, pz, x, z, ph, h)) return false;
+      if (!lawful(px, pz, x, z) || !nav.hop(px, pz, x, z, ph, h)) return false;
       if (nav.danger[nav.ix(z) * N + nav.ix(x)] > 0) return false;
       px = x; pz = z; ph = h;
     }
@@ -191,9 +205,10 @@
    */
   B.goTo = async (gx, gz, opts = {}) => {
     const g = B.G(), pl = g.player, r = opts.r ?? 1.6;
-    let path = null, idx = 0, planAt = -99, stuckN = 0, lastP = { x: pl.pos.x, z: pl.pos.z }, lastCheck = B.now(), replans = 0;
+    let path = null, idx = 0, planAt = -99, stuckN = 0, lastP = { x: pl.pos.x, z: pl.pos.z }, lastCheck = B.now(), replans = 0, offRoad = false;
     const t0 = B.now();
-    for (;;) {
+    try { return await go(); } finally { if (offRoad) { nav.offRoad = false; nav.invalidate(); } }
+    async function go() { for (;;) {
       const p = pl.pos, dGoal = Math.hypot(gx - p.x, gz - p.z);
       if (dGoal <= r) { B.stop(); return 'arrived'; }
       if (opts.until && opts.until()) { B.stop(); return 'until'; }
@@ -206,7 +221,16 @@
         if (!path || path.pts.length < 2) { B.stop(); return dGoal <= r + 2 ? 'arrived' : 'nopath'; }
         if (path.partial) {
           const e = path.pts[path.pts.length - 1];
-          if (Math.hypot(e[0] - gx, e[1] - gz) > (opts.partialOk ?? 0) + r) { B.stop(); B.lastNoPath = { x: gx, z: gz, end: e }; return 'nopath'; }
+          if (Math.hypot(e[0] - gx, e[1] - gz) > (opts.partialOk ?? 0) + r) {
+            // no way there by road. If we are somewhere the roads do not reach (the wrong side of a shut gate), scramble over the ridge once.
+            if (!nav.offRoad && !opts.roadOnly) {
+              nav.offRoad = true; nav.invalidate();
+              const alt = nav.path(p.x, p.z, gx, gz, r);
+              if (alt && !alt.partial) { B.note(`no road from (${Math.round(p.x)}, ${Math.round(p.z)}) to (${Math.round(gx)}, ${Math.round(gz)}): going over the ridge`); path = alt; idx = 1; offRoad = true; continue; }
+              nav.offRoad = false; nav.invalidate();
+            }
+            B.stop(); B.lastNoPath = { x: gx, z: gz, end: e }; return 'nopath';
+          }
         }
       }
       // follow
@@ -235,6 +259,6 @@
       }
       if (B.now() - t0 > (opts.timeout ?? 240)) { B.stop(); return 'stuck'; }
       await B.tick();
-    }
+    } }
   };
 })();

@@ -37,7 +37,7 @@
     startedAt: new Date().toISOString(), startLevel: B.G().state.d.level, startPlayTime: B.playTime(),
     wallSec: 0, gameSec: 0, reloads: 0, restores: 0,
     levels: { [B.G().state.d.level]: { wall: 0, game: 0 } },
-    bands: {}, quests: {}, deaths: [], stalls: [], notes: [], purchases: [],
+    bands: {}, quests: {}, deaths: [], stalls: [], notes: [], purchases: [], skipped: { ...(B.SKIP || {}) },
     kills: 0, outcome: { result: 'running', titanDead: false, where: '', why: '' },
   });
   B.save = () => { try { if (B.rep) localStorage.setItem(KEY, JSON.stringify({ rep: B.rep, mem: B.mem })); } catch { /* ignore */ } };

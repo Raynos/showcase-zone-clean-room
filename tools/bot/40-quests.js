@@ -78,13 +78,15 @@
   /** Find one matching robot (walking to a camp if none is in sight), fight, pick up. */
   B.huntOnce = async (spec) => {
     const g = G(), lvl = g.state.d.level;
-    const match = (m) => (!spec.kinds || spec.kinds.includes(m.kind)) && !m.elite && !m.isBoss && m.level <= lvl + (spec.over ?? 1) + 1 && m.state !== 'return' && m.targetable;
+    const match = (m) => (!spec.kinds || spec.kinds.includes(m.kind)) && !m.elite && !m.isBoss && m.level <= lvl + (spec.over ?? 1) + 1 && m.state !== 'return' && m.targetable
+      && (!spec.xp || m.level >= lvl - 3 || lvl <= 4)        // grinding: only robots that still pay
+      && B.bandOpen(B.bandAt(m.pos.x, m.pos.z)) && !(m.__skip > B.now());
     let cand = B.mobs(50, match)[0];
     if (!cand) {
       const camp = B.pickCamp(spec);
       if (!camp) return false;
       const d = camp.def;
-      const r = await B.goTo(d.x, d.z, { r: Math.max(4, d.r * 0.35), partialOk: d.r, until: () => B.mobs(30, match).length > 0 });
+      const r = await B.goTo(d.x, d.z, { r: Math.max(4, d.r * 0.35), partialOk: d.r, roadOnly: true, until: () => B.mobs(30, match).length > 0 });
       if (r === 'combat') { await B.fight(); await B.afterFight(); return true; }
       B.campBad = B.campBad || {};
       if (r === 'nopath' || r === 'stuck') { B.campBad[camp.__i] = B.now() + 240; B.note(`cannot reach ${d.kind} camp at ${d.x},${d.z}: ${r}`); return true; }
@@ -93,9 +95,9 @@
     }
     await B.rest(0.7, 25);
     if (!cand.alive) return true;
-    const r = await B.goTo(cand.pos.x, cand.pos.z, { r: 9, noAvoid: true, timeout: 40, until: () => !cand.alive || cand.aggro, fightRange: 11 });
-    if (r === 'nopath' || r === 'stuck') { cand.__skip = B.now() + 60; }
-    await B.fight({ focus: cand });
+    const r = await B.goTo(cand.pos.x, cand.pos.z, { r: 9, noAvoid: true, roadOnly: true, timeout: 40, until: () => !cand.alive || cand.aggro, fightRange: 11 });
+    if (r === 'nopath' || r === 'stuck') { cand.__skip = B.now() + 60; return true; }
+    await B.fight({ focus: cand, maxSec: 150 });
     await B.afterFight();
     return true;
   };
@@ -104,7 +106,7 @@
     const g = G(), d = slot.def;
     let m = slot.mob && slot.mob.alive ? slot.mob : null;
     if (!m) {
-      const r = await B.goTo(d.x, d.z, { r: 26, partialOk: 30, until: () => slot.mob && slot.mob.alive });
+      const r = await B.goTo(d.x, d.z, { r: 26, partialOk: 30, roadOnly: true, until: () => slot.mob && slot.mob.alive });
       if (r === 'combat') { await B.fight(); await B.afterFight(); return true; }
       if (r === 'nopath' || r === 'stuck') { B.note(`cannot reach ${d.name} at ${d.x},${d.z}: ${r}`); await B.sleep(3); return false; }
       m = await B.until(() => (slot.mob && slot.mob.alive ? slot.mob : null), 6);
@@ -115,7 +117,7 @@
       }
     }
     await B.rest(0.95, 40);
-    const r = await B.goTo(m.pos.x, m.pos.z, { r: 10, noAvoid: true, timeout: 60, until: () => !m.alive || m.aggro, fightRange: 9 });
+    const r = await B.goTo(m.pos.x, m.pos.z, { r: 10, noAvoid: true, roadOnly: true, timeout: 60, until: () => !m.alive || m.aggro, fightRange: 9 });
     if (r === 'nopath') { B.note(`cannot reach ${d.name}: no path`); await B.sleep(3); return false; }
     const hp0 = m.hp;
     await B.fight({ focus: m, prefer: (x) => x !== m && x.__d < 6 });
@@ -241,7 +243,19 @@
     if (g.interior === 'arena') return B.runArena();
     if (g.interior) { B.setGoal('inside ' + g.interior + ': finding the way out'); await B.sleep(2); return; }
     if (qs.status('q_titan') === 'done') { B.finish('complete', 'Cratefall turned in: the Crate Titan is destroyed and the chain is finished'); return; }
-    if (B.threatened(13)) { await B.fight(); await B.afterFight(); return; }
+    if (B.threatened(13)) {
+      // robots keep arriving in a busy camp: with business in town, fight for a while and then break away
+      const urgent = B.townWork().urgent;
+      const r = await B.fight({ maxSec: urgent ? 40 : 150 });
+      if (r === 'budget' && urgent) {
+        const safe = g.hooks.respawnPoint ? g.hooks.respawnPoint() : { x: -30, z: 6 };
+        B.setGoal('breaking away from the fight to go back to town');
+        await B.goTo(safe.x, safe.z, { r: 6, fight: false, timeout: 40 });
+        return;
+      }
+      await B.afterFight();
+      return;
+    }
     if (g.east.gState && g.east.gState !== 'idle') return B.runGauntlet();
     await B.rest(0.6, 25);
 
