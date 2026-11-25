@@ -17,7 +17,8 @@ import math
 
 import numpy as np
 
-from lib.kit import PI, SLOTS
+from lib.kit import PI, SLOTS, SURF
+from lib.paint import fbm, smooth
 
 SK = dict(hipY=0.89, hipX=0.1, hipDrop=0.05, thigh=0.39, shin=0.38, ankle=0.1, spine=0.11, chest=0.17, neck=0.26,
           headC=0.14, shX=0.2, shY=0.19, upper=0.28, fore=0.27)
@@ -58,8 +59,8 @@ class At:
 def cloth(m, slot, texel=1.0, rough=0.88): return m.mat(slot=slot, surf='cloth', metal=0.0, rough=rough, emit=0.0, texel=texel)
 def knit(m, slot, texel=1.0): return m.mat(slot=slot, surf='knit', metal=0.0, rough=0.95, emit=0.0, texel=texel)
 def leather(m, slot='leather', texel=1.0): return m.mat(slot=slot, surf='leather', metal=0.0, rough=0.6, emit=0.0, texel=texel)
-def skin(m, texel=1.0): return m.mat(slot='skin', surf='skin', metal=0.0, rough=0.62, emit=0.0, texel=texel)
-def hair(m, texel=1.0): return m.mat(slot='hair', surf='hair', metal=0.0, rough=0.5, emit=0.0, texel=texel)
+def skin(m, texel=1.0): return m.mat(slot='skin', surf='skin', metal=0.0, rough=0.74, emit=0.0, texel=texel)
+def hair(m, texel=1.0): return m.mat(slot='hair', surf='hair', metal=0.0, rough=0.6, emit=0.0, texel=texel)
 
 
 # ---- rings and weighted lofts ----------------------------------------------------------------
@@ -504,6 +505,192 @@ def on_skull(dx, dy, dz, out=0.0):
 
 
 # ---- face and skin painting ------------------------------------------------------------------
+_SWATCH = None
+
+
+def swatches():
+    """
+    Painted brush detail, generated once with the image tool (paint/swatches.prompt.txt) and kept
+    as paint/swatches.png: four greyscale tiles (cloth, leather, hair, skin). Each comes back as
+    detail around zero, with its own broad light and dark flattened out so it tiles.
+    """
+    global _SWATCH
+    if _SWATCH is not None: return _SWATCH
+    import os
+    import bpy
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'paint', 'swatches.png')
+    img = bpy.data.images.load(path)
+    w, h = img.size
+    px = np.empty(w * h * 4, dtype=np.float32); img.pixels.foreach_get(px)
+    bpy.data.images.remove(img)
+    g = px.reshape(h, w, 4)[::-1, :, :3].mean(axis=-1).astype(np.float64)       # top row first
+    out = {}
+    for name, (r, c) in (('cloth', (0, 0)), ('leather', (0, 1)), ('hair', (1, 0)), ('skin', (1, 1))):
+        q = g[r * h // 2:(r + 1) * h // 2, c * w // 2:(c + 1) * w // 2]
+        m = int(q.shape[0] * 0.06); q = q[m:-m, m:-m]                           # clear of the grid lines
+        # flatten the broad gradient: divide by a heavy box blur of itself
+        k = max(8, q.shape[0] // 6)
+        blur = q
+        for ax in (0, 1):
+            pad = np.pad(blur, [(k, k) if i == ax else (0, 0) for i in (0, 1)], mode='reflect')
+            cs = np.cumsum(pad, axis=ax)
+            cs = np.concatenate([np.zeros_like(np.take(cs, [0], axis=ax)), cs], axis=ax)
+            n = 2 * k + 1
+            blur = (np.take(cs, range(n, cs.shape[ax]), axis=ax) - np.take(cs, range(0, cs.shape[ax] - n), axis=ax)) / n
+        d = q / np.maximum(blur, 1e-3) - 1.0
+        out[name] = np.clip(d / max(d.std(), 1e-4) * 0.13, -0.5, 0.5)                # the same strength whatever the tile's contrast
+    _SWATCH = out
+    return out
+
+
+def tile(sw, u, v):
+    """Mirror-repeat bilinear lookup: u, v in tiles."""
+    h, w = sw.shape
+
+    def fold(t, n):
+        t = np.mod(t, 2.0); t = np.where(t > 1.0, 2.0 - t, t)
+        return t * (n - 1)
+    x = fold(u, w); y = fold(v, h)
+    x0 = np.clip(np.floor(x).astype(np.int64), 0, w - 2); y0 = np.clip(np.floor(y).astype(np.int64), 0, h - 2)
+    fx = x - x0; fy = y - y0
+    return (sw[y0, x0] * (1 - fx) + sw[y0, x0 + 1] * fx) * (1 - fy) + (sw[y0 + 1, x0] * (1 - fx) + sw[y0 + 1, x0 + 1] * fx) * fy
+
+
+def triplanar(sw, P, N, size):
+    """A tile wrapped over a surface from three sides, blended by which way the surface faces."""
+    w = np.abs(N) ** 4; w = w / np.maximum(w.sum(axis=-1, keepdims=True), 1e-6)
+    Q = P / size
+    return tile(sw, Q[..., 2], Q[..., 1]) * w[..., 0] + tile(sw, Q[..., 0], Q[..., 2]) * w[..., 1] + tile(sw, Q[..., 0], Q[..., 1]) * w[..., 2]
+
+
+def people_post(rgba, gb, cover):
+    """
+    The hand-painted pass over a person. The generic painter knows surfaces; this knows a body:
+    where cloth bunches at a joint, where a garment is seamed and stitched, where knees and elbows
+    fade, how hair falls in strand groups from the crown and catches a band of light, and that
+    skin runs warm where it is lit and cool where it turns away. Everything is a multiplier on
+    what the painter left, so palette tints still drive the colours.
+    """
+    P = gb['pos'].astype(np.float64)
+    N = gb['nor'].astype(np.float64)
+    surf = np.rint(gb['ids'][..., 0]).astype(np.int32)
+    tco = gb['tco'].astype(np.float64); tsz = gb['tsz'].astype(np.float64)
+    ao_l = np.clip(gb['ao'][..., 1], 0, 1).astype(np.float64)
+    x, y, z = P[..., 0], P[..., 1], P[..., 2]
+    H, W = surf.shape
+    mul = np.ones((H, W, 3)); add = np.zeros((H, W))
+    WARM = np.array([1.10, 1.0, 0.86]); COOL = np.array([0.90, 0.97, 1.08])
+
+    def tone(w, c):
+        nonlocal mul
+        mul = mul * (1 + w[..., None] * (np.asarray(c) - 1))
+
+    def value(w):
+        nonlocal mul
+        mul = mul * (1 + w)[..., None]
+    cl = (surf == SURF['cloth']) | (surf == SURF['knit'])
+    le = surf == SURF['leather']
+    sk = surf == SURF['skin']
+    hr = surf == SURF['hair']
+    wob = fbm(P, 7.0, 3, 201)
+    brush = fbm(P * np.array([3.0, 1.0, 3.0]), 16.0, 3, 207) - 0.5
+    ang = np.arctan2(N[..., 2], N[..., 0])
+    ty = np.clip(tco[..., 1] / np.maximum(tsz[..., 1], 1e-4), -1, 1)
+    edge_m = (1 - np.abs(ty)) * tsz[..., 1]                       # metres from the garment's top or bottom edge
+    garment = tsz[..., 1] > 0.055
+    leg = (y < Y_THIGH + 0.03) & (np.abs(x) > 0.02)
+    arm = (np.abs(x) > SK['shX'] - 0.035) & (y < Y_SHOULDER + 0.06) & (y > 0.75)
+    limb = leg | arm
+
+    # ---- cloth: brushwork, creases where a joint bunches it, seams, stitching, fading -----
+    w = cl.astype(np.float64)
+    tone(w * brush * 1.0, WARM)                                   # light strokes lean warm, dark ones cool
+    tone(w * -np.minimum(brush, 0) * 0.5, COOL)
+    Y_KNEE = Y_THIGH - SK['thigh']; Y_ELBOW = Y_SHOULDER - SK['upper']
+    joints = ((Y_KNEE, 0.085, leg, 0.021), (Y_KNEE - 0.19, 0.06, leg, 0.017), (Y_THIGH - 0.03, 0.05, leg, 0.019),
+              (Y_ELBOW, 0.07, arm, 0.018), (Y_ELBOW - 0.2, 0.05, arm, 0.015), (Y_SHOULDER - 0.03, 0.05, arm, 0.019),
+              (1.045, 0.04, ~limb, 0.02))
+    for yj, sig, where, period in joints:
+        g = np.exp(-((y - yj) / sig) ** 2) * where * cl
+        # each wrinkle wanders and breaks as it runs round the limb
+        ph = y * (2 * PI / period) + 2.2 * np.sin(ang * 2.0 + yj * 31.0) + 7.0 * wob
+        band = np.sin(ph)
+        gate = smooth(0.35, 0.65, fbm(P * np.array([1.0, 0.3, 1.0]), 11.0, 2, 211 + int(yj * 100)))
+        crease = smooth(0.45, 0.95, band) * gate
+        ridge = smooth(0.3, 0.9, np.sin(ph - 1.3)) * gate
+        value(-0.34 * g * crease)
+        add += 0.085 * g * ridge
+        tone(g * crease * 0.5, COOL)
+    # long soft folds hanging down a trouser leg and a shirt body
+    hang = np.sin(ang * 4.0 + 9.0 * wob + y * 5.0)
+    value(0.10 * hang * cl * garment * (1 - smooth(0.0, 0.05, -np.abs(y - Y_KNEE) + 0.06)))
+    # side seams: a dark line where the garment turns the corner, a row of pale stitches beside it
+    nz = np.abs(N[..., 2])
+    seamable = cl & garment & (np.abs(N[..., 1]) < 0.5)
+    value(-0.38 * (1 - smooth(0.012, 0.045, nz)) * seamable)
+    dash = np.sin(y * (2 * PI / 0.011)) > -0.1
+    stitch = (nz > 0.075) & (nz < 0.125) & dash & seamable
+    add += 0.11 * stitch
+    # hems: a turned edge, its shadow line and a stitch row
+    hem = (cl | le) & garment
+    value(-0.22 * (np.abs(edge_m - 0.016) < 0.0022) * hem)
+    add += 0.11 * ((np.abs(edge_m - 0.0105) < 0.0016) & (np.sin(ang * 46.0) > -0.2) & hem)
+    value(0.05 * (edge_m < 0.008) * hem)
+    # fading where the cloth takes the wear: knees in front, elbows behind, the seat
+    wear = np.exp(-((y - Y_KNEE) / 0.07) ** 2) * leg * smooth(0.2, 0.8, N[..., 2]) \
+        + np.exp(-((y - Y_ELBOW) / 0.06) ** 2) * arm * smooth(0.2, 0.8, -N[..., 2]) \
+        + np.exp(-((y - 0.9) / 0.07) ** 2) * (~limb) * smooth(0.5, 0.9, -N[..., 2])
+    speck = fbm(P, 60.0, 2, 219)
+    value(cl * wear * (0.12 + 0.10 * (speck - 0.5)))
+    tone(cl * wear * 0.35, (1.0, 1.0, 0.94))
+
+    # ---- leather: stitched edges, scuffs on the high points, dirt in the folds ------------
+    ew = np.abs(ty)
+    belt_like = le & ~garment
+    add += 0.12 * (belt_like & (ew > 0.60) & (ew < 0.74) & (np.sin(ang * 60.0) > -0.2))
+    value(-0.20 * smooth(0.82, 1.0, ew) * belt_like)
+    scuff = smooth(0.62, 0.8, fbm(P, 38.0, 3, 223)) * smooth(0.5, 0.9, ao_l)
+    add += 0.07 * scuff * le
+    value(-0.30 * (1 - ao_l) * le)
+    tone(le * (1 - ao_l) * 0.6, (1.0, 0.9, 0.78))
+    tone(le * brush * 0.8, WARM)
+
+    # ---- skin: warm where the light lands, cool where it turns away, never one flat colour --
+    up = N[..., 1] * 0.5 + 0.5
+    tone(sk * (up - 0.5) * 0.9, WARM)
+    tone(sk * np.maximum(0.5 - up, 0) * 0.8, COOL)
+    tone(sk * (fbm(P, 22.0, 3, 227) - 0.5) * 0.3, (1.12, 0.98, 0.92))
+    value(sk * 0.05 * (up - 0.5))
+
+    # ---- hair: strand groups falling from the crown, and a band of light across them --------
+    Q = P - np.array([0.0, Y_NECK + HC, 0.0])
+    r = np.maximum(np.linalg.norm(Q, axis=-1), 1e-4)
+    theta = np.arccos(np.clip(Q[..., 1] / r, -1, 1)); phi = np.arctan2(Q[..., 0], Q[..., 2])
+    C = np.stack([np.sin(phi) * 7.0, np.cos(phi) * 7.0, theta * 0.7 + r * 1.5], axis=-1)
+    clump = fbm(C, 1.0, 3, 231)
+    fine = fbm(C * np.array([3.3, 3.3, 1.0]), 1.0, 2, 233)
+    group = smooth(0.32, 0.68, clump)
+    value(hr * (0.42 * (group - 0.5) + 0.20 * (fine - 0.5)))
+    tone(hr * (group - 0.5) * 0.5, WARM)
+    out_facing = np.clip(np.sum(N * (Q / r[..., None]), axis=-1), 0, 1)
+    ring = np.exp(-((theta - (0.92 + 0.5 * (clump - 0.5))) / 0.11) ** 2) * smooth(0.15, 0.7, out_facing)
+    add += hr * ring * (0.10 + 0.22 * group) * (0.6 + 0.8 * fine)
+    value(-0.18 * hr * smooth(1.2, 2.2, theta) * (1 - out_facing))
+
+    # ---- painted brush detail over all of it ------------------------------------------------
+    sw = swatches()
+    value(cl * 0.6 * triplanar(sw['cloth'], P, N, 0.34))
+    value(le * 0.8 * triplanar(sw['leather'], P, N, 0.2))
+    value(sk * 0.28 * triplanar(sw['skin'], P, N, 0.25))
+    # hair strands run down the tile: wrap it round the head, crown at the top
+    value(hr * 0.9 * tile(sw['hair'], phi * (4.0 / (2 * PI)), (theta * HR + (r - HR)) / 0.2))
+
+    out = rgba.copy()
+    painted = (cl | le | sk | hr)[..., None]
+    out[..., :3] = np.where(painted, np.clip(out[..., :3] * mul + add[..., None] * mul, 0, 1), out[..., :3])
+    return out
+
+
 def face_post(rgba, gb, cover):
     """Paint what the generic painter cannot know: blush, lips, lash shadow, iris detail."""
     P = gb['pos'].astype(np.float64)
@@ -522,12 +709,16 @@ def face_post(rgba, gb, cover):
         mul = mul * (1 - w[..., None] * (1 - np.asarray(c)))
     for k in (1, -1):
         ex, ey = k * EYE[0], EYE[1] - HC
-        tint(0.6 * blob(k * 0.088, -0.066, 0.032, 0.024), (1.0, 0.88, 0.85))                 # cheek
-        tint(0.5 * blob(ex, ey + 0.004, 0.044, 0.042), (0.9, 0.82, 0.8))                  # socket
-        tint(0.4 * blob(ex, ey + 0.036, 0.04, 0.012), (0.86, 0.76, 0.76))                   # lid crease
-    tint(0.5 * blob(0, -0.048, 0.022, 0.018), (1.0, 0.9, 0.87))                              # nose
+        tint(0.85 * blob(k * 0.09, -0.064, 0.036, 0.027), (1.0, 0.80, 0.77))                 # cheek
+        tint(0.5 * blob(k * 0.1, -0.03, 0.03, 0.02), (1.05, 1.02, 0.97))                     # cheekbone light
+        tint(0.6 * blob(ex, ey + 0.004, 0.046, 0.044), (0.88, 0.78, 0.76))                  # socket
+        tint(0.6 * blob(ex, ey + 0.037, 0.042, 0.011), (0.80, 0.68, 0.68))                   # lid crease
+        tint(0.5 * blob(ex, ey - 0.036, 0.034, 0.009), (0.86, 0.76, 0.76))                   # under the eye
+    tint(0.75 * blob(0, -0.048, 0.022, 0.018), (1.0, 0.82, 0.78))                              # nose
+    tint(0.6 * blob(0, 0.07, 0.07, 0.035), (1.05, 1.03, 0.98))                               # forehead light
+    tint(0.7 * np.clip((-Q[..., 1] - 0.105) / 0.05, 0, 1), (0.86, 0.84, 0.9))                # under the jaw turns cool
     tint(0.5 * blob(0, -0.068, 0.016, 0.006), (0.76, 0.64, 0.62))                            # under the nose
-    tint(0.55 * blob(0, -0.108, 0.026, 0.007), (0.88, 0.70, 0.68))                            # lower lip
+    tint(0.7 * blob(0, -0.108, 0.027, 0.008), (0.90, 0.64, 0.62))                            # lower lip
     tint(0.45 * blob(0, -0.132, 0.03, 0.01), (0.84, 0.74, 0.72))                              # chin crease
     out[..., :3] = np.where(sk[..., None], np.clip(out[..., :3] * mul, 0, 1), out[..., :3])
 

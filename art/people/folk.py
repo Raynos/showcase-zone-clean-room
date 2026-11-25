@@ -23,7 +23,7 @@ from people import rook as K
 from people.base import At, HC, HR, SK, SIDES, Y_CHEST, Y_SHOULDER
 
 TEX = 1024
-BUILD = dict(ao_dist=0.14, edge_dist=0.016, edge_w=0.005, scale=1.0, chip=0.4, grime=0.3, ao_min=0.42, edge_other=0.25)
+BUILD = dict(ao_dist=0.14, edge_dist=0.016, edge_w=0.005, scale=1.0, chip=0.4, grime=0.3, ao_min=0.42, edge_other=0.25, quality=82)
 
 STRAW = 0xe0c070
 APRON = 0x7a5236
@@ -321,4 +321,4 @@ def make():
 
 
 def post(rgba, gb, cover):
-    return B.face_post(rgba, gb, cover)
+    return B.face_post(B.people_post(rgba, gb, cover), gb, cover)

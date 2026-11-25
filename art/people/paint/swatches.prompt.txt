@@ -1,0 +1,13 @@
+Use your image generation tool to create one square image and save it as swatches.png in the current directory. Do not write any other file.
+
+The image is a 2 by 2 grid of four flat, evenly lit, greyscale hand-painted texture swatches for the characters of a stylised action role-playing video game. Each swatch fills its quadrant exactly, edge to edge: no borders, no gaps, no labels, no text, no perspective, no objects, no drop shadows. Each swatch is a neutral value map, no colour at all, average brightness about 60 percent grey, showing only painted brush detail a texture artist would lay over a flat colour:
+
+Top left, work-shirt cloth: fine diagonal hatching brush strokes following a twill weave, soft painted fold shading with a few sharp crease lines and pale highlights beside them, visible brush marks.
+
+Top right, worn leather: creases, scuffs, pores, pale scratch marks, slightly darker blotches, visible brush marks.
+
+Bottom left, hair: long strand groups running straight from the top edge to the bottom edge, clumped locks, each lock with a few lighter and darker strands and a crisp pale highlight stroke, painterly.
+
+Bottom right, skin: very subtle, soft painterly mottling in broad smooth brush strokes, low contrast, with faint warm-up strokes; no features, no pores.
+
+Style: hand-painted game texture work, crisp readable strokes, uniform flat lighting across each swatch so it can be tiled, the detail evenly distributed with nothing special at the centre or the edges.

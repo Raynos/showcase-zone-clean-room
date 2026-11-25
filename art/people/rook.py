@@ -14,8 +14,8 @@ from lib.kit import Model, PI, SLOTS
 from people import base as B
 from people.base import At, HC, SK, SIDES, Y_CHEST, Y_HIPS, Y_NECK, Y_SHOULDER, Y_THIGH
 
-TEX = 1024
-BUILD = dict(ao_dist=0.14, edge_dist=0.016, edge_w=0.005, scale=1.0, chip=0.45, grime=0.35, ao_min=0.42, edge_other=0.25)
+TEX = 2048   # first person looks straight at his hands, forearms and whatever they hold
+BUILD = dict(ao_dist=0.14, edge_dist=0.016, edge_w=0.005, scale=1.0, chip=0.45, grime=0.35, ao_min=0.42, edge_other=0.25, quality=80)
 
 PACK = 0x566070
 PACK_LID = 0x6b7686
@@ -28,23 +28,31 @@ def gauntlets(m):
         F = 'armF_' + s
         cx = k * SK['shX']
         with At(m, F):
-            B.leather(m, 'glove', 1.1)
+            B.leather(m, 'glove', 1.9)
             R = [(-0.415, 0.066), (-0.396, 0.094), (-0.44, 0.085), (-0.5, 0.072), (-0.546, 0.06), (-0.568, 0.044)]
             B.wloft(m, [B.ell(Y_SHOULDER + y, r, r, cx=cx, seg=10) for y, r in R], [(F, 1.0)], close_start=False)
-            B.cloth(m, 'accent', 0.9)
+            B.cloth(m, 'accent', 1.6)
             R = [(-0.418, 0.09), (-0.388, 0.097), (-0.382, 0.102), (-0.408, 0.103), (-0.424, 0.092)]
             B.wloft(m, [B.ell(Y_SHOULDER + y, r, r, cx=cx, seg=10) for y, r in R], [(F, 1.0)], close_start=False, close_end=False)
             # the animation poses arm bones with +Z toward the elbow point (half a turn from this bind
             # pose), so what must end up on the outside of the arm is modelled on the inside here
             # knuckle-side armour plate
-            m.steel(texel=1.1)
+            m.steel(texel=1.9)
             m.box(0.03, 0.1, 0.066, at=(cx - k * 0.074, Y_SHOULDER - 0.475, 0), rot=(0, 0, -k * 0.1), bevel=0.01)
             if s == 'L':
                 # wrist computer
-                m.darkmetal(texel=1.2)
+                m.darkmetal(texel=1.9)
                 m.box(0.026, 0.085, 0.078, at=(cx - k * 0.092, Y_SHOULDER - 0.47, 0), rot=(0, 0, -k * 0.1), bevel=0.008)
                 m.glow(emit=1.2, texel=1.2)
                 m.box(0.01, 0.052, 0.05, at=(cx - k * 0.105, Y_SHOULDER - 0.468, 0), rot=(0, 0, -k * 0.1), bevel=0.003)
+        m.on(F)
+        # armoured glove: a knuckle bar and a plate on the back of the hand (hand frame: +Z knuckles,
+        # the back of the hand toward +k X)
+        m.on('hand_' + s)
+        m.steel(texel=2.6)
+        m.box(0.014, 0.092, 0.03, at=(k * 0.05, 0, 0.09), bevel=0.005)
+        B.leather(m, 'accent', 2.6)
+        m.box(0.008, 0.066, 0.05, at=(k * 0.047, 0, 0.046), bevel=0.003)
         m.on(F)
 
 
@@ -216,9 +224,9 @@ def make():
     B.torso(m, 'top', 'top2')
     B.belt(m, glow=True)
     B.neck(m)
-    B.arms(m, sleeve='cloth2', fore='cloth2', cuff=False)
+    B.arms(m, sleeve='cloth2', fore='cloth2', cuff=False, texel=1.5)
     gauntlets(m)
-    B.hands(m, 'glove')
+    B.hands(m, 'glove', texel=2.6)
     B.boots(m, 'boots', cuff=('fixed', GREY), toe=('fixed', 0x7b838d), welt='accent')
     jacket_extras(m)
     backpack(m)
@@ -235,7 +243,7 @@ def make():
 
 
 def post(rgba, gb, cover):
-    out = B.face_post(rgba, gb, cover)
+    out = B.face_post(B.people_post(rgba, gb, cover), gb, cover)
     # jacket: a zip down the front and a stitched hem
     P = gb['pos'].astype(np.float64)
     slot = np.rint(gb['ids'][..., 1]).astype(np.int32)
