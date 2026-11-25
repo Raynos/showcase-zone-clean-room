@@ -1,9 +1,16 @@
 import { QUALITY } from '../../gfx/renderer';
 import { icon } from '../icons';
-import { btn, type PanelSpec } from './common';
+import { btn, cap, type PanelSpec } from './common';
 
 const QN = ['auto', 'low', 'medium', 'high', 'ultra'];
 const QL: Record<string, string> = { auto: 'Auto', low: 'Low', medium: 'Med', high: 'High', ultra: 'Ultra' };
+const QD: Record<string, string> = {
+  auto: '<b>Auto</b> picks Medium on phones and High on computers.',
+  low: '<b>Low</b> for older phones: shorter view distance, lighter grass and shadows, no light shafts.',
+  medium: '<b>Medium</b> is tuned for current phones: full effects at a lower resolution.',
+  high: '<b>High</b> for laptops and desktops: sharper image, longer shadows, denser grass.',
+  ultra: '<b>Ultra</b> for strong desktop graphics cards: the sharpest shadows and the densest grass.',
+};
 
 export const settingsPanel: PanelSpec = {
   title: 'Settings', icon: 'gear', pause: true,
@@ -21,7 +28,8 @@ export const settingsPanel: PanelSpec = {
       const d = sliders[id], f = (d.get() - d.min) / (d.max - d.min);
       return `<div class="pn-set"><label>${icon(ic, 16)}${label}</label><div class="pn-slider" data-s="${id}"><div class="tr"><i style="width:${f * 100}%"></i><b style="left:${f * 100}%"></b></div></div><em>${d.fmt(d.get())}</em></div>`;
     };
-    const toggle = (id: string, label: string, ic: string, on: boolean) => `<div class="pn-set tg" data-a="toggle" data-v="${id}"><label>${icon(ic, 16)}${label}</label><div class="pn-switch${on ? ' on' : ''}"><i></i></div></div>`;
+    const toggle = (id: string, label: string, ic: string, on: boolean, sub = '') => `<div class="pn-set tg" data-a="toggle" data-v="${id}" role="switch" aria-checked="${on}"><label>${icon(ic, 18)}<span>${label}${sub ? `<small>${sub}</small>` : ''}</span></label><div class="pn-switch${on ? ' on' : ''}"><i></i></div></div>`;
+    const group = (inner: string) => `<div class="pn-group bev">${inner}</div>`;
     const applyQuality = () => {
       const coarse = matchMedia('(pointer: coarse)').matches;
       const q = QUALITY[s.quality === 'auto' ? (coarse ? 'medium' : 'high') : s.quality] ?? QUALITY.high;
@@ -29,16 +37,16 @@ export const settingsPanel: PanelSpec = {
     };
     const render = () => {
       let h = '<div class="pn-sec">Graphics</div>';
-      h += `<div class="pn-seg">${QN.map((q) => `<div class="${s.quality === q ? 'on' : ''}" data-a="quality" data-v="${q}">${QL[q]}</div>`).join('')}</div>`;
-      h += `<div class="pn-note fps">Frame rate <b class="fpsv">${Math.round(g.fps)}</b> fps · resolution adapts automatically to hold 60.</div>`;
-      h += '<div class="pn-sec">Audio</div>' + slider('sfx', 'Effects', 'bolt') + slider('music', 'Music', 'star');
-      h += '<div class="pn-sec">Camera</div>' + slider('sens', 'Look sensitivity', 'target') + slider('shake', 'Screen shake', 'blast');
-      h += toggle('invertY', 'Invert vertical look', 'swap', s.invertY) + toggle('autoFollow', 'Camera follows movement', 'dash', s.autoFollow);
-      h += '<div class="pn-sec">Interface</div>' + toggle('dmgNumbers', 'Damage numbers', 'exclaim', s.dmgNumbers);
-      h += toggle('lefty', 'Left-handed controls', 'swap', s.lefty);
-      h += toggle('haptics', 'Vibration on hits and presses', 'blast', s.haptics);
-      if (g.input.isTouch && g.haptics.mode === 'none') h += '<div class="pn-note">This browser offers no way to vibrate, so the vibration switch does nothing here.</div>';
-      h += '<div class="pn-sec">Controls</div><div class="pn-ctl">';
+      h += group(`<div class="pn-seg" role="radiogroup" aria-label="Quality">${QN.map((q) => `<div class="${s.quality === q ? 'on' : ''}" data-a="quality" data-v="${q}" role="radio" aria-checked="${s.quality === q}">${QL[q]}</div>`).join('')}</div>
+        <div class="pn-qd">${QD[s.quality] ?? ''}</div><div class="pn-note fps">Running at <b class="fpsv">${Math.round(g.fps)}</b> fps on <b>${cap(g.renderer.quality.name)}</b>. Resolution adapts on its own to hold 60.</div>`).replace('pn-group bev', 'pn-group bev pad');
+      h += '<div class="pn-sec">Audio</div>' + group(slider('sfx', 'Effects', 'bolt') + slider('music', 'Music', 'star'));
+      h += '<div class="pn-sec">Camera</div>' + group(slider('sens', 'Look speed', 'target') + slider('shake', 'Screen shake', 'blast')
+        + toggle('invertY', 'Invert vertical look', 'swap', s.invertY) + toggle('autoFollow', 'Camera follows movement', 'dash', s.autoFollow, 'Swings behind you as you run'));
+      let ctl = toggle('lefty', 'Left-handed controls', 'swap', s.lefty, 'Stick on the right, buttons on the left');
+      ctl += toggle('haptics', 'Vibration', 'blast', s.haptics, g.input.isTouch && g.haptics.mode === 'none' ? 'This browser cannot vibrate, so this does nothing here' : 'A buzz on hits and button presses');
+      ctl += toggle('dmgNumbers', 'Damage numbers', 'exclaim', s.dmgNumbers, 'Numbers over robots as you hit them');
+      h += '<div class="pn-sec">Controls and comfort</div>' + group(ctl);
+      h += '<div class="pn-sec">How to play</div><div class="pn-group bev pad pn-ctl">';
       const C = (a: string, b: string, c: string) => `<div><b>${a}</b><span>${b}</span><em>${c}</em></div>`;
       h += C('Move', 'Left thumb, anywhere low-left', 'W A S D');
       h += C('Look', 'Drag anywhere else · pinch to zoom', 'Mouse · wheel');

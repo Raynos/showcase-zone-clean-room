@@ -45,6 +45,8 @@ export interface SaveData {
   flags: Record<string, number>;
   playTime: number;
   settings: { quality: string; sfx: number; music: number; sens: number; invertY: boolean; autoFollow: boolean; shake: number; dmgNumbers: boolean; haptics: boolean; lefty: boolean };
+  /** the quest pinned to the tracker by the player (Quest Log); absent: the first active one */
+  track?: string;
 }
 
 const KEY = 'cratefall.save.v1';

@@ -1,21 +1,21 @@
 import { ITEMS } from '../../data/items';
-import { QUESTS, type QuestDef } from '../../data/quests';
+import { QUESTS, QUEST_BY_ID, type QuestDef } from '../../data/quests';
 import { WEAPONS } from '../../data/weapons';
 import type { WeaponId } from '../../entities/humanoid/types';
 import type { Game } from '../../game';
 import { icon } from '../icons';
-import { itemTile, scripHtml, type PanelSpec } from './common';
+import { art, btn, itemTile, scripHtml, type PanelSpec } from './common';
 
 /** Reward strip shared by the quest log and conversations. */
 export function rewardsHtml(q: QuestDef): string {
   let h = `<div class="pn-rew"><span class="rxp">${icon('star', 14)}${q.xp.toLocaleString('en-US')} XP</span>${scripHtml(q.scrip)}`;
   for (const [id, n] of q.items ?? []) h += `<span class="ri">${itemTile(id, null, { size: 18 })}${n > 1 ? n + '× ' : ''}${ITEMS[id]?.name ?? id}</span>`;
-  if (q.weapon) { const w = WEAPONS[q.weapon as WeaponId]; h += `<span class="rw">${icon(w.kind, 15)}${w.name}</span>`; }
+  if (q.weapon) { const w = WEAPONS[q.weapon as WeaponId]; h += `<span class="rw"><span class="pn-it">${art(w.id)}</span>${w.name}</span>`; }
   return h + '</div>';
 }
 export function objectivesHtml(g: Game, q: QuestDef): string {
   const p = g.quests.progress(q);
-  return '<div class="pn-objs">' + q.objectives.map((o, i) => `<div class="${p[i] >= o.n ? 'done' : ''}"><i>${p[i] >= o.n ? icon('check', 13, 3) : ''}</i><span>${o.text}</span>${o.n > 1 ? `<b>${p[i]} / ${o.n}</b>` : ''}</div>`).join('') + '</div>';
+  return '<div class="pn-objs">' + q.objectives.map((o, i) => `<div class="${p[i] >= o.n ? 'done' : ''}"><i>${p[i] >= o.n ? icon('check', 13, 3) : ''}</i><span>${o.text}</span>${o.n > 1 ? `<b>${p[i]} / ${o.n}</b><div class="pn-bar${p[i] >= o.n ? ' green' : ''}"><i style="transform:scaleX(${Math.min(1, p[i] / o.n)})"></i></div>` : ''}</div>`).join('') + '</div>';
 }
 const TIER = ['', 'Levels 1-6', 'Levels 7-12', 'Levels 13-20'];
 
@@ -24,13 +24,16 @@ export const questsPanel: PanelSpec = {
   make(host, arg) {
     const g = host.game, qs = g.quests;
     let tab: string = arg?.tab ?? 'active', sig = '', open: string | null = null;
-    const signature = () => tab + (open ?? '') + QUESTS.map((q) => qs.status(q.id)[0] + qs.progress(q).join('')).join('|');
+    const signature = () => tab + (open ?? '') + (qs.tracked ?? '') + QUESTS.map((q) => qs.status(q.id)[0] + qs.progress(q).join('')).join('|');
     const card = (q: QuestDef, st: string) => {
-      const ready = st === 'ready', isOpen = open === q.id || st === 'active' || ready;
-      let h = `<div class="pn-q ${st}${isOpen ? ' open' : ''}" data-a="q" data-v="${q.id}"><div class="qh"><i class="qm">${ready ? '?' : st === 'done' ? icon('check', 14, 3) : st === 'low' ? icon('lock', 13) : '!'}</i><div class="grow"><b>${q.name}</b><small>Level ${q.level} · ${g.npcName(q.giver)}</small></div>${ready ? '<em>Ready</em>' : ''}</div>`;
+      const ready = st === 'ready', isOpen = open === q.id || st === 'active' || ready, tracked = (st === 'active' || ready) && qs.active()[0]?.id === q.id;
+      let h = `<div class="pn-q pn-card bev stripe ${st}${tracked ? ' tracked' : ''}${isOpen ? ' open' : ''}" data-a="q" data-v="${q.id}"><div class="qh"><i class="qm">${ready ? '?' : st === 'done' ? icon('check', 14, 3) : st === 'low' ? icon('lock', 13) : '!'}</i><div class="grow"><b>${q.name}</b><small>Level ${q.level} · ${g.npcName(q.giver)}</small></div>${ready ? '<span class="pn-tag gold">Ready</span>' : tracked ? `<span class="pn-tag warm">${icon('target', 12)}Tracked</span>` : ''}</div>`;
       if (st === 'active' || ready) {
         h += objectivesHtml(g, q);
         h += `<div class="qt">${ready ? `Return to <b>${g.npcName(q.turnIn ?? q.giver)}</b> in Brasswick.` : q.mid}</div>` + rewardsHtml(q);
+        const canDrop = qs.canAbandon(q.id);
+        h += `<div class="pn-acts">${btn(tracked ? `${icon('check', 15, 2.6)}Tracking` : `${icon('target', 15)}Track`, 'track', q.id, tracked ? 'on' : 'pri')}${btn(`${icon('map', 15)}Map`, 'map', q.id, 'fit')}${btn('Abandon', 'drop', q.id, 'ghost fit' + (canDrop ? '' : ' off'))}</div>`;
+        if (!canDrop && !ready) h += '<div class="pn-note">This job handed you something to use, so it cannot be dropped.</div>';
       } else if (st === 'available') h += `<div class="qt">Speak to <b>${g.npcName(q.giver)}</b> in Brasswick.</div>` + (isOpen ? rewardsHtml(q) : '');
       else if (st === 'low') h += `<div class="qt">Requires level ${q.level}.</div>`;
       else if (st === 'done' && isOpen) h += `<div class="qt">${q.outro[q.outro.length - 1]}</div>`;
@@ -67,6 +70,12 @@ export const questsPanel: PanelSpec = {
       act(a, v) {
         if (a === 'tab') { tab = v; open = null; host.body.scrollTop = 0; render(); }
         else if (a === 'q') { open = open === v ? null : v; g.sfx('ui_click'); render(); }
+        else if (a === 'track') { qs.track(v); g.sfx('ui_click'); render(); }
+        else if (a === 'map') { qs.track(v); host.open('map', null, true); }
+        else if (a === 'drop') {
+          const q = QUEST_BY_ID[v];
+          host.confirm(`Abandon ${q.name}?<small>Progress is cleared. ${g.npcName(q.giver)} will offer it again.</small>`, 'Abandon', 'Keep it', true).then((ok) => { if (ok && qs.abandon(v)) render(); });
+        }
       },
     };
   },

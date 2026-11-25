@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { loadstats } from '../core/loadstats';
 import { WorldMaterial } from './material';
 import type { WorldMatOpts } from './material';
 
@@ -114,9 +115,11 @@ function loader() {
 }
 
 async function loadOne(name: string, maxAniso: number): Promise<Asset> {
+  // the loading screen counts these: the mesh reports bytes as they stream, the texture when it lands
+  const tg = loadstats.begin(`${ROOT}models/${name}.glb`, 'models', `${name} model`), tt = loadstats.begin(`${ROOT}models/${name}.webp`, 'models', `${name} paint`);
   const [gltf, texture] = await Promise.all([
-    loader().loadAsync(`${ROOT}models/${name}.glb`),
-    new THREE.TextureLoader().loadAsync(`${ROOT}models/${name}.webp`),
+    loader().loadAsync(`${ROOT}models/${name}.glb`, (e) => tg.progress(e.loaded, e.total)).then((r) => { tg.end(); return r; }, (e) => { tg.end(false); throw e; }),
+    new THREE.TextureLoader().loadAsync(`${ROOT}models/${name}.webp`).then((r) => { tt.end(); return r; }, (e) => { tt.end(false); throw e; }),
   ]);
   texture.flipY = false;
   texture.colorSpace = THREE.SRGBColorSpace;

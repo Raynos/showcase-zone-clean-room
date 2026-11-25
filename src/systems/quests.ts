@@ -153,7 +153,27 @@ export class Quests {
     const f = this.forGiver(npc);
     return f.ready.length ? 't' : f.offer.length ? 'y' : f.low.length ? 'g' : '';
   }
-  active(): QuestDef[] { return QUESTS.filter((q) => { const s = this.status(q.id); return s === 'active' || s === 'ready'; }); }
+  /** Active and ready quests; the one the player tracks comes first (the tracker and the waypoint follow it). */
+  active(): QuestDef[] {
+    const list = QUESTS.filter((q) => { const s = this.status(q.id); return s === 'active' || s === 'ready'; });
+    const t = this.tracked;
+    return t ? [...list.filter((q) => q.id === t), ...list.filter((q) => q.id !== t)] : list;
+  }
+  /** The quest the player pinned, while it is still in hand. */
+  get tracked(): string | null { const t = this.game.state.d.track; return t && this.game.state.d.quests[t] && this.game.state.d.quests[t].state !== 'done' ? t : null; }
+  track(id: string | null) { if (id) this.game.state.d.track = id; else delete this.game.state.d.track; this.game.state.touch(); this.game.state.events.emit('questUpdate', { id: id ?? '' }); }
+  /** Quests that hand over items or start world events when accepted cannot be dropped. */
+  canAbandon(id: string) { const q = QUEST_BY_ID[id]; return !!q && !q.onAccept && this.game.state.d.quests[id]?.state === 'active'; }
+  /** Drop a quest: it goes back on offer from its giver with progress cleared. */
+  abandon(id: string): boolean {
+    if (!this.canAbandon(id)) return false;
+    delete this.game.state.d.quests[id];
+    if (this.game.state.d.track === id) delete this.game.state.d.track;
+    this.game.state.touch();
+    this.game.hud.log(`Quest abandoned: ${QUEST_BY_ID[id].name}`, 'quest');
+    this.game.state.events.emit('questUpdate', { id });
+    return true;
+  }
 
   // ---- contracts ----
   contract(c: ContractDef) {

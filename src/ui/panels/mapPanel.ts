@@ -121,14 +121,27 @@ export const mapPanel: PanelSpec = {
       const b = bandAt(p.x, p.z);
       return b ? `${b.name} · Lv ${b.lo}-${b.hi}` : g.zoneName || 'The Proving Yard';
     };
+    /** the tracked quest and its next step; tapping it opens the quest log */
+    const questChip = () => {
+      const q = g.quests.active()[0];
+      if (!q) return '';
+      const p = g.quests.progress(q), ready = g.quests.status(q.id) === 'ready';
+      const i = q.objectives.findIndex((o, k) => p[k] < o.n), o = q.objectives[i];
+      const next = ready ? `Return to ${g.npcName(q.turnIn ?? q.giver)}` : o ? `${o.text}${o.n > 1 ? ` ${p[i]}/${o.n}` : ''}` : '';
+      return `<div class="pn-mapq" data-a="quest"><i class="qm">${icon(ready ? 'check' : 'star', 14, 2.6)}</i><div class="grow"><b>${q.name}</b><small>${next}</small></div></div>`;
+    };
+    let questSig = '';
     const render = () => {
+      questSig = JSON.stringify(g.state.d.quests) + (g.state.d.track ?? '');
       host.body.innerHTML = `<canvas class="pn-mapcv"></canvas>
         <div class="pn-maploc"></div>
-        <div class="pn-mapbtns"><div class="pn-mb" data-a="zin">+</div><div class="pn-mb" data-a="zout">−</div><div class="pn-mb cy" data-a="me">${icon('target', 20)}</div></div>
-        <div class="pn-mb lg" data-a="legend">${icon('exclaim', 18)}<span>Legend</span></div>
-        <div class="pn-legend${legend ? ' on' : ''}" data-a="legend">
-          <div><i class="you"></i>You</div><div><i class="dot q"></i>Point of interest</div><div><i class="dot r"></i>Robot</div><div><i class="dot e"></i>Elite</div>
-          <div><i class="ln road"></i>Road</div><div><i class="ln trail"></i>Trail</div><div><i class="ln track"></i>Riding track</div><div><i class="bx"></i>Test course</div><div><i class="wall"></i>Blast wall</div></div>`;
+        <div class="pn-mapbtns"><div class="pn-rb" data-a="zin" aria-label="Zoom in">+</div><div class="pn-rb" data-a="zout" aria-label="Zoom out">−</div><div class="pn-rb cy" data-a="me" aria-label="Centre on me">${icon('target', 20)}</div></div>
+        <div class="pn-mapleg"><div class="pn-btn sm" data-a="legend">${icon('map', 16)}Legend</div></div>
+        ${questChip()}
+        <div class="pn-legend bev${legend ? ' on' : ''}" data-a="legend"><h4>Legend</h4><div class="lg">
+          <div><i class="you"></i>You</div><div><i class="obj">${icon('star', 12, 2.4)}</i>Quest objective</div><div><i class="dot q"></i>Place of interest</div><div><i class="dot r"></i>Robot</div><div><i class="dot e"></i>Elite or boss</div>
+          <div><i class="ln road"></i>Road</div><div><i class="ln trail"></i>Trail</div><div><i class="ln track"></i>Riding track</div><div><i class="bx"></i>Test course</div><div><i class="wall"></i>Blast wall</div></div>
+          <div class="lb">${BANDS.map((b) => `<div>${b.name}<em>Lv ${b.lo}-${b.hi}</em></div>`).join('')}</div></div>`;
       cv = host.body.querySelector('canvas')!; ctx = cv.getContext('2d')!;
       locEl = host.body.querySelector('.pn-maploc'); lastLoc = '';
       w = 0; h = 0;
@@ -161,13 +174,16 @@ export const mapPanel: PanelSpec = {
         if (follow && !g.interior) { cx = p.x; cz = p.z; limit(); }
         draw();
         const loc = where() + ` · ${Math.round(p.x)}, ${Math.round(p.z)}`;
-        if (loc !== lastLoc && locEl) { lastLoc = loc; locEl.textContent = loc; }
+        if (loc !== lastLoc && locEl) { lastLoc = loc; locEl.innerHTML = `${icon('map', 14)}${loc}`; }
+        const qsig = JSON.stringify(g.state.d.quests) + (g.state.d.track ?? '');
+        if (qsig !== questSig) { questSig = qsig; host.body.querySelector('.pn-mapq')?.remove(); host.body.querySelector('.pn-maploc')?.insertAdjacentHTML('afterend', questChip()); }
       },
       dispose() { pts.clear(); },
       act(a) {
         if (a === 'zin') zoomAt(1.5, w / 2, h / 2);
         else if (a === 'zout') zoomAt(1 / 1.5, w / 2, h / 2);
         else if (a === 'me') { follow = true; cx = p.x; cz = p.z; zoom = Math.max(zoom, Math.min(w, h) / 230); limit(); g.sfx('ui_click'); }
+        else if (a === 'quest') host.open('quests', null, true);
         else if (a === 'legend') { legend = !legend; host.body.querySelector('.pn-legend')?.classList.toggle('on', legend); g.sfx('ui_click'); }
       },
     };

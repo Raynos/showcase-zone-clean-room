@@ -1,0 +1,31 @@
+The attached image ref.png shows inventory item icons from a stylised action MMO about a robot testing yard: chunky hand-painted objects with thick dark outlines, warm rim light, strong highlights, each sitting on a dark charcoal tile.
+
+Use your image generation tool to paint ONE square image, 1024x1024 pixels, and save it as sheet.png in the current directory. It is an icon sheet: a strict 4 by 4 grid of sixteen equal square cells, each exactly 256x256 pixels, with NO gutters, NO borders, NO frames, NO lines between cells, NO text, NO numbers and NO letters anywhere. The whole image has one uniform flat dark charcoal-blue background, colour #181c23, so the cells are only told apart by the objects.
+
+Each cell holds exactly one object, centred, seen at a three-quarter angle, filling about 70 percent of its cell and never touching the cell edge. Same painted style as the reference: stylised, chunky, hand-painted, thick dark outline, soft top-left key light, small bright specular highlights, a faint contact shadow under the object. Not photorealistic.
+
+Row 1, left to right:
+1. A dented rectangular plate of grey steel scrap with four rivets and a diagonal weld scar.
+2. A coil of bright copper wire with two small square steel plugs on its ends.
+3. A small boxy robot servo motor in dark steel and brass with a round output gear and one lens.
+4. A round focus lens of deep blue-cyan glass in a thick steel ring, no handle.
+
+Row 2:
+5. A squat power cell canister, steel body with a glowing cyan window and a cyan lightning mark.
+6. A hexagonal logic core: brass and orange armoured hexagon with a brightly glowing amber centre.
+7. A small iron-strapped wooden crate cracked open at the front, with a glowing violet-magenta core shining inside.
+8. A grey-green metal repair kit case with a handle and a pale green cross.
+
+Row 3:
+9. Three crossbow bolts in a bundle with crackling cyan electric tips.
+10. Three crossbow bolts in a bundle with small orange explosive canister tips.
+11. Three crossbow bolts in a bundle with long sharp violet steel needle tips.
+12. A polished brass cog wheel with eight teeth and a round hub.
+
+Row 4:
+13. A stubby ceramic fuse cylinder with brass end caps and a glowing orange filament in a glass window.
+14. A steel keycard with a cyan stripe and a small gold chip.
+15. A sturdy wooden shipping crate with iron corner straps and one cyan painted band.
+16. A thick gold coin stamped with a simple crate symbol, tilted slightly.
+
+After saving, reply with one line stating the file path and its size in pixels. If you have no image generation tool available, say so plainly and do not draw the image with code.

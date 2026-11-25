@@ -1,0 +1,31 @@
+The attached image ref.png shows inventory item icons from a stylised action MMO about a robot testing yard: chunky hand-painted objects with thick dark outlines, warm rim light, strong highlights, each sitting on a dark charcoal tile.
+
+Use your image generation tool to paint ONE square image, 1024x1024 pixels, and save it as sheet.png in the current directory. It is an icon sheet: a strict 4 by 4 grid of sixteen equal square cells, each exactly 256x256 pixels, with NO gutters, NO borders, NO frames, NO lines between cells, NO text, NO numbers and NO letters anywhere. The whole image has one uniform flat dark charcoal-blue background, colour #181c23, so the cells are only told apart by the objects.
+
+Each cell holds exactly one object, centred, lying on the diagonal from bottom-left to top-right (handle or stock at the bottom-left, tip or muzzle at the top-right), filling about 78 percent of its cell and never touching the cell edge. Same painted style as the reference: stylised, chunky, hand-painted, thick dark outline, soft top-left key light, small bright specular highlights. Not photorealistic. These are improvised workshop weapons built from tools and machine parts, an original design.
+
+Row 1, left to right:
+1. A short workshop machete: plain ground steel blade, wooden grip wrapped in cord.
+2. A simple training bow of laminated pale wood with a cord string.
+3. A pike made from a long rusty rebar rod with a welded steel spike head.
+4. A compact cordless crossbow shaped like a power drill, steel and yellow housing, cyan light.
+
+Row 2:
+5. A saber whose blade is a toothed bandsaw band on an orange steel frame with a motor grip.
+6. A heavy pneumatic rivet rifle: thick barrel, air tank, orange steel and brass.
+7. A compound bow with steel cams and cables, dark metal limbs, pale blue accents.
+8. A lance with a jackhammer piston head, yellow and steel, with a pneumatic hose.
+
+Row 3:
+9. An over-under double crossbow with two stacked steel limbs and cyan lights.
+10. A sword whose edge is a bright cyan electric arc held between two steel prongs.
+11. A sleek bow whose string is a glowing cyan arc of electricity.
+12. A spear with a tesla coil tip: copper rings and a pale blue spark.
+
+Row 4:
+13. A long rail rifle with twin parallel rails, coils and glowing cyan lights.
+14. A blacksmith forge hammer with a glowing orange hot head.
+15. A golden trophy cup shaped from a cog and two handles.
+16. A pair of heavy armoured boots with small cyan servo lights.
+
+After saving, reply with one line stating the file path and its size in pixels. If you have no image generation tool available, say so plainly and do not draw the image with code.

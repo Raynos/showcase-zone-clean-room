@@ -1,5 +1,6 @@
 import type { Game } from '../../game';
 import { ITEMS, RARITY_COLOR, type ItemDef } from '../../data/items';
+export { RARITY_COLOR };
 import { icon } from '../icons';
 
 /** One open panel's content controller. */
@@ -61,12 +62,40 @@ const G: Record<string, string> = {
 export function glyph(name: string, size = 32, color = 'currentColor'): string {
   return `<svg class="gly" viewBox="0 0 32 32" width="${size}" height="${size}" fill="none" stroke="${color}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="color:${color}">${G[name] ?? G.unknown}</svg>`;
 }
+// ---------------------------------------------------------------------------------------------
+// Painted icons: two 4x4 atlases in public/icons (art/icons/build.sh). Cell index, row-major.
+// ---------------------------------------------------------------------------------------------
+export const ART: Record<string, ['items' | 'gear', number]> = {
+  plate: ['items', 0], wire: ['items', 1], servo: ['items', 2], lens: ['items', 3],
+  cell: ['items', 4], core: ['items', 5], heart: ['items', 6], kit: ['items', 7],
+  bolt_shock: ['items', 8], bolt_blast: ['items', 9], bolt_pierce: ['items', 10], cog: ['items', 11],
+  fuse: ['items', 12], key: ['items', 13], crate: ['items', 14], coin: ['items', 15],
+  shop_blade: ['gear', 0], trainer_bow: ['gear', 1], rebar_pike: ['gear', 2], bolt_driver: ['gear', 3],
+  bandsaw: ['gear', 4], rivet_rifle: ['gear', 5], tension_bow: ['gear', 6], jack_lance: ['gear', 7],
+  twin_driver: ['gear', 8], arc_cutter: ['gear', 9], arcstring: ['gear', 10], stormrod: ['gear', 11],
+  rail_rifle: ['gear', 12], hammer: ['gear', 13], trophy: ['gear', 14], boots: ['gear', 15],
+};
+/** One painted icon (an atlas cell); falls back to the line glyph when there is no painting. */
+export function art(name: string, fallbackSize = 34, col = 'currentColor'): string {
+  const a = ART[name];
+  if (!a) return glyph(name, fallbackSize, col);
+  const i = a[1], x = (i % 4) / 3 * 100, y = Math.floor(i / 4) / 3 * 100;
+  return `<i class="art ${a[0]}" style="background-position:${x}% ${y}%"></i>`;
+}
 /** Square inventory tile for an item id. */
-export function itemTile(id: string, count: number | string | null, opts: { sel?: boolean; act?: string; size?: number; dim?: boolean } = {}): string {
+export function itemTile(id: string, count: number | string | null, opts: { sel?: boolean; act?: string; size?: number; dim?: boolean; cls?: string } = {}): string {
   const d: ItemDef | undefined = ITEMS[id];
   const col = d ? RARITY_COLOR[d.rarity] : '#8a909a';
   const a = opts.act ? ` data-a="${opts.act}" data-v="${id}"` : '';
-  return `<div class="pn-it${opts.sel ? ' sel' : ''}${opts.dim ? ' dim' : ''} r-${d?.rarity ?? 'common'}"${a} style="--rc:${col}">${glyph(d?.icon ?? 'unknown', opts.size ?? 34, col)}${count !== null && count !== '' ? `<b>${count}</b>` : ''}</div>`;
+  return `<div class="pn-it${opts.sel ? ' sel' : ''}${opts.dim ? ' dim' : ''}${opts.cls ? ' ' + opts.cls : ''} r-${d?.rarity ?? 'common'}"${a} style="--rc:${col}">${art(d?.icon ?? 'unknown', opts.size ?? 34, col)}${count !== null && count !== '' ? `<b>${count}</b>` : ''}</div>`;
+}
+/** Rarity of a weapon, from its level band: the shop and armoury frame weapons like items. */
+export function weaponRarity(level: number): 'common' | 'uncommon' | 'rare' | 'epic' { return level >= 15 ? 'epic' : level >= 10 ? 'rare' : level >= 5 ? 'uncommon' : 'common'; }
+/** Square tile for a weapon id, framed by its rarity. */
+export function weaponTile(id: string, opts: { sel?: boolean; act?: string; level: number; badge?: string; cls?: string }): string {
+  const r = weaponRarity(opts.level), col = RARITY_COLOR[r];
+  const a = opts.act ? ` data-a="${opts.act}" data-v="${id}"` : '';
+  return `<div class="pn-it${opts.sel ? ' sel' : ''}${opts.cls ? ' ' + opts.cls : ''} r-${r}"${a} style="--rc:${col}">${art(id)}${opts.badge ?? ''}</div>`;
 }
 export const scripHtml = (n: number | string, size = 14) => `<span class="pn-scrip">${icon('coin', size)}${typeof n === 'number' ? n.toLocaleString('en-US') : n}</span>`;
 export const btn = (label: string, act: string, v = '', cls = '', extra = '') => `<div class="pn-btn ${cls}" data-a="${act}"${v ? ` data-v="${v}"` : ''} ${extra}>${label}</div>`;

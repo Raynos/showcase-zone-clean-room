@@ -3,7 +3,7 @@ import { CONTRACTS } from '../../data/quests';
 import { OVERDRIVE_LEVEL, SKILLS, SLOT3_LEVEL, ULTIMATES, WEAPONS, skillLoadout, type SkillDef, type SkillKind } from '../../data/weapons';
 import type { WeaponId } from '../../entities/humanoid/types';
 import { icon } from '../icons';
-import { btn, cap, glyph, playTime, type PanelSpec } from './common';
+import { art, btn, cap, itemTile, playTime, weaponTile, type PanelSpec } from './common';
 import './loadout.css';
 
 const COURSES: Record<string, string> = { range: 'Weapon Range · Target Rush', physics: 'Physics Yard · Lock-up', riding: 'Riding Course', movers: 'Movers Run', grapple: 'Grapple Course', climb: 'Climb Yard · Summit', hover_score: 'Hoverboard Park · Session' };
@@ -32,7 +32,7 @@ export const charPanel: PanelSpec = {
       };
       const u = ULTIMATES[kind], od = lvl >= OVERDRIVE_LEVEL;
       return `<div class="pn-slot${st.d.active === slot ? ' active' : ''}" style="--wc:${col}"><div class="sl">Slot ${slot + 1}${st.d.active === slot ? '<em>In hand</em>' : ''}</div>
-        <div class="sw"><div class="wi">${icon(w.kind, 30)}</div><div class="grow"><b>${w.name}</b><small>${cap(w.kind)} · Power ${w.power}</small></div></div>
+        <div class="sw">${weaponTile(id, { level: w.level })}<div class="grow"><b>${w.name}</b><small>${cap(w.kind)} · Power ${w.power}</small></div></div>
         <div class="sk"><div class="ld-h">Skills<em>${three ? 'Three on the bar' : `Two on the bar · third slot at level ${SLOT3_LEVEL}`}</em></div>${sk.map(row).join('')}
         <div class="ld ult${od ? '' : ' off'}"><span>${icon(od ? 'overdrive' : 'lock', 16)}</span><div class="grow"><b>${u.name}</b><small>${u.desc}</small><i>${od ? 'Overdrive · spends the full meter' : `Overdrive opens at level ${OVERDRIVE_LEVEL}`}</i></div></div></div></div>`;
     };
@@ -43,18 +43,25 @@ export const charPanel: PanelSpec = {
       let h = '';
       if (tab === 'stats') {
         const next = st.xpNext, kills = Object.keys(d.kills).filter((k) => !k.startsWith('any')).reduce((s, k) => s + d.kills[k], 0);
-        h += `<div class="pn-hero"><div class="ph-disc">${icon('char', 40, 2)}<b>${d.level}</b></div><div class="grow"><div class="ph-name">${d.name}</div><div class="ph-title">${d.title ?? 'No title yet'}</div>
-          <div class="pn-bar cyb"><i style="transform:scaleX(${isFinite(next) ? Math.min(1, d.xp / next) : 1})"></i></div><div class="ph-xp">${isFinite(next) ? `${d.xp.toLocaleString('en-US')} / ${next.toLocaleString('en-US')} XP to level ${d.level + 1}` : 'Maximum level'}</div></div></div>`;
-        const S = (ic: string, label: string, val: string, sub = '') => `<div class="pn-stat"><span>${icon(ic, 18)}</span><div><small>${label}</small><b>${val}</b>${sub ? `<i>${sub}</i>` : ''}</div></div>`;
+        const slot = (i: 0 | 1) => {
+          const id = d.loadout[i];
+          if (!id) return `<div><div class="pn-it empty"></div><small>Slot ${i + 1}</small></div>`;
+          return `<div class="${d.active === i ? 'hand' : ''}" data-a="tab" data-v="gear">${weaponTile(id, { level: WEAPONS[id].level, cls: d.active === i ? 'sel' : '' })}<small>${d.active === i ? 'In hand' : `Slot ${i + 1}`}</small></div>`;
+        };
+        h += `<div class="ch-hero bev"><div class="ch-port"><img src="ui/rook.webp" alt="" onerror="this.remove()"><div class="ch-lvl">${d.level}</div></div><div class="ch-info"><div class="ph-name">${d.name}</div><div class="ph-title">${d.title ?? 'No title yet'}</div>
+          <div class="pn-bar cyb"><i style="transform:scaleX(${isFinite(next) ? Math.min(1, d.xp / next) : 1})"></i></div><div class="ph-xp">${isFinite(next) ? `${d.xp.toLocaleString('en-US')} / ${next.toLocaleString('en-US')} XP to level ${d.level + 1}` : 'Maximum level'}</div>
+          <div class="ch-gear">${slot(0)}${slot(1)}<div data-a="kits">${itemTile('kit', String(st.count('kit')))}<small>Kits</small></div></div></div></div>`;
+        const S = (ic: string, label: string, val: string, why: string, dc = '') => `<div class="pn-stat bev"><div class="pn-disc ${dc}">${icon(ic, 18)}</div><div class="grow"><small>${label}</small><i>${why}</i></div><b>${val}</b></div>`;
+        const fromUp = (id: string, name: string, none: string) => st.up(id) ? `${name} tier ${st.up(id)} from Pim` : none;
         h += '<div class="pn-sec">Attributes</div><div class="pn-stats">';
-        h += S('shield', 'Max health', String(st.maxHp), st.up('armor') ? `Plate lining ${st.up('armor')}` : '');
-        h += S('bolt', 'Energy', String(st.maxEnergy), st.up('cell') ? `Cell tier ${st.up('cell')}` : '');
-        h += S(st.weapon.kind, 'Attack power', String(Math.round(st.attackPower)), st.weapon.name);
-        h += S('target', 'Crit chance', Math.round(st.critChance * 100) + '%', st.up('lens') ? `Crit Lens ${st.up('lens')}` : '');
-        h += S('dash', 'Move speed', Math.round(st.moveMult * 100) + '%', st.up('boots') ? `Servo boots ${st.up('boots')}` : '');
-        h += S('hammer', 'Forge tier', `${st.up('forge')} / 6`, `+${st.up('forge') * 15}% weapon damage`);
-        h += S('skull', 'Robots scrapped', kills.toLocaleString('en-US'));
-        h += S('sun', 'Time played', playTime(d.playTime));
+        h += S('shield', 'Max health', String(st.maxHp), `Grows with level · ${fromUp('armor', 'Plate lining', 'Pim\'s plate lining adds more')}`, 'green');
+        h += S('bolt', 'Energy', String(st.maxEnergy), `Skills spend it · ${fromUp('cell', 'Energy cell', 'Pim\'s energy cell adds more')}`, 'cy');
+        h += S(st.weapon.kind, 'Attack power', String(Math.round(st.attackPower)), `${st.weapon.name} power ${st.weapon.power}, raised by your level${st.up('forge') ? ` and forge tier ${st.up('forge')}` : ''}`);
+        h += S('target', 'Crit chance', Math.round(st.critChance * 100) + '%', `A crit hits much harder · ${fromUp('lens', 'Crit lens', 'Pim\'s crit lens adds more')}`, 'gold');
+        h += S('dash', 'Move speed', Math.round(st.moveMult * 100) + '%', fromUp('boots', 'Servo boots', 'Pim\'s servo boots make you faster'), 'cy');
+        h += S('hammer', 'Forge tier', `${st.up('forge')}/6`, `Every weapon you own hits ${st.up('forge') * 15}% harder`);
+        h += S('skull', 'Robots scrapped', kills.toLocaleString('en-US'), 'Fighting is where most XP comes from', 'dim');
+        h += S('sun', 'Time played', playTime(d.playTime), 'On this device', 'dim');
         h += '</div>';
         h += '<div class="pn-sec">Title</div><div class="pn-chips">';
         h += `<div class="pn-chip${!d.title ? ' on' : ''}" data-a="title" data-v="">None</div>`;
@@ -66,7 +73,7 @@ export const charPanel: PanelSpec = {
         h += '<div class="pn-sec">Armoury</div>';
         for (const id of d.weapons) {
           const w = WEAPONS[id], e0 = d.loadout[0] === id, e1 = d.loadout[1] === id;
-          h += `<div class="pn-row"><div class="wi sm">${icon(w.kind, 24)}</div><div class="grow"><b>${w.name}</b><small>${cap(w.kind)} · Power ${w.power}</small></div>
+          h += `<div class="pn-row">${weaponTile(id, { level: w.level })}<div class="grow"><b>${w.name}</b><small>${cap(w.kind)} · Power ${w.power}</small></div>
             ${btn('<small>Slot</small>1', 'equip0', id, 'sq' + (e0 ? ' on' : ''))}${btn('<small>Slot</small>2', 'equip1', id, 'sq' + (e1 ? ' on' : ''))}</div>`;
         }
         h += '<div class="pn-note">Armourer Voss sells new weapons as you level. Pim\'s forge tiers improve all of them at once.</div>';
@@ -80,7 +87,7 @@ export const charPanel: PanelSpec = {
         h += '</div><div class="pn-sec">Trophies</div>';
         const earned = CONTRACTS.filter((c) => d.trophies.includes(c.id));
         if (!earned.length) h += '<div class="pn-note">No trophies yet. Claim a contract at the board by the plaza to hang your first.</div>';
-        else { h += '<div class="pn-tro">'; for (const c of earned) h += `<div><span>${glyph('crate', 26, '#ffcf5a')}</span><b>${c.trophy}</b><small>"${c.title}"</small></div>`; h += '</div>'; }
+        else { h += '<div class="pn-tro">'; for (const c of earned) h += `<div><span>${art('trophy')}</span><b>${c.trophy}</b><small>"${c.title}"</small></div>`; h += '</div>'; }
         h += `<div class="pn-sec">Discoveries</div><div class="pn-pbs"><div class="has"><span>Secrets, caches and vistas found</span><b>${Object.keys(d.found).length}</b></div></div>`;
       }
       const top = host.body.scrollTop;
@@ -92,6 +99,7 @@ export const charPanel: PanelSpec = {
       update() { if (signature() !== sig) render(); },
       act(a, v) {
         if (a === 'tab') { tab = v; host.body.scrollTop = 0; render(); }
+        else if (a === 'kits') host.open('bag', null, true);
         else if (a === 'title') { st.d.title = v || null; st.touch(); g.sfx('ui_click'); render(); }
         else if (a === 'skill') {
           // put a skill in a bar slot; if it already sat in another, the two trade places

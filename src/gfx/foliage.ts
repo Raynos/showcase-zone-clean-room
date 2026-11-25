@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { loadstats } from '../core/loadstats';
 
 /**
  * Foliage cards: tree crowns, conifer boughs and shrubs are built from flat quads that carry a
@@ -119,7 +120,7 @@ export function ensureFoliage() {
   void (async () => {
     try {
       // relative to the page, so it works from any sub-path the site is served under
-      const res = await fetch('tex/foliage.webp');
+      const res = await loadstats.fetch('tex/foliage.webp', 'foliage');
       if (!res.ok) return;
       const bmp = await createImageBitmap(await res.blob(), { premultiplyAlpha: 'none' });
       const size = bmp.width;

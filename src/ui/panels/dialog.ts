@@ -50,7 +50,7 @@ export const talkPanel: PanelSpec = {
     const setText = (t: string) => { text = t; shown = 0; };
     const choice = (label: string, act: string, v = '', cls = '', mark = '') => `<div class="pn-ch ${cls}" data-a="${act}" data-v="${v}">${mark ? `<i class="m">${mark}</i>` : ''}<span>${label}</span></div>`;
     const render = () => {
-      let h = `<div class="pn-dhead"><div class="pd-disc" style="--rc:${role.col}">${icon(role.ic, 30, 2)}</div><div class="grow"><b>${name}</b><small>${info.title}</small></div><div class="pn-x" data-a="bye">${icon('close', 22)}</div></div>`;
+      let h = `<div class="pn-dhead"><div class="pd-disc" style="--rc:${role.col}">${icon(role.ic, 30, 2)}</div><div class="grow"><b>${name}</b><small>${info.title}</small></div><div class="pn-rb pn-x" data-a="bye" aria-label="Goodbye">${icon('close', 20, 2.4)}</div></div>`;
       h += `<div class="pn-dtext" data-a="skip"><span></span><i class="more">${icon('jump', 14, 2.5)}</i></div>`;
       let c = '';
       if (mode.k === 'root') {

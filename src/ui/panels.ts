@@ -47,7 +47,7 @@ export class Panels implements System, Host {
     this.root = el('div', 'pn');
     this.root.innerHTML = `<div class="pn-scrim"></div>
       <div class="pn-sheet"><div class="pn-grab" data-a="close"><i></i></div>
-        <div class="pn-head"><div class="pn-back" data-a="back">${icon('dash', 20)}</div><div class="pn-hi"></div><div class="pn-ht"></div><div class="pn-hs"></div><div class="pn-x" data-a="close">${icon('close', 22)}</div></div>
+        <div class="pn-head"><div class="pn-rb pn-back" data-a="back" aria-label="Back">${icon('dash', 18)}</div><div class="pn-hi"></div><div class="pn-ht"></div><div class="pn-hs"></div><div class="pn-rb pn-x" data-a="close" aria-label="Close">${icon('close', 20, 2.4)}</div></div>
         <div class="pn-tabs"></div><div class="pn-body"></div><div class="pn-foot"></div></div>
       <div class="pn-modal"></div>`;
     // sit under the toast layer so purchase / quest toasts stay readable over an open sheet

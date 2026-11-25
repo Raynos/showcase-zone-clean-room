@@ -1,11 +1,5 @@
-:root {
-  --orange: #ff9a3c; --orange-deep: #e06a1a; --amber: #ffc46a; --cyan: #5ef0ff; --cyan-deep: #1aa6c9;
-  --ink: #14171c; --panel: rgba(20, 23, 28, 0.74); --panel-solid: #1b1f26; --line: rgba(255, 255, 255, 0.13);
-  --text: #f3ede2; --dim: #a9b0ba; --red: #ff5a3c; --green: #7dffb0; --gold: #ffcf5a; --purple: #c79bff;
-  --font: "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", "Helvetica Neue", system-ui, sans-serif;
-  --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px); --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px);
-  --u: 1px;
-}
+/* Colour, type, spacing, elevation and motion values live in tokens.css, shared with the panels and the loading screen. */
+@import './tokens.css';
 #ui { position: fixed; inset: 0; pointer-events: none; font-family: var(--font); color: var(--text); overflow: hidden; z-index: 10;
   font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
 #ui * { box-sizing: border-box; }
