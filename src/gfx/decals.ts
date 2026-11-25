@@ -100,7 +100,7 @@ export function ensureDecals(): THREE.Texture {
   });
   // cracks: a wandering dark line that forks
   for (const id of [D.CRACK_A, D.CRACK_B, D.CRACK_C]) cell(id, (s) => {
-    c.strokeStyle = '#6a6258'; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.strokeStyle = '#857c70'; c.lineCap = 'round'; c.lineJoin = 'round';
     const branch = (x: number, y: number, a: number, len: number, w: number, depth: number) => {
       c.lineWidth = w; c.beginPath(); c.moveTo(x, y);
       let px = x, py = y;
@@ -131,8 +131,8 @@ export function ensureDecals(): THREE.Texture {
       c.restore();
     }
   });
-  cell(D.MOSS_A, (s) => blotch(s, ['#5d7a34', '#4c6a2c', '#718c3e', '#3f5a26'], 120, s * 0.38, 2, 8));
-  cell(D.MOSS_B, (s) => blotch(s, ['#6b8438', '#54702e', '#869a48', '#465f28'], 80, s * 0.38, 2, 6, 1.3));
+  cell(D.MOSS_A, (s) => blotch(s, ['#84a060', '#74925a', '#98b070', '#688650'], 120, s * 0.38, 2, 8));
+  cell(D.MOSS_B, (s) => blotch(s, ['#8ea866', '#7a965c', '#a2b678', '#6c8a54'], 80, s * 0.38, 2, 6, 1.3));
   cell(D.LICHEN, (s) => { blotch(s, ['#b9b98a', '#a8ad80', '#c9c49a', '#9aa678'], 60, s * 0.36, 2, 7); wear(s, 50, 1.5, 5); });
   cell(D.DRIP, (s) => {
     // rust weeping down from a fixing: a short head and long uneven runs

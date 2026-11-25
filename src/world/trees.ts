@@ -80,10 +80,15 @@ interface ClumpOpts {
   k?: number;
 }
 
-/** A clump of leaf cards around a small dark core, recorded as one primitive. */
+/**
+ * A clump of leaf cards around a small dark core, recorded as two primitives: the core with every
+ * other card, and the rest. The chunk builder ranks the second as fine detail (see `flushGeo`), so far
+ * crowns and far shadow cascades draw half the cards.
+ */
 function clump(g: Geo, q: Rng, c: V3, o: ClumpOpts) {
   const R = o.R, tall = o.tall ?? 0.85, k0 = o.k ?? 1;
   const nc: V3 = [c[0] + (o.crown[0] - c[0]) * 0.45, c[1] + (o.crown[1] - c[1]) * 0.45 - R * 0.25, c[2] + (o.crown[2] - c[2]) * 0.45];
+  const rest: Array<() => void> = [];
   g.group(() => {
     g.ico(R * 0.6, 0, {
       at: c, rot: [q.range(0, 3), q.range(0, 3), 0], scale: [1, tall * 0.95, 1], lump: 0.18, seed: q.int(0, 5),
@@ -109,9 +114,17 @@ function clump(g: Geo, q: Rng, c: V3, o: ClumpOpts) {
       const col = mix3(o.col, o.hi, Math.max(0, d[1]) * 0.55 + q.range(0, 0.12));
       const k = k0 * (0.62 + 0.5 * top) * q.range(0.92, 1.08);
       const sw = o.sway * q.range(0.85, 1.2);
-      card(g, p, right, up, q.pick(o.cells), q.chance(0.5), col, k * 1.06, k * 0.9, nc, 0.35, sw, sw * 0.8);
+      const cell = q.pick(o.cells), flip = q.chance(0.5);
+      if (i % 2 === 0) card(g, p, right, up, cell, flip, col, k * 1.06, k * 0.9, nc, 0.35, sw, sw * 0.8);
+      else rest.push(() => card(g, p, right, up, cell, flip, col, k * 1.06, k * 0.9, nc, 0.35, sw, sw * 0.8));
     }
   });
+  if (rest.length) {
+    // the fill group is told apart by its first card's layer, one above the card layer (still a card to the shaders)
+    const v0 = g.pos.length / 3;
+    g.group(() => { for (const f of rest) f(); });
+    for (let i = 0; i < 4; i++) g.lay[v0 + i] = LEAF_CARD + 1;
+  }
 }
 
 /** Round-canopied emberleaf: the signature orange tree of the yard. */

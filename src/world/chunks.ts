@@ -265,6 +265,9 @@ export class Chunks {
       else if (ground && big >= 0.8
         && y1 - ground(x0, z0) <= FLAT_TOP && y1 - ground(x1, z0) <= FLAT_TOP && y1 - ground(x0, z1) <= FLAT_TOP && y1 - ground(x1, z1) <= FLAT_TOP
         && y1 - ground((x0 + x1) / 2, (z0 + z1) / 2) <= FLAT_TOP) key = KEY_FLAT;
+      // the fill cards of a crown, whose core and other cards are their own primitive (world/trees.ts, marked
+      // by layer 101): the first thing a far tree, or a far shadow cascade, does without
+      if (leaf && key < KEY_ALWAYS && g.lay[v0] > 100.5) key *= 0.05;
       // decals (gfx/decals.ts) are marks on a surface, not things: no shadow
       if (!named && g.lay[v0] >= 64 && g.lay[v0] < 99) key = KEY_FLAT;
       const st = named ?? (Math.max(ex, ez) > LONG ? this.longStore((x0 + x1) / 2, (z0 + z1) / 2, leaf) : this.store((x0 + x1) / 2, (z0 + z1) / 2, leaf));
