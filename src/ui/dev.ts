@@ -36,6 +36,13 @@ export function installDev(game: Game) {
   btn(r, 'All weapons', () => { for (const id of WEAPON_ORDER) st.giveWeapon(id); });
   btn(r, 'Salvage', () => { for (const id of ['scrap', 'wire', 'servo', 'lens', 'cell', 'core']) st.addItem(id, 40, true); st.addItem('kit', 5, true); });
   btn(r, 'Heal', () => { st.d.hp = st.maxHp; st.d.energy = st.maxEnergy; });
+  r = section('HUD');
+  // the landscape layout trial (also ?hud=a / ?hud=b); remembered on this device
+  const hv: HTMLButtonElement[] = [];
+  const mark = () => { hv[0].classList.toggle('on', game.hud.variant === 'a'); hv[1].classList.toggle('on', game.hud.variant === 'b'); };
+  hv.push(btn(r, 'Landscape A', () => { game.hud.setVariant('a'); mark(); }), btn(r, 'Landscape B', () => { game.hud.setVariant('b'); mark(); }));
+  mark();
+  btn(r, 'Left hand', (b) => { const s = st.d.settings; s.lefty = !s.lefty; st.touch(); b.classList.toggle('on', s.lefty); });
   r = section('WORLD');
   for (const [l, h] of [['Dawn', 6.4], ['Day', 11], ['Dusk', 18.3], ['Night', 23]] as const) btn(r, l, () => { game.env.forcedHour = h; setTimeout(() => { game.env.hour = h; game.env.forcedHour = null; }, 300); });
   for (const w of ['clear', 'rain', 'storm'] as const) btn(r, w, () => { game.env.forcedWeather = game.env.forcedWeather === w ? null : w; });

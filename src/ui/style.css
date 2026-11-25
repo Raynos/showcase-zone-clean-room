@@ -12,14 +12,26 @@
 .lbl { font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .shadow-text { text-shadow: 0 1px 2px #000c, 0 0 8px #0008; }
 
+/* ---------- slots ----------
+   Every HUD element sits in a wrapper (.slot.s-<id>) that hud.ts places from the layout table in
+   layout.ts: anchor, inward offsets, width and scale, mirrored for the left hand. The wrapper takes
+   no input; the element inside keeps its own look and arranges itself by the slot's classes and its
+   data-h (l/c/r: which side of the screen it ended up on). #ui and .hud carry data-form
+   (portrait/landscape/desktop) and data-layout (portrait, land-a, land-b, desktop). */
+.slot { position: absolute; pointer-events: none; }
+.slot:empty { display: none; }
+.safe-probe { position: absolute; top: var(--sat); right: var(--sar); bottom: var(--sab); left: var(--sal); pointer-events: none; visibility: hidden; }
+
 /* ---------- player frame ---------- */
-.pframe { position: absolute; left: calc(10px + var(--sal)); top: calc(10px + var(--sat)); display: flex; align-items: center; gap: 8px; pointer-events: auto; }
+.pframe { position: relative; display: flex; align-items: center; gap: 8px; pointer-events: auto; }
 .pframe .portrait { width: 50px; height: 50px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffb968, #c95a14 70%); border: 2px solid #ffd9a8; box-shadow: 0 2px 10px #0009, inset 0 -6px 10px #0004;
   display: grid; place-items: center; position: relative; color: #2a1608; }
 .pframe .lvl { position: absolute; right: -6px; bottom: -4px; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px; background: #14171c; border: 1.5px solid var(--cyan); color: var(--cyan);
   font-weight: 800; font-size: 12px; display: grid; place-items: center; box-shadow: 0 0 8px #5ef0ff66; }
 .pframe .bars { width: 150px; position: relative; }
-.pframe .name { font-size: 13px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; display: flex; gap: 6px; align-items: baseline; }
+.pframe .nrow { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.pframe .nlv { display: none; font-size: 12px; font-weight: 800; letter-spacing: .06em; color: var(--cyan); text-shadow: var(--ts); white-space: nowrap; }
+.pframe .name { min-width: 0; font-size: 13px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; display: flex; gap: 6px; align-items: baseline; }
 .pframe .name small { font-weight: 600; color: var(--amber); font-size: 10px; letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 96px; }
 .bar { position: relative; height: 13px; background: #0b0d10cc; border: 1px solid #000a; box-shadow: inset 0 1px 2px #000a, 0 0 0 1px #ffffff14; overflow: hidden; transform: skewX(-14deg); margin-top: 3px; border-radius: 2px; }
 .bar i { position: absolute; inset: 0; transform-origin: left; display: block; will-change: transform; }
@@ -31,25 +43,35 @@
 .bar span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 10px; font-weight: 800; transform: skewX(14deg); text-shadow: 0 1px 2px #000; letter-spacing: .03em; }
 /* hangs under the bars without resizing the frame, in the gap above the menu strip */
 .buffs { position: absolute; left: 0; top: 100%; display: flex; gap: 4px; margin-top: 4px; }
+/* the frame as a bar (landscape reference layout, desktop): no disc; level and name over a long health bar, buffs to the right of the name */
+.s-status.k-flat .pframe { display: block; }
+.s-status.k-flat .portrait { display: none; }
+.s-status.k-flat .bars { width: 100%; }
+.s-status.k-flat .nlv { display: block; }
+.s-status.k-flat .bar.hp { height: 14px; }
+.s-status.k-flat .buffs { left: auto; right: 0; top: auto; bottom: calc(100% - 15px); margin: 0; }
+.s-status.k-flat .pframe .name small { max-width: 120px; }
 .buff { width: 20px; height: 20px; border-radius: 5px; background: #14171ccc; border: 1px solid var(--line); display: grid; place-items: center; color: var(--cyan); position: relative; }
 .buff.bad { color: var(--red); }
 .buff b { position: absolute; right: -2px; bottom: -3px; font-size: 9px; font-weight: 800; text-shadow: 0 1px 2px #000; color: #fff; }
 
 /* ---------- menu strip ---------- */
-.mstrip { position: absolute; left: calc(10px + var(--sal)); top: calc(84px + var(--sat)); display: flex; gap: 6px; pointer-events: auto; }
+.mstrip { position: relative; display: flex; gap: 6px; pointer-events: auto; }
+/* the portrait disc opens the character sheet; layouts without it get the button */
+.hud[data-form=portrait] .mbtn.m-char { display: none; }
 .mbtn { width: 38px; height: 38px; border-radius: 10px; background: var(--panel) !important; border: 1px solid var(--line) !important; display: grid; place-items: center; color: #e9dfcf !important; position: relative; }
 .mbtn:active, .mbtn.on { transform: scale(.92); background: #ff9a3c44 !important; }
 .mbtn .pip { position: absolute; right: -3px; top: -3px; width: 11px; height: 11px; border-radius: 50%; background: var(--orange); border: 2px solid #14171c; display: none; }
 .mbtn.alert .pip { display: block; animation: pip 1.2s infinite; }
 @keyframes pip { 50% { transform: scale(1.35); } }
-.scrip { position: absolute; left: calc(186px + var(--sal)); top: calc(90px + var(--sat)); font-size: 13px; font-weight: 800; color: var(--gold); display: flex; gap: 4px; align-items: center; text-shadow: 0 1px 3px #000; }
+.scrip { position: relative; font-size: 13px; font-weight: 800; color: var(--gold); display: flex; gap: 4px; align-items: center; text-shadow: 0 1px 3px #000; }
 
 /* ---------- target frame ---------- */
-.tframe { position: absolute; left: 50%; top: calc(124px + var(--sat)); transform: translateX(-50%); width: min(62vw, 300px); text-align: center; opacity: 0; transition: opacity .15s; }
+.tframe { position: relative; width: 100%; text-align: center; opacity: 0; transition: opacity .15s; }
 .tframe.on { opacity: 1; }
-/* narrow portrait: the target frame sits left, under the player frame, so it never collides with the quest tracker */
-@media (max-width: 520px) { .tframe { left: calc(10px + var(--sal)); transform: none; width: min(56vw, 228px); text-align: left; } .tframe .tname { justify-content: flex-start; } }
+[data-h=l] > .tframe { text-align: left; } [data-h=r] > .tframe { text-align: right; }
 .tframe .tname { font-size: 13px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; display: flex; justify-content: center; gap: 6px; align-items: center; }
+[data-h=l] > .tframe .tname { justify-content: flex-start; } [data-h=r] > .tframe .tname { justify-content: flex-end; }
 .tframe .tname .tl { color: var(--amber); }
 .tframe.elite .tname { color: var(--gold); }
 .tframe.boss .tname { font-size: 16px; color: #ffb03a; }
@@ -71,17 +93,17 @@
 .tfx .fx.brk { width: auto; display: flex; gap: 3px; padding: 0 7px 0 5px; border-radius: 10px; color: #0b0e12; background: linear-gradient(180deg, #fff, #9ff6ff); border-color: #fff; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .bossbar .tfx { justify-content: center; margin-top: 4px; }
 .bossbar .tfx:empty { display: none; }
-.bossbar { position: absolute; left: 50%; top: calc(64px + var(--sat)); transform: translateX(-50%); width: min(86vw, 520px); text-align: center; opacity: 0; transition: opacity .4s; }
+.bossbar { position: relative; width: 100%; text-align: center; opacity: 0; transition: opacity .4s; }
 .bossbar.on { opacity: 1; }
-/* narrow portrait: the boss bar drops below the button row and minimap, and pushes the tracker and timer down */
-@media (max-width: 520px) {
-  .bossbar { top: calc(134px + var(--sat)); width: calc(100% - 24px); }
-  .bossbar .bn { font-size: 16px; }
-  .bossbar.on ~ .tracker { top: calc(204px + var(--sat)); }
-  .bossbar.on ~ .ctimer { top: calc(204px + var(--sat)); }
-  .tframe.boss { display: none; }
-  .hud:has(.bossbar.on) .tframe { top: calc(204px + var(--sat)); }
-}
+.tframe.boss { display: none; }
+/* a boss on screen pushes what sits under its bar down: the tracker, timer and a second target in portrait; the target and timer elsewhere */
+.hud[data-form=portrait].boss-on .bossbar .bn { font-size: 16px; }
+.hud[data-form=portrait].boss-on :is(.s-tracker, .s-timer, .s-target, .s-tip) { translate: 0 calc(68px * var(--ku, 1)); }
+.hud:not([data-form=portrait]).boss-on :is(.s-target, .s-timer) { translate: 0 calc(70px * var(--ku, 1)); }
+/* portrait: a tip card takes the toasts' place, so they step down beneath it while it shows */
+#ui[data-form=portrait]:has(.s-tip .coach.on) > .s-toasts { translate: 0 calc(96px * var(--ku, 1)); }
+/* variant B keeps the tracker under the minimap, where the pushed-down target frame would land: the boss fight folds it */
+.hud[data-layout^=land-b].boss-on .s-tracker { display: none; }
 .bossbar .bn { font-size: 18px; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; color: #ffcf8a; text-shadow: 0 0 14px #ff7a1a, 0 2px 3px #000; }
 .bossbar .bar { height: 14px; margin-top: 5px; }
 .bossbar .bar .fill { background: linear-gradient(180deg, #ffb26a, #f0622a 55%, #a0260c); }
@@ -89,14 +111,22 @@
 .bossbar .bs { font-size: 10px; letter-spacing: .22em; color: var(--dim); margin-top: 4px; text-transform: uppercase; }
 
 /* ---------- minimap ---------- */
-.mini { position: absolute; right: calc(10px + var(--sar)); top: calc(10px + var(--sat)); width: 104px; pointer-events: auto; }
+.mini { position: relative; width: 104px; pointer-events: auto; }
+.s-mini.k-land .mini, .s-mini.k-land .mini canvas { width: 92px; }
+.s-mini.k-land .mini canvas { height: 92px; }
+.s-mini.k-small .mini, .s-mini.k-small .mini canvas { width: 80px; } .s-mini.k-small .mini canvas { height: 80px; }
 .mini canvas { width: 104px; height: 104px; border-radius: 50%; border: 2px solid #ffd9a855; box-shadow: 0 2px 12px #000a, inset 0 0 0 1px #000; background: #1b1f26; display: block; }
 .mini .zone { text-align: center; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; margin-top: 4px; text-shadow: 0 1px 3px #000; white-space: nowrap; }
 .mini .clock { position: absolute; left: -4px; top: -2px; font-size: 10px; font-weight: 800; background: #14171cdd; border: 1px solid var(--line); border-radius: 9px; padding: 1px 6px 1px 4px; display: flex; gap: 3px; align-items: center; color: var(--amber); }
 .mini .north { position: absolute; left: 50%; top: -5px; transform: translateX(-50%); font-size: 9px; font-weight: 800; color: var(--cyan); text-shadow: 0 1px 2px #000; }
 
 /* ---------- quest tracker ---------- */
-.tracker { position: absolute; right: calc(8px + var(--sar)); top: calc(140px + var(--sat)); width: 148px; pointer-events: auto; }
+.tracker { position: relative; width: 100%; pointer-events: auto; }
+/* on the left of the screen the tracker reads from the left edge */
+[data-h=l] > .tracker .q { text-align: left; border-right: 0; border-left: 2px solid var(--orange); background: linear-gradient(270deg, #14171c00, #14171ccc 30%); }
+[data-h=l] > .tracker .q.ready { border-left-color: var(--gold); }
+/* landscape keeps the view clear: the tracked quest only, or two */
+.s-tracker.k-one .q:nth-child(n+2), .s-tracker.k-two .q:nth-child(n+3) { display: none; }
 .tracker .q { margin-bottom: 6px; padding: 5px 7px 6px; background: linear-gradient(90deg, #14171c00, #14171ccc 30%); border-right: 2px solid var(--orange); text-align: right; }
 .tracker .q.ready { border-right-color: var(--gold); }
 .tracker .qt { font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--amber); text-shadow: 0 1px 2px #000; }
@@ -106,13 +136,23 @@
 .tracker .qo b { color: #fff; }
 
 /* ---------- log ---------- */
-.log { position: absolute; left: calc(10px + var(--sal)); top: 30%; width: 56vw; max-width: 260px; display: flex; flex-direction: column; gap: 2px; }
+.log { position: relative; width: 100%; display: flex; flex-direction: column; gap: 2px; }
+[data-h=r] > .log { text-align: right; }
+.s-log.k-up .log div:nth-last-child(n+5), .s-log.k-three .log div:nth-last-child(n+4) { display: none; }
 .log div { font-size: 11px; line-height: 1.25; text-shadow: 0 1px 2px #000, 0 0 6px #000a; animation: logfade 7s forwards; }
 .log .loot { color: var(--gold); } .log .quest { color: var(--amber); } .log .warn { color: #ff8a6a; } .log .combat { color: #d6dde6; } .log .npc { color: var(--cyan); } .log .sys { color: #c9c2b4; }
 @keyframes logfade { 0% { opacity: 0; transform: translateX(-8px); } 4% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; } }
 
 /* ---------- xp ---------- */
-.xp { position: absolute; left: 0; right: 0; bottom: 0; height: calc(5px + var(--sab)); background: #0b0d10; border-top: 1px solid #ffffff1c; }
+.xp { position: relative; height: calc(5px + var(--sab)); background: #0b0d10; border-top: 1px solid #ffffff1c; }
+/* the thin form under the bar-style frame: no text on a phone, the numbers beside it on a desktop */
+.s-xp.k-thin .xp { height: 4px; border: 0; border-radius: 2px; background: #0b0d10cc; box-shadow: 0 0 0 1px #000a; }
+.s-xp.k-thin .xp i { height: 4px; border-radius: 2px; }
+/* landscape keeps the weapon chip in the bottom right corner: the full-width bar's readout goes to the stick's side */
+.hud:not([data-form=portrait]) .s-xp.k-edge[data-h=l] .xp span { right: auto; left: calc(8px + var(--sal)); }
+.hud:not([data-form=portrait]) .s-xp.k-edge[data-h=r] .xp span { right: calc(8px + var(--sar)); }
+.s-xp.k-thin .xp span { display: none; }
+.s-xp.k-thin.k-text .xp span { display: block; left: calc(100% + 8px); right: auto; bottom: -5px; white-space: nowrap; }
 .xp i { display: block; height: 5px; background: linear-gradient(90deg, #c78aff, #5ef0ff); transform-origin: left; transition: transform .5s cubic-bezier(.2, .8, .2, 1); box-shadow: 0 0 8px #5ef0ff88; }
 .xp span { position: absolute; right: 6px; bottom: calc(7px + var(--sab)); font-size: 9px; font-weight: 700; color: #cfd6df; text-shadow: 0 1px 2px #000; letter-spacing: .08em; }
 
@@ -201,6 +241,7 @@
 /* count pip: kits left, bolts in the magazine */
 .abtn .cnt { position: absolute; left: -4px; top: -4px; min-width: 19px; height: 19px; padding: 0 4px; border-radius: 10px; background: #0c0f13; border: 1px solid #ffffff55; font-size: 11.5px; line-height: 17px; font-weight: 800; color: #fff; text-align: center; pointer-events: none; box-shadow: 0 1px 4px #000a; z-index: 2; }
 .abtn .cnt:empty { display: none; }
+.abtn .cnt small { font-size: 9px; opacity: .7; }
 .abtn.atk .cnt { left: auto; right: 3px; top: 1px; min-width: 22px; height: 22px; line-height: 20px; font-size: 13px; border-radius: 11px; }
 .hud.lefty .abtn .en, .hud.lefty .abtn .cnt { left: auto; right: -4px; }
 .hud.lefty .abtn.atk .cnt { right: auto; left: 3px; }
@@ -208,39 +249,65 @@
 .abtn.none-left .ico { opacity: .32; }
 .abtn.none-left .face { filter: saturate(.2) brightness(.7); }
 /* the name of the action, until it has been used a few times */
-.abtn .lbl { position: absolute; left: 50%; top: calc(100% - 8px); transform: translateX(-50%); width: max-content; max-width: 78px; padding: 1.5px 5px 1px; border-radius: 7px; background: #0a0d11e6; border: 1px solid #ffffff2e;
+/* never wider than its own button, so a long name wraps onto two lines rather than run under a neighbour */
+.abtn .lbl { position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%); width: max-content; max-width: calc(var(--d) + 2px); padding: 1.5px 4px 1px; border-radius: 7px; background: #0a0d11e6; border: 1px solid #ffffff2e;
   font-size: 9px; line-height: 1.08; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; text-align: center; color: #fff; pointer-events: none; transition: opacity .8s; z-index: 1; }
 .abtn.sk .lbl { color: #c9f9ff; border-color: #5ef0ff66; }
-.abtn.atk .lbl { top: calc(100% - 13px); font-size: 10.5px; max-width: 96px; color: #ffe3bf; border-color: #ffb96899; }
+.abtn.atk .lbl { bottom: -2px; font-size: 10.5px; max-width: calc(var(--d) + 4px); color: #ffe3bf; border-color: #ffb96899; }
 .abtn .lbl.gone, .abtn .lbl:empty { opacity: 0; }
 .abtn.s-locked .lbl { display: none; }
 .abtn .key { position: absolute; left: 50%; top: -11px; transform: translateX(-50%); font-size: 9px; font-weight: 800; color: #ffffffcc; text-shadow: 0 1px 2px #000; display: none; }
 body.desktop .abtn .key { display: block; }
-.ibtn { position: absolute; left: 50%; bottom: calc(296px * var(--k, 1) + var(--sab)); transform: translate(-50%, 8px) scale(.94); pointer-events: none; opacity: 0; transition: opacity .14s, transform .14s cubic-bezier(.2, 1.4, .4, 1);
+/* desktop shows key hints instead of names */
+.hud.no-lbl .abtn .lbl { display: none; }
+/* the utility column (landscape, desktop): buttons stacked on the thumb-side edge */
+.s-util { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 14px; }
+.s-util .abtn { position: relative; margin: 0; flex: none; }
+/* on the screen edge the names sit inward of the buttons, not under them */
+.s-util.k-side .abtn .lbl { top: 50%; bottom: auto; transform: translateY(-50%); }
+.s-util.k-side[data-h=r] .abtn .lbl { left: auto; right: calc(100% - 6px); }
+.s-util.k-side[data-h=l] .abtn .lbl { left: calc(100% - 6px); }
+.s-util.k-side { gap: 10px; }
+/* a two-by-two block (shooter stance), filled from the bottom right */
+.s-util.k-grid { display: grid; grid-template-columns: repeat(2, auto); gap: 8px; direction: rtl; align-content: end; }
+.s-util.k-grid[data-h=l] { direction: ltr; }
+.abtn.no-seat { display: none !important; }
+/* the second fire button: the warm face, smaller, for the left thumb; aim wears the energy rim */
+.abtn.f2 .lbl { font-size: 9px; }
+.abtn.aim .face { box-shadow: inset 0 0 0 1.5px #ffffff88, inset 0 2px 3px #ffffff33, inset 0 -6px 10px #0009; }
+/* the weapon chip: what is in hand, and the weapon a swap brings in */
+.wchip { display: flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px 0 6px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--e1);
+  font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--text); white-space: nowrap; text-shadow: var(--ts); }
+.wchip .wc-i { color: var(--amber); display: grid; } .wchip .wc-2 { display: none; color: var(--text-3); padding-left: 5px; margin-left: 1px; border-left: 1px solid var(--line); }
+.wchip.two .wc-2 { display: grid; }
+[data-h=r] > .wchip { flex-direction: row-reverse; padding: 0 6px 0 9px; }
+[data-h=r] > .wchip .wc-2 { padding: 0 5px 0 0; margin: 0 1px 0 0; border-left: 0; border-right: 1px solid var(--line); }
+.ibtn { position: relative; transform: translate(0, 8px) scale(.94); pointer-events: none; opacity: 0; transition: opacity .14s, transform .14s cubic-bezier(.2, 1.4, .4, 1);
   padding: 9px 18px 9px 12px !important; border-radius: 26px; background: linear-gradient(180deg, #2a313bee, #14171cee) !important; border: 1.5px solid var(--cyan) !important; box-shadow: 0 4px 16px #000a, 0 0 18px #5ef0ff44;
   display: flex !important; align-items: center; gap: 8px; font-size: 15px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #fff !important; white-space: nowrap; }
-.ibtn.on { opacity: 1; transform: translate(-50%, 0) scale(1); pointer-events: auto; }
-.ibtn.on.down { transform: translate(-50%, 0) scale(.94); filter: brightness(1.5); transition: none; }
-/* landscape: the buttons are off to the side, so the prompt can sit low, above the tip strip */
-@media (max-height: 520px) { .ibtn { bottom: calc(104px + var(--sab)); } }
+.ibtn.on { opacity: 1; transform: none; pointer-events: auto; }
+.ibtn.on.down { transform: scale(.94); filter: brightness(1.5); transition: none; }
 .ibtn svg { color: var(--cyan); }
 .ibtn small { color: var(--dim); font-size: 10px; font-weight: 700; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; display: none; }
 body.desktop .ibtn small { display: block; }
 
 /* ---------- toasts ---------- */
-.toasts { position: absolute; left: 50%; top: 28.5%; transform: translateX(-50%); width: 92vw; max-width: 460px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.toasts { position: relative; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .toast { padding: 6px 16px; font-size: 13px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; background: linear-gradient(90deg, #14171c00, #14171cdd 18%, #14171cdd 82%, #14171c00); text-shadow: 0 1px 2px #000;
   animation: toast 2.8s forwards; text-align: center; display: flex; gap: 8px; align-items: center; justify-content: center; }
 .toast small { display: block; font-size: 10px; color: var(--dim); letter-spacing: .12em; font-weight: 700; }
 .toast.good { color: var(--green); } .toast.warn { color: #ff8a6a; } .toast.loot { color: var(--gold); } .toast.quest { color: var(--amber); } .toast.pb { color: var(--cyan); } .toast.secret { color: var(--purple); }
 @keyframes toast { 0% { opacity: 0; transform: translateY(10px) scale(.9); } 8% { opacity: 1; transform: none; } 82% { opacity: 1; } 100% { opacity: 0; transform: translateY(-8px); } }
-.banner { position: absolute; left: 0; right: 0; top: 21%; text-align: center; pointer-events: none; opacity: 0; }
+.s-toasts.k-three .toast:nth-last-child(n+4) { display: none; }
+.banner { position: relative; text-align: center; pointer-events: none; opacity: 0; }
 .banner.on { animation: banner 3.6s forwards; }
 .banner .b1 { font-size: 34px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: #fff; text-shadow: 0 0 22px #ff9a3c, 0 2px 4px #000; }
 .banner .b2 { font-size: 12px; font-weight: 700; letter-spacing: .34em; text-transform: uppercase; color: var(--amber); margin-top: 2px; text-shadow: 0 1px 3px #000; }
 .banner .rule { width: 0; height: 2px; margin: 6px auto; background: linear-gradient(90deg, transparent, var(--orange), transparent); animation: rule 3.6s forwards; }
 .banner.danger .b1 { text-shadow: 0 0 22px #ff3c1a, 0 2px 4px #000; } .banner.danger .b2 { color: #ff8a6a; }
 .banner.level .b1 { font-size: 44px; color: var(--gold); text-shadow: 0 0 30px #ffcf5a, 0 2px 4px #000; }
+/* landscape: the banner sits under the target bar, so it is a size smaller */
+.s-banner.k-small .banner .b1 { font-size: 28px; } .s-banner.k-small .banner.level .b1 { font-size: 34px; }
 @keyframes banner { 0% { opacity: 0; transform: scale(1.25); letter-spacing: .5em; } 12% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes rule { 0% { width: 0; } 20% { width: min(70vw, 360px); } 100% { width: min(70vw, 360px); } }
 
@@ -269,7 +336,7 @@ body.desktop .ibtn small { display: block; }
 @keyframes lowhp { 50% { opacity: .55; } }
 
 /* ---------- course timer ---------- */
-.ctimer { position: absolute; left: 50%; top: calc(172px + var(--sat)); transform: translateX(-50%); text-align: center; opacity: 0; transition: opacity .2s; padding: 4px 18px 6px;
+.ctimer { position: relative; text-align: center; opacity: 0; transition: opacity .2s; padding: 4px 18px 6px;
   background: linear-gradient(90deg, #14171c00, #14171ccc 20%, #14171ccc 80%, #14171c00); }
 .ctimer.on { opacity: 1; }
 .ctimer .cl { font-size: 10px; font-weight: 800; letter-spacing: .22em; text-transform: uppercase; color: var(--cyan); }

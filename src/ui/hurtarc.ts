@@ -1,6 +1,7 @@
 import type { Game } from '../game';
 import './hurtarc.css';
 
+const _at = { x: 0, y: 0, d: 0 };
 interface Arc { el: HTMLElement; x: number; z: number; t: number; life: number; tier: number; live: boolean }
 
 const POOL = 5;
@@ -28,6 +29,7 @@ const SVG = `<svg viewBox="-100 -100 200 200" aria-hidden="true">
 export class HurtArc {
   private root: HTMLElement;
   private arcs: Arc[] = [];
+  private cx = -1; private cy = -1;
   constructor(private game: Game) {
     this.root = document.createElement('div');
     this.root.className = 'hurtarcs';
@@ -57,6 +59,12 @@ export class HurtArc {
     const g = this.game, pl = g.player.pos, yaw = g.cameraRig.yaw;
     // camera basis on the ground plane: forward (-sin, -cos), right (cos, -sin)
     const fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = -fz, rz = fx;
+    // centred on the hero's chest wherever the layout and camera put it; the screen centre in first person
+    if (this.arcs.some((a) => a.live)) {
+      const ok = (g.cameraRig as { view?: string }).view !== 'first' && g.hud.project({ x: pl.x, y: pl.y + 1.05, z: pl.z }, _at);
+      const x = ok ? Math.round(_at.x) : Math.round(innerWidth / 2), y = ok ? Math.round(_at.y) : Math.round(innerHeight / 2);
+      if (x !== this.cx || y !== this.cy) { this.cx = x; this.cy = y; this.root.style.setProperty('--hx', x + 'px'); this.root.style.setProperty('--hy', y + 'px'); }
+    }
     for (const a of this.arcs) {
       if (!a.live) continue;
       a.t += rdt;

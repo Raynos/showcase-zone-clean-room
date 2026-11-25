@@ -23,18 +23,15 @@ export class Coach implements System {
   constructor(private game: Game) {
     const css = document.createElement('style');
     css.textContent = `
-    /* under the target frame on the left: clear of both thumbs, the stick's rest and the action buttons */
-    .coach { position: absolute; left: calc(10px + var(--sal)); top: calc(254px + var(--sat)); transform: translate(0, 8px); width: min(56vw, 300px); padding: 9px 12px 10px; border-radius: 12px; background: #10151bdd; border: 1px solid #7ff0ff55;
+    /* placed by the HUD layout (the 'tip' slot): clear of both thumbs, the stick's rest and the action buttons */
+    .coach { position: relative; transform: translate(0, 8px); width: 100%; padding: 9px 12px 10px; border-radius: 12px; background: #10151bdd; border: 1px solid #7ff0ff55;
       box-shadow: 0 6px 24px #0008; opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none; }
     .coach.on { opacity: 1; transform: none; }
-    .hud.lefty .coach { left: auto; right: calc(10px + var(--sar)); }
-    /* landscape has no room there: the strip between the stick and the buttons, along the bottom */
-    @media (max-height: 520px) { .coach, .hud.lefty .coach { left: 50%; right: auto; top: auto; bottom: calc(14px + var(--sab)); width: min(36vw, 300px); transform: translate(-50%, 8px); } .coach.on { transform: translate(-50%, 0); } }
     .coach b { display: block; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--cyan); margin-bottom: 3px; }
     .coach span { font-size: 12.5px; line-height: 1.35; font-weight: 600; }`;
     document.head.appendChild(css);
     this.card = el('div', 'coach');
-    game.hud.hud.appendChild(this.card);
+    game.hud.mount('tip', this.card);
     this.card.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.showT = Math.min(this.showT, 0.01); });
     const ev = game.state.events, st = game.state;
     ev.on('reach', (r) => { if (r.place === 'b1') { this.tip('fight'); this.tip('gate'); } });

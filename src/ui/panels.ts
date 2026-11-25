@@ -50,8 +50,9 @@ export class Panels implements System, Host {
         <div class="pn-head"><div class="pn-rb pn-back" data-a="back" aria-label="Back">${icon('dash', 18)}</div><div class="pn-hi"></div><div class="pn-ht"></div><div class="pn-hs"></div><div class="pn-rb pn-x" data-a="close" aria-label="Close">${icon('close', 20, 2.4)}</div></div>
         <div class="pn-tabs"></div><div class="pn-body"></div><div class="pn-foot"></div></div>
       <div class="pn-modal"></div>`;
-    // sit under the toast layer so purchase / quest toasts stay readable over an open sheet
-    ui.insertBefore(this.root, ui.querySelector('.toasts'));
+    // sit under the banner and toast slots so purchase / quest toasts stay readable over an open sheet
+    // (and over the frame-rate chip, which an open sheet may cover)
+    ui.insertBefore(this.root, ui.querySelector(':scope > .s-banner'));
     const q = (s: string) => this.root.querySelector(s) as HTMLElement;
     this.scrim = q('.pn-scrim'); this.sheet = q('.pn-sheet'); this.headIcon = q('.pn-hi'); this.headTitle = q('.pn-ht'); this.headScrip = q('.pn-hs');
     this.backBtn = q('.pn-back'); this.tabsEl = q('.pn-tabs'); this.body = q('.pn-body'); this.foot = q('.pn-foot'); this.modal = q('.pn-modal');

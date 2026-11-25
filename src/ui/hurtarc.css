@@ -1,7 +1,7 @@
-/* Directional damage arcs (src/ui/hurtarc.ts). Centred on where the hero stands on screen. */
+/* Directional damage arcs (src/ui/hurtarc.ts). Centred on the hero's chest as projected each frame (--hx, --hy). */
 .hurtarcs { position: absolute; inset: 0; pointer-events: none; }
 .hurtarc {
-  position: absolute; left: 50%; top: 57%;
+  position: absolute; left: var(--hx, 50%); top: var(--hy, 57%);
   width: min(78vw, 46vh); height: min(78vw, 46vh);
   display: none; will-change: transform, opacity;
 }

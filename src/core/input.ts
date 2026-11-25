@@ -40,6 +40,11 @@ export class Input {
   invertY = false;
   /** left-handed layout: the stick lives on the right half of the screen and the buttons on the left */
   mirror = false;
+  /**
+   * Where a touch takes the stick, set by the HUD layout: the stick-side `x` fraction of the width,
+   * below the `y` fraction of the height. Null: no stick (desktop).
+   */
+  stickZone: { x: number; y: number } | null = { x: 0.5, y: 0.42 };
   /** the shooter stance (systems/stance.ts): R reloads, the left mouse button fires, the right one aims */
   shooter = false;
   private btn = new Map<Btn, BtnState>();
@@ -117,7 +122,8 @@ export class Input {
     }
     this.isTouch = true;
     const w = window.innerWidth, h = window.innerHeight;
-    const inStickZone = (this.mirror ? e.clientX > w * 0.5 : e.clientX < w * 0.5) && e.clientY > h * 0.42;
+    const z = this.stickZone;
+    const inStickZone = !!z && (this.mirror ? e.clientX > w * (1 - z.x) : e.clientX < w * z.x) && e.clientY > h * z.y;
     if (inStickZone && this.stickId < 0) {
       this.stickId = e.pointerId;
       this.stick.active = true; this.stick.ox = e.clientX; this.stick.oy = e.clientY; this.stick.x = 0; this.stick.y = 0;
@@ -130,6 +136,11 @@ export class Input {
 
   private onMove(e: PointerEvent) {
     if (this.pointerLocked && e.pointerType === 'mouse') {
+      // a second button pressed or let go while one is held arrives as a move (chorded buttons): fire while aiming
+      if (this.shooter && (e.button === 0 || e.button === 2)) {
+        const b = e.button === 0 ? 'attack' : 'aim';
+        if (e.buttons & (e.button === 0 ? 1 : 2)) this.press(b); else this.release(b);
+      }
       this.lookX -= e.movementX * 0.0024 * this.lookSensitivity;
       this.lookY -= e.movementY * 0.0024 * this.lookSensitivity * (this.invertY ? -1 : 1);
       return;
@@ -191,6 +202,8 @@ export class Input {
     for (const k of MOVE_KEYS) if (this.keys.has(k)) return true;
     return false;
   }
+  /** Forget every finger on the stick and the view (a layout change moved the controls; nothing may stay held). */
+  cancelTouches() { this.endStick(); this.lookIds.clear(); this.pinchDist = 0; this.mouseLook = false; }
   private endStick() { this.stickId = -1; this.stick.active = false; this.stick.x = 0; this.stick.y = 0; }
 
   /** Call at the start of each frame, after reading the previous frame's edges is done. */

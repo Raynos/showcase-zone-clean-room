@@ -2,9 +2,11 @@ import * as THREE from 'three';
 import type { Btn } from '../core/input';
 import { clamp, clamp01, fmtNum } from '../core/util';
 import type { Game } from '../game';
+import { WEAPONS } from '../data/weapons';
 import { BLAST_WALL } from '../world/layout';
 import { toggleView } from '../systems/view';
 import { icon } from './icons';
+import { formFor, OUTSIDE, pickLayout, SLOT_IDS, type Form, type Layout, type Place, type SlotId, type Stance, type Variant } from './layout';
 import './style.css';
 
 const _v = new THREE.Vector3();
@@ -15,7 +17,9 @@ export interface PlateInfo { name: string; level?: number; hp?: number; cls?: st
   /** robots: status icons (shock, burn, jam), the stagger meter (elites) and the broken state */
   fx?: string[]; stagger?: number; broken?: boolean }
 interface Dmg { el: HTMLElement; t: number; x: number; y: number; z: number; vx: number; vy: number; life: number; crit: boolean }
-export type ActionId = 'attack' | 'dodge' | 'jump' | 'skill1' | 'skill2' | 'skill3' | 'overdrive' | 'swap' | 'kit' | 'target' | 'mount';
+export type ActionId = 'attack' | 'dodge' | 'jump' | 'skill1' | 'skill2' | 'skill3' | 'overdrive' | 'swap' | 'kit' | 'target' | 'mount'
+  /** shooter stance (docs/UI-ENGINE-PLAN.md U5): main fire, the left thumb's second fire, aim down sights, reload */
+  | 'fire' | 'fire2' | 'aim' | 'reload';
 /** One button of the action bar, as combat describes it (docs/COMBAT.md, "Combat to HUD interface"). */
 export interface ActionSlot {
   id: ActionId;
@@ -30,6 +34,8 @@ export interface ActionSlot {
   charge?: number;
   /** kits left, ammo */
   count?: number;
+  /** shooter stance: the magazine's size, printed beside `count` on fire and reload */
+  mag?: number;
   /** seconds of cooldown left, printed over the sweep when given */
   cdSec?: number;
   /** level that opens a `locked` slot; defaults to skill 3 at 6 and Overdrive at 10 */
@@ -39,12 +45,17 @@ export interface ActionSlot {
 export interface TargetState { stagger: number; broken: boolean; effects: string[] }
 export interface ActBtn {
   id: ActionId; root: HTMLElement; ico: HTMLElement; cd: HTMLElement; cdt: HTMLElement; cnt: HTMLElement; ring: SVGCircleElement; lk: HTMLElement; lbl: HTMLElement;
-  btn: Btn; size: number; ring2: boolean;
+  btn: Btn; size: number;
   // what is on screen now, so an unchanged slot costs nothing
   icon: string; label: string; state: ActionSlot['state']; cdQ: number; cdTxt: string; chargeQ: number; cnt_: string; unlock: number; cdSec: number;
   uses: number; useKey: string; live: boolean; lblGone: boolean; ptr: number; sx: number; sy: number; lx: number; ly: number; aim: boolean; hold: number;
 }
 interface ActSpec { btn: Btn; size: number; cls: string; key: string }
+/**
+ * What each action is. Where it sits and how big it is comes from the layout table (layout.ts):
+ * the cluster follows the thumb's arc, attack under the thumb's rest, the four most-used actions
+ * ringing it, the rest fanned out on a second ring or moved to the utility column.
+ */
 const ACT: Record<ActionId, ActSpec> = {
   attack: { btn: 'attack', size: 92, cls: 'atk', key: 'LMB' },
   dodge: { btn: 'dodge', size: 58, cls: '', key: 'C' },
@@ -57,22 +68,14 @@ const ACT: Record<ActionId, ActSpec> = {
   swap: { btn: 'swap', size: 46, cls: 'sm', key: 'F' },
   target: { btn: 'target', size: 46, cls: 'sm', key: 'Tab' },
   mount: { btn: 'mount', size: 46, cls: 'sm', key: 'X' },
+  // main fire is the attack input to combat; the left thumb's fire, aim and reload are their own
+  fire: { btn: 'attack', size: 84, cls: 'atk', key: 'LMB' },
+  fire2: { btn: 'fire2', size: 62, cls: 'atk f2', key: '' },
+  aim: { btn: 'aim', size: 56, cls: 'aim', key: 'RMB' },
+  reload: { btn: 'reload', size: 50, cls: 'sm', key: '' },
 };
-/**
- * The cluster follows the thumb's arc. The attack button sits under the thumb's rest; the four
- * most-used actions ring it; everything else fans out on a second ring. Angles are degrees from
- * "toward the screen edge on the thumb's side", counter-clockwise, so the same numbers serve a
- * left-handed mirror.
- */
-const ATTACK_AT = { x: 66, y: 88 };          // px in from the thumb-side edge, px above the safe bottom
-const RING1: Array<[ActionId, number]> = [['jump', 76], ['skill2', 117], ['skill1', 158], ['dodge', 199]];
-const RING1_R = 98, RING2_R = 162, RING2_STEP = 22;
-/**
- * Second ring, from the top of the arc round to the bottom. The kit never moves; the others close
- * up toward it, so a hidden slot takes no space and the ones that come and go sit at the ends.
- */
-const RING2: ActionId[] = ['mount', 'overdrive', 'skill3', 'kit', 'target', 'swap'];
-const RING2_ANCHOR: ActionId = 'kit', RING2_ANCHOR_DEG = 146;
+/** the buttons a drag from steers the view, as a drag on the view would */
+const STEERS = new Set<ActionId>(['attack', 'fire']);
 const UNLOCK: Partial<Record<ActionId, number>> = { skill3: 6, overdrive: 10 };
 /** presses before an action's label fades */
 const LEARNED = 4;
@@ -120,15 +123,129 @@ export class Hud {
   private w = 1; private h = 1;
   visible = true;
 
+  // ---- layout (layout.ts): named slots placed by a table chosen from the viewport, the input and the stance
+  /** the wrapper element of every slot; what a slot shows lives inside it */
+  readonly slots = {} as Record<SlotId, HTMLElement>;
+  layout!: Layout;
+  variant: Variant = 'a';
+  stance: Stance = 'melee';
+  private kUi = 1; private kActs = 1;
+  /** the safe-area insets in px, as last measured */
+  readonly safe = { t: 0, r: 0, b: 0, l: 0 };
+  private probe!: HTMLElement;
+  private layoutSig = ''; private touchWas = false;
+  /** where the stick rests when no thumb is on it (screen px) */
+  readonly stickRest = { x: 86, y: 700 };
+  /** how long the last change of layout took to apply, ms (the switch on rotation must stay under 200) */
+  lastLayoutMs = 0;
+  private wchip!: HTMLElement; private wSig = '';
+  private nlv!: HTMLElement;
+
   constructor(public game: Game) {
     this.root = document.getElementById('ui')!;
     this.hud = el('div', 'hud');
     this.root.appendChild(this.hud);
-    document.body.classList.toggle('desktop', !game.input.isTouch);
+    const q = new URLSearchParams(location.search);
+    // ?safe=top,right,bottom,left fakes the safe-area insets (a notch on one side, the home indicator) for testing
+    const safe = q.get('safe')?.split(',').map(Number);
+    if (safe && safe.length === 4 && safe.every((n) => isFinite(n))) ['--sat', '--sar', '--sab', '--sal'].forEach((k, i) => document.documentElement.style.setProperty(k, safe[i] + 'px'));
+    // the landscape trial: ?hud=a or ?hud=b, remembered; the dev drawer switches it live
+    let v = q.get('hud');
+    try { if (v === 'a' || v === 'b') localStorage.setItem('cf_hud', v); else v = localStorage.getItem('cf_hud'); } catch { /* storage unavailable */ }
+    if (v === 'a' || v === 'b') this.variant = v;
     this.build();
     this.resize();
+    // a rotation re-lays the HUD at once (the resize event can trail it on some browsers)
+    matchMedia('(orientation: portrait)').addEventListener?.('change', () => this.resize());
   }
-  resize() { this.w = window.innerWidth; this.h = window.innerHeight; this.actsSig = ''; if (this.actsEl) this.layoutActs(); }
+  resize() { this.w = window.innerWidth; this.h = window.innerHeight; this.applyLayout(); }
+  /** Pick the landscape variant ('a' reference, 'b' MMO frame) and re-lay at once. */
+  setVariant(v: Variant) {
+    this.variant = v;
+    try { localStorage.setItem('cf_hud', v); } catch { /* storage unavailable */ }
+    this.applyLayout(true);
+  }
+  /** The stance picks the action layout (melee today; the shooter stance brings its own tables). */
+  setStance(s: Stance) { if (s !== this.stance) { this.stance = s; this.applyLayout(true); } }
+  /** Put an element into a slot (modules that own their own DOM: tip cards, the frame-rate chip, the view toggle). */
+  mount(id: SlotId, e: HTMLElement) { if (e.parentElement !== this.slots[id]) this.slots[id].appendChild(e); }
+
+  /**
+   * Choose the layout for this viewport, input and stance, and place every slot by its table.
+   * Cheap and synchronous, so a rotation re-lays in the same frame. When the layout itself changes
+   * (portrait to landscape, say) every held button and the stick are let go: the buttons move out
+   * from under the fingers, and nothing may stay pressed.
+   */
+  applyLayout(force = false) {
+    if (!this.probe) return;
+    const t0 = performance.now(), g = this.game, touch = g.input.isTouch;
+    this.touchWas = touch;
+    const form: Form = formFor(this.w, this.h, touch);
+    const L = pickLayout(form, this.variant, this.stance);
+    const sig = L.id + '|' + this.w + 'x' + this.h + (this.mirror ? 'L' : 'R') + (touch ? 't' : 'm');
+    if (!force && sig === this.layoutSig) return;
+    this.layoutSig = sig;
+    if (this.layout && this.layout.id !== L.id) this.releaseAll();
+    this.layout = L;
+    const sc = L.scale(this.w, this.h); this.kUi = sc.ui; this.kActs = sc.acts;
+    document.body.classList.toggle('desktop', !touch);
+    for (const e of [this.hud, this.root]) { e.dataset.layout = L.id; e.dataset.form = form; }
+    this.hud.classList.toggle('no-lbl', !L.labels);
+    const r = this.probe.getBoundingClientRect();
+    this.safe.t = r.top; this.safe.l = r.left; this.safe.r = Math.max(0, this.w - r.right); this.safe.b = Math.max(0, this.h - r.bottom);
+    for (const id of SLOT_IDS) this.place(id, L.slots[id]);
+    this.hud.style.setProperty('--k', this.kActs.toFixed(3));
+    this.hud.style.setProperty('--ku', this.kUi.toFixed(3));
+    this.actsSig = ''; this.layoutActs();
+    const st = L.stick;
+    if (st) {
+      this.stickRest.x = this.mirror ? this.w - this.safe.r - st.x * this.kActs : this.safe.l + st.x * this.kActs;
+      this.stickRest.y = this.h - this.safe.b - st.y * this.kActs;
+    }
+    g.input.stickZone = st ? { x: st.zx, y: st.zy } : null;
+    this.lastLayoutMs = performance.now() - t0;
+  }
+  /** Place one slot's wrapper: anchor on the safe rect, inward offsets, width, scale, mirror. */
+  private place(id: SlotId, p: Place) {
+    const s = this.slots[id], st = s.style;
+    if (p.hide) { st.display = 'none'; return; }
+    st.display = '';
+    const k = p.acts ? this.kActs : this.kUi, v = p.at[0], h0 = p.at[1];
+    const h = this.mirror && h0 !== 'c' ? (h0 === 'l' ? 'r' : 'l') : h0;
+    // arrangement classes carry a k- prefix so they never meet the HUD's own classes (.bar, .up...)
+    s.className = 'slot s-' + id + (p.cls ? ' ' + p.cls.split(' ').map((c) => 'k-' + c).join(' ') : '');
+    s.dataset.h = h; s.dataset.v = v;
+    st.left = st.right = st.top = st.bottom = st.width = '';
+    if (p.cls?.includes('edge')) { st.left = st.right = st.bottom = '0'; st.transform = ''; return; }
+    const SW = '(100% - var(--sal) - var(--sar))', SH = '(100% - var(--sat) - var(--sab))';
+    const x = (p.x ?? 0) * k * (h0 === 'c' && this.mirror ? -1 : 1), y = (p.y ?? 0) * k, yy = `${y.toFixed(1)}px + ${SH} * ${p.yf ?? 0}`;
+    if (h === 'l') st.left = `calc(var(--sal) + ${x.toFixed(1)}px)`;
+    else if (h === 'r') st.right = `calc(var(--sar) + ${x.toFixed(1)}px)`;
+    else st.left = `calc(var(--sal) + ${SW} / 2 + ${x.toFixed(1)}px)`;
+    if (v === 't') st.top = `calc(var(--sat) + ${yy})`;
+    else if (v === 'b') st.bottom = `calc(var(--sab) + ${yy})`;
+    else st.top = `calc(var(--sat) + ${SH} / 2 + ${yy})`;
+    if (p.w !== undefined) {
+      const w = p.w < 0 ? `calc((${SW} - ${-p.w}px) / ${k.toFixed(3)})` : p.w + 'px';
+      st.width = p.wf ? `min(${w}, calc(${SW} * ${p.wf} / ${k.toFixed(3)}))` : w;
+    }
+    st.transformOrigin = `${h === 'l' ? 'left' : h === 'r' ? 'right' : 'center'} ${v === 't' ? 'top' : v === 'b' ? 'bottom' : 'center'}`;
+    st.transform = `translate(${h === 'c' ? '-50%' : '0'}, ${v === 'm' ? '-50%' : '0'}) scale(${k.toFixed(3)})`;
+  }
+  /** Let go of every held HUD button and the stick (a layout change moves them out from under the fingers). */
+  releaseAll() {
+    const inp = this.game.input;
+    for (const a of Object.values(this.acts)) {
+      if (a.ptr === -1) continue;
+      const pid = a.ptr;
+      a.ptr = -1; a.root.classList.remove('down', 'aim', 'held');
+      if (a.hold) { clearTimeout(a.hold); a.hold = 0; }
+      try { a.root.releasePointerCapture(pid); } catch { /* ignore */ }
+      if (a.id !== 'target' && a.state !== 'locked') inp.release(a.btn);
+    }
+    if (this.ibtn?.classList.contains('down')) { this.ibtn.classList.remove('down'); inp.release('interact'); }
+    inp.cancelTouches();
+  }
 
   private build() {
     const g = this.game, h = this.hud;
@@ -136,49 +253,57 @@ export class Hud {
     this.floatEl = el('div', 'float'); h.appendChild(this.floatEl);
     this.reticle = el('div', 'reticle'); this.floatEl.appendChild(this.reticle);
     this.lowHp = el('div', 'vign-low'); h.appendChild(this.lowHp);
+    // the safe rect, measured when laying out
+    this.probe = el('div', 'safe-probe'); h.appendChild(this.probe);
+    // one wrapper per slot; the layout table places the wrapper, the element inside keeps its own look
+    for (const id of SLOT_IDS) { const s = el('div', 'slot s-' + id); (OUTSIDE.includes(id) ? this.root : h).appendChild(s); this.slots[id] = s; }
+    const S = this.slots;
 
     // player frame
     const pf = el('div', 'pframe');
     pf.innerHTML = `<div class="portrait">${icon('char', 30, 2.2)}<div class="lvl">1</div></div>
-      <div class="bars"><div class="name shadow-text"><span></span><small></small></div>
+      <div class="bars"><div class="nrow"><b class="nlv"></b><div class="name shadow-text"><span></span><small></small></div></div>
       <div class="bar hp"><i class="lag"></i><i class="fill"></i><span></span></div>
       <div class="bar en"><i class="fill"></i></div><div class="buffs"></div></div>`;
-    h.appendChild(pf);
+    S.status.appendChild(pf);
+    this.nlv = pf.querySelector('.nlv')!;
     this.lvl = pf.querySelector('.lvl')!; this.nameEl = pf.querySelector('.name')!;
     this.hpFill = pf.querySelector('.hp .fill')!; this.hpLag = pf.querySelector('.hp .lag')!; this.hpText = pf.querySelector('.hp span')!;
     this.enFill = pf.querySelector('.en .fill')!; this.buffs = pf.querySelector('.buffs')!;
     pf.querySelector('.portrait')!.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.onMenu('char'); });
 
-    // menu strip
+    // menu shortcuts (the character button is the portrait disc's job where the disc shows)
     const ms = el('div', 'mstrip');
-    for (const [id, ic] of [['bag', 'bag'], ['quests', 'quests'], ['map', 'map'], ['menu', 'gear'], ['view', 'eye']] as const) {
-      const b = el('button', 'mbtn', icon(ic, 20) + '<i class="pip"></i>');
+    for (const [id, ic] of [['bag', 'bag'], ['quests', 'quests'], ['map', 'map'], ['char', 'char'], ['menu', 'gear'], ['view', 'eye']] as const) {
+      const b = el('button', 'mbtn m-' + id, icon(ic, 20) + '<i class="pip"></i>');
       b.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); g.sfx('ui_click'); if (id === 'view') toggleView(g); else this.onMenu(id); });
       ms.appendChild(b); this.menuBtns[id] = b;
     }
-    h.appendChild(ms);
-    this.scripEl = el('div', 'scrip', `${icon('coin', 15)}<span>0</span>`); h.appendChild(this.scripEl);
+    S.menu.appendChild(ms);
+    this.scripEl = el('div', 'scrip', `${icon('coin', 15)}<span>0</span>`); S.scrip.appendChild(this.scripEl);
 
     // target + boss
     this.tframe = el('div', 'tframe', `<div class="tname shadow-text"></div><div class="bar"><i class="lag"></i><i class="fill"></i></div><div class="stg"><i></i></div><div class="trow"><div class="tsub"></div><div class="tfx"></div></div>`);
-    h.appendChild(this.tframe);
+    S.target.appendChild(this.tframe);
     this.tName = this.tframe.querySelector('.tname')!; this.tFill = this.tframe.querySelector('.fill')!; this.tLag = this.tframe.querySelector('.lag')!; this.tSub = this.tframe.querySelector('.tsub')!;
     this.tStg = this.tframe.querySelector('.stg i')!; this.tFx = this.tframe.querySelector('.tfx')!;
     this.boss = el('div', 'bossbar', `<div class="bn"></div><div class="bar"><i class="lag"></i><i class="fill"></i><div class="ticks"></div></div><div class="stg"><i></i></div><div class="bs"></div><div class="tfx"></div>`);
-    h.appendChild(this.boss);
+    S.boss.appendChild(this.boss);
     this.bossName = this.boss.querySelector('.bn')!; this.bossFill = this.boss.querySelector('.fill')!; this.bossLag = this.boss.querySelector('.lag')!; this.bossSub = this.boss.querySelector('.bs')!;
     this.bStg = this.boss.querySelector('.stg i')!; this.bFx = this.boss.querySelector('.tfx')!;
 
     // minimap
     const mm = el('div', 'mini', `<canvas width="208" height="208"></canvas><div class="north">N</div><div class="clock"></div><div class="zone shadow-text"></div>`);
-    h.appendChild(mm);
+    S.mini.appendChild(mm);
     this.mini = mm.querySelector('canvas')!; this.zoneEl = mm.querySelector('.zone')!; this.clockEl = mm.querySelector('.clock')!;
     mm.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.onMenu('map'); });
 
-    this.tracker = el('div', 'tracker'); h.appendChild(this.tracker);
+    this.tracker = el('div', 'tracker'); S.tracker.appendChild(this.tracker);
     this.tracker.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.onMenu('quests'); });
-    this.logEl = el('div', 'log'); h.appendChild(this.logEl);
-    const xp = el('div', 'xp', '<i></i><span></span>'); h.appendChild(xp);
+    this.logEl = el('div', 'log'); S.log.appendChild(this.logEl);
+    const xp = el('div', 'xp', '<i></i><span></span>'); S.xp.appendChild(xp);
+    // the weapon in hand, by the swap and kit buttons where the layout shows it
+    this.wchip = el('div', 'wchip', '<span class="wc-i"></span><span class="wc-n"></span><span class="wc-2"></span>'); S.weapon.appendChild(this.wchip);
     this.xpFill = xp.querySelector('i')!; this.xpText = xp.querySelector('span')!;
 
     // touch stick
@@ -188,7 +313,6 @@ export class Hud {
     // action cluster
     this.actsEl = el('div', 'acts'); h.appendChild(this.actsEl);
     for (const id of ACT_IDS) this.makeAct(id);
-    this.layoutActs();
 
     // interact prompt
     this.ibtn = el('button', 'ibtn', `<span class="ii">${icon('interact', 22)}</span><span class="il"></span><small>E</small>`);
@@ -198,11 +322,30 @@ export class Hud {
     this.ibtn.addEventListener('pointercancel', () => { this.ibtn.classList.remove('down'); g.input.release('interact'); });
     // every HUD button answers a press with a tick (the action buttons send their own)
     h.addEventListener('pointerdown', (e) => { const b = (e.target as Element | null)?.closest?.('button, .portrait, .mini, .tracker'); if (b && !b.classList.contains('abtn')) g.haptic(8); }, true);
-    h.appendChild(this.ibtn);
+    S.prompt.appendChild(this.ibtn);
 
-    this.timerEl = el('div', 'ctimer', '<div class="cl"></div><div class="ct"></div><div class="cs"></div>'); h.appendChild(this.timerEl);
-    this.toasts = el('div', 'toasts'); this.root.appendChild(this.toasts);
-    this.bannerEl = el('div', 'banner', '<div class="b1"></div><div class="rule"></div><div class="b2"></div>'); this.root.appendChild(this.bannerEl);
+    this.timerEl = el('div', 'ctimer', '<div class="cl"></div><div class="ct"></div><div class="cs"></div>'); S.timer.appendChild(this.timerEl);
+    this.toasts = el('div', 'toasts'); S.toasts.appendChild(this.toasts);
+    this.bannerEl = el('div', 'banner', '<div class="b1"></div><div class="rule"></div><div class="b2"></div>'); S.banner.appendChild(this.bannerEl);
+  }
+  /** Modules that build their own HUD pieces after the HUD (tip cards, the first-person toggle) get their slots here. */
+  private adopt() {
+    const v = this.menuBtns.view;
+    if (v && v.parentElement !== this.slots.view) this.slots.view.appendChild(v);
+    const c = this.hud.querySelector(':scope > .coach') as HTMLElement | null;
+    if (c) this.slots.tip.appendChild(c);
+  }
+  /** The weapon chip: what is in hand, and what the swap button would bring in. */
+  private drawWeapon() {
+    const st = this.game.state, lo = st.d.loadout, other = lo[st.d.active ? 0 : 1];
+    const sig = st.weaponId + '|' + (other ?? '');
+    if (sig === this.wSig) return;
+    this.wSig = sig;
+    const w = st.weapon, o = other ? WEAPONS[other] : null;
+    this.wchip.children[0].innerHTML = icon(w.kind, 16, 2.2);
+    this.wchip.children[1].textContent = w.name;
+    this.wchip.children[2].innerHTML = o ? icon(o.kind, 13, 2.2) : '';
+    this.wchip.classList.toggle('two', !!o);
   }
 
   setVisible(v: boolean) { if (v !== this.visible) { this.visible = v; this.hud.classList.toggle('hidden', !v); } }
@@ -255,14 +398,14 @@ export class Hud {
 
   private makeAct(id: ActionId) {
     const g = this.game, sp = ACT[id];
-    const b = el('button', 'abtn ' + sp.cls + (RING2.includes(id) ? ' r2' : ''),
+    const b = el('button', 'abtn ' + sp.cls,
       `<span class="face"></span><span class="ico"></span><i class="cd"></i>` +
       `<svg class="ring" viewBox="0 0 100 100"><circle class="trk" cx="50" cy="50" r="46"/><circle class="val" cx="50" cy="50" r="46" pathLength="100"/></svg>` +
       `<b class="cdt"></b><b class="cnt"></b><span class="lk">${icon('lock', 15, 2.4)}<b></b></span><span class="en">${icon('bolt', 10, 2.6)}</span><span class="lbl"></span><em class="key">${sp.key}</em>`);
     b.dataset.act = id;
     const a: ActBtn = {
       id, root: b, ico: b.querySelector('.ico')!, cd: b.querySelector('.cd')!, cdt: b.querySelector('.cdt')!, cnt: b.querySelector('.cnt')!, ring: b.querySelector('.ring .val')!,
-      lk: b.querySelector('.lk b')!, lbl: b.querySelector('.lbl')!, btn: sp.btn, size: sp.size, ring2: RING2.includes(id),
+      lk: b.querySelector('.lk b')!, lbl: b.querySelector('.lbl')!, btn: sp.btn, size: sp.size,
       icon: '', label: '', state: 'hidden', cdQ: -1, cdTxt: '', chargeQ: -1, cnt_: '', unlock: 0, cdSec: 0,
       uses: 0, useKey: '', live: false, lblGone: false, ptr: -1, sx: 0, sy: 0, lx: 0, ly: 0, aim: false, hold: 0,
     };
@@ -294,10 +437,10 @@ export class Hud {
       else if (id !== 'attack') g.sfx('ui_click', { vol: 0.3 });
       g.input.press(sp.btn);
       if (a.uses < LEARNED && a.label && !a.live && a.state !== 'noenergy' && a.state !== 'cooldown') { a.uses++; g.state.setFlag(a.useKey, a.uses); }
-      if (id === 'attack') { a.sx = a.lx = e.clientX; a.sy = a.ly = e.clientY; a.aim = false; }
+      if (STEERS.has(id)) { a.sx = a.lx = e.clientX; a.sy = a.ly = e.clientY; a.aim = false; }
     };
     const move = (e: PointerEvent) => {
-      if (e.pointerId !== a.ptr || id !== 'attack') return;
+      if (e.pointerId !== a.ptr || !STEERS.has(id)) return;
       // past 8 px the finger holding the button steers the aim, as a drag on the view would
       if (!a.aim) {
         if (Math.hypot(e.clientX - a.sx, e.clientY - a.sy) < 8) return;
@@ -330,41 +473,64 @@ export class Hud {
     if (on === this.mirror) return;
     this.mirror = on; this.game.input.mirror = on;
     this.hud.classList.toggle('lefty', on);
-    this.actsSig = ''; this.layoutActs();
+    this.applyLayout(true);
   }
 
-  /** Place every shown button on the thumb's arc. Runs when the set of shown slots or the screen changes. */
+  /**
+   * Place every shown button on the thumb's arc, by the layout's cluster table; buttons the layout
+   * sends to the utility column move there. Runs when the set of shown buttons or the layout changes.
+   */
   private layoutActs() {
-    const shown = RING2.filter((id) => this.acts[id].state !== 'hidden');
-    const sig = this.w + 'x' + this.h + (this.mirror ? 'L' : 'R') + shown.join(',');
+    const A = this.layout?.acts;
+    if (!A) return;
+    const shown = (A.flex?.ids ?? []).filter((id) => this.acts[id].state !== 'hidden');
+    const sig = this.layoutSig + shown.join(',');
     if (sig === this.actsSig) return;
     this.actsSig = sig;
-    // screens narrower or shorter than the target shrink the whole cluster a little rather than crowd the stick
-    const k = clamp(Math.min(this.w / 402, this.h / 440), 0.8, 1), dir = this.mirror ? 1 : -1;
-    this.hud.style.setProperty('--k', k.toFixed(3));
-    const put = (id: ActionId, deg: number, r: number) => {
+    const k = this.kActs, dir = this.mirror ? 1 : -1, [ax, ay] = A.attack, util = A.util ?? [];
+    for (const id of ACT_IDS) {
+      const a = this.acts[id], u = util.includes(id), host = u ? this.slots.util : this.actsEl;
+      if (a.root.parentElement !== host) host.appendChild(a.root);
+      a.root.classList.toggle('in-util', u);
+      a.root.classList.toggle('no-seat', !!A.hide?.includes(id));
+      if (u) { a.root.style.left = a.root.style.top = ''; a.root.style.order = String(util.indexOf(id)); a.root.style.setProperty('--d', (A.utilD ?? 46) + 'px'); }
+    }
+    const put = (id: ActionId, deg: number, r: number, d: number) => {
       const a = this.acts[id], rad = deg * Math.PI / 180;
-      const x = (ATTACK_AT.x - Math.cos(rad) * r) * k, y = (ATTACK_AT.y + Math.sin(rad) * r) * k;
+      const x = (ax - Math.cos(rad) * r) * k, y = (ay + Math.sin(rad) * r) * k;
       a.root.style.left = (dir * x).toFixed(1) + 'px'; a.root.style.top = (-y).toFixed(1) + 'px';
-      a.root.style.setProperty('--d', (a.size * k).toFixed(1) + 'px');
+      a.root.style.setProperty('--d', (d * k).toFixed(1) + 'px');
     };
-    put('attack', 0, 0);
-    for (const [id, deg] of RING1) put(id, deg, RING1_R);
-    const at = Math.max(0, shown.indexOf(RING2_ANCHOR));
-    shown.forEach((id, i) => put(id, RING2_ANCHOR_DEG + (i - at) * RING2_STEP, RING2_R));
+    put('attack', 0, 0, A.attack[2]);
+    for (const [id, deg, r, d] of A.seats) put(id, deg, r, d);
+    // the far list measures from the other bottom corner: the safe width less its inset
+    const across = this.w - this.safe.l - this.safe.r;
+    for (const [list, far] of [[A.pos, false], [A.far, true]] as const) for (const [id, x, y, d] of list ?? []) {
+      const a = this.acts[id], xx = far ? across - x * k : x * k;
+      a.root.style.left = (dir * xx).toFixed(1) + 'px'; a.root.style.top = (-y * k).toFixed(1) + 'px';
+      a.root.style.setProperty('--d', (d * k).toFixed(1) + 'px');
+    }
+    if (A.flex) {
+      const f = A.flex, at = Math.max(0, shown.indexOf(f.anchor));
+      shown.forEach((id, i) => put(id, f.deg + (i - at) * f.step, f.r, f.d[id] ?? ACT[id].size));
+    }
   }
 
   /**
    * The action bar, from combat: one entry per slot, once per change and at most once per frame.
    * A slot left out is hidden. The HUD owns position, size, press feedback and when labels fade.
    */
-  setActionBar(slots: ActionSlot[]) {
+  setActionBar(slots: ActionSlot[], bar?: { stance?: Stance }) {
+    // the stance picks the action layout: set by combat (setStance), given with the bar, or read from it
+    // (a fire button means the shooter stance); a bar that says nothing leaves it as it is
+    const stance = bar?.stance ?? (slots.some((s) => s.id === 'fire') ? 'shooter' : undefined);
+    if (stance && stance !== this.stance) this.setStance(stance);
     let seen = 0;
     for (const s of slots) {
       if (!ACT[s.id]) continue;
       seen |= 1 << IDX[s.id];
       const b = (this.actBase[s.id] ??= { id: s.id, icon: '', label: '', state: 'hidden' });
-      b.icon = s.icon; b.label = s.label; b.state = s.state; b.cd = s.cd; b.charge = s.charge; b.count = s.count; b.cdSec = s.cdSec; b.unlock = s.unlock;
+      b.icon = s.icon; b.label = s.label; b.state = s.state; b.cd = s.cd; b.charge = s.charge; b.count = s.count; b.mag = s.mag; b.cdSec = s.cdSec; b.unlock = s.unlock;
     }
     for (const id of ACT_IDS) if (!(seen & (1 << IDX[id]))) { const b = this.actBase[id]; if (b) b.state = 'hidden'; }
   }
@@ -377,7 +543,7 @@ export class Hud {
       let o = this.actOver[id];
       if (o && o.n < n) o = undefined;                 // the caller stopped asking
       t.id = id; t.state = b ? b.state : 'hidden'; t.icon = b ? b.icon : ''; t.label = b ? b.label : '';
-      t.cd = b?.cd; t.charge = b?.charge; t.count = b?.count; t.cdSec = b?.cdSec; t.unlock = b?.unlock;
+      t.cd = b?.cd; t.charge = b?.charge; t.count = b?.count; t.mag = b?.mag; t.cdSec = b?.cdSec; t.unlock = b?.unlock;
       if (b && (b.state === 'cooldown' || b.state === 'active') && b.cdSec && b.cd) {
         // between two calls the sweep and the seconds keep running here, so a sender that only calls on change still looks smooth
         const total = b.cdSec / b.cd;
@@ -417,7 +583,7 @@ export class Hud {
       a.lbl.textContent = s.label;
     }
     // a caption on the attack button while something is happening ("Counter", "Full") is news, not a name to learn
-    a.live = a.id === 'attack' && s.state === 'active';
+    a.live = STEERS.has(a.id) && s.state === 'active';
     const gone = !s.label || (!a.live && a.uses >= LEARNED);
     if (gone !== a.lblGone) { a.lblGone = gone; a.lbl.classList.toggle('gone', gone); }
     if (s.state === 'locked') {
@@ -437,8 +603,11 @@ export class Hud {
       b.classList.toggle('charging', ch > 0); b.classList.toggle('full', ch >= 100);
       a.ring.style.strokeDashoffset = String(100 - Math.max(0, ch));
     }
-    const cnt = s.count === undefined ? '' : String(s.count);
-    if (cnt !== a.cnt_) { a.cnt_ = cnt; a.cnt.textContent = cnt; b.classList.toggle('none-left', s.count === 0); }
+    const cnt = s.count === undefined ? '' : s.mag ? s.count + '/' + s.mag : String(s.count);
+    if (cnt !== a.cnt_) {
+      a.cnt_ = cnt; b.classList.toggle('none-left', s.count === 0);
+      if (s.mag && s.count !== undefined) a.cnt.innerHTML = `${s.count}<small>/${s.mag}</small>`; else a.cnt.textContent = cnt;
+    }
     return relayout;
   }
 
@@ -472,6 +641,7 @@ export class Hud {
   }
   setBoss(name: string | null, frac = 1, sub = '') {
     this.boss.classList.toggle('on', !!name);
+    this.hud.classList.toggle('boss-on', !!name);
     if (!name) return;
     if (this.bossName.textContent !== name) this.bossName.textContent = name;
     const s = `scaleX(${clamp01(frac)})`;
@@ -569,7 +739,11 @@ export class Hud {
 
   update(dt: number) {
     const g = this.game, st = g.state, d = st.d;
+    // the viewport or the input changed under us (a rotation whose resize event has not come yet, a first touch on a laptop)
+    if (innerWidth !== this.w || innerHeight !== this.h || g.input.isTouch !== this.touchWas) this.resize();
+    if (this.actFrame % 30 === 0) this.adopt();
     this.drawActs(dt);
+    this.drawWeapon();
     // bars
     const hp = Math.max(0, Math.round(d.hp)), mhp = st.maxHp;
     if (hp !== this.lastHp) {
@@ -581,7 +755,7 @@ export class Hud {
     }
     const en = Math.round(d.energy);
     if (en !== this.lastEn) { this.lastEn = en; this.enFill.style.transform = `scaleX(${clamp01(en / st.maxEnergy)})`; }
-    if (d.level !== this.lastLvl) { this.lastLvl = d.level; this.lvl.textContent = String(d.level); this.lastXp = -1; this.lastHp = -1; }
+    if (d.level !== this.lastLvl) { this.lastLvl = d.level; this.lvl.textContent = String(d.level); this.nlv.textContent = 'LV ' + d.level; this.lastXp = -1; this.lastHp = -1; }
     const nm = d.name + '|' + (d.title ?? '');
     if (this.nameEl.dataset.sig !== nm) { this.nameEl.dataset.sig = nm; this.nameEl.innerHTML = `<span>${d.name}</span><small>${d.title ?? ''}</small>`; }
     if (d.xp !== this.lastXp) {
@@ -600,7 +774,7 @@ export class Hud {
         this.stickNub.style.transform = `translate(${sk.x * 46}px,${sk.y * 46}px)`;
       } else {
         this.stick.className = 'stick rest';
-        this.stick.style.transform = `translate(${this.mirror ? this.w - 86 : 86}px,${this.h - 150}px)`;
+        this.stick.style.transform = `translate(${this.stickRest.x.toFixed(1)}px,${this.stickRest.y.toFixed(1)}px)`;
         this.stickNub.style.transform = '';
       }
     } else this.stick.className = 'stick';
