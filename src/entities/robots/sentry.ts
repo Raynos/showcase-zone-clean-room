@@ -1,6 +1,6 @@
-import type * as THREE from 'three';
+import * as THREE from 'three';
 import type { RobotLook, RobotRig } from './types';
-import { Rig, T, addCrown, addEye, addFlag, addLight, bounceOut, bump, bx, easeOutBack, joint, recoil, ss, strike, strut } from './common';
+import { Rig, bounceOut, bump, easeOutBack, recoil, ss, strike } from './common';
 
 const HUB = 1.5;
 const LEG_YAW = [Math.PI, Math.PI / 3, -Math.PI / 3];
@@ -8,81 +8,22 @@ const LEG_YAW = [Math.PI, Math.PI / 3, -Math.PI / 3];
 export function makeSentry(look: RobotLook): RobotRig {
   const rig = new Rig('sentry', look, 3.2, 0.9);
   const p = rig.paint, v = look.variant;
-  const body = rig.pivot(rig.inner, 0, HUB, 0);
-  const mastP = rig.pivot(body, 0, 0, 0);
-  const ceramic = v === 'night' ? 0x8a94a6 : 0xf2ecdf;
-
-  const legs: THREE.Mesh[] = [];
-  for (let i = 0; i < 3; i++) {
-    const pv = rig.pivot(body, 0, 0, 0);
-    pv.rotation.y = LEG_YAW[i];
-    legs.push(rig.part('leg', pv, 0, 0, 0.3, (g) => {
-      strut(g, [0, 0, 0], [0, 0.42, 0.62], 0.13, 0.1, 7, { color: p.dark, layer: T.METAL });
-      joint(g, 0, 0.42, 0.62, 0.16, p.body, T.FLAT);
-      strut(g, [0, 0.42, 0.62], [0, -1.42, 0.98], 0.11, 0.06, 7, { color: p.steel, layer: T.METAL });
-      bx(g, 0.24, 0.6, 0.12, { at: [0, -0.1, 0.78], rot: [-0.19, 0, 0], color: v === 'elite' ? 0xffc23a : p.body, layer: v === 'elite' ? T.STRIPE : T.PANEL, uv: v === 'elite' ? 'world' : 'fit', uvScale: 3, bevel: 0.03 });
-      strut(g, [0, 0.1, 0.3], [0, 0.0, 0.72], 0.035, 0.035, 5, { color: 0xd8dde2, layer: T.METAL });
-      g.cyl(0.2, 0.26, 0.09, 9, { at: [0, -1.455, 0.98], color: p.dark, layer: T.RUBBER });
-      g.cone(0.07, 0.2, 5, { at: [0, -1.42, 1.2], rot: [Math.PI / 2 + 0.3, 0, 0], color: p.steel, layer: T.METAL });
-      if (v === 'night') addLight(g, 0, -0.5, 0.875, 0.03, 0.5, 0.02, p.glow2);
-    }));
-  }
-  rig.part('mast', mastP, 0, 0, 0, (g) => {
-    g.cyl(0.46, 0.5, 0.3, 12, { color: p.body, layer: T.PANEL, uvScale: 2.2, grad: 0.8 });
-    g.cyl(0.52, 0.52, 0.08, 12, { at: [0, -0.02, 0], color: v === 'rare' ? p.trim : 0xffc23a, layer: v === 'rare' ? T.METAL : T.STRIPE, uvScale: 3 });
-    g.cyl(0.36, 0.2, 0.26, 10, { at: [0, -0.27, 0], color: p.dark, layer: T.METAL });
-    g.sphere(0.12, 7, 5, { at: [0, -0.42, 0], color: p.glow, emit: p.e * 0.7, layer: T.FLAT });
-    g.cyl(0.34, 0.44, 0.16, 10, { at: [0, 0.22, 0], color: p.dark, layer: T.METAL });
-    g.cyl(0.11, 0.15, 1.15, 8, { at: [0, 0.85, 0], color: p.steel, layer: T.METAL });
-    for (let i = 0; i < 4; i++) g.cyl(0.2 - i * 0.012, 0.29 - i * 0.02, 0.09, 10, { at: [0, 0.48 + i * 0.25, 0], color: ceramic, layer: T.FLAT });
-    // discharge ball
-    g.cyl(0.2, 0.12, 0.12, 9, { at: [0, 1.42, 0], color: p.dark, layer: T.METAL });
-    g.sphere(0.26, 12, 8, { at: [0, 1.66, 0], color: 0xd8dde2, layer: T.METAL });
-    g.torus(0.27, 0.025, 5, 14, { at: [0, 1.66, 0], rot: [Math.PI / 2, 0, 0], color: p.glow, emit: p.e, layer: T.FLAT });
-    // capacitor cans
-    for (let i = 0; i < 3; i++) {
-      const a = i * 2.094 + Math.PI / 3 * 3;
-      g.cyl(0.085, 0.085, 0.3, 7, { at: [Math.sin(a) * 0.4, 0.32, Math.cos(a) * 0.4], color: p.body2, layer: T.FLAT });
-      g.cyl(0.03, 0.03, 0.08, 5, { at: [Math.sin(a) * 0.4, 0.5, Math.cos(a) * 0.4], color: 0xd9a441, layer: T.METAL });
-    }
-    if (v === 'rare') addFlag(g, 0.3, 0.15, -0.3, 0.7, p);
-    if (v === 'elite') addCrown(g, 0, 1.86, 0, 0.2, p, 6);
-    if (v === 'night') for (let i = 0; i < 6; i++) { const a = i * 1.047; addLight(g, Math.sin(a) * 0.5, 0.1, Math.cos(a) * 0.5, 0.05, 0.05, 0.05, i % 2 ? p.glow : p.glow2); }
-  });
-  const ringGeo = (R: number, n: number) => (g: any) => {
-    g.torus(R, 0.045, 5, 16, { rot: [Math.PI / 2, 0, 0], color: 0xd9a441, layer: T.METAL });
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2;
-      g.sphere(0.075, 6, 4, { at: [Math.cos(a) * R, 0, Math.sin(a) * R], color: p.glow, emit: p.e, layer: T.FLAT });
-      bx(g, 0.1, 0.13, 0.14, { at: [Math.cos(a + 0.4) * R, 0, Math.sin(a + 0.4) * R], rot: [0, -a - 0.4, 0], color: p.dark, layer: T.METAL, bevel: 0.02 });
-    }
-  };
-  const ringA = rig.part('ringA', mastP, 0, 0.74, 0, ringGeo(0.62, 3));
-  const ringB = rig.part('ringB', mastP, 0, 1.16, 0, ringGeo(0.44, 2));
-  const eyeP = rig.pivot(mastP, 0, 0.0, 0);
-  const eye = rig.part('eye', eyeP, 0, 0.02, 0.46, (g) => {
-    bx(g, 0.4, 0.36, 0.26, { color: p.dark, layer: T.METAL, bevel: 0.08 });
-    addEye(g, 0, 0, 0.12, 0.13, p);
-    bx(g, 0.44, 0.07, 0.2, { at: [0, 0.2, 0.08], rot: [0.3, 0, 0], color: p.body, layer: T.FLAT, bevel: 0.02 });
-  });
-  const arcs = rig.part('arcs', mastP, 0, 1.66, 0, (g) => {
-    for (let i = 0; i < 6; i++) {
-      const a = i * 1.047 + 0.3, el = ((i * 37) % 5) * 0.25 - 0.3;
-      let x = Math.cos(a) * 0.28, y = el * 0.2, z = Math.sin(a) * 0.28;
-      for (let k = 0; k < 4; k++) {
-        const nx = x + Math.cos(a + (k % 2 ? 0.7 : -0.6)) * 0.22, ny = y + (k % 2 ? 0.16 : -0.1) + el * 0.12, nz = z + Math.sin(a + (k % 2 ? 0.7 : -0.6)) * 0.22;
-        strut(g, [x, y, z], [nx, ny, nz], 0.026 - k * 0.004, 0.02 - k * 0.004, 3, { color: 0xdffbff, emit: 3.2, layer: T.FLAT });
-        x = nx; y = ny; z = nz;
-      }
-    }
-  });
-  arcs.castShadow = false;
+  // body: art/robots/sentry.py. The bones are the parts this file has always animated.
+  // Slot `wood` carries the insulators' ceramic, `woodDark` the brass of the rings and horns.
+  const night = v === 'night' || v === 'nightElite';
+  const b = rig.useModel('sentry', { wood: night ? 0x8a94a6 : 0xf2ecdf, woodDark: night ? 0x8a7a4a : v === 'rare' ? 0xf0cf6a : 0xd9a441 });
+  const body = b.body, mastP = b.mast, ringA = b.ringA, ringB = b.ringB, eyeP = b.eyeP, eye = b.eye, arcs = b.arcs;
+  const collar = b.collar, core = b.core;
+  const legs = [b.leg0, b.leg1, b.leg2];
+  // each leg hinges about its own tangent: the bones have no rest rotation, so the axis is explicit
+  const legAxis = LEG_YAW.map((y) => new THREE.Vector3(Math.cos(y), 0, -Math.sin(y)));
+  void p;
   rig.socket('core', mastP, 0, 0, 0);
   rig.socket('head', mastP, 0, 1.95, 0);
   rig.socket('muzzle', mastP, 0, 1.66, 0);
   rig.socket('eye', eye, 0, 0, 0.2);
 
-  let spinA = 0, spinB = 0, arcSeed = 0, arcT = 0;
+  let spinA = 0, spinB = 0, spinC = 0, arcSeed = 0, arcT = 0;
   rig.animate = (dt, pose) => {
     const t = pose.t, tm = pose.time, a = pose.action;
     if (a === 'move') rig.gait += Math.min(9, 2 + pose.speed * 1.6) * dt;
@@ -128,21 +69,26 @@ export function makeSentry(look: RobotLook): RobotRig {
     body.position.set(c.x, HUB + c.y + c.drop, c.z);
     const comp = -Math.max(-0.5, Math.min(0.4, c.y)) / 0.98; // spread the legs as the hub sinks so feet stay planted
     body.rotation.set(c.pitch, 0, c.roll);
-    legs[0].rotation.x = c.l0 + c.pitch + comp; legs[1].rotation.x = c.l1 - c.pitch * 0.5 + comp; legs[2].rotation.x = c.l2 - c.pitch * 0.5 + comp;
+    legs[0].quaternion.setFromAxisAngle(legAxis[0], c.l0 + c.pitch + comp);
+    legs[1].quaternion.setFromAxisAngle(legAxis[1], c.l1 - c.pitch * 0.5 + comp);
+    legs[2].quaternion.setFromAxisAngle(legAxis[2], c.l2 - c.pitch * 0.5 + comp);
     mastP.rotation.x = c.top * 1.32;
     mastP.scale.y = c.sq;
     spinA += c.rsp * dt; spinB -= c.rsp * 1.35 * dt;
     ringA.position.y = 0.74 + c.ra + Math.sin(tm * 2.1) * 0.03; ringB.position.y = 1.16 + c.rb + Math.cos(tm * 1.7) * 0.03;
     ringA.rotation.set(c.tiltA, spinA, c.tiltA * 0.6); ringB.rotation.set(c.tiltB, spinB, -c.tiltB * 0.6);
     eyeP.rotation.y = c.ey; eye.rotation.x = c.ep;
+    // the capacitor carousel creeps round against ring A; the charge core swells with the charge
+    spinC -= c.rsp * 0.22 * dt; collar.rotation.y = spinC;
+    core.scale.setScalar(1 + pose.charge * 0.45 + Math.max(0, c.arc) * 0.25 + Math.sin(tm * 3.1) * 0.05);
     arcT -= dt;
     if (arcT <= 0) { arcT = 0.045; arcSeed = Math.random() * 6.283; }
     const as = Math.max(0, c.arc) * (0.75 + 0.25 * Math.sin(arcSeed * 7));
-    arcs.visible = as > 0.03;
-    arcs.scale.setScalar(Math.max(0.001, as));
+    arcs.scale.setScalar(as > 0.03 ? as : 0.001);   // collapsed inside the ball when idle
     arcs.rotation.set(Math.sin(arcSeed * 3) * 0.6, arcSeed, Math.cos(arcSeed * 5) * 0.6);
     const dead = a === 'death' ? ss(0.2, 0.9, t) : 0;
-    rig.mat.emitMul.value = (1 + pose.charge * 2.2 + c.arc * 0.8 + (a === 'stun' ? Math.sin(tm * 18) * 0.5 - 0.3 : 0)) * (1 - dead * 0.95);
+    // the night shift's lamps sit against black: the same emission would bloom the whole mast away
+    rig.mat.emitMul.value = (1 + pose.charge * 2.2 + c.arc * 0.8 + (a === 'stun' ? Math.sin(tm * 18) * 0.5 - 0.3 : 0)) * (1 - dead * 0.95) * (night ? 0.7 : 1);
   };
   return rig;
 }
