@@ -589,6 +589,21 @@ owner's approval of the direction.
 - Sharpening only makes the image crisper than before at 1.75×. Revisit the
   resolution once a phone reading exists.
 
+**From the playthrough bot** (`tools/playthrough.sh`, no cheats).
+- A fresh save reached level 11 and the Vault Warden in 24 minutes of game
+  time with no deaths and no stalls. Vault, gauntlet and Titan each clear
+  from a checkpoint. Levels 11 to 16 have not been played end to end.
+- **Band gates can be walked around** at level 1: into Pallet Docks near
+  (13, 80), Arc Field near (13, -80), Slagworks beside the service gate near
+  (113–125, 11), and Rivet Row over the ridge near (126, -90). Fix with
+  phase 7's terrain work or sooner.
+- Combat is no threat: 198 damage taken in 24 minutes, no kits used; the
+  Titan died in 2.5 minutes. Enemy retuning belongs with phase 4.
+- Levelling is fast because quest XP carries it (the boost phase 9 removes).
+- The player creeps upward while standing at the vault exit (210, 8).
+- The bot holds attack for melee combos and reads combat's draw and aim
+  fields, so it needs updating after the phase 4 rewrite.
+
 ## 7. Risks
 
 - **Phone reality.** Every performance number is from desktop Chrome. The
