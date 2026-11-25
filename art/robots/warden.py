@@ -403,4 +403,5 @@ def make():
     m.socket('head', 'head', (0, 0.5, 0))
     m.socket('muzzle', 'fist', (0, -1.05, 0))
     m.socket('shield', 'armL', (-0.1, -1.0, 0.9))
+    m.thin_far(0.3)
     return m

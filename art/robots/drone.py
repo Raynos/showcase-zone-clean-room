@@ -44,6 +44,12 @@ def make():
         m.box(0.07, 0.012, 0.14, at=(s * 0.3, 0.123, -0.02), rot=(0, 0, -s * 0.3), bevel=0)
     m.vent(texel=0.6)
     m.box(0.18, 0.045, 0.02, at=(0, 0.03, -0.362), bevel=0)
+    # the weak point: the battery vent on the tail, lit, with a hazard tab each side
+    m.glow(slot='glow2', emit=1.4, texel=0.8)
+    m.box(0.13, 0.02, 0.012, at=(0, 0.03, -0.374), bevel=0)
+    m.stripe(YELLOW, texel=0.8)
+    for s in (-1, 1):
+        m.box(0.03, 0.07, 0.02, at=(s * 0.115, 0.03, -0.352), rot=(0, s * 0.3, 0), bevel=0)
     # sensor bar across the nose
     m.darkmetal(texel=0.6)
     m.box(0.24, 0.07, 0.07, at=(0, 0.03, 0.345), bevel=0.014)
@@ -222,4 +228,5 @@ def make():
     m.strut((0, 0.02, 0), (0, 0.34, -0.1), 0.011, 0.006, 4)
     m.fixed(0xff5a3a, surf='glow', emit=1.3, rough=0.4, texel=0.4)
     m.sphere(0.028, 6, 4, at=(0, 0.35, -0.1))
+    m.thin_far(0.12)
     return m

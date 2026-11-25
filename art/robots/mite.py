@@ -94,6 +94,16 @@ def make():
         m.box(0.085, 0.008, 0.01, at=(0.13, -0.126 + i * 0.016, -0.279), bevel=0)
 
     # ---- variant dressing on the body ----------------------------------------------------
+    # the power cell under the lid: what the crate is guarding, and what a shot or a break is after
+    m.on('chassis')
+    m.stripe(texel=0.8)
+    m.torus(0.125, 0.018, 12, 5, at=(0, 0.168, 0))
+    m.glow(slot='glow2', emit=1.5, texel=0.8)
+    m.cyl(0.105, 0.105, 0.016, 10, at=(0, 0.168, 0))
+    m.darkmetal(texel=0.6)
+    for a in range(4):
+        m.bolt((math.cos(a * PI / 2 + 0.78) * 0.17, 0.168, math.sin(a * PI / 2 + 0.78) * 0.17), 0.014, (0, 1, 0))
+
     m.bone('opt_night', 'chassis', (0, 0, 0))
     m.glow(slot='glow2', emit=1.6, texel=0.5)
     m.box(0.34, 0.022, 0.014, at=(0, -0.165, 0.262), bevel=0)
@@ -209,4 +219,5 @@ def make():
             m.strut(knee, (foot[0], foot[1] + 0.035, foot[2]), 0.036, 0.014, 6)
             m.rubber(texel=0.4)
             m.sphere(0.021, 5, 3, at=(foot[0], foot[1] + 0.02, foot[2]), scale=(1, 1.1, 1))
+    m.thin_far(0.13)
     return m

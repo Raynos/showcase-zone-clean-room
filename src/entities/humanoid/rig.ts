@@ -87,7 +87,8 @@ export type HumanoidDevRig = HumanoidRig & {
 
 export function makeHumanoid(look: HumanLook): HumanoidDevRig {
   const fit = fitLook(look);
-  const inst = instantiate(fit.model, fit.palette, fit.hide, 2.4, { shadowDist: Infinity });
+  // townsfolk throw their shadow from the far body; the hero's geometry is re-indexed for first person below, so it keeps one level
+  const inst = instantiate(fit.model, fit.palette, fit.hide, 2.4, { shadowDist: Infinity, shadowLow: look.kind !== 'hero' });
   applyFit(inst, fit);
   const mat = inst.material;
   mat.rim.value.w = 0.65;

@@ -33,7 +33,7 @@ const HEADROOM = 0.8;
 export const MODEL_NAMES = [
   'mite', 'pallet', 'drone', 'sentry', 'riveter', 'welder', 'foreman', 'warden', 'titan',
   'rook', 'folk',
-  'swords', 'spears', 'bows', 'guns',
+  'swords', 'spears', 'bows', 'guns', 'board',
 ] as const;
 export type ModelName = (typeof MODEL_NAMES)[number];
 
@@ -172,6 +172,12 @@ export interface InstanceOpts {
   shadowDist?: number;
   /** beyond this many metres the fine-only detail is dropped. Default grows with the model's size. */
   lodDist?: number;
+  /**
+   * Draw the sun shadow from the low level at any distance (a shadow never shows the fine detail).
+   * The instance's geometry then holds both levels in one index, so nothing may read its index as
+   * one surface: not for a body whose geometry is re-indexed elsewhere (the hero's first-person cut).
+   */
+  shadowLow?: boolean;
 }
 
 /*
@@ -220,6 +226,36 @@ function trimmedGeometry(a: Asset, mesh: THREE.SkinnedMesh, hide: ((bone: string
   return hit;
 }
 
+const duals = new Map<string, { geo: THREE.BufferGeometry; nFull: number; nLow: number }>();
+/** Both levels in one index, full first: the main pass draws the front range, the shadow pass the back one. */
+function dualGeometry(a: Asset, mesh: THREE.SkinnedMesh, hide: ((bone: string) => boolean) | undefined) {
+  const bones = mesh.skeleton.bones, gone = new Set<number>();
+  if (hide) bones.forEach((b, i) => { if (hide(b.name)) gone.add(i); });
+  const key = `${a.name}|${[...gone].join(',')}`;
+  let hit = duals.get(key);
+  if (!hit) {
+    const src = mesh.geometry, ix = src.index!, sk = src.getAttribute('skinIndex'), slot = src.getAttribute('aSlot');
+    const full: number[] = [], low: number[] = [];
+    for (let i = 0; i < ix.count; i += 3) {
+      const v = ix.getX(i);
+      if (gone.has(sk.getX(v))) continue;
+      const lod = Math.floor((slot.getX(v) + 0.5) / 32);
+      if (lod !== 2) full.push(v, ix.getX(i + 1), ix.getX(i + 2));
+      if (lod !== 1) low.push(v, ix.getX(i + 1), ix.getX(i + 2));
+    }
+    const geo = new THREE.BufferGeometry();
+    for (const k in src.attributes) geo.setAttribute(k, src.attributes[k]);
+    const all = full.concat(low);
+    geo.setIndex(new THREE.BufferAttribute(src.getAttribute('position').count > 65535 ? new Uint32Array(all) : new Uint16Array(all), 1));
+    geo.setDrawRange(0, full.length);
+    geo.boundingSphere = src.boundingSphere!.clone();
+    geo.boundingBox = src.boundingBox ? src.boundingBox.clone() : null;
+    hit = { geo, nFull: full.length, nLow: low.length };
+    duals.set(key, hit);
+  }
+  return hit;
+}
+
 /**
  * A fresh, independently posable copy: shares geometry and texture, owns its skeleton and its
  * material uniforms (palette, flash, rim, emission). `hide` names bones whose geometry this
@@ -238,8 +274,14 @@ export function instantiate(name: string, palette: Palette = {}, hide?: (bone: s
   const material = new ModelMaterial(a.texture);
   material.setPalette(palette);
   mesh.material = material;
-  const template = mesh;
-  const full = trimmedGeometry(a, template, hide, false);
+  // the levels are cut from the asset's own geometry, whatever this instance's mesh is switched to later
+  const template = { geometry: mesh.geometry, skeleton: mesh.skeleton } as THREE.SkinnedMesh;
+  const dual = opts.shadowLow && a.lod ? dualGeometry(a, template, hide) : null;
+  const full = dual ? { geo: dual.geo, tris: dual.nFull / 3 } : trimmedGeometry(a, template, hide, false);
+  if (dual) {
+    mesh.onBeforeShadow = (_r, _o, _c, _sc, geo) => { if (geo === dual.geo) geo.setDrawRange(dual.nFull, dual.nLow); };
+    mesh.onAfterShadow = (_r, _o, _c, _sc, geo) => { if (geo === dual.geo) geo.setDrawRange(0, dual.nFull); };
+  }
   let lowGeo: THREE.BufferGeometry | null = null;
   const low = () => (lowGeo ??= trimmedGeometry(a, template, hide, true).geo);
   mesh.geometry = full.geo;

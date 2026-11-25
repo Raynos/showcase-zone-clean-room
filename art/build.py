@@ -20,6 +20,7 @@ MODELS = {
     'warden': 'robots.warden', 'titan': 'robots.titan',
     'rook': 'people.rook', 'folk': 'people.folk',
     'swords': 'weapons.swords', 'spears': 'weapons.spears', 'bows': 'weapons.bows', 'guns': 'weapons.guns',
+    'board': 'mounts.board',
 }
 
 

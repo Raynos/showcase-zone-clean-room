@@ -210,9 +210,18 @@ def make():
     # Riveting Rita: red polka-dot bandana over the hopper, knot up front, sleeves rolled
     m.fixed(RED, surf='cloth', rough=0.9, texel=1.0)
     m.sphere(0.45, 12, 5, at=(0.12, 0.91, -0.14), scale=(1, 0.52, 1))
-    m.sphere(0.09, 6, 4, at=(0.12, 0.98, 0.3))
-    for s in (-1, 1):
-        m.cone(0.085, 0.17, 5, at=(0.12 + s * 0.1, 1.06, 0.31), rot=(0, 0, -s * 0.75), scale=(1, 1, 0.4))
+    # the knot: a tight ball of cloth with two short flat ends standing out of it, one a little longer
+    m.sphere(0.075, 8, 5, at=(0.12, 0.99, 0.31), scale=(1.15, 0.9, 0.8))
+    for s, ln in ((-1, 1.0), (1, 0.82)):
+        path = [(0.03, 0.0, 0.0, 0.028), (0.11 * ln, 0.055, 0.012, 0.062), (0.2 * ln, 0.085, 0.02, 0.075), (0.29 * ln, 0.06, 0.03, 0.05), (0.33 * ln, 0.035, 0.034, 0.012)]
+        rings = []
+        for i, (dx, dy, dz, w) in enumerate(path):
+            a, b = path[max(i - 1, 0)], path[min(i + 1, len(path) - 1)]
+            tx, ty = b[0] - a[0], b[1] - a[1]
+            L = math.hypot(tx, ty); nx, ny = -ty / L, tx / L
+            x, y, z = 0.12 + s * dx, 0.99 + dy, 0.31 + dz
+            rings.append([(x - s * nx * w, y - ny * w, z - 0.011), (x + s * nx * w, y + ny * w, z - 0.011), (x + s * nx * w, y + ny * w, z + 0.011), (x - s * nx * w, y - ny * w, z + 0.011)])
+        m.loft(rings, smooth=False)
     m.fixed(0xffffff, surf='cloth', rough=0.9, texel=0.3)
     for i in range(9):
         a = i * 0.7 + 0.2

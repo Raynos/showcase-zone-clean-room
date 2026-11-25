@@ -30,6 +30,8 @@ interface Npc {
   x: number; y: number; z: number; yaw: number; baseYaw: number; grounded: boolean;
   rig: HumanoidRig | null; meshes: THREE.Mesh[]; pose: HumanPose;
   /** far LOD: the whole figure baked into one mesh, a few frames of it for anyone who moves */
+  /** what they hold, drawn beside the far stand-in: its place in root space for the idle pose and each baked frame */
+  farProp: THREE.Mesh | null; propIdle: THREE.Matrix4 | null; propFrames: THREE.Matrix4[];
   proxy: THREE.Mesh | null; idleGeo: THREE.BufferGeometry | null; frames: THREE.BufferGeometry[]; lod: 0 | 1 | 2; gait: number; ownShadow: boolean; dodge: number;
   prop: THREE.Object3D | null;
   mode: Mode; modeT: number; seed: number;
@@ -121,7 +123,7 @@ export class Npcs implements System {
         id, name: nm?.name ?? folk?.name ?? spot?.role ?? 'Townsperson', title: nm?.title ?? folk?.title ?? spot?.role ?? 'Brasswick local', key, folk,
         idle: spot?.idle ?? 'stand', look,
         x: spot?.x ?? 0, y: 0, z: spot?.z ?? 0, yaw: spot?.yaw ?? 0, baseYaw: spot?.yaw ?? 0, grounded: false,
-        rig: null, meshes: [], pose: makePose(), prop: null, proxy: null, idleGeo: null, frames: [], lod: 0, gait: 0, ownShadow: true, dodge: 0,
+        rig: null, meshes: [], pose: makePose(), prop: null, farProp: null, propIdle: null, propFrames: [], proxy: null, idleGeo: null, frames: [], lod: 0, gait: 0, ownShadow: true, dodge: 0,
         mode: 'post', modeT: 0, seed,
         path: null, s: 0, dir: 1, speed: 1.5, curSpeed: 0, nextPause: 12 + seed * 25, chatCd: 10 + seed * 20, partner: null,
         pairSeed: 0, pairSlot: -1,
@@ -246,18 +248,27 @@ export class Npcs implements System {
     const settle = (dt: number) => { p.time += dt; rig.update(dt, p); if (n.prop && n.idle === 'carry') this.holdCrate(n); };
     settle(0.3); settle(0.3);
     n.idleGeo = this.snapshot(n);
+    // where the thing in their hands is in each baked pose, so the far stand-in keeps it
+    const held = () => { n.prop!.updateWorldMatrix(true, false); return new THREE.Matrix4().copy(rig.root.matrixWorld).invert().multiply(n.prop!.matrixWorld); };
+    if (n.prop) n.propIdle = held();
     if (n.path) {
       p.speed = n.speed; p.moveZ = 1; settle(0.3); settle(0.3);
-      for (let k = 0; k < WALK_FRAMES; k++) { if (rig.anim) rig.anim.phase = k / WALK_FRAMES; settle(0.002); const f = this.snapshot(n); if (f) n.frames.push(f); }
+      for (let k = 0; k < WALK_FRAMES; k++) { if (rig.anim) rig.anim.phase = k / WALK_FRAMES; settle(0.002); const f = this.snapshot(n); if (f) { n.frames.push(f); if (n.prop) n.propFrames.push(held()); } }
     } else if (loop) {
       p.action = n.idle as HumanAction;
-      for (let k = 0; k < LOOP_FRAMES; k++) { p.actionT = k / LOOP_FRAMES; settle(0.25); const f = this.snapshot(n); if (f) n.frames.push(f); }
+      for (let k = 0; k < LOOP_FRAMES; k++) { p.actionT = k / LOOP_FRAMES; settle(0.25); const f = this.snapshot(n); if (f) { n.frames.push(f); if (n.prop) n.propFrames.push(held()); } }
     }
     Object.assign(p, keep); settle(0.3);
     if (!n.idleGeo) return;
     const proxy = new THREE.Mesh(n.idleGeo, rig.materials[0]);
     proxy.castShadow = false; proxy.receiveShadow = true; proxy.visible = false;
     this.group.add(proxy); n.proxy = proxy;
+    const held0 = n.prop as THREE.Mesh | null;
+    if (held0?.isMesh && n.propIdle) {
+      const far = new THREE.Mesh(held0.geometry, held0.material);
+      far.matrixAutoUpdate = false; far.castShadow = false; far.receiveShadow = true; far.visible = false;
+      this.group.add(far); n.farProp = far;
+    }
   }
 
   /** Alpha-hash dissolve on the rig's own materials (1 = solid, and back to the cheap opaque path). */
@@ -393,14 +404,18 @@ export class Npcs implements System {
           if (proxy.material !== mat) proxy.material = mat;
           proxy.castShadow = n.fade >= 1 && (n.lod === 1 || d < FAR_SHADOW);
           proxy.position.set(n.x, n.y, n.z); proxy.rotation.y = n.yaw;
-          let geo = n.idleGeo!;
+          let geo = n.idleGeo!, at = n.propIdle;
           const F = n.frames.length;
           if (F) {
-            if (n.path) { if (n.curSpeed > 0.3 && n.mode === 'walk') geo = n.frames[Math.floor(n.gait * F) % F]; }
-            else if (n.pose.action === n.idle) geo = n.frames[Math.floor(n.pose.actionT * F) % F];
+            let k = -1;
+            if (n.path) { if (n.curSpeed > 0.3 && n.mode === 'walk') k = Math.floor(n.gait * F) % F; }
+            else if (n.pose.action === n.idle) k = Math.floor(n.pose.actionT * F) % F;
+            if (k >= 0) { geo = n.frames[k]; at = n.propFrames[k] ?? at; }
           }
           if (proxy.geometry !== geo) proxy.geometry = geo;
+          if (n.farProp && n.lod === 2 && at) { proxy.updateMatrix(); n.farProp.matrix.multiplyMatrices(proxy.matrix, at); n.farProp.matrixWorldNeedsUpdate = true; }
         }
+        if (n.farProp) { const fv = pv && n.lod === 2 && n.fade > 0.5; if (n.farProp.visible !== fv) n.farProp.visible = fv; }
       }
       if (rig.root.visible !== (vis && n.lod < 2)) rig.root.visible = vis && n.lod < 2;
       if (!vis) continue;

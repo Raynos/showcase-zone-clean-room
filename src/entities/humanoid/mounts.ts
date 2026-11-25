@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { clamp, clamp01, damp, lerp, smooth } from '../../core/util';
 import { Geo } from '../../gfx/geo';
 import { WorldMaterial } from '../../gfx/material';
+import { instantiate } from '../../gfx/models';
 import { rigidSkin, type RigidPart } from './rigid';
 import { T } from '../../gfx/textures';
 import { horseCycleHz } from './anim';
@@ -264,41 +265,18 @@ function shadeC(c: number, k: number): number {
 }
 
 export function makeHoverboard(): HoverboardRig & { stats: { meshes: number; tris: number } } {
-  const deckMat = new WorldMaterial({ rim: true });
-  const glowMat = new WorldMaterial({ rim: true });
+  // art/mounts/board.py: one mesh. The lift pods are slot `glow`, the tail light `glow2`.
+  const inst = instantiate('board', { steel: 0xb4bcc5, dark: 0x2a2e35, rubber: 0x1e2024, glow: CYAN, glow2: 0xe5432e }, undefined, 1.6);
   const root = new THREE.Group();
-  const g = new Geo(); g.uvScale(2);
-  // chunky deck: top surface at y = 0, kicked nose and tail
-  cbox(g, 0.32, 0.06, 0.74, 0.022, { at: [0, -0.03, 0], color: ORANGE, layer: T.FLAT });
-  cbox(g, 0.32, 0.06, 0.26, 0.022, { at: [0, -0.012, 0.455], rot: [-0.2, 0, 0], color: 0xffcf3a, layer: T.STRIPE, uvScale: 6 });
-  cbox(g, 0.32, 0.06, 0.24, 0.022, { at: [0, -0.01, -0.45], rot: [0.22, 0, 0], color: ORANGE, layer: T.FLAT });
-  g.box(0.27, 0.008, 0.7, { at: [0, 0.002, 0], color: 0x23272e, layer: T.RUBBER, uvScale: 8 });
-  g.box(0.33, 0.03, 0.05, { at: [0, -0.03, 0.2], color: 0x8b939d, layer: T.METAL });
-  g.box(0.33, 0.03, 0.05, { at: [0, -0.03, -0.2], color: 0x8b939d, layer: T.METAL });
-  g.box(0.1, 0.02, 0.03, { at: [0, -0.02, -0.565], rot: [0.22, 0, 0], color: 0xe5432e, emit: 1.6 });
-  // hover pad housings
-  for (const z of [0.3, -0.3]) {
-    g.cyl(0.15, 0.125, 0.07, 12, { at: [0, -0.09, z], color: 0x4b535e, layer: T.METAL });
-    g.cyl(0.165, 0.165, 0.022, 12, { at: [0, -0.125, z], color: 0x8b939d, layer: T.METAL });
-    g.box(0.06, 0.05, 0.36, { at: [0, -0.08, z * 0.35], color: 0x343b46, layer: T.PANEL });
-  }
-  const deck = g.mesh(deckMat, true);
-  root.add(deck);
-  const e = new Geo();
-  for (const z of [0.3, -0.3]) {
-    e.cyl(0.135, 0.12, 0.02, 12, { at: [0, -0.142, z], color: CYAN, emit: 2.2 });
-    e.torus(0.158, 0.012, 4, 12, { at: [0, -0.108, z], rot: [PI / 2, 0, 0], color: CYAN, emit: 1.6 });
-  }
-  const glow = e.mesh(glowMat, false);
-  root.add(glow);
+  root.add(inst.root);
+  const mat = inst.material;
   let time = 0, k = 0;
-  const tris = deck.geometry.index!.count / 3 + glow.geometry.index!.count / 3;
   return {
-    root, materials: [deckMat, glowMat], stats: { meshes: 2, tris },
+    root, materials: [mat], stats: { meshes: 1, tris: inst.tris },
     update(dt: number, thrust: number) {
       time += dt;
       k = damp(k, clamp01(thrust), 10, dt);
-      glowMat.emitMul.value = 0.35 + k * 0.75 + Math.sin(time * (7 + k * 16)) * (0.05 + k * 0.12);
+      mat.emitMul.value = 0.35 + k * 0.75 + Math.sin(time * (7 + k * 16)) * (0.05 + k * 0.12);
     },
   };
 }

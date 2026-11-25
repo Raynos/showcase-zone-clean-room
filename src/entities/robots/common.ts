@@ -90,7 +90,7 @@ export class Rig implements RobotRig {
       const tag = bone.split('_')[1];
       return !(tag === v || (tag === 'night' && v === 'nightElite'));
     };
-    const inst = instantiate(name, { body: p.body, body2: p.body2, steel: p.steel, dark: p.dark, rubber: p.rubber, glow: p.glow, glow2: p.glow2, trim: p.trim, wood: p.wood, woodDark: p.woodDark, ...extra }, unused);
+    const inst = instantiate(name, { body: p.body, body2: p.body2, steel: p.steel, dark: p.dark, rubber: p.rubber, glow: p.glow, glow2: p.glow2, trim: p.trim, wood: p.wood, woodDark: p.woodDark, ...extra }, unused, undefined, { shadowLow: true });
     inst.material.rim.value.copy(this.mat.rim.value);
     this.mat.dispose();
     this.mat = inst.material; this.materials = [this.mat];

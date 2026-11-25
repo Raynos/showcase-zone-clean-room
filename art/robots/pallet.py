@@ -71,6 +71,12 @@ def make():
     m.box(0.7, 0.36, 0.12, at=(0, 0.5, -0.8), bevel=0.04)
     m.vent(texel=0.9)
     m.box(0.36, 0.15, 0.02, at=(0, 0.55, -0.862), bevel=0)
+    # the weak point: the battery's lit vent, framed in hazard bars, square on the back
+    m.glow(slot='glow2', emit=1.4, texel=0.8)
+    m.box(0.26, 0.05, 0.014, at=(0, 0.55, -0.874), bevel=0)
+    m.stripe(YELLOW, texel=0.8)
+    for s in (-1, 1):
+        m.box(0.035, 0.19, 0.024, at=(s * 0.205, 0.55, -0.864), bevel=0)
     m.stripe(YELLOW, texel=0.8)
     m.box(0.66, 0.075, 0.02, at=(0, 0.375, -0.862), bevel=0)
     for s in (-1, 1):
@@ -327,4 +333,5 @@ def make():
         for y in (-0.12, -0.34):
             m.box(0.16, 0.03, 0.15, at=(s * 0.02, y, 0), bevel=0)
         m.pop()
+    m.thin_far(0.17)
     return m

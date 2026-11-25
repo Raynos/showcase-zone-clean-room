@@ -267,4 +267,5 @@ def make():
             nz = z + math.sin(a + da) * 0.22
             m.strut((x, y, z), (nx, ny, nz), 0.026 - k * 0.004, 0.02 - k * 0.004, 3)
             x, y, z = nx, ny, nz
+    m.thin_far(0.17)
     return m

@@ -384,6 +384,32 @@ class Model:
         a = Vector(axis).normalized()
         return self.strut(Vector(at) - a * r * 0.3, Vector(at) + a * r * 0.7, r, r * 0.85, 6, **over)
 
+    def thin_far(self, size):
+        """
+        Far level by rule: every primitive whose longest side is under `size` metres (bolts,
+        rivets, hinges, small pipes) is drawn only up close, unless it glows (lights carry a
+        silhouette at range) or was given a level by hand.
+        """
+        lo = {}; hi = {}
+        for (x, y, z), p in zip(self.V, self.v_prim):
+            a = lo.get(p)
+            if a is None: lo[p] = [x, y, z]; hi[p] = [x, y, z]
+            else:
+                b = hi[p]
+                if x < a[0]: a[0] = x
+                if y < a[1]: a[1] = y
+                if z < a[2]: a[2] = z
+                if x > b[0]: b[0] = x
+                if y > b[1]: b[1] = y
+                if z > b[2]: b[2] = z
+        small = {p for p in lo if max(hi[p][i] - lo[p][i] for i in range(3)) < size}
+        n = 0
+        for i, f in enumerate(self.F):
+            if self.f_lod[i] == 0 and self.f_surf[i] != SURF['glow'] and self.v_prim[f[0]] in small:
+                self.f_lod[i] = 1; n += 1
+        print('thin_far(%.3f): %d of %d faces are near-only' % (size, n, len(self.F)))
+        return n
+
     def socket(self, name, bone, at=(0, 0, 0)):
         self.sockets[name] = (bone, tuple(at))
 
