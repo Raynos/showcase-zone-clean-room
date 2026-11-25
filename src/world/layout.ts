@@ -30,7 +30,7 @@ export const PADS: Record<string, Rect> = {
   physics: { x0: -172, x1: -118, z0: -128, z1: -72, y: 0.6, name: 'Physics Yard' },
   climb: { x0: -246, x1: -190, z0: -100, z1: -38, y: 1.0, name: 'Climb Yard' },
   movers: { x0: -98, x1: -44, z0: 62, z1: 118, y: 0.5, name: 'Movers Run' },
-  hover: { x0: -112, x1: -22, z0: 152, z1: 238, y: 0.8, name: 'Hoverboard Park' },
+  hover: { x0: -112, x1: -22, z0: 152, z1: 221, y: 0.8, name: 'Hoverboard Park' },
   paddock: { x0: -102, x1: -64, z0: 46, z1: 58, y: 0.2, name: 'Stable Paddock' },
   grapple: { x0: -74, x1: -46, z0: -190, z1: -160, y: 1.2, name: 'Grapple Course' },
 };

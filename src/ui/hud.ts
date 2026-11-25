@@ -188,7 +188,7 @@ export class Hud {
     }
     if (o.count !== undefined && a.cnt.textContent !== o.count) a.cnt.textContent = o.count;
     if (o.off !== undefined) a.root.classList.toggle('off', o.off);
-    if (o.hidden !== undefined) a.root.style.display = o.hidden ? 'none' : '';
+    if (o.hidden !== undefined) { if (o.hidden) a.root.style.setProperty('display', 'none', 'important'); else a.root.style.removeProperty('display'); }
   }
   /** Course / event timer; call every frame while it should show. */
   setTimer(label: string, time: string, sub = '') {
