@@ -3,7 +3,7 @@ name: Deploy to GitHub Pages
 # Builds the game and publishes dist/ to the gh-pages branch, which Pages serves.
 on:
   push:
-    branches: [build/showcase-zone]
+    branches: [main]
   workflow_dispatch:
 
 permissions:

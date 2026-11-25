@@ -24,7 +24,11 @@ collide: `export AGENT_BROWSER_SESSION=<your-name>`.
     agent-browser open "http://localhost:5174/?dev&q=medium"
     agent-browser eval "<js>"          # or: echo "<js>" | agent-browser eval --stdin
     agent-browser screenshot /abs/path.png
+    agent-browser close                # when you stop looking
 
+- Every open session renders the game flat out and loads the machine. Use
+  one session (two at most for parallel bot runs), reuse its name, close it
+  whenever you are not looking, and always before you finish.
 - `?dev` skips the title and adds a cheat drawer. `?q=medium` forces the phone
   quality tier (`low`, `high`, `ultra` also work).
 - After load `window.game` exists. Handy handles: `game.player.pos`,
