@@ -91,7 +91,9 @@ export class Finishers {
   }
   update(dt: number) {
     const c = this.cur;
-    if (!c) return;
+    // keep the prompt on the candidate: the interact system skips anything out of range before it asks
+    // enabled(), so a prompt moved only by enabled() stayed wherever it was last (at first the origin)
+    if (!c) { this.candidate(); return; }
     const g = this.game, pl = g.player, m = c.m;
     c.t += dt;
     if (pl.dead) { this.end(); return; }
