@@ -11,8 +11,6 @@ export const UPGRADES: UpgradeDef[] = [
     cost: (t) => ({ scrip: [0, 150, 450, 1000, 2200][t], parts: [['lens', 2 * t]] }), level: (t) => [0, 4, 8, 12, 16][t] },
   { id: 'boots', name: 'Servo Boots', icon: 'dash', max: 3, desc: (t) => `+${4 * t}% movement speed.`,
     cost: (t) => ({ scrip: [0, 130, 520, 1500][t], parts: [['servo', 3 * t]] }), level: (t) => [0, 3, 8, 13][t] },
-  { id: 'pack', name: 'Pack Expansion', icon: 'bag', max: 3, desc: (t) => `Pack holds ${16 + 4 * t} kinds of item.`,
-    cost: (t) => ({ scrip: [0, 80, 300, 900][t] }), level: (t) => [0, 1, 6, 11][t] },
   { id: 'kitcap', name: 'Kit Bandolier', icon: 'potion', max: 3, desc: (t) => `Repair kits heal ${45 + 8 * t}% and recharge ${t * 10}% faster.`,
     cost: (t) => ({ scrip: [0, 100, 400, 1100][t], parts: [['wire', 3 * t]] }), level: (t) => [0, 2, 7, 12][t] },
 ];

@@ -46,6 +46,10 @@ export interface SaveData {
 }
 
 const KEY = 'cratefall.save.v1';
+/** One slot per kind of item; more than the game has kinds, so the pack only fills if items are added without raising this. */
+const PACK_SLOTS = 16;
+/** what the three tiers of the removed Pack Expansion upgrade cost, by tier */
+const PACK_REFUND = [0, 80, 300, 900];
 export function freshSave(): SaveData {
   return {
     v: 1, name: 'Rook', level: 1, xp: 0, hp: 120, energy: 100, scrip: 25,
@@ -73,8 +77,11 @@ export class State {
       if (!raw) return null;
       const d = JSON.parse(raw) as SaveData;
       if (d.v !== 1) return null;
-      const f = freshSave();
-      return { ...f, ...d, settings: { ...f.settings, ...d.settings } };
+      const f = freshSave(), out = { ...f, ...d, settings: { ...f.settings, ...d.settings } };
+      // Pack Expansion is gone (every kind of item already fitted the base pack, so it bought nothing): pay back what it cost
+      const paid = out.upgrades.pack ?? 0;
+      if (paid > 0) { out.scrip += PACK_REFUND.slice(0, paid + 1).reduce((a, b) => a + b, 0); delete out.upgrades.pack; }
+      return out;
     } catch { return null; }
   }
   static hasSave(): boolean { try { return !!localStorage.getItem(KEY); } catch { return false; } }
@@ -100,7 +107,7 @@ export class State {
   up(id: string) { return this.d.upgrades[id] ?? 0; }
   get maxHp() { return playerMaxHp(this.d.level, this.up('armor')); }
   get maxEnergy() { return playerMaxEnergy(this.up('cell')); }
-  get packSize() { return 16 + 4 * this.up('pack'); }
+  get packSize() { return PACK_SLOTS; }
   get packUsed() { return Object.keys(this.d.inv).filter((k) => this.d.inv[k] > 0).length; }
   get weaponId(): WeaponId { return this.d.loadout[this.d.active] ?? this.d.loadout[0]; }
   get weapon() { return WEAPONS[this.weaponId]; }
