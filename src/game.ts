@@ -64,6 +64,8 @@ export class Game {
   movers!: Movers;
   triggers!: Triggers;
   activeCourse: Course | null = null;
+  /** the freighter's crate drops (world/vista/traffic.ts): schedule, landings, events; set once the world starts */
+  cratefall: import('./world/vista/traffic').Cratefall | null = null;
   systems: System[] = [];
   floors: FloorFn[] = [];
   /** real seconds since boot, and simulated seconds */
