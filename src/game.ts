@@ -94,7 +94,7 @@ export class Game {
     this.scene.add(this.terrain.group);
     const tm = this.terrain.trimesh();
     this.physics.addTrimesh(tm.vertices, tm.indices);
-    this.chunks = new Chunks();
+    this.chunks = new Chunks((x, z) => this.terrain.h(x, z));
     progress(0.4, 'PLANTING');
     await tick();
     this.env = new Environment(this.scene);
@@ -469,6 +469,7 @@ export class Game {
     this.audio?.update?.(rdt, this.camera.position, this.cameraRig.forward(_v));
     this.updateAmbience(rdt);
 
+    this.chunks.update(this.camera, this.renderer.height * this.renderer.pixelRatio, this.renderer.quality.viewDist);
     this.renderer.render(this.scene, this.camera, rdt);
     inp.endFrame();
   }

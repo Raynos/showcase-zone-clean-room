@@ -56,6 +56,25 @@ export class Geo {
   pos: number[] = []; nor: number[] = []; col: number[] = []; uv: number[] = [];
   lay: number[] = []; emi: number[] = []; swy: number[] = []; idx: number[] = [];
   colliders: ColliderSpec[] = [];
+  /**
+   * When set (the static-world chunk builders set it), `add` records one entry per primitive:
+   * first vertex, vertex count, first index, end index. Geometry pushed into the arrays by hand
+   * sits between entries and is treated as loose triangles.
+   */
+  prims: number[] | null = null;
+  /**
+   * Record everything `fn` adds as one primitive. For things made of many tiny parts that read
+   * as a whole (lettering, icons): the world's distance LOD judges a primitive by its own size,
+   * and a word is legible long after any one of its strokes is a pixel wide.
+   */
+  group(fn: () => void) {
+    const p = this.prims;
+    if (!p) { fn(); return; }
+    const v0 = this.pos.length / 3, i0 = this.idx.length;
+    this.prims = null;
+    try { fn(); } finally { this.prims = p; }
+    if (this.idx.length > i0) p.push(v0, this.pos.length / 3 - v0, i0, this.idx.length);
+  }
   private stack: THREE.Matrix4[] = [];
   private cur = new THREE.Matrix4();
   private cColor = 0xffffff; private cLayer: number = T.FLAT; private cEmit = 0; private cUvScale = 0.5; private cGrad = 1;
@@ -114,7 +133,7 @@ export class Geo {
     if (preScale) mat.multiply(_m.makeScale(preScale.x, preScale.y, preScale.z));
     _n.getNormalMatrix(mat);
     const P = g.attributes.position, N = g.attributes.normal, U = g.attributes.uv;
-    const base = this.pos.length / 3;
+    const base = this.pos.length / 3, idx0 = this.idx.length;
     const color = o?.color ?? this.cColor, layer = o?.layer ?? this.cLayer, emit = o?.emit ?? this.cEmit;
     const uvMode = o?.uv ?? 'world', uvS = o?.uvScale ?? this.cUvScale;
     const grad = o?.grad ?? this.cGrad, jit = o?.jit ?? this.cJit, sway = o?.sway ?? this.cSway;
@@ -156,6 +175,7 @@ export class Geo {
         if (flip) this.idx.push(base + i, base + i + 2, base + i + 1); else this.idx.push(base + i, base + i + 1, base + i + 2);
       }
     }
+    if (this.prims) this.prims.push(base, P.count, idx0, this.idx.length);
     return mat;
   }
 

@@ -186,7 +186,10 @@ export function freeGround(x: number, z: number, margin = 2): boolean {
 export function scatterFlora(chunks: Chunks, terrain: Terrain) {
   const rng = new Rng(4242);
   const cell = 6.5;
+  let row = 0;
   for (let z = -HALF + 4; z < HALF - 4; z += cell) for (let x = -HALF + 4; x < HALF - 4; x += cell) {
+    // every plant is complete once placed, so pack as we go rather than hold the whole scatter loose
+    if (x === -HALF + 4 && ++row % 8 === 0) chunks.flush();
     const px = x + rng.range(0, cell), pz = z + rng.range(0, cell);
     const roll = rng.next(), kind = rng.next(), yaw = rng.range(0, TAU), sc = rng.range(0.85, 1.25);
     const treeSeed = rng.int(1, 1e9);

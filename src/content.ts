@@ -15,15 +15,21 @@ async function opt<T = any>(path: string): Promise<T | null> {
 
 /** Static world construction: everything that adds geometry to the chunk builders. */
 export async function buildWorld(game: Game, _progress: (p: number, label: string) => void) {
+  // each module's geometry is packed into the chunk stores as soon as the module is done with it,
+  // so boot never holds more than one module's worth of loose vertex arrays
   const roads = await opt('./world/roads.ts');
   roads?.buildRoads?.(game.chunks, game.terrain);
+  game.chunks.flush();
   const town = await opt('./world/town.ts');
   if (town?.buildTown) game.town = town.buildTown(game.chunks, game.terrain);
+  game.chunks.flush();
   const east = await opt('./world/east.ts');
   east?.buildEast?.(game);
-  for (const p of ['./world/vault.ts', './world/arena.ts', './world/dressing.ts']) { const m = await opt(p); try { m?.build?.(game); } catch (e) { console.warn('build failed', p, e); } }
+  game.chunks.flush();
+  for (const p of ['./world/vault.ts', './world/arena.ts', './world/dressing.ts']) { const m = await opt(p); try { m?.build?.(game); } catch (e) { console.warn('build failed', p, e); } game.chunks.flush(); }
   for (const p of Object.keys(west).sort()) {
     try { const m: any = await west[p](); westMods.push(m); m.build?.(game); } catch (e) { console.warn('west module failed', p, e); }
+    game.chunks.flush();
   }
 }
 
