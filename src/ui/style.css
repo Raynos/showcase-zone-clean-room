@@ -165,9 +165,9 @@ body.desktop .ibtn small { display: block; }
 @keyframes lowhp { 50% { opacity: .55; } }
 
 /* ---------- course timer ---------- */
-.ctimer { position: absolute; left: 50%; top: calc(128px + var(--sat)); transform: translateX(-50%); text-align: center; opacity: 0; transition: opacity .2s; padding: 4px 18px 6px;
+.ctimer { position: absolute; left: 50%; top: calc(172px + var(--sat)); transform: translateX(-50%); text-align: center; opacity: 0; transition: opacity .2s; padding: 4px 18px 6px;
   background: linear-gradient(90deg, #14171c00, #14171ccc 20%, #14171ccc 80%, #14171c00); }
 .ctimer.on { opacity: 1; }
 .ctimer .cl { font-size: 10px; font-weight: 800; letter-spacing: .22em; text-transform: uppercase; color: var(--cyan); }
-.ctimer .ct { font-size: 30px; font-weight: 800; letter-spacing: .04em; line-height: 1; text-shadow: 0 2px 4px #000; }
+.ctimer .ct { font-size: 24px; font-weight: 800; letter-spacing: .04em; line-height: 1; text-shadow: 0 2px 4px #000; }
 .ctimer .cs { font-size: 11px; font-weight: 700; letter-spacing: .1em; color: var(--amber); text-transform: uppercase; }

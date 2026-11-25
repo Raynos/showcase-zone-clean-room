@@ -9,6 +9,8 @@ const CENTER_Y = RADIUS + HALF_H;
 const _v = new THREE.Vector3(), _f = new THREE.Vector3(), _r = new THREE.Vector3();
 
 /** Alternate traversal states (riding, hoverboard, zipline, ladders...) plug in here. */
+const _probe = new THREE.Vector3(), DOWN = new THREE.Vector3(0, -1, 0);
+
 export interface MoveMode {
   name: Locomotion;
   /** when true the capsule still collides via moveBy(); otherwise the mode sets pos directly */
@@ -53,6 +55,8 @@ export class Player {
   /** velocity of the platform under our feet */
   groundVel = new THREE.Vector3();
   groundTag = '';
+  /** live velocity vector of the surface under us (a mover's, updated before we move) */
+  private groundRef: THREE.Vector3 | null = null;
   /** face this heading instead of the move direction (combat) */
   faceYaw: number | null = null;
   moveHeading: number | null = null;
@@ -135,14 +139,29 @@ export class Player {
     this.body.setNextKinematicTranslation({ x: this.pos.x, y: this.pos.y + CENTER_Y, z: this.pos.z });
     const g = k.computedGrounded();
     // what are we standing on?
-    this.groundVel.set(0, 0, 0); this.groundTag = '';
+    this.groundVel.set(0, 0, 0); this.groundTag = ''; this.groundRef = null;
+    let found = false;
     if (g) {
       const n = k.numComputedCollisions();
       for (let i = 0; i < n; i++) {
         const c = k.computedCollision(i);
         if (!c || !c.collider || c.normal1.y < 0.6) continue;
         const meta = this.game.physics.meta.get(c.collider.handle);
-        if (meta) { if (meta.vel) this.groundVel.copy(meta.vel); if (meta.tag) this.groundTag = meta.tag; }
+        if (meta) { if (meta.vel) { this.groundVel.copy(meta.vel); this.groundRef = meta.vel; } if (meta.tag) this.groundTag = meta.tag; found = true; }
+      }
+    }
+    // The controller hovers a skin-width above the floor, so a level move often reports no contact:
+    // probe straight down so moving platforms and conveyors always carry us.
+    if ((g || this.grounded) && !found) {
+      const h = this.game.physics.raycast(_probe.set(this.pos.x, this.pos.y + 0.45, this.pos.z), DOWN, 1.0, undefined, this.collider);
+      if (h?.collider) {
+        const meta = this.game.physics.meta.get(h.collider.handle);
+        if (meta) {
+          if (meta.vel) { this.groundVel.copy(meta.vel); this.groundRef = meta.vel; }
+          if (meta.tag) this.groundTag = meta.tag;
+          // a rising platform must never swallow our feet
+          if (meta.mover && h.dist < 0.44) { this.pos.y += 0.45 - h.dist; this.body.setNextKinematicTranslation({ x: this.pos.x, y: this.pos.y + CENTER_Y, z: this.pos.z }); }
+        }
       }
     }
     return g;
@@ -260,7 +279,14 @@ export class Player {
     const wasGrounded = this.grounded;
     const vyBefore = this.vel.y;
     _v.set((this.vel.x + this.knock.x) * dt, this.vel.y * dt, (this.vel.z + this.knock.z) * dt);
-    if (this.grounded) { _v.x += this.groundVel.x * dt; _v.y += this.groundVel.y * dt - 0.02; _v.z += this.groundVel.z * dt; }
+    // Ride whatever we stand on. Movers are teleported fixed bodies, so the controller's query sees
+    // us and the platform at last step's positions (a consistent pair); we add the platform's
+    // displacement for this frame ourselves, then resolve our own movement on top of it.
+    if (this.grounded) {
+      const gv = this.groundRef ?? this.groundVel;
+      if (gv.x !== 0 || gv.y !== 0 || gv.z !== 0) { this.pos.x += gv.x * dt; this.pos.y += gv.y * dt; this.pos.z += gv.z * dt; }
+      _v.y -= 0.02;
+    }
     const yBefore = this.pos.y;
     this.grounded = this.moveBy(_v, this.vel.y <= 0);
     // hit a ceiling

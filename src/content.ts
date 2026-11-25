@@ -1,7 +1,10 @@
 import type { Game } from './game';
 
 // Optional modules are discovered with glob imports so the game still boots while a module is absent.
-const mods = import.meta.glob(['./world/town.ts', './world/roads.ts', './entities/robots/index.ts', './entities/humanoid/index.ts', './core/audio.ts', './ui/panels.ts', './systems/npcs.ts', './world/east.ts', './world/west.ts']);
+const mods = import.meta.glob(['./world/town.ts', './world/roads.ts', './entities/robots/index.ts', './entities/humanoid/index.ts', './core/audio.ts', './ui/panels.ts', './systems/npcs.ts', './world/east.ts', './world/vault.ts', './world/arena.ts', './world/dressing.ts']);
+/** West-side activity modules: each may export build(game) (static geometry) and start(game) (systems). */
+const west = import.meta.glob('./world/west/*.ts');
+const westMods: any[] = [];
 async function opt<T = any>(path: string): Promise<T | null> {
   const f = mods[path];
   if (!f) return null;
@@ -16,6 +19,10 @@ export async function buildWorld(game: Game, _progress: (p: number, label: strin
   if (town?.buildTown) game.town = town.buildTown(game.chunks, game.terrain);
   const east = await opt('./world/east.ts');
   east?.buildEast?.(game);
+  for (const p of ['./world/vault.ts', './world/arena.ts', './world/dressing.ts']) { const m = await opt(p); try { m?.build?.(game); } catch (e) { console.warn('build failed', p, e); } }
+  for (const p of Object.keys(west).sort()) {
+    try { const m: any = await west[p](); westMods.push(m); m.build?.(game); } catch (e) { console.warn('west module failed', p, e); }
+  }
 }
 
 /** Dynamic systems that need the finished world. */
@@ -26,6 +33,10 @@ export async function startSystems(game: Game) {
   if (audio?.audio) game.audio = audio.audio;
   const east = await opt('./world/east.ts');
   if (east?.East) game.east = new east.East(game);
+  for (const p of ['./world/vault.ts', './world/arena.ts', './world/dressing.ts']) { const m = await opt(p); try { m?.start?.(game); } catch (e) { console.warn('start failed', p, e); } }
+  for (const m of westMods) { try { m.start?.(game); } catch (e) { console.warn('west start failed', e); } }
+  const npcs = await opt('./systems/npcs.ts');
+  if (npcs?.Npcs) game.npcs = new npcs.Npcs(game);
   const panels = await opt('./ui/panels.ts');
   if (panels?.Panels) game.panels = new panels.Panels(game);
 }

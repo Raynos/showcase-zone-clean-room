@@ -336,11 +336,12 @@ export class Game {
 
     const pl = this.player, post = this.renderer.post;
     if (!this.paused) {
+      // platforms first: their velocity for this frame is what the player rides
+      this.movers.update(dt);
       pl.update(dt);
       this.combat.update(dt, rdt);
       this.mobs.playerHostile = !pl.dead && this.combat.enabled;
       this.mobs.update(dt);
-      this.movers.update(dt);
       this.triggers.update(dt);
       for (const s of this.systems) s.update(dt, rdt);
       this.activeCourse?.update(dt);
@@ -386,6 +387,12 @@ export class Game {
     post.letterbox = damp(post.letterbox, this.cameraRig.cine ? 1 : 0, 4, rdt);
 
     // hud
+    {
+      let boss: import('./systems/mobs').Mob | null = null;
+      for (const m of this.mobs.list) if (m.alive && m.aggro && m.isBoss && m.state !== 'spawn') { boss = m; break; }
+      this.hud.setBoss(boss ? boss.name : null, boss ? boss.hp / boss.maxHp : 0, boss ? (this.bossSub ?? `Level ${boss.level}`) : '');
+      this.bossMob = boss;
+    }
     this.hud.setVisible(!this.cameraRig.cine && !this.hideHud);
     this.updateHudButtons();
     this.plates();
@@ -413,7 +420,7 @@ export class Game {
     this.interior = o.interior;
     this.env.interior = o.look ?? null;
     this.mobs.outdoor = !o.interior;
-    this.terrain.group.visible = !o.interior; this.grass.group.visible = !o.interior;
+    this.terrain.group.visible = !o.interior; this.grass.group.visible = !o.interior; this.chunks.show(o.interior);
     pl.teleport(o.x, o.y + 0.15, o.z, o.yaw);
     this.cameraRig.snap(o.yaw + Math.PI, 0.18);
     this.zoneKeyReset();
@@ -425,6 +432,9 @@ export class Game {
   travelling = false;
   private zoneKeyReset() { this.zoneKey = '~'; this.zoneT = 0; }
   east: any = null;
+  bossMob: import('./systems/mobs').Mob | null = null;
+  bossSub: string | null = null;
+  npcs: any = null;
   /** town build result (NPC spots, lanterns...) */
   town: any = null;
   /** menu panels (bag, map, dialog, shops...) */

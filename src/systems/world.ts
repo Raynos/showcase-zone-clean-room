@@ -22,7 +22,9 @@ export class Movers {
   add(obj: THREE.Object3D, half: [number, number, number], path: Mover['path'], opts: { tag?: string; group?: number; offsetY?: number } = {}): Mover {
     const pos = new THREE.Vector3();
     const yaw = (path(0, pos) as number | undefined) ?? 0;
-    const body = this.physics.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(pos.x, pos.y + (opts.offsetY ?? 0), pos.z));
+    // A fixed body that is teleported each frame: the character controller then sees no body velocity,
+    // and the player applies the platform's exact displacement itself (see Player.updateNormal).
+    const body = this.physics.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(pos.x, pos.y + (opts.offsetY ?? 0), pos.z));
     const collider = this.physics.world.createCollider(RAPIER.ColliderDesc.cuboid(half[0], half[1], half[2]).setCollisionGroups(opts.group ?? G_WORLD).setFriction(1), body);
     const m: Mover = { obj, body, collider, path, vel: new THREE.Vector3(), prev: pos.clone(), t: 0, speed: 1, active: true, yaw };
     this.physics.meta.set(collider.handle, { vel: m.vel, tag: opts.tag ?? 'metal', mover: m, offsetY: opts.offsetY ?? 0 });
@@ -38,8 +40,8 @@ export class Movers {
       m.vel.copy(_p).sub(m.prev).divideScalar(dt);
       m.prev.copy(_p);
       const off = this.physics.meta.get(m.collider.handle)?.offsetY ?? 0;
-      m.body.setNextKinematicTranslation({ x: _p.x, y: _p.y + off, z: _p.z });
-      if (yaw !== m.yaw) { m.yaw = yaw; _q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, yaw); m.body.setNextKinematicRotation(_q); }
+      m.body.setTranslation({ x: _p.x, y: _p.y + off, z: _p.z }, false);
+      if (yaw !== m.yaw) { m.yaw = yaw; _q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, yaw); m.body.setRotation(_q, false); }
       m.obj.position.copy(_p); m.obj.rotation.y = yaw;
     }
   }

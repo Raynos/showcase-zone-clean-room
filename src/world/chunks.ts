@@ -34,6 +34,12 @@ export class Chunks {
   }
   /** Meshes for named groups, available after build(). */
   namedMeshes = new Map<string, THREE.Mesh>();
+  private surface: THREE.Mesh[] = [];
+  /** Show the surface (null) or only the named groups whose name starts with the interior id. */
+  show(interior: string | null) {
+    for (const m of this.surface) m.visible = !interior;
+    for (const [name, m] of this.namedMeshes) m.visible = !!interior && name.startsWith(interior);
+  }
 
   build(physics: Physics): { tris: number; meshes: number; colliders: number } {
     let tris = 0, meshes = 0, colliders = 0;
@@ -45,7 +51,7 @@ export class Chunks {
       tris += g.idx.length / 3; meshes++;
       colliders += g.colliders.length;
       physics.addStatic(g.colliders);
-      if (name) this.namedMeshes.set(name, m);
+      if (name) { this.namedMeshes.set(name, m); m.visible = false; m.frustumCulled = false; } else this.surface.push(m);
     };
     for (const g of this.solidG) add(g, worldMat());
     for (const g of this.leafG) add(g, foliageMat());
