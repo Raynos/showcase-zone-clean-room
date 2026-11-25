@@ -24,6 +24,7 @@ export type Locomotion =
   | 'climb'    // scramble wall, driven by climbPhase
   | 'grapple'  // swinging from a line held in the left hand
   | 'sit'      // sitting on a bench
+  | 'down'     // knocked flat and getting up again, driven by downT (seconds; phases in DOWN)
   | 'dead';    // collapsed
 
 /** One-shot / held upper-body or full-body actions. actionT runs 0..1. */
@@ -40,6 +41,7 @@ export type HumanAction =
   | 'rifleAim'                          // HELD: shouldered aim, actionT = settle 0..1
   | 'rifleFire'                         // big recoil at t~0.08, recover
   | 'hit'                               // flinch
+  | 'stagger'                           // knocked off balance: reel away from the blow (flinchX/Z), catch a step, recover
   | 'interact'                          // reach forward / press
   | 'pickup'                            // crouch and grab
   | 'cheer'                             // level-up fist pump
@@ -75,7 +77,14 @@ export interface HumanPose {
   climbPhase: number;
   /** 0..1 while sliding into a melee strike: feet stay planted in a long lunge stance (speed should read 0) */
   lunge?: number;
+  /** 0..1 flinch envelope layered over whatever else is playing, and the unit direction the blow pushes the body (x right, z forward) */
+  flinch?: number; flinchX?: number; flinchZ?: number;
+  /** seconds since a knockdown began, when locomotion === 'down' */
+  downT?: number;
 }
+
+/** Knockdown timeline in seconds: thrown back until `fall`, lying until `lie`, on the feet again at `end`. A roll can start from `rollAt`. */
+export const DOWN = { fall: 0.3, rollAt: 0.42, lie: 0.8, end: 1.2 } as const;
 
 export interface HumanLook {
   /** preset body: the hero or a townsperson archetype */

@@ -3,11 +3,13 @@ import { RAY_SOLID } from '../core/physics';
 import { TAU, angleDiff, clamp, clamp01, damp, lerp, rand } from '../core/util';
 import { CRIT_MULT } from '../data/balance';
 import { AMMO, SKILLS, type AmmoId, type SkillDef } from '../data/weapons';
+import { DOWN } from '../entities/humanoid/types';
 import type { HumanAction, WeaponKind } from '../entities/humanoid/types';
 import type { Game } from '../game';
 import { SP, type Trail } from '../gfx/fx';
 import { WorldMaterial } from '../gfx/material';
 import { T } from '../gfx/textures';
+import { HurtArc } from '../ui/hurtarc';
 import type { Mob } from './mobs';
 
 export interface HitInfo { dmg: number; crit: boolean; dirX: number; dirZ: number; knock: number; heavy: boolean; stun?: number; source: 'melee' | 'arrow' | 'bolt' | 'rifle' | 'skill'; color: number }
@@ -45,6 +47,14 @@ const MAXS = 96;
 const BUFFER = 0.2;
 /** A melee swing slides at most this far toward its target, at no more than this average speed (peak is 1.2x). */
 const LUNGE_MAX = 3, LUNGE_SPEED = 15;
+/**
+ * How a hit on the player lands. Under STAGGER_FRAC of maximum health it is a flinch (visual only).
+ * From there up it staggers: the current action is cut and control is lost for STAGGER_TIME. A hit of
+ * KNOCKDOWN_FRAC or more, or one thrown with KNOCKDOWN_KNOCK or more knockback (charges, quakes),
+ * knocks the player flat. Tuned so a common robot's basic attack flinches and its big telegraphed
+ * one staggers or floors.
+ */
+const STAGGER_FRAC = 0.095, STAGGER_TIME = 0.25, KNOCKDOWN_FRAC = 0.22, KNOCKDOWN_KNOCK = 9;
 type BufAct = 'attack' | 'dodge' | 'skill1' | 'skill2' | 'swap';
 const BUFFERED: BufAct[] = ['attack', 'dodge', 'skill1', 'skill2', 'swap'];
 
@@ -79,6 +89,7 @@ export class Combat {
   perfectT = 0;
   private lastHitSfx = 0;
   enabled = true;
+  private hurtArc: HurtArc;
   /** set by the camera's engagement tracker while the player runs from a fight: no auto-targeting until they turn back */
   autoTargetOff = false;
 
@@ -97,6 +108,7 @@ export class Combat {
     this.shotMesh = mk(new THREE.BoxGeometry(0.05, 0.05, 1), 2.2, T.FLAT);
     this.crateMesh = mk(new THREE.BoxGeometry(1, 1, 1), 0, T.CRATE);
     this.crateMesh.castShadow = true;
+    this.hurtArc = new HurtArc(game);
   }
 
   get kind(): WeaponKind { return this.game.state.weapon.kind; }
@@ -205,7 +217,18 @@ export class Combat {
     g.sfx('dodge_perfect');
     g.slowMo(0.35, 0.35);
   }
-  /** Damage the player. Returns true when it landed. */
+  /** Cut whatever the player is doing (a staggering hit, a knockdown). The input buffer survives it. */
+  private interrupt() {
+    const pl = this.game.player;
+    this.swing = null; this.queued = false; this.skill = null; this.trail?.stop();
+    if (this.drawing) pl.weaponModel?.setDraw?.(0);
+    this.drawing = false; this.aiming = false; this.draw = 0;
+    pl.action = null; pl.lungeT = 0; this.actDur = 0;
+  }
+  /**
+   * Damage the player. Returns true when it landed.
+   * `knock` is the attack's knockback; at KNOCKDOWN_KNOCK and above it floors the player whatever the damage.
+   */
   hurtPlayer(amount: number, from: { x: number; y: number; z: number }, knock = 2, _src?: Mob | null, dot = false): boolean {
     const g = this.game, pl = g.player, st = g.state;
     if (pl.dead || !this.enabled) return false;
@@ -215,25 +238,57 @@ export class Combat {
     st.d.hp -= dmg; st.touch();
     this.sinceHurt = 0; pl.sinceCombat = 0;
     const c = pl.center;
+    // 1 flinch, 2 stagger, 3 knockdown. Mounted or climbing, a hit can only flinch.
+    const frac = dmg / st.maxHp;
+    const tier = dot ? 0 : pl.mode ? 1 : knock >= KNOCKDOWN_KNOCK || frac >= KNOCKDOWN_FRAC ? 3 : frac >= STAGGER_FRAC ? 2 : 1;
     g.hud.damage({ x: c.x, y: c.y + 0.9, z: c.z }, '-' + dmg, 'hurt');
-    g.renderer.post.hurt = Math.min(1, g.renderer.post.hurt + (dot ? 0.25 : 0.55));
-    g.cameraRig.shake(dot ? 0.12 : 0.36);
-    g.sfx(dot ? 'player_burn' : 'player_hurt');
-    g.haptic(dot ? 10 : 30);
+    g.renderer.post.hurt = Math.min(1, g.renderer.post.hurt + (dot ? 0.25 : tier >= 2 ? 0.8 : 0.55));
+    g.cameraRig.shake(dot ? 0.12 : tier === 3 ? 0.75 : tier === 2 ? 0.55 : 0.36);
+    g.sfx(dot ? 'player_burn' : 'player_hurt', tier >= 2 ? { pitch: tier === 3 ? 0.8 : 0.9 } : undefined);
+    g.haptic(dot ? 10 : tier === 3 ? 60 : tier === 2 ? 45 : 30);
     if (!dot) {
-      pl.knockback(pl.pos.x - from.x, pl.pos.z - from.z, knock, knock > 7 ? 5 : 0);
-      pl.invuln = Math.max(pl.invuln, 0.35);
-      g.hitStop(0.05);
-      // interrupt a draw
-      if (this.drawing) { this.drawing = false; this.draw = 0; }
-      if (!this.swing && !this.skill) { pl.action = 'hit'; pl.actionT = 0; this.actDur = 0.3; }
+      let dx = pl.pos.x - from.x, dz = pl.pos.z - from.z;
+      if (Math.hypot(dx, dz) < 0.05) { dx = -Math.sin(pl.yaw); dz = -Math.cos(pl.yaw); }
+      this.hurtArc.show(from.x, from.z, tier);
+      // every hit shows on the body, whatever it is doing
+      pl.flinch(dx, dz, tier === 1 ? 1 : 1.25);
+      if (tier === 1) {
+        pl.knockback(dx, dz, knock, knock > 7 ? 5 : 0);
+        pl.invuln = Math.max(pl.invuln, 0.35);
+        g.hitStop(0.05);
+        // interrupt a draw
+        if (this.drawing) { this.drawing = false; this.draw = 0; pl.weaponModel?.setDraw?.(0); }
+      } else {
+        this.interrupt();
+        // heavy hits land harder: a longer freeze, a camera punch, sparks off the armour
+        g.hitStop(tier === 3 ? 0.15 : 0.1);
+        g.cameraRig.punch(tier === 3 ? -5 : -3);
+        _v.set(c.x, c.y + 0.2, c.z); _d.set(dx, 0.4, dz).normalize();
+        g.fx.hitSparks(_v, _d, 0xff6a3a, tier === 3 ? 1.6 : 1.1);
+        g.sfx('hit_heavy', { pos: pl.pos, vol: tier === 3 ? 0.9 : 0.6, pitch: tier === 3 ? 0.75 : 0.9 });
+        if (tier === 2) {
+          pl.knockback(dx, dz, knock * 1.2 + 2.5);
+          pl.stagger(STAGGER_TIME);
+          pl.invuln = Math.max(pl.invuln, 0.45);
+          pl.action = 'stagger'; pl.actionT = 0; this.actDur = 0.5;
+        } else {
+          // floored: thrown clear, facing what hit us, and safe until back on the feet
+          pl.yaw = Math.atan2(-dx, -dz);
+          pl.flinch(dx, dz, 0);
+          pl.knockback(dx, dz, Math.max(knock, 7) * 1.15, 4.5);
+          pl.knockDown();
+          pl.invuln = Math.max(pl.invuln, DOWN.end + 0.45);
+          g.fx.dust(pl.pos, 8, 1.3);
+          if (st.d.hp > 0) g.slowMo(0.5, 0.18);
+        }
+      }
     }
     if (st.d.hp <= 0) { st.d.hp = 0; this.die(); }
     return true;
   }
   private die() {
     const g = this.game, pl = g.player;
-    pl.dead = true; pl.controllable = false; this.deadT = 0;
+    pl.dead = true; pl.controllable = false; this.deadT = 0; this.hurtArc.clear();
     this.swing = null; this.skill = null; this.drawing = false; this.aiming = false; this.trail?.stop();
     pl.action = null;
     g.mobs.resetAggro();
@@ -340,7 +395,9 @@ export class Combat {
       this.regenT -= dt;
     }
 
-    const can = pl.controllable && this.enabled && (!pl.mode || !!pl.mode.canAttack);
+    this.hurtArc.update(rdt);
+    // staggered or on the ground: nothing but a roll out of the knockdown is possible
+    const can = pl.controllable && this.enabled && (!pl.mode || !!pl.mode.canAttack) && pl.stunT <= 0;
     const melee = this.kind === 'sword' || this.kind === 'spear';
     // one-shot action clips (hit flinch, fire recoil)
     if (this.actDur > 0 && !this.swing && !this.skill && !this.drawing) {
@@ -353,16 +410,19 @@ export class Combat {
 
     // ---- dodge ----
     if (this.buf === 'dodge' && can && !pl.mode && !this.skill) {
+      const wasDown = pl.down;
       g.cameraRig.forward(_v); _v2.set(-_v.z, 0, _v.x);
       const mx = _v2.x * inp.moveX + _v.x * inp.moveY, mz = _v2.z * inp.moveX + _v.z * inp.moveY;
       if (pl.startRoll(mx, mz)) {
         this.buf = null;
         this.swing = null; this.queued = false; this.trail?.stop(); this.drawing = false; this.aiming = false; pl.action = null; pl.lungeT = 0;
-        g.sfx('dodge'); g.fx.dust(pl.pos, 4, 0.8);
+        g.sfx('dodge'); g.fx.dust(pl.pos, wasDown ? 7 : 4, wasDown ? 1.1 : 0.8);
       }
     }
+    // on the ground nothing else happens: swaps, skills and attacks wait for the feet
+    const up = can && !pl.down;
     // ---- swap / potion ----
-    if (this.buf === 'swap' && can && !this.busy) {
+    if (this.buf === 'swap' && up && !this.busy) {
       this.buf = null;
       if (st.swapWeapon()) { g.sfx('swap'); this.combo = 0; this.mag = 5; this.reloadT = 0; }
       else g.hud.toast('No second weapon equipped', 'warn');
@@ -370,7 +430,7 @@ export class Combat {
     if (pl.controllable && inp.pressed('potion')) this.usePotion();
 
     // ---- skills ----
-    if (can && !pl.rolling && !this.skill) {
+    if (up && !pl.rolling && !this.skill) {
       const sk = this.skills;
       // a press that finds the skill still cooling stays buffered; anything else uses the press up
       if (this.buf === 'skill1') { if (this.cast(0, sk[0])) this.buf = null; }
@@ -380,8 +440,8 @@ export class Combat {
 
     // ---- basic attacks ----
     pl.faceYaw = null; pl.actionSlow = 1;
-    if (melee) this.updateMelee(dt, can);
-    else this.updateRanged(dt, can);
+    if (melee) this.updateMelee(dt, up);
+    else this.updateRanged(dt, up);
     if (this.skill === 'whirlwind') pl.actionSlow = 0.75;
 
     // face the target while fighting

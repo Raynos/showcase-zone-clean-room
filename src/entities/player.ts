@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Game } from '../game';
 import { G_PLAYER, RAPIER } from '../core/physics';
 import { angleDiff, clamp, damp, dampAngle, lerp } from '../core/util';
+import { DOWN as KNOCKDOWN } from './humanoid/types';
 import type { HumanAction, HumanPose, HumanoidRig, Locomotion, WeaponModel } from './humanoid/types';
 
 const RADIUS = 0.36, HALF_H = 0.5;
@@ -56,6 +57,11 @@ export class Player {
   private lungeK = 0;
   /** external knockback, decays */
   private knock = new THREE.Vector3();
+  /** seconds of lost control left after a staggering hit */
+  stunT = 0;
+  /** seconds since a knockdown began, or -1 when on the feet */
+  downT = -1;
+  private flinchT = 9; private flinchPow = 0;
   /** velocity of the platform under our feet */
   groundVel = new THREE.Vector3();
   groundTag = '';
@@ -126,6 +132,18 @@ export class Player {
     this.knock.x += (dx / l) * power; this.knock.z += (dz / l) * power;
     if (up > 0 && this.grounded) { this.vel.y = up; this.grounded = false; this.coyote = 0; }
   }
+  /** Show a blow landing: the torso gives along (dx, dz) in world space. Layers over any action. */
+  flinch(dx: number, dz: number, power = 1) {
+    const l = Math.hypot(dx, dz) || 1, sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
+    // into character space: x toward the character's left (+X of the rig), z forward
+    this.pose.flinchX = ((dx / l) * cy - (dz / l) * sy); this.pose.flinchZ = ((dx / l) * sy + (dz / l) * cy);
+    this.flinchT = 0; this.flinchPow = power;
+  }
+  /** Take control away for a moment (a staggering hit). */
+  stagger(sec: number) { this.stunT = Math.max(this.stunT, sec); this.rolling = false; this.lungeT = 0; }
+  /** Knock flat. Control returns KNOCKDOWN.end seconds later, or sooner through a roll. */
+  knockDown() { this.downT = 0; this.stunT = 0; this.rolling = false; this.lungeT = 0; this.sprinting = false; }
+  get down() { return this.downT >= 0; }
   /** Launch upward/outward (kickers, bounce pads, skills). */
   launch(vx: number, vy: number, vz: number) {
     this.vel.set(vx, vy, vz); this.grounded = false; this.coyote = 0; this.jumpsLeft = 1; this.fallStart = this.pos.y;
@@ -182,6 +200,9 @@ export class Player {
 
   startRoll(dirX: number, dirZ: number) {
     if (this.rolling || this.rollCd > 0 || !this.grounded && this.airTime > 0.15) return false;
+    // from the ground: once the fall has landed, a roll is the quick way up
+    if (this.downT >= 0) { if (this.downT < KNOCKDOWN.rollAt) return false; this.downT = -1; }
+    if (this.stunT > 0) return false;
     const l = Math.hypot(dirX, dirZ);
     if (l < 0.1) this.forward(this.rollDir); else this.rollDir.set(dirX / l, 0, dirZ / l);
     this.rolling = true; this.rollT = 0; this.rollCd = 0.75;
@@ -198,6 +219,9 @@ export class Player {
     this.rollCd = Math.max(0, this.rollCd - dt);
     this.sinceCombat += dt;
     this.landT += dt;
+    this.stunT = Math.max(0, this.stunT - dt);
+    if (this.downT >= 0) { this.downT += dt; if (this.downT >= KNOCKDOWN.end || this.mode || this.dead) this.downT = -1; }
+    this.flinchT += dt;
 
     if (this.mode) {
       this.mode.update(this, dt);
@@ -214,9 +238,11 @@ export class Player {
     this.lungeK = damp(this.lungeK, this.lungeT > 0 && !this.rolling && !this.mode ? 1 : 0, this.lungeT > 0 ? 40 : 14, dt);
     p.lunge = this.lungeK;
     p.speed = sp * (1 - this.lungeK); p.vy = this.vel.y; p.landT = this.landT; p.lean = this.lean;
-    if (!this.mode) p.locomotion = this.dead ? 'dead' : this.rolling ? 'roll' : this.grounded || this.airTime < 0.08 ? 'ground' : 'air';
+    if (!this.mode) p.locomotion = this.dead ? 'dead' : this.downT >= 0 ? 'down' : this.rolling ? 'roll' : this.grounded || this.airTime < 0.08 ? 'ground' : 'air';
     else p.locomotion = this.dead ? 'dead' : this.mode.name;
-    p.rollT = this.rollT;
+    p.rollT = this.rollT; p.downT = this.downT;
+    // flinch envelope: there in 40 ms, gone in about a third of a second
+    p.flinch = this.flinchT < 0.04 ? (this.flinchT / 0.04) * this.flinchPow : this.flinchT < 0.6 ? Math.exp(-(this.flinchT - 0.04) * 9) * Math.cos((this.flinchT - 0.04) * 6) * this.flinchPow : 0;
     // local move direction
     this.forward(_f); _r.set(_f.z, 0, -_f.x);
     if (sp > 0.2) { p.moveX = (this.vel.x * _r.x + this.vel.z * _r.z) / sp; p.moveZ = (this.vel.x * _f.x + this.vel.z * _f.z) / sp; }
@@ -235,7 +261,7 @@ export class Player {
 
   private updateNormal(dt: number) {
     const g = this.game, inp = g.input, cam = g.cameraRig;
-    const can = this.controllable && !this.dead;
+    const can = this.controllable && !this.dead && this.stunT <= 0 && this.downT < 0;
     // camera-relative wish direction
     cam.forward(_f); _r.set(-_f.z, 0, _f.x);
     let wx = 0, wz = 0, mag = 0;

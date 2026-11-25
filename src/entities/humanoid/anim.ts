@@ -14,6 +14,7 @@
  */
 import * as THREE from 'three';
 import { clamp, clamp01, lerp, smooth } from '../../core/util';
+import { DOWN } from './types';
 import type { HumanAction, HumanPose, WeaponKind } from './types';
 
 export const L = 0, R = 1;
@@ -525,6 +526,74 @@ function dead(P: Pose) {
   P.elbow[L].set(1, -0.2, -0.2); P.elbow[R].set(-1, -0.2, -0.2);
 }
 
+/**
+ * Knockdown: thrown off the feet onto the back, a beat on the ground, then up through a kneel.
+ * The character is expected to face whatever hit it, so "back" is away from the blow.
+ */
+function down(P: Pose, hp: HumanPose) {
+  const t = hp.downT ?? 0;
+  // flat on the back, limbs flung
+  dead(P);
+  P.hipsPos.set(0.02, 0.15, -0.42);
+  qe(P.hipsQ, -Math.PI / 2 + 0.04, 0.06, 0.05);
+  foot(P, L, 0.22, 0.1, 0.4, 0.5, 0.6); foot(P, R, -0.2, 0.1, 0.52, 0.35, -0.5);
+  if (t < DOWN.fall) {
+    // the blow lifts the feet out from under: hips travel back and up, the chest whips over
+    const u = t / DOWN.fall, e = u * u * (3 - 2 * u);
+    const A = tmpA; neutral(A);
+    A.hipsPos.set(0, SK.hipY - 0.04, -0.05);
+    qe(A.hipsQ, -0.42, 0, 0); qe(A.spineQ, -0.22); qe(A.chestQ, -0.2); qe(A.headQ, 0.5);
+    foot(A, L, 0.13, 0.2, 0.34, -0.5, 0.2); foot(A, R, -0.14, 0.12, 0.2, -0.3, -0.3);
+    A.knee[L].set(0.3, 0.4, 1); A.knee[R].set(-0.3, 0.4, 1);
+    hand(A, L, 0.46, 0.2, 0.22); hand(A, R, -0.46, 0.14, 0.2);
+    A.elbow[L].set(1, -0.3, -0.3); A.elbow[R].set(-1, -0.3, -0.3);
+    A.mix(P, e); P.copy(A);
+    const arc = Math.sin(Math.PI * Math.min(1, u * 1.15));
+    P.hipsPos.y += 0.3 * arc * (1 - e * 0.6);
+    for (let s = 0; s < 2; s++) P.footPos[s].y += 0.35 * arc;
+    qmul(P.headQ, 0.3 * (1 - e));
+  } else if (t < DOWN.lie) {
+    // the landing bounces once and the body goes slack
+    const lt = t - DOWN.fall, b = Math.exp(-lt * 10) * Math.abs(Math.cos(lt * 17));
+    P.hipsPos.y += 0.09 * b;
+    qmul(P.spineQ, 0.2 * b); qmul(P.headQ, 0.35 * b);
+    for (let s = 0; s < 2; s++) { P.footPos[s].y += 0.16 * b; P.handPos[s].y += 0.1 * b; }
+  } else {
+    // sit up, get a foot under, and rise through a kneel on the right knee
+    const u = clamp01((t - DOWN.lie) / (DOWN.end - DOWN.lie)), e = u * u * (3 - 2 * u);
+    const B = tmpA; neutral(B);
+    B.hipsPos.set(0, 0.56, 0.02);
+    qe(B.hipsQ, 0.5, -0.15, 0); qe(B.spineQ, 0.22); qe(B.chestQ, 0.12); qe(B.headQ, -0.5);
+    foot(B, L, 0.16, SK.ankle, 0.26, 0, 0.15);
+    foot(B, R, -0.15, 0.14, -0.3, 1.1, -0.2);
+    B.knee[L].set(0.3, 0, 1); B.knee[R].set(-0.2, -0.6, 1);
+    torso(B);
+    handPosRoot(B, L, 0.34, 0.06, 0.3); handAuto(B, L, 0, 0, 1);
+    hand(B, R, -0.3, -0.2, 0.12);
+    B.elbow[L].set(1, 0.2, -0.5); B.elbow[R].set(-0.8, -0.4, -0.6);
+    // the feet tuck in early, the torso follows
+    const ef = smooth(0, 0.55, u);
+    P.mix(B, e);
+    for (let s = 0; s < 2; s++) { P.footPos[s].lerp(B.footPos[s], ef - e > 0 ? (ef - e) / (1 - e + 1e-4) : 0); }
+    P.hipsPos.y += 0.1 * Math.sin(Math.PI * u);
+  }
+  carryAir(P, hp);
+}
+
+/** Layered flinch: the torso gives way along the blow and snaps back. Runs on top of any action. */
+function flinch(P: Pose, hp: HumanPose) {
+  const k = hp.flinch ?? 0;
+  if (k < 0.004) return;
+  const fx = hp.flinchX ?? 0, fz = hp.flinchZ ?? -1;
+  // +pitch leans forward, +roll tips toward the character's right (-X)
+  const pitch = fz * 0.34 * k, rollA = -fx * 0.3 * k;
+  qmul(P.spineQ, pitch * 0.5, fx * 0.12 * k, rollA * 0.5);
+  qmul(P.chestQ, pitch * 0.5, fx * 0.16 * k, rollA * 0.5);
+  qmul(P.headQ, -pitch * 0.3 + 0.28 * k, 0, -rollA * 0.4);
+  P.hipsPos.x += fx * 0.07 * k; P.hipsPos.z += fz * 0.09 * k; P.hipsPos.y -= 0.06 * k;
+  for (let s = 0; s < 2; s++) { P.handPos[s].y += 0.07 * k; P.handPos[s].x += sx(s) * 0.05 * k; }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Actions (layered onto the base pose already in P)
 // ---------------------------------------------------------------------------------------------
@@ -826,6 +895,24 @@ function applyAction(P: Pose, hp: HumanPose, st: AnimState) {
       for (let s = 0; s < 2; s++) { P.handPos[s].x += sx(s) * 0.14 * k; P.handPos[s].y += 0.12 * k; P.handPos[s].z += 0.06 * k; }
       break;
     }
+    case 'stagger': {
+      // off balance: thrown along the blow, one catching step, arms out, then gathered back in
+      const k = t < 0.16 ? smooth(0, 0.16, t) : 1 - smooth(0.4, 1, t);
+      const fx = hp.flinchX ?? 0, fz = hp.flinchZ ?? -1;
+      const pl = planted(hp);
+      twist(P, fx * 0.3 * k, fx * 0.35 * k, fz * 0.62 * k, -0.13 * k, fz * 0.2 * k);
+      P.hipsPos.x += fx * 0.16 * k;
+      qmul(P.headQ, 0.5 * k * bell(t, 0, 0.1, 0.2, 0.5), 0, -fx * 0.25 * k);
+      if (pl > 0) {
+        // the foot on the far side of the blow catches the weight
+        const side = fz < -0.3 ? R : fz > 0.3 ? L : fx > 0 ? L : R;
+        const lift = bell(t, 0.02, 0.12, 0.16, 0.3);
+        P.footPos[side].x += fx * 0.3 * k * pl; P.footPos[side].z += fz * 0.36 * k * pl; P.footPos[side].y += 0.11 * lift * pl;
+        qmul(P.footQ[side], -0.3 * lift * pl);
+      }
+      for (let s = 0; s < 2; s++) { P.handPos[s].x += sx(s) * 0.2 * k; P.handPos[s].y += 0.2 * k; P.handPos[s].z -= fz * 0.12 * k; }
+      break;
+    }
     case 'interact': {
       const k = bell(t, 0, 0.3, 0.6, 1), press = bell(t, 0.3, 0.42, 0.5, 0.6);
       twist(P, 0.1 * k, 0.25 * k, 0.12 * k, 0);
@@ -990,10 +1077,12 @@ export function evaluate(hp: HumanPose, st: AnimState, dt: number): Pose {
     case 'climb': climbing(P, hp, true); break;
     case 'grapple': grapple(P, hp); break;
     case 'sit': sit(P, hp, st); break;
+    case 'down': down(P, hp); break;
     case 'dead': dead(P); break;
   }
-  const actionOK = hp.action && hp.locomotion !== 'dead' && (hp.locomotion !== 'roll' || FULL_BODY[hp.action]);
+  const actionOK = hp.action && hp.locomotion !== 'dead' && hp.locomotion !== 'down' && (hp.locomotion !== 'roll' || FULL_BODY[hp.action]);
   if (actionOK) applyAction(P, hp, st);
+  if (hp.locomotion !== 'dead' && hp.locomotion !== 'down') flinch(P, hp);
   // head look
   if (hp.lookYaw !== 0 || hp.lookPitch !== 0) {
     const ly = clamp(hp.lookYaw, -1.3, 1.3), lp = clamp(hp.lookPitch, -0.7, 0.7);
@@ -1007,7 +1096,7 @@ export function evaluate(hp: HumanPose, st: AnimState, dt: number): Pose {
     if (hp.locomotion !== st.lastLoco || act !== st.lastAction || hp.drawn !== st.lastDrawn || hp.weapon !== st.lastWeapon) {
       st.from.copy(st.out);
       st.tr = 0;
-      if (hp.locomotion !== st.lastLoco) st.trDur = hp.locomotion === 'dead' ? 0.42 : hp.locomotion === 'roll' ? 0.06 : st.lastLoco === 'roll' ? 0.14 : hp.locomotion === 'air' ? 0.1 : 0.14;
+      if (hp.locomotion !== st.lastLoco) st.trDur = hp.locomotion === 'dead' ? 0.42 : hp.locomotion === 'down' ? 0.07 : st.lastLoco === 'down' ? 0.2 : hp.locomotion === 'roll' ? 0.06 : st.lastLoco === 'roll' ? 0.14 : hp.locomotion === 'air' ? 0.1 : 0.14;
       else if (act !== st.lastAction) st.trDur = act ? 0.08 : 0.16;
       else st.trDur = 0.2;
     }
