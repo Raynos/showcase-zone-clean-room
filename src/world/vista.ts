@@ -7,12 +7,13 @@ import { startWeather } from './vista/weather';
 import { startCinematics, type Cinematics } from './vista/cinematics';
 import { startTrophyWall } from './trophies';
 import { buildSeals } from './vista/seals';
+import { buildThinBands } from './vista/fill';
 
 /**
  * World scale and drama: what lies beyond the wall, what stands on the skyline, what crosses the
  * sky, and the moments the camera is taken to show them. Each part lives in `vista/`.
  */
-export interface Vista { beyond?: Beyond; beams?: THREE.Mesh | null; cine?: Cinematics }
+export interface Vista { beyond?: Beyond; beams?: THREE.Mesh | null; cine?: Cinematics; fill?: { pieces: number; tris: number } }
 
 export function build(game: Game) {
   const v: Vista = {};
@@ -21,6 +22,8 @@ export function build(game: Game) {
   v.beams = buildBeams(game);
   if (v.beams) game.scene.add(v.beams);
   buildSeals(game);
+  const info = (game as any).dressing?.info as { tris: number } | undefined, t0 = info?.tris ?? 0;
+  v.fill = { pieces: buildThinBands(game), tris: (info?.tris ?? 0) - t0 };
 }
 
 export function start(game: Game) {
