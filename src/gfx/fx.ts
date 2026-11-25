@@ -138,6 +138,13 @@ class Pool {
           float cx = mod(sprite, 4.0), cy = floor(sprite / 4.0);
           vUv = (vec2(cx, 1.0 - cy) + vec2(position.x + 0.5, position.y + 0.5)) * vec2(0.25, 0.5);
           vCol = iCol;
+          // no one puff or flash may blanket the view: past 30% of the screen's height a sprite
+          // thins with its area, so it puts the same light on screen however close it is, and a
+          // blast beside the camera stays a blast and not a whiteout
+          if (flatQ < 0.5 && stretch <= 0.0) {
+            float cover = 0.3 / max(size * projectionMatrix[1][1] * 0.5 / max(-mv.z, 0.25), 0.3);
+            vCol.a *= max(cover * cover, 0.05);
+          }
           vFog = 1.0 - exp(-length(mv.xyz) * uFogD);
         }`,
       fragmentShader: /* glsl */ `
@@ -276,6 +283,7 @@ export class FX {
   private add: Pool; private alpha: Pool;
   private debris: Debris[] = [];
   private debrisMesh: THREE.InstancedMesh;
+  private debrisLayer: THREE.InstancedBufferAttribute;
   private telegraphs: Telegraph[] = [];
   private beams: Beam[] = [];
   private trails: Trail[] = [];
@@ -292,8 +300,13 @@ export class FX {
     // debris chunks
     const dg = new THREE.BoxGeometry(1, 1, 1);
     const n = dg.attributes.position.count;
+    // surface layers tile in metres; a chunk's faces are 0..1, so spread them over a few tiles
+    { const uv = dg.attributes.uv.array as Float32Array; for (let i = 0; i < uv.length; i++) uv[i] *= 2.2; }
     dg.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(n * 3).fill(1), 3));
-    dg.setAttribute('aLayer', new THREE.Float32BufferAttribute(new Float32Array(n).fill(T.FLAT), 1));
+    // the surface layer is per chunk, so one mesh carries flat scrap and textured planks alike
+    this.debrisLayer = new THREE.InstancedBufferAttribute(new Float32Array(MAXD).fill(T.FLAT), 1);
+    this.debrisLayer.setUsage(THREE.DynamicDrawUsage);
+    dg.setAttribute('aLayer', this.debrisLayer);
     dg.setAttribute('aEmit', new THREE.Float32BufferAttribute(new Float32Array(n).fill(0), 1));
     this.debrisMesh = new THREE.InstancedMesh(dg, new WorldMaterial(), MAXD);
     this.debrisMesh.count = 0; this.debrisMesh.frustumCulled = false; this.debrisMesh.castShadow = true;
@@ -404,7 +417,8 @@ export class FX {
     this.ring(pos, 1.8, 0x7dffb0, 0.5, 1.6);
   }
   /** Tumbling solid chunks that bounce and shrink away. */
-  chunks(pos: THREE.Vector3, count: number, colors: number[], power = 5, size = 0.18) {
+  /** Tumbling chunks. `layer` is the surface they are made of (a broken crate's chunks are planks, not flat blocks). */
+  chunks(pos: THREE.Vector3, count: number, colors: number[], power = 5, size = 0.18, layer: number = T.FLAT) {
     for (let k = 0; k < count; k++) {
       if (this.debris.length >= MAXD) this.debris.shift();
       const a = Math.random() * TAU, up = rand(0.4, 1.1), sp = rand(0.4, 1) * power;
@@ -415,7 +429,7 @@ export class FX {
         rx: rand(0, TAU), ry: rand(0, TAU), rz: rand(0, TAU), ax: rand(-12, 12), ay: rand(-12, 12), az: rand(-12, 12),
         life: rand(1.6, 2.8), sx: s * rand(0.7, 1.6), sy: s * rand(0.4, 1), sz: s * rand(0.7, 1.3), ground: -1e9,
       };
-      (d as any).color = colors[Math.floor(Math.random() * colors.length)];
+      (d as any).color = colors[Math.floor(Math.random() * colors.length)]; (d as any).layer = layer;
       this.debris.push(d);
     }
   }
@@ -582,11 +596,13 @@ export class FX {
       _m.compose(_v.set(d.x, d.y, d.z), _q.setFromEuler(_e.set(d.rx, d.ry, d.rz)), _s.set(d.sx * k, d.sy * k, d.sz * k));
       this.debrisMesh.setMatrixAt(w, _m);
       this.debrisMesh.setColorAt(w, _c1.setHex((d as any).color));
+      (this.debrisLayer.array as Float32Array)[w] = (d as any).layer ?? T.FLAT;
       this.debris[w++] = d;
     }
     this.debris.length = w;
     this.debrisMesh.count = w;
     this.debrisMesh.instanceMatrix.needsUpdate = true;
+    if (w > 0) this.debrisLayer.needsUpdate = true;
     if (this.debrisMesh.instanceColor) this.debrisMesh.instanceColor.needsUpdate = true;
     // telegraphs
     for (const t of this.telegraphs) {

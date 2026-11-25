@@ -39,7 +39,8 @@ const DROPS = [0, 1, 2, 3, 4, 5].map((i) => { const a = (i / 6) * TAU + 0.45, r 
 interface Look extends InteriorLook { lamp: number }
 const LOOKS: Record<number, Look> = {
   1: { fog: 0x1c2a36, fogD: 0.0019, hemiSky: 0xcfe6f5, hemiGround: 0xa89c8c, hemiI: 2.7, exposure: 1.05, light: 0xfff0d8, lightI: 3.0, lightDir: [0.3, 1, 0.38], lamp: 0xfff1d0 },
-  2: { fog: 0x33241a, fogD: 0.0023, hemiSky: 0xf2d2a6, hemiGround: 0xb08a60, hemiI: 2.6, exposure: 1.05, light: 0xffc078, lightI: 3.0, lightDir: [0.3, 1, 0.38], lamp: 0xffa53a },
+  // phase 2 keeps the hall steel-cool in the shade and puts the amber in the key, so the Titan's crates have a lit side and a dark one
+  2: { fog: 0x2a2424, fogD: 0.0021, hemiSky: 0xb4c8e0, hemiGround: 0xa07a52, hemiI: 1.6, exposure: 1.05, light: 0xffc890, lightI: 3.7, lightDir: [0.3, 1, 0.38], lamp: 0xffa53a },
   3: { fog: 0x2a1820, fogD: 0.0026, hemiSky: 0xc8dcec, hemiGround: 0xb06048, hemiI: 2.5, exposure: 1.06, light: 0xff9c80, lightI: 3.0, lightDir: [0.3, 1, 0.38], lamp: 0xff4a2a },
 };
 const PHASE_SUB = ['', 'Phase 1 · Stacked', 'Phase 2 · Unpacked', 'Phase 3 · Core Exposed'];
@@ -668,7 +669,9 @@ export class Arena implements System {
         if (u >= 1) {
           d.state = 3; d.mesh.visible = false; d.tele = null;
           _v.set(d.x, Y + 1.2, d.z);
-          fx.explosion(_v, 2.4, 0xffa53a); fx.chunks(_v, 16, [PAL.crate, 0xb98548, PAL.woodDark], 9, 0.5); fx.dust(_v, 16, 6);
+          // sized to the crate, not the room: six of these land in ten seconds, and at the old size
+          // (blast 2.4, sixteen 4 m puffs) their dust and glow hid the Titan for half the phase
+          fx.explosion(_v, 1.2, 0xffa53a); fx.chunks(_v, 16, [0xb89060, 0x94703f, 0x6e4c2c], 9, 0.36, T.CRATE); fx.dust(_v, 8, 2.8);
           fx.ring(_v.set(d.x, Y + 0.3, d.z), 8, 0xffa53a, 0.5, 3);
           g.sfx('crate_break', { pos: _v }); g.sfx('explosion', { pos: _v });
           const pd = Math.hypot(g.player.pos.x - d.x, g.player.pos.z - d.z);
@@ -978,7 +981,7 @@ export class Arena implements System {
         if (!m) break;
         if (this.transT > 0) {
           this.transT -= dt;
-          if (Math.random() < dt * 20) { const a = rand(0, TAU), r = rand(5, 30); g.fx.dust(_v.set(m.pos.x + Math.sin(a) * r, Y + 0.2, m.pos.z + Math.cos(a) * r), 2, 3); }
+          if (Math.random() < dt * 20) { const a = rand(0, TAU), r = rand(5, 30); g.fx.dust(_v.set(m.pos.x + Math.sin(a) * r, Y + 0.2, m.pos.z + Math.cos(a) * r), 1, 2); }
           if (this.transT > 1.2) g.cameraRig.shake(0.35);
         }
         this.updateShield(dt);
