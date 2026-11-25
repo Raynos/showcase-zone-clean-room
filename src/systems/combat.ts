@@ -866,8 +866,8 @@ export class Combat {
     const end = o.concussion ? hits[0]?.t ?? len : hits.length > max ? hits[max - 1].t : len;
     _v2.copy(_v).addScaledVector(_d, end);
     const big = oc || !!o.rail, col = big ? 0xffffff : st.weapon.color;
-    g.fx.beam(_v, _v2, col, o.rail ? 1.1 : oc ? 0.5 : o.full ? 0.34 : 0.22, o.rail ? 0.4 : 0.2, 0, o.rail ? 8 : oc ? 7 : 5);
-    if (o.rail) g.fx.beam(_v, _v2, st.weapon.color, 2.4, 0.5, 0, 3);
+    g.fx.beam(_v, _v2, col, o.rail ? 0.6 : oc ? 0.5 : o.full ? 0.34 : 0.22, o.rail ? 0.4 : 0.2, 0, o.rail ? 5 : oc ? 7 : 5);
+    if (o.rail) g.fx.beam(_v, _v2, st.weapon.color, 1.3, 0.5, 0, 1.6);
     g.fx.muzzle(_v, _d, col, big ? 2 : o.full ? 1.7 : 1.3);
     g.sfx(big ? 'rifle_overcharge' : 'rifle_fire', o.full ? { pitch: 0.86 } : undefined);
     g.cameraRig.kick(0.05 + (big ? 0.05 : o.full ? 0.025 : 0), rand(-0.012, 0.012)); g.cameraRig.shake(o.rail ? 0.8 : oc ? 0.5 : o.full ? 0.36 : 0.24); g.cameraRig.punch(big ? 6 : o.full ? 4.5 : 3);
@@ -1210,10 +1210,10 @@ export class Combat {
           this.aoe(pl.pos.x, pl.pos.y, pl.pos.z, 6, 6.5, { heavy: true, knock: 12, source: 'skill', stun: 2, poise: 3 });
           _v.copy(pl.pos); _v.y = g.groundY(pl.pos.x, pl.pos.z, pl.pos.y + 0.5) + 0.1;
           _v2.set(_v.x + 2, _v.y + 30, _v.z + 1);
-          g.fx.beam(_v2, _v, col, 1.4, 0.35, 0, 5); g.fx.beam(_v2, _v, 0xffffff, 0.4, 0.25, 0, 8);
-          g.fx.ring(_v, 12, col, 0.5, 3); g.fx.ring(_v, 7, 0xffffff, 0.35, 4); g.fx.explosion(_v, 2.2, col); g.fx.dust(_v, 24, 2.6);
+          g.fx.beam(_v2, _v, col, 0.9, 0.35, 0, 3); g.fx.beam(_v2, _v, 0xffffff, 0.28, 0.25, 0, 5);
+          g.fx.ring(_v, 12, col, 0.5, 3); g.fx.ring(_v, 7, 0xffffff, 0.35, 4); g.fx.explosion(_v, 0.8, col); g.fx.dust(_v, 24, 2.6);
           g.fx.chunks(_v, 12, [0x8a8f98, 0x6a6f78, col], 9, 0.2);
-          g.cameraRig.shake(0.9); g.cameraRig.punch(-6); g.renderer.post.flash.w = Math.max(g.renderer.post.flash.w, 0.12);
+          g.cameraRig.shake(0.9); g.cameraRig.punch(-6); g.renderer.post.flash.w = Math.max(g.renderer.post.flash.w, 0.07);
           g.sfx('skill_slam'); g.sfx('thunder_strike', { pos: _v });
         }
         break;
@@ -1448,7 +1448,7 @@ export class Combat {
         if (trip) {
           done = true;
           _v2.set(z.x, z.y + 0.5, z.z);
-          g.fx.explosion(_v2, 1.5, z.color); g.fx.ring(_v2, 10, z.color, 0.4, 3); g.sfx('explode_small', { pos: _v2 }); g.sfx('arc_zap', { pos: _v2 }); g.cameraRig.shake(0.4);
+          g.fx.explosion(_v2, 0.9, z.color); g.fx.ring(_v2, 10, z.color, 0.4, 3); g.sfx('explode_small', { pos: _v2 }); g.sfx('arc_zap', { pos: _v2 }); g.cameraRig.shake(0.4);
           this.aoe(z.x, z.y, z.z, 5, 2.6, { heavy: true, knock: 9, stun: 1.5, source: 'skill', poise: 2 });
         }
       }
