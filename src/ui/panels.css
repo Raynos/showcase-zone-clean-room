@@ -350,7 +350,7 @@ body:not(.desktop) .pn-ctl em { display: none; }
 /* ------------------------------------------------------------------ wide screens and landscape: centred card */
 @media (min-width: 700px), (orientation: landscape) {
   .pn-scrim { background: rgba(6, 8, 11, .66); }
-  .pn-sheet { left: 50%; right: auto; top: 50%; bottom: auto; width: min(560px, calc(100% - 24px - var(--sal) - var(--sar))); height: min(760px, calc(100% - 20px)); max-height: none;
+  .pn-sheet { left: calc(50% + (var(--sal) - var(--sar)) / 2); right: auto; top: 50%; bottom: auto; width: min(560px, calc(100% - 24px - var(--sal) - var(--sar))); height: min(760px, calc(100% - 20px)); max-height: none;
     clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c));
     transform: translate(-50%, -47%) scale(.97); opacity: 0; transition: transform var(--t-sheet) var(--ease), opacity var(--t-fast); pointer-events: none; }
   .pn-sheet::before { inset: 2px 1.5px 1.5px; clip-path: polygon(calc(var(--c) - .8px) 0, 100% 0, 100% calc(100% - var(--c) + .8px), calc(100% - var(--c) + .8px) 100%, 0 100%, 0 calc(var(--c) - .8px)); }
