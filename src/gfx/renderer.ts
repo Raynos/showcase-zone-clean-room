@@ -40,6 +40,8 @@ function fsMat(frag: string, uniforms: Record<string, THREE.IUniform>) {
 export class PostState {
   exposure = 1.0;
   bloom = 0.85;
+  /** share of each wider bloom octave that reaches the next sharper one: 1 is a wide veil, lower hugs the source */
+  bloomSpread = 0.72;
   saturation = 1.12;
   contrast = 1.06;
   vignette = 0.42;
@@ -58,6 +60,10 @@ export class PostState {
   tint = new THREE.Color(1, 1, 1);
   shadowTint = new THREE.Color(0.9, 1.0, 1.08);
   highTint = new THREE.Color(1.06, 1.0, 0.92);
+  /** the darkest values are lifted toward this colour (rgb) by this much (w): shade is navy or violet, never black */
+  lift = new THREE.Vector4(0.5, 0.62, 1.0, 0.07);
+  /** extra saturation for what is lit and still pale; already-rich colour and deep shade are left alone */
+  vibrance = 0.35;
   chroma = 0.0;
   godrays = 0.7;
   sunScreen = new THREE.Vector3(); // xy uv, z visibility
@@ -107,7 +113,7 @@ export class Renderer {
         vec3 c = texture2D(tMap, vUv + uTexel * vec2(-1.0, -1.0)).rgb + texture2D(tMap, vUv + uTexel * vec2(1.0, -1.0)).rgb
                + texture2D(tMap, vUv + uTexel * vec2(-1.0, 1.0)).rgb + texture2D(tMap, vUv + uTexel * vec2(1.0, 1.0)).rgb;
         c *= 0.25;
-        c = min(c, vec3(24.0));
+        c = min(c, vec3(10.0));
         float br = max(c.r, max(c.g, c.b));
         float knee = 0.5, th = 1.0;
         float soft = clamp(br - th + knee, 0.0, 2.0 * knee);
@@ -124,13 +130,13 @@ export class Renderer {
         gl_FragColor = vec4(c / 8.0, 1.0);
       }`, { tMap: { value: null }, uTexel: { value: new THREE.Vector2() } });
     this.mUp = fsMat(/* glsl */ `
-      varying vec2 vUv; uniform sampler2D tMap; uniform sampler2D tAdd; uniform vec2 uTexel; uniform float uMix;
+      varying vec2 vUv; uniform sampler2D tMap; uniform sampler2D tAdd; uniform vec2 uTexel; uniform float uMix; uniform float uGain;
       void main() {
         vec3 c = texture2D(tMap, vUv + uTexel * vec2(-1.0, 0.0)).rgb + texture2D(tMap, vUv + uTexel * vec2(1.0, 0.0)).rgb
                + texture2D(tMap, vUv + uTexel * vec2(0.0, -1.0)).rgb + texture2D(tMap, vUv + uTexel * vec2(0.0, 1.0)).rgb;
         c = c * 0.125 + texture2D(tMap, vUv).rgb * 0.5;
-        gl_FragColor = vec4(mix(texture2D(tAdd, vUv).rgb, c, uMix), 1.0);
-      }`, { tMap: { value: null }, tAdd: { value: null }, uTexel: { value: new THREE.Vector2() }, uMix: { value: 0.6 } });
+        gl_FragColor = vec4(mix(texture2D(tAdd, vUv).rgb, c, uMix) * uGain, 1.0);
+      }`, { tMap: { value: null }, tAdd: { value: null }, uTexel: { value: new THREE.Vector2() }, uMix: { value: 0.6 }, uGain: { value: 1 } });
     this.mRaysMask = fsMat(/* glsl */ `
       varying vec2 vUv; uniform sampler2D tDepth; uniform sampler2D tMap; uniform vec3 uSun; uniform float uAspect;
       void main() {
@@ -161,7 +167,7 @@ export class Renderer {
       uniform sampler2D tMap; uniform sampler2D tBloom; uniform sampler2D tRays;
       uniform float uExposure, uBloom, uSat, uContrast, uVig, uHurt, uDesat, uSpeed, uFade, uLetter, uChroma, uRays, uTime, uAspect, uSharp;
       uniform vec2 uTexel;
-      uniform vec4 uFlash; uniform vec3 uTint, uShadowTint, uHighTint, uSunCol; uniform vec3 uSun;
+      uniform vec4 uFlash; uniform vec4 uLift; uniform float uVib; uniform vec3 uTint, uShadowTint, uHighTint, uSunCol; uniform vec3 uSun;
       vec3 aces(vec3 x) {
         // ACES fitted (Narkowicz), slightly lifted toe for a stylised look
         const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
@@ -200,10 +206,18 @@ export class Renderer {
         col += bloom * uBloom;
         col += texture2D(tRays, uv).rgb * uSunCol * uRays;
         col *= uExposure;
-        col = aces(col);
+        {
+          // tone map on the brightest channel so a strong warm light keeps its hue (per channel,
+          // orange climbs to acid yellow), eased toward the per-channel curve so highlights still pale
+          float m = max(col.r, max(col.g, col.b));
+          col = mix(col * (aces(vec3(m)).r / max(m, 1e-4)), aces(col), 0.4);
+        }
         // grade
         float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
-        col = mix(vec3(l), col, uSat * (1.0 - uDesat * 0.75));
+        float mx = max(col.r, max(col.g, col.b)), mn = min(col.r, min(col.g, col.b));
+        // lit, pale colour is pushed toward its own hue; rich colour and deep shade are left as they are
+        float vib = uVib * (1.0 - (mx - mn) / max(mx, 1e-3)) * smoothstep(0.02, 0.3, l);
+        col = mix(vec3(l), col, (uSat + vib) * (1.0 - uDesat * 0.75));
         col = (col - 0.5) * uContrast + 0.5;
         col *= mix(uShadowTint, uHighTint, smoothstep(0.0, 0.8, l)) * uTint;
         // vignette
@@ -213,8 +227,11 @@ export class Renderer {
         // damage pulse
         float edge = smoothstep(0.08, 0.5, dot(cc, cc) * 1.4);
         col = mix(col, vec3(0.85, 0.05, 0.02), edge * uHurt * 0.75);
-        col = mix(col, uFlash.rgb, uFlash.a);
+        // a screen flash brightens toward its colour without flattening what is already on screen
+        col += uFlash.rgb * uFlash.a * (1.0 - clamp(col, 0.0, 1.0)) * 0.6;
         col = pow(max(col, 0.0), vec3(1.0 / 2.2));
+        // the toe: the darkest values sit on a coloured floor, so shade keeps its detail and its hue
+        { float lg = clamp(dot(col, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0); float k = 1.0 - lg; k *= k; col += uLift.rgb * (uLift.a * k * k); }
         // dither
         float n = fract(sin(dot(gl_FragCoord.xy + uTime * 60.0, vec2(12.9898, 78.233))) * 43758.5453);
         col += (n - 0.5) / 255.0 * 1.5;
@@ -227,7 +244,7 @@ export class Renderer {
       uExposure: { value: 1 }, uBloom: { value: 1 }, uSat: { value: 1 }, uContrast: { value: 1 }, uVig: { value: 0.4 },
       uHurt: { value: 0 }, uDesat: { value: 0 }, uSpeed: { value: 0 }, uFade: { value: 0 }, uLetter: { value: 0 }, uChroma: { value: 0 },
       uRays: { value: 0 }, uTime: { value: 0 }, uAspect: { value: 1 }, uSharp: { value: 0 }, uTexel: { value: new THREE.Vector2() },
-      uFlash: { value: new THREE.Vector4() }, uTint: { value: new THREE.Color() }, uShadowTint: { value: new THREE.Color() },
+      uFlash: { value: new THREE.Vector4() }, uLift: { value: new THREE.Vector4() }, uVib: { value: 0 }, uTint: { value: new THREE.Color() }, uShadowTint: { value: new THREE.Color() },
       uHighTint: { value: new THREE.Color() }, uSunCol: { value: new THREE.Color() }, uSun: { value: new THREE.Vector3() },
     });
     this.resize();
@@ -296,6 +313,8 @@ export class Renderer {
         this.mUp.uniforms.tMap.value = B[i].texture;
         this.mUp.uniforms.tAdd.value = B[i].texture;
         this.mUp.uniforms.uMix.value = 1;
+        // each wider octave adds less: a glow hugs its source instead of fogging the frame
+        this.mUp.uniforms.uGain.value = this.post.bloomSpread;
         this.mUp.uniforms.uTexel.value.set(1 / B[i].width, 1 / B[i].height);
         gl.autoClear = false;
         this.pass(this.mUp, B[i - 1]);
@@ -334,7 +353,7 @@ export class Renderer {
     const stretch = (window.devicePixelRatio || 1) / Math.max(this.pixelRatio, 0.01);
     u.uSharp.value = q.sharpen * (0.5 + 0.5 * clamp(stretch - 1, 0, 1));
     u.uTexel.value.set(1 / this.rtMain.width, 1 / this.rtMain.height);
-    u.uFlash.value.copy(p.flash); u.uTint.value.copy(p.tint); u.uShadowTint.value.copy(p.shadowTint); u.uHighTint.value.copy(p.highTint);
+    u.uFlash.value.copy(p.flash); u.uLift.value.copy(p.lift); u.uVib.value = p.vibrance; u.uTint.value.copy(p.tint); u.uShadowTint.value.copy(p.shadowTint); u.uHighTint.value.copy(p.highTint);
     u.uSunCol.value.copy(p.sunColor);
     this.pass(this.mFinal, null);
     gl.shadowMap.autoUpdate = saveShadow;

@@ -37,7 +37,22 @@ const KEYS: Key[] = [
   { t: 24, ...NIGHT },
 ];
 
-export type WeatherKind = 'clear' | 'cloudy' | 'rain' | 'storm';
+/**
+ * The colour script's grade and local-light knobs, mixed by hour, weather and interior in `update`.
+ * Lift is the colour (rgb) and height (w) of the floor under the darkest values.
+ */
+export const GRADE = {
+  liftDay: [0.6, 0.58, 1.0, 0.06], liftNight: [0.3, 0.55, 1.0, 0.1], liftIn: [0.42, 0.6, 1.0, 0.09],
+  expDay: 1.1, expNight: 0.9, vibDay: 0.45, vibNight: 0.3, satDay: 1.12, satNight: 1.05, conDay: 1.06, conNight: 1.04,
+  /** baked lamp light: gain by day, after dark and indoors */
+  lampDay: 0.3, lampNight: 1.1, lampIn: 1.2,
+  /** glossy answer of floors to lamp light */
+  sheenNight: 0.85, sheenIn: 1, streak: 0.6,
+  /** key-light rim on characters */
+  rimDay: 0.55, rimNight: 0.7, rimIn: 0.6,
+};
+
+export type WeatherKind ='clear' | 'cloudy' | 'rain' | 'storm';
 interface WeatherParams { cover: number; fogMul: number; sunMul: number; rain: number; wind: number; wet: number; dim: number }
 const WEATHER: Record<WeatherKind, WeatherParams> = {
   clear: { cover: 0.5, fogMul: 1, sunMul: 1, rain: 0, wind: 1, wet: 0, dim: 0 },
@@ -342,7 +357,19 @@ export class Environment {
 
     // baked lamp light (gfx/lighting.ts): pools at night, in storms and indoors; by day it only shows in shade
     const dark = Math.min(1, Math.max(k.night, this.w.dim * 1.6));
-    YARD[8] = lerp(lerp(0.3, 1, dark), 1, im);
+    // lamps and furnaces already carry the street at dusk, while the sun is still on the horizon
+    const lampK = Math.min(1, Math.max(dark, k.sunset * 0.75 * (1 - Math.min(1, this.sunDir.y * 4))));
+    YARD[8] = lerp(lerp(GRADE.lampDay, GRADE.lampNight, lampK), GRADE.lampIn, im);
+    // floors turn glossy enough to catch that light after dark and indoors; rain has its own wetness term
+    GU.uSheen.value = Math.max(Math.max(k.night, lampK * 0.8) * GRADE.sheenNight, im * GRADE.sheenIn) * (1 - 0.45 * GU.uWet.value);
+    YARD[16] = Math.max(GU.uSheen.value, GU.uWet.value); YARD[17] = GRADE.streak;
+    {
+      // the rim on every character: the key light's own hue by day and indoors, moon blue after dark
+      cA.copy(this.lightColor).multiplyScalar(1 / Math.max(this.lightColor.r, this.lightColor.g, this.lightColor.b, 1e-3));
+      cA.lerp(cB.setRGB(0.5, 0.72, 1.0), dark * (1 - im));
+      const rs = lerp(lerp(GRADE.rimDay * (0.35 + 0.65 * sunUp), GRADE.rimNight, dark), GRADE.rimIn, im);
+      GU.uKeyRim.value.set(cA.r * rs, cA.g * rs, cA.b * rs);
+    }
     YARD[12] = this.lightDir.x; YARD[13] = this.lightDir.y; YARD[14] = this.lightDir.z;
     // cloud shadows drift with the sky's own cloud field; under a closed deck there is nothing left to shadow
     const open = (1 - Math.min(1, dim * 3)) * (1 - im);
@@ -375,10 +402,18 @@ export class Environment {
     const p = renderer.post;
     let exposure = k.exposure * (1 - dim * 0.12);
     if (im > 0.001 && il) exposure = lerp(exposure, il.exposure, im);
-    p.exposure = exposure;
+    p.exposure = exposure * lerp(GRADE.expDay, GRADE.expNight, Math.max(k.night, im));
     p.sunColor.copy(su.uSunColor.value);
     p.shadowTint.setRGB(lerp(0.92, 0.84, k.night), lerp(1.0, 0.96, k.night), lerp(1.08, 1.16, k.night));
     p.highTint.setRGB(lerp(1.05, 1.0, k.night), 1.0, lerp(0.93, 1.04, k.night));
+    {
+      // the grade (gfx/renderer.ts): shade sits on a violet floor by day and a navy one after dark and indoors
+      const n = Math.max(k.night, im, Math.min(1, dim * 2)), a = GRADE.liftDay, b = im > 0.5 ? GRADE.liftIn : GRADE.liftNight;
+      p.lift.set(lerp(a[0], b[0], n), lerp(a[1], b[1], n), lerp(a[2], b[2], n), lerp(a[3], b[3], n));
+      p.vibrance = lerp(GRADE.vibDay, GRADE.vibNight, n);
+      p.saturation = lerp(GRADE.satDay, GRADE.satNight, n);
+      p.contrast = lerp(GRADE.conDay, GRADE.conNight, n);
+    }
     // sun screen position for god rays
     this.tmp.copy(this.sunDir).multiplyScalar(1000).add(camera.position).project(camera);
     const facing = this.tmp.z < 1 ? 1 : 0;

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { installLighting } from './lighting';
 import { DECALS, ensureDecals } from './decals';
 import { FOLIAGE, ensureFoliage } from './foliage';
+import { installLighting } from './lighting';
 
 /** Uniforms shared by reference across every world material. */
 export const GU = {
@@ -14,6 +14,10 @@ export const GU = {
   uEmitBoost: { value: 3.2 },
   /** flat fill light on characters (rim materials) so they read at night and in storms */
   uCharFill: { value: new THREE.Vector3(0, 0, 0) },
+  /** colour × strength of the rim the key light (sun, moon, an interior's key) draws round every character, set by the environment */
+  uKeyRim: { value: new THREE.Vector3(0, 0, 0) },
+  /** 0..1: floors answer lamp light with a glossy highlight (night, rain, interiors); dry daytime paving stays matt */
+  uSheen: { value: 0 },
   /** near-lens dissolve: fully gone inside x metres of the camera, solid beyond y. Off (0, 0) until the game's camera sets it. */
   uNearFade: { value: new THREE.Vector2(0, 0) },
 };
@@ -192,6 +196,7 @@ export class WorldMaterial extends THREE.MeshStandardMaterial {
       sh.uniforms.uWet = GU.uWet; sh.uniforms.uEmitBoost = GU.uEmitBoost; sh.uniforms.uCharFill = GU.uCharFill;
       sh.uniforms.uFlash = this.flash; sh.uniforms.uRim = this.rim; sh.uniforms.uEmitMul = this.emitMul;
       sh.uniforms.uNearFade = GU.uNearFade;
+      sh.uniforms.uKeyRim = GU.uKeyRim; sh.uniforms.uSheen = GU.uSheen;
       if (wind) { ensureFoliage(); sh.uniforms.uLeaf = FOLIAGE.uLeaf; }
       if (!wind && !rim) { ensureDecals(); sh.uniforms.uDecal = DECALS.uDecal; }
       sh.vertexShader = sh.vertexShader
@@ -218,7 +223,7 @@ ${wind ? /* glsl */ `vSway = aSway;
         .replace('#include <common>', /* glsl */ `#include <common>
 precision highp sampler2DArray;
 uniform sampler2DArray uTexA; uniform sampler2DArray uTexN; uniform sampler2D uNoise;
-uniform vec4 uFlash; uniform vec4 uRim; uniform float uEmitBoost; uniform float uEmitMul; uniform float uWet; uniform vec3 uCharFill; uniform vec2 uNearFade; uniform vec2 uNearFade;
+uniform vec4 uFlash; uniform vec4 uRim; uniform float uEmitBoost; uniform float uEmitMul; uniform float uWet; uniform vec3 uCharFill; uniform vec2 uNearFade; uniform vec3 uKeyRim; uniform float uSheen;
 varying float vLayer; varying float vEmit; varying vec2 vWUv;
 ${wind ? 'varying float vSway; uniform sampler2D uLeaf; float gLeaf;' : ''}
 ${!wind && !rim ? 'uniform sampler2D uDecal;' : ''}
@@ -296,15 +301,24 @@ ${wind ? /* glsl */ `  // foliage cards (gfx/foliage.ts): a painted clump from t
   float det = max(dot(Tt, Tt), dot(Bb, Bb));
   float sc = det == 0.0 ? 0.0 : inversesqrt(det);
   vec2 nxy = gTN.xy * 2.0 - 1.0;
-${rim ? '' : /* glsl */ `  // slow drift in tone and warmth, so a wall or a square is never one flat fill
-  vec2 mv = texture2D(uNoise, vWUv * 0.037).rg;
-  gTA.rgb *= (0.78 + 0.44 * mv.x) * mix(vec3(1.05, 1.0, 0.94), vec3(0.95, 1.0, 1.07), mv.y);`}
   normal = normalize(normal + (Tt * nxy.x + Bb * nxy.y) * sc);
+${!wind && !rim ? /* glsl */ `  // after dark, in rain and indoors a floor is glossy enough to catch the lamps beside it (never a mirror)
+  if (uSheen > 0.0) {
+    float up = dot(normal, vec3(viewMatrix[0].y, viewMatrix[1].y, viewMatrix[2].y));
+    roughnessFactor *= mix(1.0, 0.4, uSheen * smoothstep(0.6, 0.92, up) * step(vLayer, 63.5));
+  }` : ''}
 }`)
         .replace('#include <emissivemap_fragment>', 'totalEmissiveRadiance += vColor.rgb * gTA.rgb * (vEmit * uEmitBoost * uEmitMul);')
         .replace('#include <opaque_fragment>', /* glsl */ `${rim ? /* glsl */ `{
   float rimF = pow(1.0 - saturate(dot(normalize(vViewPosition), normal)), 3.0);
   outgoingLight += uRim.rgb * rimF * uRim.a * (0.35 + 0.65 * saturate(normal.y * 0.5 + 0.7));
+  #if NUM_SUN_LIGHTS > 0
+  {
+    // the key light draws an edge down the side of the figure that faces it, against any background
+    float keyF = pow(1.0 - saturate(dot(normalize(vViewPosition), normal)), 2.4) * smoothstep(-0.25, 0.75, dot(normal, sunLights[0].direction));
+    outgoingLight += uKeyRim * keyF * (0.45 + 1.1 * diffuseColor.rgb);
+  }
+  #endif
   outgoingLight += diffuseColor.rgb * uCharFill * (0.6 + 0.4 * saturate(normal.y * 0.5 + 0.5));
 }` : ''}
 ${wind ? /* glsl */ `#if NUM_SUN_LIGHTS > 0

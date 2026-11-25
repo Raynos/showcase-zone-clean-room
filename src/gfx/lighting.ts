@@ -39,7 +39,7 @@ export function lampLayer(y: number) { return y < ARENA_TOP ? 2 : y < VAULT_TOP 
  *  [1] warm shadow edge rgb, share of occlusion that also dims direct light
  *  [2] lamp gain, foot occlusion strength, eave occlusion strength, ground-map strength
  *  [3] sun direction xyz (world), cloud shadow scale (1 / metres)
- *  [4] spare
+ *  [4] floor gloss 0..1 (night, rain, interiors), strength of the lamp streaks it shows, spare, spare
  *  [5] spare
  */
 export const YARD = new Float32Array(6 * 4);
@@ -151,6 +151,24 @@ if ( gYardW.y > ${VAULT_TOP.toFixed(1)} ) {
       directLight.visible = true;
       RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
     }
+    #ifdef STANDARD
+    // Lamps answered by the floor. The mean light direction above cannot give a highlight under a
+    // row of lamps (it points straight up), so a glossy floor looks the lamp map up where its
+    // mirror ray would meet lamp height: each pool of light shows again as a streak running from
+    // under its lamp toward the eye, broken up by the surface's own bumps. Two fetches, no pass.
+    if ( uYard[4].x > 0.0 && gYardN.y > 0.55 && material.roughness < 0.7 ) {
+      vec3 yV = inverseTransformDirection( -geometryViewDir, viewMatrix );
+      vec3 yR = reflect( yV, gYardN );
+      vec2 yRo = yR.xz / max( yR.y, 0.1 );
+      vec3 yP1 = texture( uYardLamp[0], vec3( yUv + yRo * ${(3.4 / ZONE).toFixed(6)}, yLay ) ).rgb;
+      vec3 yP2 = texture( uYardLamp[0], vec3( yUv + yRo * ${(1.5 / ZONE).toFixed(6)}, yLay ) ).rgb;
+      float yGloss = smoothstep( 0.7, 0.26, material.roughness );
+      float yFres = 0.05 + 0.95 * pow( 1.0 - saturate( dot( geometryNormal, geometryViewDir ) ), 4.0 );
+      // only the bright heart of a pool mirrors: the general wash of a lit street does not
+      vec3 yS = yP1 * yP1 * smoothstep( 0.13, 0.3, max( yP1.r, max( yP1.g, yP1.b ) ) ) + 0.5 * yP2 * yP2 * smoothstep( 0.15, 0.32, max( yP2.r, max( yP2.g, yP2.b ) ) );
+      reflectedLight.directSpecular += yS * ( ${LAMP_MAX.toFixed(1)} * uYard[4].x * uYard[4].y * yGloss * yFres * mix( 1.0, gYardAO, 0.6 ) );
+    }
+    #endif
   }
 #endif
 #if defined( RE_IndirectDiffuse )
