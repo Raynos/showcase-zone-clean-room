@@ -198,7 +198,7 @@ export class Environment {
     this.hemi.intensity = hemiI;
     // lamps and signs burn brighter after dark and indoors; by day they sit just above the bloom knee
     GU.uEmitBoost.value = lerp(lerp(1.7, 3.2, Math.min(1, Math.max(k.night, this.w.dim * 1.5))), 3.0, im);
-    { const l = Math.min(1, Math.max(0, lift)) * 0.5; GU.uCharFill.value.set(0.62 * l, 0.72 * l, 1.0 * l); }
+    { const l = 0.16 + Math.min(1, Math.max(0, lift, k.sunset * 0.5)) * 0.4; GU.uCharFill.value.set(0.7 * l, 0.76 * l, 1.0 * l); }
 
     // sky
     const su = this.sky.u;
