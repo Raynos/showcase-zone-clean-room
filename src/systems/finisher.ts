@@ -4,6 +4,7 @@ import { SWORD, SPEAR } from '../data/moves';
 import type { HumanAction } from '../entities/humanoid/types';
 import type { Game } from '../game';
 import { SP } from '../gfx/fx';
+import { RAY_WORLD } from '../core/physics';
 import type { Interactable } from './interact';
 import type { Mob } from './mobs';
 
@@ -39,6 +40,26 @@ export class Finishers {
     if (best) this.pos.set(best.pos.x, best.pos.y, best.pos.z);
     return best;
   }
+  /** the finisher camera's spot at time t: over the hero's shoulder, drifting in */
+  private shot(t: number) {
+    const c = this.cur!, p = this.game.player.pos, q = c.m.pos;
+    const ax = q.x - p.x, az = q.z - p.z, al = Math.hypot(ax, az) || 1, fx = ax / al, fz = az / al, sx = -fz * c.side, sz = fx * c.side;
+    const back = lerp(3.6, 2.7, clamp01(t / DUR)), side = 1.5 + c.m.radius * 0.25;
+    return this.camPos.set(p.x - fx * back + sx * side, p.y + 1.35, p.z - fz * back + sz * side);
+  }
+  /** pull the camera in front of any wall or crate between it and the hero's head; returns the free
+   * distance from the head (capped at cap) */
+  private clear(cam: THREE.Vector3, cap: number) {
+    const p = this.game.player.pos;
+    _w.set(p.x, p.y + 1.45, p.z); _v.copy(cam).sub(_w);
+    const L = _v.length(); if (L < 1e-3) return 0;
+    _v.divideScalar(L);
+    const hit = this.game.physics.raycast(_w, _v, L + 0.35, RAY_WORLD);
+    if (!hit) return cap;
+    const d = Math.max(0.6, hit.dist - 0.35);
+    if (d < L) cam.copy(_w).addScaledVector(_v, d);
+    return Math.min(cap, hit.dist);
+  }
   private start() {
     const g = this.game, pl = g.player, m = this.candidate();
     if (!m || pl.dead) return;
@@ -52,16 +73,16 @@ export class Finishers {
     pl.yaw = Math.atan2(-dx, -dz);
     if (Math.abs(step) > 0.1) pl.startLunge(-dx / d * Math.sign(step), -dz / d * Math.sign(step), Math.abs(step), 0.28);
     const anim: HumanAction = k === 'sword' ? SWORD.breaker.anim : k === 'spear' ? SPEAR.breaker.anim : k === 'bow' ? 'bowRelease' : k === 'crossbow' ? 'xbowFire' : 'rifleFire';
-    this.cur = { m, t: 0, yaw: g.cameraRig.yaw, pitch: g.cameraRig.pitch, hit: false, side: Math.random() < 0.5 ? -1 : 1, anim, melee };
+    this.cur = { m, t: 0, yaw: g.cameraRig.yaw, pitch: g.cameraRig.pitch, hit: false, side: 1, anim, melee };
     const c = this.cur;
-    // camera: low and to the side of the pair, drifting in, looking at the robot's core
+    // shoot from whichever shoulder has the clearer view (crates and walls crowd camps)
+    const room = (side: number) => { c.side = side; const p = this.shot(0); return this.clear(p, 9); };
+    const l = room(-1), r = room(1);
+    c.side = Math.abs(l - r) < 0.3 ? (Math.random() < 0.5 ? -1 : 1) : l > r ? -1 : 1;
+    // camera: low over the hero's shoulder, drifting in, looking past them at the robot's core. A portrait
+    // screen is narrow, so the pair is framed along the depth axis (a side-on shot loses the hero)
     g.cameraRig.startCine({
-      pos: (t) => {
-        const p = pl.pos, q = c.m.pos, mx = (p.x + q.x) / 2, mz = (p.z + q.z) / 2;
-        const ax = q.x - p.x, az = q.z - p.z, al = Math.hypot(ax, az) || 1, sx = -az / al * c.side, sz = ax / al * c.side;
-        const r = lerp(5.2, 4.2, clamp01(t / DUR)) + c.m.radius * 0.8;
-        return this.camPos.set(mx + sx * r - ax / al * 1.2, p.y + 1.1 + c.m.height * 0.15, mz + sz * r - az / al * 1.2);
-      },
+      pos: (t) => { const p = this.shot(t); this.clear(p, 1); return p; },
       look: () => c.m.center(this.camLook),
       fov: 50,
     });
