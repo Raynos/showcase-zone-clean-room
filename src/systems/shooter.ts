@@ -54,6 +54,7 @@ export class Shooter {
   private shotPose = 0; private shotAnim: 'rifleFire' | 'bowRelease' | 'xbowFire' | null = null;
   private cockT = 0;
   private hoverT = 0;
+  private aimN = 0;
   /** a free burst in flight (a crossbow counter or swap strike): bolts left, time to the next, damage, critical first bolt */
   private burstN = 0; private burstT = 0; private burstMul = 0; private burstCrit = false; private burstFirst = false;
   /** Three bolts in quick succession at the crosshair, from no magazine. */
@@ -195,8 +196,14 @@ export class Shooter {
 
     // ---- what the crosshair is on (no spread): the overlay, assist and the target frame read it
     this.hoverT -= rdt;
-    const hits = this.solve(this.aimPt, 0, 1, true);
+    // the animated-mesh test costs about a millisecond: every third frame, and in between the cheap
+    // body-and-weak-point test, keeping the last mesh verdict while that test agrees on the robot
+    const precise = this.aimN++ % 3 === 0 || !this.aim;
+    const hits = this.solve(this.aimPt, 0, 1, precise);
+    const prev = this.aim;
     this.aim = hits[0];
+    if (!precise && prev && prev.h && this.aim.h === prev.h && !this.aim.zone) this.aim = { ...this.aim, zone: prev.zone };
+    else if (!precise && prev && !prev.h && this.aim.h && !this.aim.zone) this.aim = prev;
     if (this.aim.h) { c.target = this.aim.h; this.hoverT = 2.5; }
     else if (this.hoverT <= 0 || (c.target && !c.target.alive)) c.target = null;
 
