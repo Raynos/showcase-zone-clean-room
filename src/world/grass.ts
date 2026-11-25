@@ -34,9 +34,105 @@ function cellHeights(terrain: Terrain): THREE.DataTexture {
   return t;
 }
 
-/** A square tile of blades: every blade's vertices merged, each carrying its own offset and randoms. */
-function tileGeometry(segs: number, m: number, cell: number, seed: number): THREE.InstancedBufferGeometry {
-  const vpb = segs * 2 + 1, blades = m * m;
+const ATLAS_W = 1024, ATLAS_H = 256, CELLS = 4;
+let tuftTex: THREE.DataTexture | null = null;
+/**
+ * The painted tufts every grass card shows, four to a row: a plain fan of blades, the same with
+ * seed heads, a short dense clump, and one with small flowers. Red is the tone of each blade
+ * (roots-to-tip shading is done in the shader), green marks seed heads, blue marks petals,
+ * alpha is the cut-out. The root is at v = 0.
+ */
+function tuftAtlas(): THREE.DataTexture {
+  if (tuftTex) return tuftTex;
+  const cv = document.createElement('canvas');
+  cv.width = ATLAS_W; cv.height = ATLAS_H;
+  const c = cv.getContext('2d', { willReadFrequently: true })!;
+  const rng = new Rng(9917);
+  const CW = ATLAS_W / CELLS, H = ATLAS_H;
+  const blade = (x0: number, h: number, lean: number, w: number, tone: number, mask = 0) => {
+    // a tapered, gently curved stroke from the root (x0, H) to its tip
+    const tx = x0 + lean, ty = H - h, cx = x0 + lean * 0.25, cy = H - h * 0.62;
+    c.fillStyle = `rgb(${Math.round(tone * 255)},${Math.round(mask * 255)},0)`;
+    c.beginPath();
+    c.moveTo(x0 - w / 2, H + 1);
+    c.quadraticCurveTo(cx - w * 0.4, cy, tx, ty);
+    c.quadraticCurveTo(cx + w * 0.4, cy, x0 + w / 2, H + 1);
+    c.closePath(); c.fill();
+    return [tx, ty] as const;
+  };
+  for (let cell = 0; cell < CELLS; cell++) {
+    const mid = cell * CW + CW / 2;
+    c.save(); c.beginPath(); c.rect(cell * CW + 3, 0, CW - 6, H); c.clip();
+    const short = cell === 2;
+    const n = short ? 26 : 20;
+    // back blades first and darker, front blades last and lighter
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1), a = rng.range(-1, 1);
+      const x0 = mid + a * CW * (short ? 0.3 : 0.22) + rng.range(-6, 6);
+      const h = H * (short ? rng.range(0.3, 0.62) : rng.range(0.45, 0.9)) * (1 - Math.abs(a) * 0.25);
+      const lean = a * CW * rng.range(0.1, 0.24) + rng.range(-10, 10);
+      blade(x0, h, lean, rng.range(4.5, 8), 0.62 + t * 0.3 + rng.range(-0.06, 0.06));
+    }
+    if (cell === 1) {
+      // seed heads: a thin stalk carrying a wheat-like ear of alternating grains
+      for (let i = 0; i < 4; i++) {
+        const a = (i - 1.5) / 1.5, x0 = mid + a * CW * 0.16 + rng.range(-5, 5), h = H * rng.range(0.78, 0.9), lean = a * CW * 0.2 + rng.range(-8, 8);
+        const [tx, ty] = blade(x0, h, lean, 3.4, 0.9, 0.35);
+        const dx = (lean * 0.75) / h, len = rng.range(30, 42);
+        c.fillStyle = 'rgb(255,255,0)';
+        for (let k = 0; k < 9; k++) {
+          const yy = ty + len - k * (len / 9), xx = tx - dx * (len - k * (len / 9)) + (k % 2 ? 2.6 : -2.6);
+          c.beginPath(); c.ellipse(xx, yy, 2.9, 5.2, (k % 2 ? 0.5 : -0.5) + dx, 0, Math.PI * 2); c.fill();
+        }
+        c.beginPath(); c.ellipse(tx - dx * 2, ty - 2, 2.2, 5, dx, 0, Math.PI * 2); c.fill();
+      }
+    }
+    if (cell === 3) {
+      // small flowers on thin stems
+      for (let i = 0; i < 5; i++) {
+        const a = (i - 2) / 2, x0 = mid + a * CW * 0.2 + rng.range(-6, 6), h = H * rng.range(0.42, 0.8), lean = a * CW * 0.16 + rng.range(-8, 8);
+        const [tx, ty] = blade(x0, h, lean, 2.6, 0.85);
+        c.fillStyle = 'rgb(255,0,255)';
+        for (let k = 0; k < 5; k++) {
+          const an = (k / 5) * Math.PI * 2 + i;
+          c.beginPath(); c.ellipse(tx + Math.cos(an) * 4.4, ty + Math.sin(an) * 4.4, 3.4, 2.4, an, 0, Math.PI * 2); c.fill();
+        }
+        c.fillStyle = 'rgb(140,200,255)';
+        c.beginPath(); c.arc(tx, ty, 2.3, 0, Math.PI * 2); c.fill();
+      }
+    }
+    c.restore();
+  }
+  const src = c.getImageData(0, 0, ATLAS_W, ATLAS_H).data;
+  const d = new Uint8Array(ATLAS_W * ATLAS_H * 4);
+  // flip so the root is row 0, and un-darken antialiased edges (canvas colour there is blended with nothing)
+  for (let y = 0; y < ATLAS_H; y++) d.set(src.subarray((ATLAS_H - 1 - y) * ATLAS_W * 4, (ATLAS_H - y) * ATLAS_W * 4), y * ATLAS_W * 4);
+  // grow colour out into the transparent surround so filtering and mips do not fringe dark
+  let solid = new Uint8Array(ATLAS_W * ATLAS_H);
+  for (let i = 0; i < solid.length; i++) solid[i] = d[i * 4 + 3] > 8 ? 1 : 0;
+  for (let pass = 0; pass < 8; pass++) {
+    const next = solid.slice();
+    for (let y = 0; y < ATLAS_H; y++) for (let x = 0; x < ATLAS_W; x++) {
+      const i = y * ATLAS_W + x;
+      if (solid[i]) continue;
+      let r = 0, g = 0, b = 0, k = 0;
+      for (const j of [x > 0 ? i - 1 : -1, x < ATLAS_W - 1 ? i + 1 : -1, y > 0 ? i - ATLAS_W : -1, y < ATLAS_H - 1 ? i + ATLAS_W : -1]) {
+        if (j >= 0 && solid[j]) { r += d[j * 4]; g += d[j * 4 + 1]; b += d[j * 4 + 2]; k++; }
+      }
+      if (k) { d[i * 4] = r / k; d[i * 4 + 1] = g / k; d[i * 4 + 2] = b / k; next[i] = 1; }
+    }
+    solid = next;
+  }
+  const t = new THREE.DataTexture(d, ATLAS_W, ATLAS_H, THREE.RGBAFormat);
+  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+  t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
+  t.generateMipmaps = true; t.anisotropy = 4; t.needsUpdate = true;
+  return (tuftTex = t);
+}
+
+/** A square tile of tufts: one upright card each, every vertex carrying the tuft's offset and randoms. */
+function tileGeometry(m: number, cell: number, seed: number): THREE.InstancedBufferGeometry {
+  const vpb = 4, blades = m * m;
   const pos = new Float32Array(blades * vpb * 3), off = new Float32Array(blades * vpb * 2), rnd = new Float32Array(blades * vpb * 4);
   const idx: number[] = [];
   const rng = new Rng(seed);
@@ -47,14 +143,11 @@ function tileGeometry(segs: number, m: number, cell: number, seed: number): THRE
     const v0 = b * vpb;
     for (let v = 0; v < vpb; v++) {
       const i = v0 + v;
-      if (v === vpb - 1) { pos[i * 3] = 0; pos[i * 3 + 1] = 1; }
-      else { const y = Math.floor(v / 2) / segs, w = 1 - y * y * 0.8; pos[i * 3] = (v % 2 ? 0.5 : -0.5) * w; pos[i * 3 + 1] = y; }
+      pos[i * 3] = v % 2 ? 0.5 : -0.5; pos[i * 3 + 1] = v < 2 ? 0 : 1;
       off[i * 2] = ox; off[i * 2 + 1] = oz;
       rnd[i * 4] = r0; rnd[i * 4 + 1] = r1; rnd[i * 4 + 2] = r2; rnd[i * 4 + 3] = r3;
     }
-    for (let s = 0; s < segs - 1; s++) { const a = v0 + s * 2; idx.push(a, a + 1, a + 3, a, a + 3, a + 2); }
-    const a = v0 + (segs - 1) * 2;
-    idx.push(a, a + 1, a + 2);
+    idx.push(v0, v0 + 1, v0 + 3, v0, v0 + 3, v0 + 2);
   }
   const g = new THREE.InstancedBufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -74,10 +167,11 @@ function next32(h: number): number { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; r
 const _frustum = new THREE.Frustum(), _pm = new THREE.Matrix4(), _box = new THREE.Box3();
 
 /**
- * A field of blades laid out as world-anchored square tiles. One tile of blades is built once
+ * A field of grass tufts laid out as world-anchored square tiles. One tile of tufts is built once
  * and drawn instanced, one instance per tile that is alive, within reach of the camera and
  * inside the view frustum: a single draw call whose vertex count follows what can be seen.
- * A per-tile hash shifts the pattern and re-rolls the blade randoms so no two tiles match.
+ * A per-tile hash shifts the pattern and re-rolls the tuft randoms so no two tiles match.
+ * A tuft is one card turned toward the camera showing a painted fan of fine blades.
  */
 class Layer {
   mesh: THREE.Mesh;
@@ -88,7 +182,7 @@ class Layer {
   private hmin: Float32Array; private hmax: Float32Array; private live: Uint8Array;
   private cap: number;
 
-  constructor(terrain: Terrain, count: number, size: number, bladeW: number, bladeH: number, segs: number, private seed: number, fadeIn: number) {
+  constructor(terrain: Terrain, count: number, size: number, bladeW: number, bladeH: number, private seed: number, fadeIn: number, flowers = 1) {
     // same blade spacing as a stratified size×size field of `count` blades
     const n = Math.ceil(Math.sqrt(count)), cell = size / n;
     const m = Math.max(4, Math.round(size / 16 / cell));
@@ -114,7 +208,7 @@ class Layer {
       this.hmin[k] = lo; this.hmax[k] = hi; this.live[k] = any;
     }
 
-    const g = this.geo = tileGeometry(segs, m, cell, seed);
+    const g = this.geo = tileGeometry(m, cell, seed);
     const side = Math.ceil((this.reach * 2) / T) + 2;
     this.cap = side * side;
     this.aTile = new THREE.InstancedBufferAttribute(new Float32Array(this.cap * 4), 4);
@@ -123,19 +217,20 @@ class Layer {
     g.setAttribute('aTile', this.aTile); g.setAttribute('aTileRnd', this.aTileRnd);
     g.instanceCount = 0;
 
-    const mat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
+    const mat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide, alphaTest: 0.5, alphaToCoverage: true });
     mat.onBeforeCompile = (sh) => {
       sh.uniforms.uCam = grassU.uCam; sh.uniforms.uPush = grassU.uPush; sh.uniforms.uPushN = grassU.uPushN;
       sh.uniforms.uSunDir = grassU.uSunDir; sh.uniforms.uSunCol = grassU.uSunCol;
       sh.uniforms.uTime = GU.uTime; sh.uniforms.uWind = GU.uWind; sh.uniforms.uNoise = GU.uNoise;
       sh.uniforms.uColorMap = { value: terrain.colorMap }; sh.uniforms.uCellH = { value: cellHeights(terrain) };
+      sh.uniforms.uTuft = { value: tuftAtlas() };
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', /* glsl */ `#include <common>
 attribute vec2 aOff; attribute vec4 aRnd;
 attribute vec4 aTile; attribute vec4 aTileRnd; // origin.xz, pattern shift.xz | random re-roll (sign of x: trampled)
 uniform vec3 uCam; uniform vec4 uPush[${MAXPUSH}]; uniform int uPushN; uniform float uTime; uniform vec4 uWind;
 uniform sampler2D uColorMap; uniform sampler2D uCellH; uniform sampler2D uNoise;
-varying vec3 vGCol; varying float vTip; varying float vWave; varying vec3 vGW; varying float vRnd;
+varying vec3 vGCol; varying float vTip; varying float vWave; varying vec3 vGW; varying float vRnd; varying vec2 vTuft; varying float vFar;
 float terrH(vec2 p) {
   vec2 f = clamp((p + ${HALF.toFixed(1)}) / ${TCELL.toFixed(1)}, 0.0, ${(TN - 0.001).toFixed(3)});
   vec4 h = texelFetch(uCellH, ivec2(floor(f)), 0); vec2 t = fract(f); // h00 h10 h01 h11
@@ -143,12 +238,14 @@ float terrH(vec2 p) {
 }`)
         .replace('#include <beginnormal_vertex>', /* glsl */ `
 vec4 rnd = fract(aRnd + abs(aTileRnd));
-float yaw = rnd.z * 6.2831853;
-vec2 fwd = vec2(cos(yaw), sin(yaw));
-vec3 objectNormal = normalize(vec3(-fwd.y * 0.35, 1.0, fwd.x * 0.35));`)
+vec2 wxz = aTile.xy + mod(aOff + aTile.zw, ${T.toFixed(5)});
+// each card turns toward the camera, give or take, so no tuft is ever seen edge-on
+vec2 toCam = normalize(uCam.xz - wxz + 1e-4);
+float yaw = (rnd.z - 0.5) * 1.9;
+vec2 fwd = vec2(toCam.x * cos(yaw) - toCam.y * sin(yaw), toCam.x * sin(yaw) + toCam.y * cos(yaw));
+vec3 objectNormal = normalize(vec3(fwd.x * 0.3, 1.0, fwd.y * 0.3));`)
         .replace('#include <begin_vertex>', /* glsl */ `
 const float S = ${size.toFixed(1)};
-vec2 wxz = aTile.xy + mod(aOff + aTile.zw, ${T.toFixed(5)});
 vec2 muv = (wxz + ${HALF.toFixed(1)}) / ${(HALF * 2).toFixed(1)};
 vec4 cm = texture2D(uColorMap, muv);
 float dist = length(wxz - uCam.xz);
@@ -157,17 +254,24 @@ float alive = smoothstep(rnd.x * 0.92, rnd.x * 0.92 + 0.08, cm.a) * fade * step(
 float clump = texture2D(uNoise, wxz * 0.045).g;
 float bh = ${bladeH.toFixed(3)} * (0.5 + 0.7 * rnd.y + 0.6 * clump) * alive * (0.7 + 0.5 * cm.a);
 bh *= smoothstep(0.9, 3.4, length(vec3(wxz.x, uCam.y - 1.0, wxz.y) - uCam));
-float bw = ${bladeW.toFixed(3)} * (0.7 + 0.6 * rnd.w);
+float bw = ${bladeW.toFixed(3)} * (0.75 + 0.5 * rnd.w) * step(1e-4, bh);
+// which painted tuft: mostly plain and short, seed heads in drifts, flowers now and then
+float pick = fract(rnd.w * 7.31 + rnd.x * 3.7);
+float seedy = smoothstep(0.42, 0.62, clump);
+float cellI = pick < ${(0.022 * flowers).toFixed(4)} * (1.0 + 2.0 * seedy) ? 3.0 : pick < 0.05 + 0.3 * seedy ? 1.0 : pick < 0.5 ? 2.0 : 0.0;
+float flip = rnd.x > 0.5 ? 1.0 : -1.0;
+vTuft = vec2((cellI + 0.5 + position.x * flip * 0.96) / ${CELLS}.0, position.y);
 float y = position.y;
 // wind
 vec2 wdir = uWind.xy;
 float gust = texture2D(uNoise, wxz * 0.012 - wdir * uTime * 0.045).r;
 float flut = sin(uTime * (2.5 + rnd.w * 2.0) + rnd.x * 40.0) * 0.06;
 float lean = ((gust - 0.35) * 1.15 + flut) * uWind.z + (rnd.y - 0.5) * 0.35;
-vec3 p = vec3(fwd.y * position.x * bw, y * bh, -fwd.x * position.x * bw);
+vec3 p = vec3(-fwd.y * position.x * bw, y * bh, fwd.x * position.x * bw);
+// lean back a little so the card shows from above too
+p.xz -= fwd * y * bh * (0.18 + 0.3 * rnd.y);
 float bend = y * y;
 p.xz += wdir * lean * bend * bh * 0.9;
-p.xz += fwd * (rnd.w - 0.5) * 0.5 * bend * bh;
 p.y -= abs(lean) * bend * bh * 0.28;
 // trample: only tiles a pusher overlaps pay for the loop
 if (aTileRnd.x < 0.0) {
@@ -181,20 +285,30 @@ if (aTileRnd.x < 0.0) {
   }
 }
 vec3 transformed = vec3(wxz.x, terrH(wxz) - 0.03, wxz.y) + p;
-vGCol = cm.rgb; vTip = y; vWave = gust; vGW = transformed; vRnd = rnd.w;`);
+vGCol = cm.rgb; vTip = y; vWave = gust; vGW = transformed; vRnd = rnd.w; vFar = dist;`);
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', /* glsl */ `#include <common>
-varying vec3 vGCol; varying float vTip; varying float vWave; varying vec3 vGW; varying float vRnd;
-uniform vec3 uSunDir; uniform vec3 uSunCol;`)
+varying vec3 vGCol; varying float vTip; varying float vWave; varying vec3 vGW; varying float vRnd; varying vec2 vTuft; varying float vFar;
+uniform vec3 uSunDir; uniform vec3 uSunCol; uniform sampler2D uTuft;`)
         .replace('#include <map_fragment>', /* glsl */ `
+vec4 tuft = texture2D(uTuft, vTuft);
+// far cards keep their body as the cut-out thins in the small mips
+diffuseColor.a = tuft.a * (1.0 + vFar * 0.03);
 float tip = clamp(vTip, 0.0, 1.0);
 vec3 base = vGCol;
 // per-blade drift: some rust, some pale straw
 base = mix(base, base * vec3(1.12, 0.74, 0.5), smoothstep(0.7, 1.0, vRnd) * 0.7);
 base = mix(base, vec3(dot(base, vec3(0.4, 0.5, 0.1))) * vec3(1.15, 1.08, 0.8), smoothstep(0.3, 0.0, vRnd) * 0.55);
-vec3 gc = base * mix(0.32, 1.12, pow(tip, 0.8));
+vec3 gc = base * vec3(1.08, 1.02, 0.86) * mix(0.4, 1.22, pow(tip, 0.6));
 gc += vec3(0.07, 0.05, 0.02) * tip * tip * tip;
 gc *= 0.92 + 0.3 * smoothstep(0.4, 0.8, vWave) * tip;
+// each painted blade has its own tone; seed heads are pale straw, petals white to lilac
+gc *= 0.55 + 0.6 * tuft.r;
+float seedM = smoothstep(0.55, 0.9, tuft.g) * (1.0 - tuft.b);
+gc = mix(gc, (base * 0.9 + vec3(0.3, 0.2, 0.05)) * (0.8 + 0.3 * tuft.r), seedM);
+float petal = smoothstep(0.5, 0.9, tuft.b);
+gc = mix(gc, mix(vec3(0.85, 0.82, 0.76), vec3(0.6, 0.5, 0.8), step(0.5, vRnd)), petal);
+gc = mix(gc, vec3(1.0, 0.78, 0.2), petal * smoothstep(0.5, 0.75, tuft.g));
 diffuseColor.rgb = gc;`)
         .replace('#include <emissivemap_fragment>', /* glsl */ `
 {
@@ -204,7 +318,7 @@ diffuseColor.rgb = gc;`)
   totalEmissiveRadiance += uSunCol * vGCol * back * tp * tp * 0.3;
 }`);
     };
-    mat.customProgramCacheKey = () => `grass${size}|${segs}|${T.toFixed(5)}|${bladeW}|${bladeH}|${fadeIn}`;
+    mat.customProgramCacheKey = () => `grass${size}|${T.toFixed(5)}|${bladeW}|${bladeH}|${fadeIn}|${flowers}`;
     const mesh = this.mesh = new THREE.Mesh(g, mat);
     // tiles are culled here, per frame, against the camera that is about to render
     mesh.frustumCulled = false; mesh.receiveShadow = true; mesh.castShadow = false;
@@ -268,8 +382,8 @@ export class Grass {
   private hooked: THREE.Object3D | null = null;
   constructor(terrain: Terrain, density: number) {
     this.layers = [
-      new Layer(terrain, Math.floor(110000 * density), 46, 0.068, 0.44, 3, 7, 0),
-      new Layer(terrain, Math.floor(70000 * density), 160, 0.2, 0.6, 2, 9, 17),
+      new Layer(terrain, Math.floor(64000 * density), 46, 0.7, 0.56, 7, 0),
+      new Layer(terrain, Math.floor(70000 * density), 160, 1.25, 0.66, 9, 17, 0),
     ];
     for (const l of this.layers) this.group.add(l.mesh);
   }
