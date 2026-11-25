@@ -1,0 +1,298 @@
+import * as THREE from 'three';
+import { SunLight } from 'three/addons/lights/SunLight.js';
+import { clamp01, damp, lerp, rand, smooth } from '../core/util';
+import { FOGX, GU } from '../gfx/material';
+import type { Renderer } from '../gfx/renderer';
+import { Sky } from '../gfx/sky';
+
+type Key = {
+  t: number; zenith: number; horizon: number; haze: number; light: number; lightI: number;
+  hemiSky: number; hemiGround: number; hemiI: number; fog: number; fogSun: number; fogD: number;
+  exposure: number; sunset: number; night: number; cloudLit: number; cloudDark: number;
+};
+const NIGHT: Omit<Key, 't'> = {
+  zenith: 0x050b20, horizon: 0x1a2f55, haze: 0x121f36, light: 0x93b6ff, lightI: 1.15,
+  hemiSky: 0x2f4c8c, hemiGround: 0x181c26, hemiI: 0.95, fog: 0x15233f, fogSun: 0x2f4c7a, fogD: 0.00193,
+  exposure: 1.32, sunset: 0, night: 1, cloudLit: 0x6a88b8, cloudDark: 0x0d1526,
+};
+const DAY: Omit<Key, 't'> = {
+  zenith: 0x2a72dc, horizon: 0xb4d8f4, haze: 0xcfdde4, light: 0xfff0d6, lightI: 3.5,
+  hemiSky: 0xa8ccf8, hemiGround: 0x8f7658, hemiI: 0.95, fog: 0xc6dbea, fogSun: 0xf8ead0, fogD: 0.00143,
+  exposure: 1.0, sunset: 0, night: 0, cloudLit: 0xffffff, cloudDark: 0x98a6bd,
+};
+const KEYS: Key[] = [
+  { t: 0, ...NIGHT },
+  { t: 4.7, ...NIGHT },
+  { t: 5.6, zenith: 0x17244f, horizon: 0xc97c64, haze: 0x5c4e5e, light: 0xffa272, lightI: 0.5, hemiSky: 0x4c5c92, hemiGround: 0x2c2529, hemiI: 0.85, fog: 0x6b5b6d, fogSun: 0xe28c62, fogD: 0.00260, exposure: 1.22, sunset: 0.9, night: 0.4, cloudLit: 0xf2a282, cloudDark: 0x2b2b46 },
+  { t: 6.4, zenith: 0x2f5eb2, horizon: 0xffb27a, haze: 0xcb9c7c, light: 0xff9e52, lightI: 2.5, hemiSky: 0x80a0da, hemiGround: 0x5c4c3c, hemiI: 0.8, fog: 0xe4aa82, fogSun: 0xffaa62, fogD: 0.00286, exposure: 1.08, sunset: 1, night: 0, cloudLit: 0xffd2a2, cloudDark: 0x6c5c72 },
+  { t: 7.7, zenith: 0x3a7ad8, horizon: 0xffdaac, haze: 0xeacaa2, light: 0xffc684, lightI: 3.3, hemiSky: 0x9fc0f0, hemiGround: 0x7c644a, hemiI: 0.88, fog: 0xf0d2aa, fogSun: 0xffca92, fogD: 0.00218, exposure: 1.0, sunset: 0.42, night: 0, cloudLit: 0xfff2da, cloudDark: 0x8c8ca2 },
+  { t: 10.5, ...DAY },
+  { t: 15.2, ...DAY },
+  { t: 17.0, zenith: 0x3070cc, horizon: 0xffd2a2, haze: 0xeac292, light: 0xffbe72, lightI: 3.2, hemiSky: 0x9fb8e8, hemiGround: 0x82664c, hemiI: 0.86, fog: 0xeecaa2, fogSun: 0xffc282, fogD: 0.00193, exposure: 1.0, sunset: 0.5, night: 0, cloudLit: 0xffeaca, cloudDark: 0x8c86a2 },
+  { t: 18.15, zenith: 0x2c4a9c, horizon: 0xff965a, haze: 0xca8a6a, light: 0xff7e3e, lightI: 2.1, hemiSky: 0x7c8aca, hemiGround: 0x5c423a, hemiI: 0.82, fog: 0xda9272, fogSun: 0xff9252, fogD: 0.00260, exposure: 1.1, sunset: 1, night: 0.05, cloudLit: 0xffb282, cloudDark: 0x5c4c6a },
+  { t: 19.1, zenith: 0x121c48, horizon: 0x8c526a, haze: 0x423a4e, light: 0xa2aaff, lightI: 0.75, hemiSky: 0x42528c, hemiGround: 0x241e26, hemiI: 0.85, fog: 0x423a5c, fogSun: 0xa26272, fogD: 0.00244, exposure: 1.25, sunset: 0.6, night: 0.6, cloudLit: 0xa27292, cloudDark: 0x1e1e36 },
+  { t: 20.2, ...NIGHT },
+  { t: 24, ...NIGHT },
+];
+
+export type WeatherKind = 'clear' | 'cloudy' | 'rain' | 'storm';
+interface WeatherParams { cover: number; fogMul: number; sunMul: number; rain: number; wind: number; wet: number; dim: number }
+const WEATHER: Record<WeatherKind, WeatherParams> = {
+  clear: { cover: 0.5, fogMul: 1, sunMul: 1, rain: 0, wind: 1, wet: 0, dim: 0 },
+  cloudy: { cover: 0.66, fogMul: 1.35, sunMul: 0.72, rain: 0, wind: 1.4, wet: 0, dim: 0.12 },
+  rain: { cover: 0.86, fogMul: 2.2, sunMul: 0.4, rain: 0.6, wind: 1.9, wet: 0.8, dim: 0.28 },
+  storm: { cover: 0.98, fogMul: 2.9, sunMul: 0.22, rain: 1, wind: 3.0, wet: 1, dim: 0.42 },
+};
+
+export interface InteriorLook {
+  fog: number; fogD: number; hemiSky: number; hemiGround: number; hemiI: number; exposure: number;
+  /** key light colour/intensity/direction (a fake "sun" for form) */
+  light: number; lightI: number; lightDir: [number, number, number];
+}
+
+const cA = new THREE.Color(), cB = new THREE.Color();
+function mixHex(out: THREE.Color, a: number, b: number, t: number) { cA.setHex(a); cB.setHex(b); return out.copy(cA).lerp(cB, t); }
+
+export class Environment {
+  sky = new Sky();
+  sun = new SunLight(0xffffff, 3);
+  hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
+  fog = new THREE.FogExp2(0xffffff, 0.004);
+  /** game clock in hours, 0..24 */
+  hour = 7.25;
+  /** real seconds per game hour */
+  secPerHour = 60;
+  clockRunning = true;
+  weather: WeatherKind = 'clear';
+  /** when set, overrides the natural weather cycle (storm hour quest, boss) */
+  forcedWeather: WeatherKind | null = null;
+  forcedHour: number | null = null;
+  w: WeatherParams = { ...WEATHER.clear };
+  private nextWeatherAt = 240;
+  private elapsed = 0;
+  sunDir = new THREE.Vector3(0, 1, 0);
+  moonDir = new THREE.Vector3(0, -1, 0);
+  /** direction TO the active key light */
+  lightDir = new THREE.Vector3(0, 1, 0);
+  lightColor = new THREE.Color();
+  nightAmt = 0;
+  /** 0..1 lightning flash */
+  flash = 0;
+  private nextBolt = 6;
+  onThunder: ((dist: number) => void) | null = null;
+  interior: InteriorLook | null = null;
+  private interiorMix = 0;
+  private envScene = new THREE.Scene();
+  private envSky: THREE.Mesh;
+  private pmrem: THREE.PMREMGenerator | null = null;
+  private envRT: THREE.WebGLRenderTarget | null = null;
+  private envHour = -99; private envCover = -9; private envInterior = -1;
+  private k: Key = { ...KEYS[0] };
+  private tmp = new THREE.Vector3();
+
+  constructor(private scene: THREE.Scene) {
+    scene.add(this.sky.mesh);
+    scene.add(this.sun);
+    scene.add(this.hemi);
+    scene.fog = this.fog;
+    this.sun.castShadow = true;
+    const sh = this.sun.shadow;
+    sh.mapSize.set(2048, 2048);
+    sh.camera.near = 1; sh.camera.far = 120;
+    sh.bias = -0.0004; sh.normalBias = 0.05; sh.radius = 2.2;
+    this.envSky = new THREE.Mesh(this.sky.mesh.geometry, this.sky.mesh.material);
+    this.envSky.frustumCulled = false;
+    this.envScene.add(this.envSky);
+  }
+
+  setShadowQuality(size: number) {
+    this.sun.shadow.mapSize.set(size, size);
+    if (this.sun.shadow.map) { this.sun.shadow.map.dispose(); (this.sun.shadow as any).map = null; }
+  }
+
+  isNight() { return this.hour >= 20.2 || this.hour < 5.2; }
+  clockText() {
+    const h = Math.floor(this.hour), m = Math.floor((this.hour - h) * 60);
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+
+  private sample(hour: number) {
+    let i = 0;
+    while (i < KEYS.length - 2 && KEYS[i + 1].t <= hour) i++;
+    const a = KEYS[i], b = KEYS[i + 1];
+    const t = smooth(a.t, b.t, hour);
+    const k = this.k as any;
+    for (const f of ['lightI', 'hemiI', 'fogD', 'exposure', 'sunset', 'night'] as const) k[f] = lerp(a[f], b[f], t);
+    return { a, b, t };
+  }
+
+  update(dt: number, camera: THREE.PerspectiveCamera, focus: THREE.Vector3, renderer: Renderer) {
+    this.elapsed += dt;
+    if (this.forcedHour !== null) {
+      // glide the clock toward the forced hour (shortest way round)
+      let d = this.forcedHour - this.hour;
+      if (d > 12) d -= 24; if (d < -12) d += 24;
+      this.hour = (this.hour + d * Math.min(1, dt * 0.8) + 24) % 24;
+    } else if (this.clockRunning) this.hour = (this.hour + dt / this.secPerHour) % 24;
+
+    // weather state machine
+    if (this.forcedWeather) this.weather = this.forcedWeather;
+    else if (this.elapsed > this.nextWeatherAt) {
+      const r = Math.random();
+      this.weather = r < 0.5 ? 'clear' : r < 0.78 ? 'cloudy' : r < 0.93 ? 'rain' : 'storm';
+      this.nextWeatherAt = this.elapsed + rand(150, 320);
+    }
+    const tw = WEATHER[this.weather];
+    const wl = 0.22;
+    for (const f in tw) (this.w as any)[f] = damp((this.w as any)[f], (tw as any)[f], wl, dt);
+
+    const hour = this.hour;
+    const { a, b, t } = this.sample(hour);
+    const k = this.k;
+    // sun + moon paths
+    const th = ((hour - 6) / 12) * Math.PI;
+    this.sunDir.set(Math.cos(th), Math.sin(th) * 0.9, 0.38 * Math.sin(th) + 0.16).normalize();
+    const mh = hour < 12 ? hour + 24 : hour;
+    const tm = ((mh - 16.5) / 14) * Math.PI;
+    this.moonDir.set(-Math.cos(tm) * 0.8, Math.sin(tm) * 0.85, -0.42).normalize();
+    const sunUp = smooth(-0.03, 0.1, this.sunDir.y);
+    const moonUp = smooth(0.02, 0.2, this.moonDir.y);
+    this.nightAmt = k.night;
+    const useSun = sunUp > 0.02 && (k.night < 0.5 || this.sunDir.y > this.moonDir.y);
+    this.lightDir.copy(useSun ? this.sunDir : this.moonDir);
+    if (this.lightDir.y < 0.12) { this.lightDir.y = 0.12; this.lightDir.normalize(); }
+
+    // interior blend
+    this.interiorMix = damp(this.interiorMix, this.interior ? 1 : 0, 6, dt);
+    const im = this.interiorMix, il = this.interior ?? this.lastInterior;
+    if (this.interior) this.lastInterior = this.interior;
+
+    // lights
+    mixHex(this.lightColor, a.light, b.light, t);
+    let lightI = k.lightI * (useSun ? sunUp : moonUp) * this.w.sunMul;
+    lightI += this.flash * 6;
+    if (im > 0.001 && il) {
+      cA.setHex(il.light); this.lightColor.lerp(cA, im);
+      lightI = lerp(lightI, il.lightI, im);
+      this.tmp.set(il.lightDir[0], il.lightDir[1], il.lightDir[2]).normalize();
+      this.lightDir.lerp(this.tmp, im).normalize();
+    }
+    this.sun.color.copy(this.lightColor);
+    if (this.flash > 0.01) this.sun.color.lerp(cA.setRGB(0.8, 0.9, 1), Math.min(1, this.flash));
+    this.sun.intensity = lightI;
+    this.sun.position.copy(this.lightDir);
+    this.sun.updateMatrixWorld();
+
+    mixHex(this.hemi.color, a.hemiSky, b.hemiSky, t);
+    mixHex(this.hemi.groundColor, a.hemiGround, b.hemiGround, t);
+    { const l = (this.hemi.color.r + this.hemi.color.g + this.hemi.color.b) / 3; this.hemi.color.lerp(cA.setRGB(l, l, l), 0.3); }
+    let hemiI = k.hemiI * (1 - this.w.dim * 0.45) + this.flash * 1.5;
+    if (im > 0.001 && il) {
+      this.hemi.color.lerp(cA.setHex(il.hemiSky), im); this.hemi.groundColor.lerp(cA.setHex(il.hemiGround), im);
+      hemiI = lerp(hemiI, il.hemiI, im);
+    }
+    this.hemi.intensity = hemiI;
+
+    // sky
+    const su = this.sky.u;
+    su.uSunDir.value.copy(this.sunDir); su.uMoonDir.value.copy(this.moonDir);
+    mixHex(su.uZenith.value, a.zenith, b.zenith, t);
+    mixHex(su.uHorizon.value, a.horizon, b.horizon, t);
+    mixHex(su.uHaze.value, a.haze, b.haze, t);
+    mixHex(su.uSunColor.value, a.light, b.light, t);
+    mixHex(su.uCloudLit.value, a.cloudLit, b.cloudLit, t);
+    mixHex(su.uCloudDark.value, a.cloudDark, b.cloudDark, t);
+    // overcast greys everything toward a flat slate
+    const dim = this.w.dim;
+    const grey = cB.setRGB(0.36, 0.4, 0.46).multiplyScalar(lerp(1, 0.16, k.night));
+    su.uZenith.value.lerp(grey, dim * 1.5 > 1 ? 1 : dim * 1.5);
+    su.uHorizon.value.lerp(cA.copy(grey).multiplyScalar(1.5), Math.min(1, dim * 1.6));
+    su.uCloudLit.value.lerp(cA.copy(grey).multiplyScalar(1.7), Math.min(1, dim * 1.9));
+    su.uCloudDark.value.lerp(cA.copy(grey).multiplyScalar(0.55), Math.min(1, dim * 1.9));
+    su.uSunGlow.value = sunUp * (1 - Math.min(1, dim * 2.2));
+    su.uSunset.value = k.sunset * (1 - Math.min(1, dim * 2));
+    su.uNight.value = k.night * (1 - Math.min(1, dim * 2.4));
+    su.uCover.value = this.w.cover;
+    su.uFlash.value = this.flash;
+    su.uAurora.value = smooth(0.85, 1, k.night) * (1 - Math.min(1, dim * 3));
+    su.uRidge.value.copy(su.uHorizon.value).multiplyScalar(0.42).lerp(su.uZenith.value, 0.35);
+    this.sky.mesh.visible = im < 0.98;
+
+    // fog
+    mixHex(this.fog.color, a.fog, b.fog, t);
+    this.fog.color.lerp(cA.copy(su.uHorizon.value), Math.min(1, dim * 1.2));
+    let fogD = k.fogD * this.w.fogMul;
+    const fogSun = FOGX[1];
+    mixHex(cB, a.fogSun, b.fogSun, t);
+    cB.lerp(this.fog.color, 1 - su.uSunGlow.value * 0.9);
+    let hf = 0.05, linD = 0.00022 * this.w.fogMul;
+    if (im > 0.001 && il) {
+      this.fog.color.lerp(cA.setHex(il.fog), im); cB.lerp(cA, im);
+      fogD = lerp(fogD, il.fogD, im); hf = lerp(hf, 0.0, im); linD = lerp(linD, il.fogD, im);
+    }
+    this.fog.density = fogD;
+    FOGX[0].set(this.sunDir.x, this.sunDir.y, this.sunDir.z, hf);
+    fogSun.set(cB.r, cB.g, cB.b, 10);
+    FOGX[2].set(-2, 0.97, linD, 0);
+
+    // wind + wetness
+    GU.uWind.value.z = damp(GU.uWind.value.z, this.w.wind, 0.5, dt);
+    GU.uWet.value = damp(GU.uWet.value, this.w.wet * (1 - im), 0.15, dt);
+
+    // lightning
+    this.flash = Math.max(0, this.flash - dt * 3.2);
+    if (this.weather === 'storm' && im < 0.5) {
+      this.nextBolt -= dt;
+      if (this.nextBolt <= 0) {
+        this.flash = rand(0.6, 1.1);
+        this.nextBolt = rand(3.5, 11);
+        this.onThunder?.(rand(0.2, 1));
+        // double strike
+        if (Math.random() < 0.4) setTimeout(() => { this.flash = Math.max(this.flash, 0.7); }, 130);
+      }
+    }
+
+    // post
+    const p = renderer.post;
+    let exposure = k.exposure * (1 - dim * 0.12);
+    if (im > 0.001 && il) exposure = lerp(exposure, il.exposure, im);
+    p.exposure = exposure;
+    p.sunColor.copy(su.uSunColor.value);
+    p.shadowTint.setRGB(lerp(0.92, 0.84, k.night), lerp(1.0, 0.96, k.night), lerp(1.08, 1.16, k.night));
+    p.highTint.setRGB(lerp(1.05, 1.0, k.night), 1.0, lerp(0.93, 1.04, k.night));
+    // sun screen position for god rays
+    this.tmp.copy(this.sunDir).multiplyScalar(1000).add(camera.position).project(camera);
+    const facing = this.tmp.z < 1 ? 1 : 0;
+    const vis = facing * smooth(1.6, 0.9, Math.max(Math.abs(this.tmp.x), Math.abs(this.tmp.y))) * su.uSunGlow.value * (1 - im)
+      * smooth(-0.02, 0.06, this.sunDir.y);
+    p.sunScreen.set(this.tmp.x * 0.5 + 0.5, this.tmp.y * 0.5 + 0.5, clamp01(vis));
+    p.godrays = 0.4 + k.sunset * 0.45;
+
+    this.sky.mesh.position.copy(camera.position);
+    this.sky.mesh.scale.setScalar(camera.far * 0.9);
+    this.sky.mesh.updateMatrixWorld();
+
+    this.updateEnvMap(renderer);
+    void focus;
+  }
+  private lastInterior: InteriorLook | null = null;
+
+  /** Re-bake the image-based-lighting probe when the sky has drifted. */
+  private updateEnvMap(renderer: Renderer) {
+    const interiorKey = this.interior ? 1 : 0;
+    const dh = Math.min(Math.abs(this.hour - this.envHour), 24 - Math.abs(this.hour - this.envHour));
+    if (dh < 0.2 && Math.abs(this.w.cover - this.envCover) < 0.08 && interiorKey === this.envInterior) return;
+    this.envHour = this.hour; this.envCover = this.w.cover; this.envInterior = interiorKey;
+    this.pmrem ??= new THREE.PMREMGenerator(renderer.gl);
+    const su = this.sky.u;
+    const glow = su.uSunGlow.value;
+    su.uSunGlow.value = glow * 0.25; // keep the probe free of a blown-out disc
+    this.envSky.scale.setScalar(50);
+    const rt = this.pmrem.fromScene(this.envScene, 0, 0.1, 100, { size: 64 } as any);
+    su.uSunGlow.value = glow;
+    this.envRT?.dispose();
+    this.envRT = rt;
+    this.scene.environment = rt.texture;
+    this.scene.environmentIntensity = this.interior ? 0.25 : 0.42;
+  }
+}
