@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { clamp01 } from '../core/util';
 import type { Game } from '../game';
 import type { Shooter } from './shooter';
+import { cast } from './ballistics';
+import type { WeakZone } from './weakpoints';
 
 const _f = new THREE.Vector3(), _r = new THREE.Vector3(), _u = new THREE.Vector3(), _v = new THREE.Vector3(), _c = new THREE.Vector3(), _pp = new THREE.Vector3();
 const DEG = Math.PI / 180;
@@ -32,7 +34,7 @@ export class AimAssist {
     _r.setFromMatrixColumn(cam.matrixWorld, 0).normalize();
     _u.setFromMatrixColumn(cam.matrixWorld, 1).normalize();
     let bestSlow = 0, onName = '';
-    let pullD = 1e9, px = 0, py = 0, pullObj: object | null = null;
+    let pullD = 1e9, px = 0, py = 0, pullObj: WeakZone | null = null;
     const ads = this.sh.adsK;
     const wp = g.combat.weak;
     for (const m of g.mobs.list) {
@@ -72,7 +74,9 @@ export class AimAssist {
         _v.copy(_pp).sub(cam.position);
         const len = _v.length();
         const hit = g.physics.raycast(cam.position, _v.multiplyScalar(1 / len), len);
-        this.seeOk = !hit || hit.dist > len - 0.6;
+        // and no other robot in front of it: the first body on the line must be its own
+        const first = hit && hit.dist <= len - 0.6 ? null : cast(g, cam.position, _v, len + 1, { precise: false, world: false })[0];
+        this.seeOk = !!first && first.h === (pullObj.mob as unknown);
       }
       const active = Math.abs(inp.lookX) + Math.abs(inp.lookY) > 1e-4 || inp.stick.active || Math.hypot(inp.moveX, inp.moveY) > 0.1 || this.sh.firing;
       if (this.seeOk && active) {
