@@ -20,6 +20,8 @@ export class Sky {
     uTime: GU.uTime,
     uNoise: GU.uNoise,
     uFlash: { value: 0 },
+    /** horizontal direction from the camera to the latest lightning strike: the deck glows brightest there */
+    uBoltDir: { value: new THREE.Vector2(1, 0) },
     uRidge: { value: new THREE.Color(0x6f7f95) },
     uAurora: { value: 0 },
   };
@@ -40,7 +42,7 @@ export class Sky {
         precision highp float;
         varying vec3 vDir;
         uniform vec3 uSunDir, uMoonDir, uZenith, uHorizon, uHaze, uSunColor, uCloudLit, uCloudDark, uRidge;
-        uniform float uSunGlow, uSunset, uNight, uCover, uTime, uFlash, uAurora;
+        uniform float uSunGlow, uSunset, uNight, uCover, uTime, uFlash, uAurora; uniform vec2 uBoltDir;
         uniform sampler2D uNoise;
         float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         // broad shapes from the fbm channel, cauliflower edges from the cell-noise channel
@@ -135,7 +137,9 @@ export class Sky {
               float thick = smoothstep(0.3, 0.72, cloudDensity(base * 1.6 + scroll * 1.7));
               cc = mix(cc, mix(uCloudLit * 0.8, uCloudDark, thick), deck);
             }
-            cc += vec3(0.8, 0.9, 1.0) * uFlash * 2.5;
+            // lightning lights the deck from inside: brightest around the strike, through the thick of the cloud
+            float toward = pow(max(0.0, dot(normalize(d.xz + 1e-4), uBoltDir)), 14.0);
+            cc += vec3(0.78, 0.86, 1.0) * uFlash * (0.22 + 1.1 * toward) * (0.25 + 0.75 * c1);
             // far clouds sink into the horizon haze
             cc = mix(hz, cc, 0.35 + 0.65 * smoothstep(0.0, 0.3, h));
             float fade = smoothstep(0.0, 0.12, h);
@@ -172,7 +176,7 @@ export class Sky {
           }
           // below-horizon haze
           col = mix(col, uHaze, smoothstep(0.0, -0.22, h));
-          col += vec3(0.7, 0.8, 1.0) * uFlash * 0.6;
+          col += vec3(0.7, 0.8, 1.0) * uFlash * 0.22;
           gl_FragColor = vec4(col, 1.0);
         }`,
     });

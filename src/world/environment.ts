@@ -96,7 +96,26 @@ export class Environment {
   /** 0..1 lightning flash */
   flash = 0;
   private nextBolt = 6;
+  /** called when a strike's thunder reaches the camera, with the strike's distance in metres */
   onThunder: ((dist: number) => void) | null = null;
+  /** the latest lightning strike: where it hit, how far from the camera, seconds since (world/vista/weather.ts draws it) */
+  bolt = { x: 0, z: 0, dist: 0, t: 99, peak: 0, double: false, seed: 0, cloud: false };
+  private thunder: Array<{ at: number; dist: number }> = [];
+  private camAt = new THREE.Vector3(); private camFwd = new THREE.Vector3(0, 0, -1);
+  /** Throw a bolt at a point, or somewhere around the camera (mostly ahead of it); its thunder follows at 343 m/s. */
+  strike(x?: number, z?: number) {
+    const c = this.camAt;
+    if (x === undefined || z === undefined) {
+      const a = Math.random() < 0.65 ? Math.atan2(this.camFwd.x, this.camFwd.z) + rand(-0.7, 0.7) : rand(0, Math.PI * 2), d = rand(90, 430);
+      x = c.x + Math.sin(a) * d; z = c.z + Math.cos(a) * d;
+    }
+    const b = this.bolt, dist = Math.hypot(x - c.x, z - c.z);
+    b.x = x; b.z = z; b.dist = dist; b.t = 0; b.double = Math.random() < 0.45; b.seed = Math.random() * 1000;
+    // about a third run cloud to cloud: they light the deck from inside and never reach the ground
+    b.cloud = Math.random() < 0.35;
+    b.peak = rand(0.8, 1.1) * Math.min(1, Math.max(0.4, 1.3 - dist / 450)) * (b.cloud ? 0.55 : 1);
+    this.thunder.push({ at: dist / 343, dist });
+  }
   interior: InteriorLook | null = null;
   private interiorMix = 0;
   private envScene = new THREE.Scene();
@@ -385,16 +404,29 @@ export class Environment {
     GU.uWind.value.z = damp(GU.uWind.value.z, this.w.wind, 0.5, dt);
     GU.uWet.value = damp(GU.uWet.value, this.w.wet * (1 - im), 0.15, dt);
 
-    // lightning
-    this.flash = Math.max(0, this.flash - dt * 3.2);
+    // gusts: in rain and storm the wind comes in surges that bend cloth, crowns and grass further, then lets go
+    {
+      const rough = clamp01((this.w.wind - 1) / 2), tt = GU.uTime.value;
+      const surge = Math.max(0, Math.sin(tt * 0.31) * 0.6 + Math.sin(tt * 0.83 + 1.3) * 0.4);
+      GU.uWind.value.w = rough * (0.2 + 0.6 * surge * surge);
+    }
+
+    // lightning: a strike is a few bright frames with a flicker, then thunder at the speed of sound
+    this.camAt.copy(camera.position); camera.getWorldDirection(this.camFwd);
     if (this.weather === 'storm' && im < 0.5) {
       this.nextBolt -= dt;
-      if (this.nextBolt <= 0) {
-        this.flash = rand(0.6, 1.1);
-        this.nextBolt = rand(3.5, 11);
-        this.onThunder?.(rand(0.2, 1));
-        // double strike
-        if (Math.random() < 0.4) setTimeout(() => { this.flash = Math.max(this.flash, 0.7); }, 130);
+      if (this.nextBolt <= 0) { this.nextBolt = rand(4, 12); this.strike(); }
+    }
+    {
+      const b = this.bolt, end = b.double ? 0.17 : 0.1;
+      b.t += dt;
+      const ft = b.t < 0.05 ? 1 : b.t < 0.1 ? 0.2 : b.t < end ? 0.9 : Math.exp(-(b.t - end) * 7) * 0.7;
+      this.flash = Math.max(0, this.flash - dt * 3.2, b.peak * ft * (1 - im));
+      this.sky.u.uBoltDir.value.set(b.x - this.camAt.x, b.z - this.camAt.z).normalize();
+      for (let i = this.thunder.length - 1; i >= 0; i--) {
+        if ((this.thunder[i].at -= dt) > 0) continue;
+        this.onThunder?.(this.thunder[i].dist);
+        this.thunder.splice(i, 1);
       }
     }
 

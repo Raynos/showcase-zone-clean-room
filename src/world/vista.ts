@@ -3,6 +3,7 @@ import type * as THREE from 'three';
 import { buildBeyond, type Beyond } from './vista/beyond';
 import { buildBeams } from './vista/skyline';
 import { startTraffic } from './vista/traffic';
+import { startWeather } from './vista/weather';
 
 /**
  * World scale and drama: what lies beyond the wall, what stands on the skyline, what crosses the
@@ -20,4 +21,5 @@ export function build(game: Game) {
 
 export function start(game: Game) {
   game.cratefall = startTraffic(game);
+  startWeather(game);
 }
