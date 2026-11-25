@@ -158,24 +158,27 @@ void surfDetail(float lay, vec3 wp, vec3 nW, vec2 ao, inout vec4 ta, inout vec4 
     ta.a = mix(ta.a, 0.95, moss);
   }
 
-  if ((lay == ${L(T.PLATE)} || lay == ${L(T.PANEL)}) && near > 0.0) {
-    // plates 1.6 x 1.0 m, seams with a row of rivets either side
+  float nearM = 1.0 - smoothstep(30.0, 48.0, camD);
+  if ((lay == ${L(T.PLATE)} || lay == ${L(T.PANEL)}) && nearM > 0.0) {
+    // plates 2.4 x 1.5 m, seams with a row of rivets either side
+    float near = nearM;
     vec2 q = vert ? wq : wp.xz;
-    vec2 pc = q / vec2(1.6, 1.0), pf = fract(pc);
-    vec2 jm = min(pf, 1.0 - pf) * vec2(1.6, 1.0);
-    float sw = 0.012 + fwidth(q.x) * 0.5;
+    vec2 PS = vec2(2.4, 1.5);
+    vec2 pc = q / PS, pf = fract(pc);
+    vec2 jm = min(pf, 1.0 - pf) * PS;
+    float sw = 0.02 + fwidth(q.x) * 0.5;
     float seam = 1.0 - smoothstep(sw, sw * 2.0, min(jm.x, jm.y));
     float rv = 0.0;
-    vec2 rq = jm - 0.06;
+    vec2 rq = jm - 0.09;
     float along = jm.x < jm.y ? q.y : q.x;
-    float rd = length(vec2(min(abs(rq.x), abs(rq.y)), (fract(along / 0.13) - 0.5) * 0.13));
-    rv = (1.0 - smoothstep(0.016, 0.024, rd)) * step(min(rq.x, rq.y), 0.02);
+    float rd = length(vec2(min(abs(rq.x), abs(rq.y)), (fract(along / 0.2) - 0.5) * 0.2));
+    rv = (1.0 - smoothstep(0.024, 0.036, rd)) * step(min(rq.x, rq.y), 0.03);
     ta.rgb *= mix(1.0, 1.0 - seam * 0.5, near) * (1.0 + rv * 0.35 * near);
     tn.xy += vec2(0.0, 0.25) * rv * near;
     // rust weeps down from the rivets on a wall
     if (vert) {
       float drip = texture2D(uNoise, vec2(q.x * 3.0, q.y * 0.2)).g;
-      float rw = smoothstep(0.62, 0.8, drip) * (1.0 - smoothstep(0.0, 0.5, jm.y - 0.06)) * step(0.5, pf.y);
+      float rw = smoothstep(0.6, 0.8, drip) * (1.0 - smoothstep(0.0, 0.7, jm.y - 0.09)) * step(0.5, pf.y);
       ta.rgb *= mix(vec3(1.0), vec3(0.95, 0.62, 0.42), rw * near);
     }
   }
