@@ -10,7 +10,7 @@ export function installPerf(game: Game, full = true) {
   const css = document.createElement('style');
   css.textContent = `
   #perf { position: fixed; left: 50%; top: calc(2px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); z-index: 70; font: 600 10px/1.25 ui-monospace, Menlo, monospace; color: #dff6ff; pointer-events: auto; text-align: left; -webkit-user-select: none; user-select: none; }
-  #perf.mini { transform: none; font: 800 12px/1 "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+  #perf.mini { z-index: 5; transform: none; font: 800 12px/1 "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: .04em; }
   #perf.mini .pbar { display: flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 10px; color: #a9b0ba; background: rgba(10, 13, 17, .72); border: 1px solid rgba(255, 255, 255, .16); box-shadow: 0 1px 3px rgba(0, 0, 0, .6); }
   #perf.mini .pbar b { color: #7dffb0; font-weight: 800; } #perf.mini .pbar b.warn { color: #ffc46a; } #perf.mini .pbar b.bad { color: #ff6a4a; }
   #perf.mini .pbar i { font-style: normal; color: #d9d3c8; }

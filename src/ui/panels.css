@@ -101,6 +101,12 @@
 .pn-slot .sk b { display: block; font-size: 14.5px; font-weight: 800; letter-spacing: .04em; }
 .pn-slot .sk small { display: block; font-size: 12.5px; line-height: 1.3; color: #c4c0b6; }
 .pn-slot .sk i { display: block; margin-top: 1px; font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--orange); }
+/* Perks tab (enemies agent's markup in panels/perks.ts): learn buttons in the row, disabled ones dimmed */
+.pn-slot .sk .ld-b .pn-btn:not(.sq) { min-height: var(--hit); padding: 0 12px; font-size: 13px; --rimg: var(--rim-warm); --faceg: var(--face-warm); color: #2a1406; text-shadow: 0 1px 0 rgba(255, 217, 168, .6); }
+.pn-slot .sk .ld-b .pn-btn:not(.sq)::before { box-shadow: inset 0 2px 2px rgba(255, 255, 255, .6), inset 0 -9px 12px rgba(106, 36, 0, .5); }
+.pn-slot .sk .ld-b .pn-btn.no:not(.sq), .pn-row .pn-btn.no { --rimg: var(--rim-soft); --faceg: var(--face); color: var(--text-3); text-shadow: none; filter: saturate(.3); pointer-events: none; }
+.pn-slot .sk .ld-b .pn-btn.no:not(.sq)::before { box-shadow: var(--lit); }
+.pn-sec em { font-size: 11.5px; font-weight: 700; letter-spacing: .04em; text-transform: none; }
 .pn-pbs { border-radius: var(--rad-1); background: var(--ink-0); box-shadow: var(--lit-well), 0 1px 0 rgba(255, 255, 255, .08); }
 .pn-pbs > div { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 42px; padding: 0 12px; border-top: 1px solid rgba(255, 255, 255, .06); }
 .pn-pbs > div:first-child { border-top: 0; }
@@ -350,6 +356,30 @@ body:not(.desktop) .pn-ctl em { display: none; }
   .pn-sheet::before { inset: 2px 1.5px 1.5px; clip-path: polygon(calc(var(--c) - .8px) 0, 100% 0, 100% calc(100% - var(--c) + .8px), calc(100% - var(--c) + .8px) 100%, 0 100%, 0 calc(var(--c) - .8px)); }
   .pn.on .pn-sheet { transform: translate(-50%, -50%); opacity: 1; pointer-events: auto; }
   .pn-sheet.map { width: min(900px, calc(100% - 24px - var(--sal) - var(--sar))); height: min(880px, calc(100% - 20px)); }
+  /* landscape and wide: a console-style layout. Tabs become a rail on the left, the list fills the
+     middle and the detail sheet (the foot) stands in its own column on the right. */
+  .pn-sheet:not(.dialog) { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: auto auto minmax(0, 1fr); width: min(980px, calc(100% - 24px - var(--sal) - var(--sar))); }
+  .pn-sheet > .pn-grab { grid-column: 1 / -1; grid-row: 1; }
+  .pn-sheet > .pn-head { grid-column: 1 / -1; grid-row: 2; }
+  .pn-sheet > .pn-tabs.on { grid-column: 1; grid-row: 3; align-self: start; flex-direction: column; width: 156px; margin: 4px 0 12px var(--gutter); }
+  .pn-sheet > .pn-tabs.on .pn-tab { flex: none; min-height: 46px; justify-content: flex-start; padding: 0 12px; }
+  .pn-sheet > .pn-body { grid-column: 1 / -1; grid-row: 3; }
+  .pn-sheet > .pn-tabs.on ~ .pn-body { grid-column: 2 / -1; }
+  .pn-sheet:has(.pn-foot.on) > .pn-body { grid-column-end: 3; }
+  .pn-sheet > .pn-foot.on { grid-column: 3; grid-row: 3; width: min(340px, 38vw); overflow-y: auto; overscroll-behavior: contain; padding: 14px var(--gutter) 16px;
+    background: linear-gradient(90deg, #1d222a, #12161b); box-shadow: -1px 0 0 rgba(255, 255, 255, .12), -10px 0 18px rgba(0, 0, 0, .4); }
+  /* a foot that is only a row of buttons (board, settings) stays a bar along the bottom */
+  .pn-sheet:not(.dialog) { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+  .pn-sheet > .pn-foot.on:has(> .pn-acts.wide:only-child) { grid-column: 1 / -1; grid-row: 4; width: auto; padding: 10px var(--gutter) calc(10px + var(--sab));
+    background: linear-gradient(180deg, #1d222a, #0b0e12); box-shadow: 0 -1px 0 rgba(255, 255, 255, .14); }
+  .pn-sheet:has(.pn-foot.on > .pn-acts.wide:only-child) > .pn-body { grid-column-end: -1; }
+  .pn-foot .pn-detail { flex-direction: column; align-items: center; text-align: center; }
+  .pn-foot .pn-detail > .pn-it { width: 96px; }
+  .pn-foot .pn-detail .dk { justify-content: center; }
+  .pn-foot .pn-acts { flex-wrap: wrap; }
+  .pn-foot .pn-acts .pn-btn { flex: 1 1 120px; }
+  .pn-stats { grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); }
+  .pn-sheet.map > .pn-body { margin: 0 2px 2px; }
   .pn-sheet.dialog { top: auto; bottom: 20px; height: auto; max-height: calc(100% - 40px); min-height: 0; transform: translate(-50%, 24px); }
   .pn.on .pn-sheet.dialog { transform: translate(-50%, 0); }
   /* landscape: dock the dialogue to the right so the dialogue camera can frame the speaker on the left */
@@ -363,11 +393,17 @@ body:not(.desktop) .pn-ctl em { display: none; }
 }
 @media (orientation: landscape) and (max-height: 520px) {
   .pn-title { flex-direction: row; justify-content: space-around; align-items: center; padding: 16px calc(24px + var(--sar)) 30px calc(24px + var(--sal)); }
-  .tt-menu { width: auto; gap: 7px; }
-  .tt-word { font-size: clamp(48px, 20vh, 96px); }
+  .pn-title { gap: 24px; }
+  .tt-logo { flex: 1 1 0; min-width: 0; }
+  .tt-menu { flex: 0 0 min(340px, 46vw); width: auto; gap: 7px; }
+  .tt-menu > .tt-btn:not(.ghost), .tt-save, .tt-row { width: 100%; }
+  .tt-word { font-size: clamp(40px, min(20vh, 8.4vw), 96px); }
+  .tt-sub { font-size: clamp(12px, 2.2vw, 18px); letter-spacing: .4em; text-indent: .4em; white-space: nowrap; }
   .tt-btn.pri { min-height: 58px; }
   .tt-tap { display: none; }
   .pn-head { height: 46px; }
+  .pn-sheet { top: calc(50% - var(--sab) / 2); height: calc(100% - 12px - var(--sab)); }
+  .pn-sheet > .pn-grab { height: 6px; }
   .pn-sheet.dialog { max-height: calc(100% - 16px); bottom: 8px; }
   .pn-dtext { min-height: 60px; font-size: 15px; margin: 8px 0; padding-top: 9px; padding-bottom: 9px; }
   .pn-dtext .live { top: 9px; }

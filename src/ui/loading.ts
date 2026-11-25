@@ -171,7 +171,7 @@ class Stacker {
       const land = this.topY(n);
       if (f.y >= land) {
         const below = n ? this.stack[n - 1] : this.w / 2, off = Math.abs(f.x - below);
-        if (!n || off < this.W * 0.5) {
+        if (n ? off < this.W * 0.5 : off < 70 - this.W * 0.25) {
           this.stack.push(f.x); this.fall = null;
           if (this.stack.length > this.best) { this.best = this.stack.length; try { localStorage.setItem('cf.stack.best', String(this.best)); } catch { /* ignore */ } }
           this.hud();

@@ -135,7 +135,7 @@ export const mapPanel: PanelSpec = {
       questSig = JSON.stringify(g.state.d.quests) + (g.state.d.track ?? '');
       host.body.innerHTML = `<canvas class="pn-mapcv"></canvas>
         <div class="pn-maploc"></div>
-        <div class="pn-mapbtns"><div class="pn-rb" data-a="zin" aria-label="Zoom in">+</div><div class="pn-rb" data-a="zout" aria-label="Zoom out">−</div><div class="pn-rb cy" data-a="me" aria-label="Centre on me">${icon('target', 20)}</div></div>
+        <div class="pn-mapbtns"><div class="pn-rb" data-a="zin" aria-label="Zoom in"><span>+</span></div><div class="pn-rb" data-a="zout" aria-label="Zoom out"><span>−</span></div><div class="pn-rb cy" data-a="me" aria-label="Centre on me">${icon('target', 20)}</div></div>
         <div class="pn-mapleg"><div class="pn-btn sm" data-a="legend">${icon('map', 16)}Legend</div></div>
         ${questChip()}
         <div class="pn-legend bev${legend ? ' on' : ''}" data-a="legend"><h4>Legend</h4><div class="lg">

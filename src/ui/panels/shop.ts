@@ -43,7 +43,7 @@ export const shopPanel: PanelSpec = {
             const owned = st.ownsWeapon(id), locked = st.d.level < w.level, poor = st.d.scrip < w.price;
             const col = '#' + w.color.toString(16).padStart(6, '0');
             const cur = WEAPONS[st.weaponId].kind === k ? WEAPONS[st.weaponId].power : 0;
-            const up = !owned && cur && w.power > cur ? `<em class="up">+${w.power - cur}</em>` : '';
+            const up = !owned && cur && w.power > cur ? ` <em class="up">(+${w.power - cur} on yours)</em>` : '';
             let right: string;
             if (owned) right = `<div class="own">${btn('<small>Slot</small>1', 'equip0', id, 'sq' + (st.d.loadout[0] === id ? ' on' : ''))}${btn('<small>Slot</small>2', 'equip1', id, 'sq' + (st.d.loadout[1] === id ? ' on' : ''))}</div>`;
             else if (locked) right = `<div class="lockd">${icon('lock', 16)}Level ${w.level}</div>`;
