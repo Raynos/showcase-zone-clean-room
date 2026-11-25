@@ -147,8 +147,9 @@ body.desktop .ibtn small { display: block; }
 .dmg.crit { font-size: 30px; color: var(--gold); text-shadow: 0 2px 0 #7a2a00, 0 0 12px #ff7a1a; }
 .dmg.hurt { color: #ff6a4a; } .dmg.heal { color: var(--green); } .dmg.xp { color: #c9a0ff; font-size: 15px; } .dmg.scrip { color: var(--gold); font-size: 15px; } .dmg.miss { color: #aab; font-size: 15px; }
 .plate { position: absolute; left: 0; top: 0; transform-origin: 0 0; text-align: center; will-change: transform; white-space: nowrap; }
-.plate .pn { font-size: 11px; font-weight: 800; letter-spacing: .05em; text-shadow: 0 1px 2px #000, 0 0 5px #000; }
+.plate .pn { display: block; position: static; inset: auto; line-height: 1.25; font-size: 11px; font-weight: 800; letter-spacing: .05em; text-shadow: 0 1px 2px #000, 0 0 5px #000; }
 .plate .pn .pl { color: var(--amber); margin-right: 3px; }
+.plate.npc .pt { margin-top: 1px; font-weight: 800; text-shadow: 0 1px 2px #000, 0 0 4px #000; }
 .plate .pb { width: 64px; height: 6px; margin: 2px auto 0; background: #0009; border: 1px solid #000; border-radius: 3px; overflow: hidden; }
 .plate .pb i { display: block; height: 100%; background: linear-gradient(180deg, #ff8a6a, #d83424); transform-origin: left; }
 .plate.elite .pn { color: var(--gold); } .plate.rare .pn { color: var(--purple); } .plate.night .pn { color: #8fd6ff; }

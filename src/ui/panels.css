@@ -381,6 +381,8 @@ div.maxed { min-width: 64px; text-align: center; font-size: 12px; font-weight: 8
   .pn-sheet.map { width: min(900px, calc(100% - 24px)); height: min(880px, calc(100% - 24px)); }
   .pn-sheet.dialog { top: auto; bottom: 20px; height: auto; max-height: calc(100% - 40px); min-height: 0; transform: translate(-50%, 24px); }
   .pn.on .pn-sheet.dialog { transform: translate(-50%, 0); }
+  /* landscape: dock the dialogue to the right so the dialogue camera can frame the speaker on the left */
+  @media (orientation: landscape) { .pn-sheet.dialog { left: auto; right: 14px; width: min(46%, 520px); transform: translate(0, 24px); } .pn.on .pn-sheet.dialog { transform: none; } }
   .pn-grab { height: 10px; }
   .pn-grab i { display: none; }
   .pn-body { padding-bottom: 18px; }

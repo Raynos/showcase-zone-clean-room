@@ -47,7 +47,9 @@ export class Coach implements System {
   }
   update(_dt: number, rdt: number) {
     const g = this.game, st = g.state;
-    if (!g.started || g.panels?.isOpen || g.cameraRig.cine) return;
+    const busy = !g.started || !!g.panels?.isOpen || g.cameraRig.cine;
+    this.card.classList.toggle('on', !busy && this.showT > 0);
+    if (busy) return;
     this.t += rdt;
     // situational triggers
     if (this.t > 1.5) this.tip('move');
