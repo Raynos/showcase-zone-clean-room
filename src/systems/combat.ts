@@ -80,10 +80,10 @@ interface Zone { kind: 'rain' | 'jam' | 'mine'; x: number; y: number; z: number;
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _d = new THREE.Vector3(), _c = new THREE.Vector3();
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _col = new THREE.Color(), _up = new THREE.Vector3(0, 0, 1);
 const MAXS = 96;
-/** Seconds a press of a buffered action waits for the first frame it is legal. */
-const BUFFER = 0.2;
 /** ribbons fed while a skill carries the hero through the air, and behind a lobbed shell (effects only) */
 const FLIP_ARC = { row: RB.WAVE, width: 1.1, life: 0.34, glow: 1.8, core: 0.9, tile: 0.5 }, LEAP_ARC = { row: RB.SPEAR, width: 0.9, life: 0.3, glow: 2, core: 1, tile: 0.4 }, LOB_TAIL = { row: RB.BEAM, width: 0.6, life: 0.3, glow: 1.3, core: 0.5, tile: 0.6 };
+/** Seconds a press of a buffered action waits for the first frame it is legal. */
+const BUFFER = 0.2;
 /** A melee swing slides at most this far toward its target, at no more than this average speed (peak is 1.2x). */
 const LUNGE_MAX = 3, LUNGE_SPEED = 15;
 /**
@@ -1072,9 +1072,9 @@ export class Combat {
     pl.yaw = face;
     const sf = Math.sin(face), cf = Math.cos(face);
     const td = t ? Math.hypot(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) : 0;
+    this.castFx(sk.id, face);
     switch (sk.id) {
       case 'whirlwind': this.skillDur = 0.75; pl.action = 'swordSkill'; this.startTrail('whirl'); g.sfx('skill_whirl'); break;
-    this.castFx(sk.id, face);
       case 'dash_strike': {
         this.skillDur = 0.34; pl.action = 'sword3';
         const dist = t ? clamp(td + 3, 5, 11) : 9;
@@ -1231,8 +1231,6 @@ export class Combat {
     return n;
   }
   private dashFrom = new THREE.Vector3(); private dashYaw = 0;
-  private updateSkill(dt: number) {
-    const g = this.game, pl = g.player, st = g.state;
   /** A skill's anticipation: what is seen in the beat before it lands. Effects only. */
   private castFx(id: string, face: number) {
     const g = this.game, pl = g.player, col = g.state.weapon.color;
@@ -1249,6 +1247,8 @@ export class Combat {
       case 'volley': case 'shock_arrow': case 'arrow_rain': case 'barrage': case 'jam_bolt': g.fx.play('gun.ready', this.muzzlePos(_v), _d, id === 'shock_arrow' ? 0x7ff0ff : id === 'jam_bolt' ? 0xffd23a : col); break;
     }
   }
+  private updateSkill(dt: number) {
+    const g = this.game, pl = g.player, st = g.state;
     const prev = this.skillT;
     this.skillT += dt / this.skillDur;
     const t = this.skillT, col = st.weapon.color;
@@ -1279,15 +1279,15 @@ export class Combat {
       case 'arc_wave':
         if (crossed(0.4)) {
           _v.copy(pl.pos); _v.y += 1.1; pl.forward(_d);
+          g.fx.play('sk.wave.cast', _v, _d, col);
           this.fire('wave', _v, _d, 30, 2.0, { pierce: true, hit: new Set(), radius: 1.5, life: 0.62, knock: 5, src: 'skill', heavy: true, poise: 1.5 });
           g.sfx('skill_pierce', { pitch: 1.3 }); g.cameraRig.shake(0.25); g.cameraRig.punch(3);
-          g.fx.play('sk.wave.cast', _v, _d, col);
         }
         break;
       case 'skewer_leap':
+        if (t < 0.62 && pl.weaponModel) g.fx.follow(pl, pl.weaponModel.tip.getWorldPosition(_v), col, LEAP_ARC);
         if (crossed(0.62)) {
           pl.vel.set(0, -20, 0);
-        if (t < 0.62 && pl.weaponModel) g.fx.follow(pl, pl.weaponModel.tip.getWorldPosition(_v), col, LEAP_ARC);
           this.aoe(pl.pos.x, pl.pos.y, pl.pos.z, 4.2, 2.7, { heavy: true, knock: 8, source: 'skill', stun: 0.8 });
           _v.copy(pl.pos); _v.y = g.groundY(pl.pos.x, pl.pos.z, pl.pos.y + 0.5) + 0.1;
           g.fx.play('sk.slam', _v, undefined, col, 1.2, 4.2); g.cameraRig.shake(0.5); g.sfx('skill_slam');
@@ -1311,18 +1311,18 @@ export class Combat {
       case 'javelin':
         if (crossed(0.42)) {
           _v.copy(pl.pos); _v.y += 1.45; this.aimDir(_v, _d, 62, 0);
+          g.fx.play('sk.javelin.throw', _v, _d, col);
           this.fire('javelin', _v, _d, 62, 2.8, { pierce: true, hit: new Set(), radius: 0.6, life: 1.1, knock: 7, src: 'skill', heavy: true, poise: 2 });
           g.sfx('swing_spear', { pitch: 0.8 }); g.sfx('skill_pierce'); g.cameraRig.kick(0.03); g.cameraRig.punch(3);
-          g.fx.play('sk.javelin.throw', _v, _d, col);
         }
         break;
       case 'volley':
         if (crossed(0.2)) {
           this.muzzlePos(_v); this.aimDir(_v, _d, 60, 3);
           const base = Math.atan2(_d.x, _d.z), py = _d.y;
+          g.fx.play('sk.volley', _v, _d, col);
           for (let i = -2; i <= 2; i++) {
             const a = base + i * 0.1; _v2.set(Math.sin(a) * Math.sqrt(1 - py * py), py, Math.cos(a) * Math.sqrt(1 - py * py));
-          g.fx.play('sk.volley', _v, _d, col);
             this.fire('arrow', _v, _v2, 60, 0.85, { knock: 4, grav: 3 });
           }
           g.sfx('bow_release'); g.sfx('skill_volley'); g.cameraRig.kick(0.02);
@@ -1371,9 +1371,9 @@ export class Combat {
         for (let i = 0; i < 6; i++) if (crossed(0.05 + i * 0.15)) this.fireBolt(0.75, 0.025, i === 0);
         break;
       case 'flip_volley':
+        g.fx.follow(pl, pl.center, col, FLIP_ARC);
         for (let i = 0; i < 3; i++) if (crossed(0.15 + i * 0.25)) this.fireBolt(0.9, 0.012, false);
         break;
-        g.fx.follow(pl, pl.center, col, FLIP_ARC);
 
       // ---- ultimates ----
       case 'ult_sword': {
@@ -1399,9 +1399,9 @@ export class Combat {
         break;
       }
       case 'ult_spear':
+        if (t < 0.62 && pl.weaponModel) g.fx.follow(pl, pl.weaponModel.tip.getWorldPosition(_v), col, LEAP_ARC);
         if (crossed(0.62)) {
           pl.vel.set(0, -26, 0);
-        if (t < 0.62 && pl.weaponModel) g.fx.follow(pl, pl.weaponModel.tip.getWorldPosition(_v), col, LEAP_ARC);
           this.aoe(pl.pos.x, pl.pos.y, pl.pos.z, 6, 6.5, { heavy: true, knock: 12, source: 'skill', stun: 2, poise: 3 });
           _v.copy(pl.pos); _v.y = g.groundY(pl.pos.x, pl.pos.z, pl.pos.y + 0.5) + 0.1;
           g.fx.play('sk.meteor', _v, undefined, col, 1.6, 6);

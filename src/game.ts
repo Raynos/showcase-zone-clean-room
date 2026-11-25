@@ -122,10 +122,10 @@ export class Game {
     this.cameraRig = new CameraRig(this.camera, this.physics);
     this.fx = new FX();
     this.fx.groundY = (x, z, y) => this.groundY(x, z, y);
+    this.fx.surface = (x, z) => (this.interior ? 'metal' : inTown(x, z) ? 'stone' : this.terrain.grassAt(x, z) > 0.35 ? 'grass' : 'dirt');
     this.scene.add(this.fx.group);
     this.scene.add(this.rain.mesh);
     this.player = new Player(this);
-    this.fx.surface = (x, z) => (this.interior ? 'metal' : inTown(x, z) ? 'stone' : this.terrain.grassAt(x, z) > 0.35 ? 'grass' : 'dirt');
     this.player.setRig(placeholderHumanoid());
     this.hud = new Hud(this);
     this.combat = new Combat(this);
@@ -477,11 +477,11 @@ export class Game {
     }
     this.contact.gather(this);
     const fog = this.scene.fog as THREE.FogExp2 | null;
+    this.fx.wet = this.interior ? 0 : this.env.wetness;
     this.fx.update(rdt * (this.stopT > 0 ? 0.3 : 1), this.camera, fog?.color ?? BLACK, fog?.density ?? 0.002);
 
     // post feedback decay
     post.hurt = damp(post.hurt, 0, 3.2, rdt);
-    this.fx.wet = this.interior ? 0 : this.env.wetness;
     post.flash.w = damp(post.flash.w, 0, 6, rdt);
     if (this.fadeHold) post.fade = damp(post.fade, 1, 14, rdt);
     else if (!pl.dead) post.fade = damp(post.fade, 0, 3.5, rdt);
