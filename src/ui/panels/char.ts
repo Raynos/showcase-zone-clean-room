@@ -5,7 +5,9 @@ import type { WeaponId } from '../../entities/humanoid/types';
 import { icon } from '../icons';
 import { btn, cap, glyph, playTime, type PanelSpec } from './common';
 
-const COURSES: Record<string, string> = { range: 'Weapon Range', physics: 'Physics Yard', riding: 'Riding Course', movers: 'Movers Run', grapple: 'Grapple Course', climb: 'Climb Yard', hover: 'Hoverboard Park' };
+const COURSES: Record<string, string> = { range: 'Weapon Range · Target Rush', physics: 'Physics Yard · Lock-up', riding: 'Riding Course', movers: 'Movers Run', grapple: 'Grapple Course', climb: 'Climb Yard · Summit', hover_score: 'Hoverboard Park · Session' };
+/** point scores (higher is better) rather than times */
+const SCORES = new Set(['hover_score']);
 
 export const charPanel: PanelSpec = {
   title: 'Character', icon: 'char',
@@ -61,7 +63,7 @@ export const charPanel: PanelSpec = {
         const keys = [...Object.keys(COURSES), ...Object.keys(d.pbs).filter((k) => !COURSES[k])];
         for (const k of keys) {
           const v = d.pbs[k];
-          h += `<div class="${v !== undefined ? 'has' : ''}"><span>${COURSES[k] ?? k}</span><b>${v !== undefined ? fmtTime(v) : '—'}</b></div>`;
+          h += `<div class="${v !== undefined ? 'has' : ''}"><span>${COURSES[k] ?? k}</span><b>${v !== undefined ? (SCORES.has(k) ? Math.round(v).toLocaleString() + ' pts' : fmtTime(v)) : '—'}</b></div>`;
         }
         h += '</div><div class="pn-sec">Trophies</div>';
         const earned = CONTRACTS.filter((c) => d.trophies.includes(c.id));
