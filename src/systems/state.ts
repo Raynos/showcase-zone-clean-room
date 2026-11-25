@@ -3,6 +3,8 @@ import { MAX_LEVEL, forgeMult, levelDamageMult, playerMaxEnergy, playerMaxHp, xp
 import { ITEMS } from '../data/items';
 import { WEAPONS, type AmmoId } from '../data/weapons';
 import type { WeaponId } from '../entities/humanoid/types';
+import { PERK_BY_ID, perkGate, perkPoints } from '../data/perks';
+import { WEAPON_TRAIT, type TraitId } from '../data/traits';
 
 export type ToastKind = 'info' | 'good' | 'warn' | 'loot' | 'quest' | 'zone' | 'level' | 'pb' | 'secret';
 export interface GameEvents {
@@ -23,6 +25,12 @@ export interface GameEvents {
   reach: { place: string };
   course: { id: string; time: number; pb: boolean };
   flag: { key: string };
+  /** a robot's stagger meter filled and it broke */
+  mobBreak: { id: number; kind: string; elite: boolean; boss: boolean };
+  /** a status effect landed on a robot */
+  mobStatus: { id: number; status: string };
+  /** a finisher was performed on an elite */
+  finisher: { id: number; kind: string };
 }
 
 export interface QuestSave { state: 'active' | 'ready' | 'done'; prog: number[] }
@@ -37,6 +45,8 @@ export interface SaveData {
   inv: Record<string, number>;
   upgrades: Record<string, number>;
   quests: Record<string, QuestSave>;
+  /** the quest pinned to the tracker by the player (Quest Log); absent: the first active one */
+  track?: string;
   kills: Record<string, number>;
   contracts: Record<string, number>;
   trophies: string[]; titles: string[]; title: string | null;
@@ -44,9 +54,11 @@ export interface SaveData {
   found: Record<string, true>;   // collectibles, chests, vistas, secrets, by id
   flags: Record<string, number>;
   playTime: number;
+  /** perk ranks by id (see data/perks) */
+  perks?: Record<string, number>;
+  /** a rolled extra trait per weapon, from rare salvage (see data/traits) */
+  wtraits?: Record<string, string>;
   settings: { quality: string; sfx: number; music: number; sens: number; invertY: boolean; autoFollow: boolean; shake: number; dmgNumbers: boolean; haptics: boolean; lefty: boolean; /** the always-on frame-rate readout */ fps: boolean };
-  /** the quest pinned to the tracker by the player (Quest Log); absent: the first active one */
-  track?: string;
 }
 
 const KEY = 'cratefall.save.v1';
@@ -169,6 +181,16 @@ export class State {
     return ups;
   }
   ownsWeapon(id: WeaponId) { return this.d.weapons.includes(id); }
+  /** rank of a perk (0 when not taken) */
+  perk(id: string): number { return this.d.perks?.[id] ?? 0; }
+  get perksSpent(): number { let n = 0; for (const k in this.d.perks ?? {}) n += this.d.perks![k]; return n; }
+  get perksFree(): number { return Math.max(0, perkPoints(this.d.level) - this.perksSpent); }
+  treeSpent(tree: string): number { let n = 0; for (const k in this.d.perks ?? {}) if (PERK_BY_ID[k]?.tree === tree) n += this.d.perks![k]; return n; }
+  canLearn(id: string): boolean { const p = PERK_BY_ID[id]; return !!p && this.perksFree > 0 && this.perk(id) < p.ranks && this.treeSpent(p.tree) >= perkGate(p); }
+  learnPerk(id: string): boolean { if (!this.canLearn(id)) return false; (this.d.perks ??= {})[id] = this.perk(id) + 1; this.touch(); return true; }
+  respecPerks() { this.d.perks = {}; this.touch(); }
+  /** the fixed trait of a weapon and its rolled one, if any */
+  weaponTraits(id: WeaponId = this.weaponId): TraitId[] { const f = WEAPON_TRAIT[id], r = this.d.wtraits?.[id] as TraitId | undefined; return r ? [f, r] : [f]; }
   giveWeapon(id: WeaponId) { if (!this.ownsWeapon(id)) { this.d.weapons.push(id); this.touch(); } }
   equip(id: WeaponId, slot: 0 | 1) {
     if (!this.ownsWeapon(id)) return;

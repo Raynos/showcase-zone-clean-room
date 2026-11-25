@@ -13,11 +13,21 @@ import { WorldMaterial } from '../gfx/material';
 import { T } from '../gfx/textures';
 import { HurtArc } from '../ui/hurtarc';
 import type { Mob } from './mobs';
+import type { StatusKind } from './status';
+import { traitHit, type TraitMove, type TraitOut } from '../data/traits';
+import { applyStatus } from './status';
+import { TELE_RED } from '../data/enemies';
 
 export interface HitInfo {
   dmg: number; crit: boolean; dirX: number; dirZ: number; knock: number; heavy: boolean; stun?: number;
   /** stagger damage multiplier: heavies, breakers and counters carry more than their damage */
   poise?: number;
+  /** a status effect this hit applies to a robot (see src/systems/status.ts) */
+  status?: StatusKind;
+  /** a guaranteed critical (counters, swap-in strikes): Big Pallet only breaks to one of these after its ram */
+  forced?: boolean;
+  /** the hit was a melee breaker (the heavy after the second light) */
+  breaker?: boolean;
   source: 'melee' | 'arrow' | 'bolt' | 'rifle' | 'skill'; color: number;
 }
 export interface Hittable {
@@ -44,7 +54,7 @@ interface Shot {
   x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; grav: number;
   dmg: number; radius: number; color: number; enemy: boolean; owner: Mob | null;
   pierce: boolean; hit: Set<Hittable> | null; kind: 'arrow' | 'bolt' | 'orb' | 'shell' | 'wave' | 'javelin'; ammo: AmmoId | null; crit: boolean;
-  knock: number; stun: number; blast: number; near: boolean;
+  knock: number; stun: number; blast: number; near: boolean; status?: StatusKind;
   poise: number; heavy: boolean; src: HitInfo['source'] | null; zone: Zone['kind'] | null;
 }
 interface Strike { pos: THREE.Vector3; t: number; dur: number; radius: number; dmg: number; color: number; owner: Mob | null; kind: 'bolt' | 'crate' | 'shell'; from: THREE.Vector3 | null }
@@ -225,14 +235,28 @@ export class Combat {
     return { dmg: st.attackPower * mult * (crit ? CRIT_MULT : 1) * rand(0.92, 1.08), crit };
   }
   /** Apply a hit to something with all the feedback. */
-  strikeTarget(h: Hittable, mult: number, o: { heavy?: boolean; knock?: number; source: HitInfo['source']; crit?: boolean; stun?: number; poise?: number; fromX?: number; fromZ?: number; quiet?: boolean }) {
+  strikeTarget(h: Hittable, mult: number, o: { heavy?: boolean; knock?: number; source: HitInfo['source']; crit?: boolean; stun?: number; poise?: number; fromX?: number; fromZ?: number; quiet?: boolean; status?: StatusKind; breaker?: boolean; move?: TraitMove }) {
     const g = this.game, pl = g.player, st = g.state;
-    const { dmg, crit } = this.roll(mult, o.crit);
+    const mob0 = h as Partial<Mob>;
+    // perks and gear traits that change this blow
+    const move: TraitMove = o.move ?? (o.source === 'skill' ? 'skill' : o.source === 'melee' ? 'light' : (o.poise ?? 1) >= 2.5 ? 'full' : 'shot');
+    const broken = mob0.state === 'broken';
+    let forceCrit = o.crit;
+    if (broken && move === 'full' && st.perk('deadeye') > 0) forceCrit = true;
+    const { dmg: dmg0, crit } = this.roll(mult, forceCrit);
+    const tr = traitHit(st.weaponTraits(), move, crit, { isBoss: !!mob0.isBoss, cls: mob0.cls ?? '', broken, shocked: !!mob0.status?.has('shock') }, this.tOut);
+    let dmg = dmg0 * tr.dmg * (broken && move === 'full' && st.perk('deadeye') > 1 ? 1.33 : 1);
+    let poise = (o.poise ?? 1) * tr.poise;
+    if ((move === 'heavy' || move === 'sweep' || move === 'breaker') && st.perk('breakpoint') > 0) poise *= 1.25;
+    if (mob0.status?.has('jam') && st.perk('glue') > 0) poise *= 1.4;
+    if (o.crit === true && move === 'counter' && st.perk('riposte') > 0 && mob0.staggerCap) poise += 0.5 * mob0.staggerCap / Math.max(1, dmg);
+    const status = o.status ?? tr.status;
     const fx0 = o.fromX ?? pl.pos.x, fz0 = o.fromZ ?? pl.pos.z;
     let dx = h.pos.x - fx0, dz = h.pos.z - fz0; const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
     const color = st.weapon.color;
     const mob = h as Partial<Mob>, was = mob.state;
-    const dealt = h.takeHit({ dmg, crit, dirX: dx, dirZ: dz, knock: o.knock ?? 2, heavy: !!o.heavy, stun: o.stun, poise: o.poise, source: o.source, color });
+    const dealt = h.takeHit({ dmg, crit, dirX: dx, dirZ: dz, knock: (o.knock ?? 2) * tr.knock, heavy: !!o.heavy, stun: o.stun, poise, source: o.source, color, status, forced: o.crit === true, breaker: o.breaker || move === 'breaker' });
+    if (dealt > 0) this.afterHit(h, dealt, o.source, move, broken);
     if (dealt <= 0) { h.center(_c); g.hud.damage({ x: _c.x, y: _c.y + 0.6, z: _c.z }, 'IMMUNE', 'miss'); return 0; }
     h.center(_c);
     // impact point on the near side
@@ -252,12 +276,46 @@ export class Combat {
     }
     pl.sinceCombat = 0; this.sinceHit = 0;
     // Overdrive: from damage dealt, from putting a robot on its heels, from kills
-    this.addOverdrive(OD_DEALT * dealt / st.attackPower + (!h.alive ? OD_KILL : mob.state !== was && (mob.state === 'stagger' || mob.state === 'stun') ? OD_STAGGER : 0));
+    this.addOverdrive(OD_DEALT * dealt / st.attackPower + (!h.alive ? OD_KILL : (mob.state !== was ? (mob.state === 'broken' ? OD_STAGGER * (st.perk('overclock') ? 6 : 3) : mob.state === 'stagger' || mob.state === 'stun' ? OD_STAGGER : 0) : 0)));
     if (!h.alive) { if (this.target === h) this.target = null; g.hitStop(0.09); g.renderer.post.flash.w = Math.max(g.renderer.post.flash.w, 0.08); }
     return dealt;
   }
+  private tOut: TraitOut = { poise: 1, dmg: 1, knock: 1 };
+  private hooked = false;
+  /** Which blow of the weapon's set a swing is, for traits and perks. */
+  private moveOf(s: Swing): TraitMove {
+    const m = this.melee;
+    if (s === m.breaker) return 'breaker';
+    if (s === m.sweep) return 'sweep';
+    if (s === m.heavy) return 'heavy';
+    if (s === m.counter) return 'counter';
+    if (s === m.entry) return 'entry';
+    return s === m.light[2] ? 'light3' : 'light';
+  }
+  /** Perks and traits that act after a blow lands: healing, refunds, bursts, salvage. */
+  private afterHit(h: Hittable, dealt: number, source: HitInfo['source'], move: TraitMove, wasBroken: boolean) {
+    const g = this.game, st = g.state, mob = h as Partial<Mob>;
+    if (source === 'melee' && st.perk('last_stand') > 0 && st.d.hp < st.maxHp * 0.3) st.d.hp = Math.min(st.maxHp, st.d.hp + Math.max(1, Math.round(dealt * 0.03)));
+    if (h.alive) return;
+    if (st.weaponTraits().includes('scavenger')) st.d.energy = Math.min(st.maxEnergy, st.d.energy + 10);
+    if (wasBroken && st.perk('salvager') > 0 && Math.random() < 1 / 6) g.loot.item(h.center(_c).clone(), 'kit', 1);
+    if (mob.status?.has('burn') && st.perk('volatile') > 0) {
+      h.center(_c); g.fx.explosion(_c, 0.7, 0xff7a2a); g.sfx('explode_small', { pos: _c });
+      for (const o of g.mobs.list) if (o !== h && o.alive && Math.hypot(o.pos.x - _c.x, o.pos.z - _c.z) < 5 + o.radius) applyStatus(o, 'burn', st.attackPower);
+    }
+    void move;
+  }
+  /** Break and finisher perks, wired once to the game events. */
+  private hookPerks() {
+    if (this.hooked) return;
+    this.hooked = true;
+    const g = this.game, ev = g.state.events;
+    const mend = () => { const st = g.state; if (st.perk('second_wind') > 0 && !g.player.dead) { const a = Math.round(st.maxHp * 0.06); st.d.hp = Math.min(st.maxHp, st.d.hp + a); g.hud.damage({ x: g.player.pos.x, y: g.player.pos.y + 2, z: g.player.pos.z }, '+' + a, 'heal'); } };
+    ev.on('mobBreak', () => { const st = g.state; mend(); const c = st.perk('capacitor'); if (c) st.d.energy = Math.min(st.maxEnergy, st.d.energy + 15 * c); });
+    ev.on('finisher', () => mend());
+  }
   /** Area damage around a point. `quiet` drops the hit-stop and shake (for ticking fields). */
-  private aoe(x: number, y: number, z: number, radius: number, mult: number, o: { heavy?: boolean; knock?: number; source: HitInfo['source']; stun?: number; crit?: boolean; poise?: number; quiet?: boolean }) {
+  private aoe(x: number, y: number, z: number, radius: number, mult: number, o: { heavy?: boolean; knock?: number; source: HitInfo['source']; stun?: number; crit?: boolean; poise?: number; quiet?: boolean; status?: StatusKind }) {
     let n = 0;
     for (const h of [...this.candidates()]) {
       if (Math.hypot(h.pos.x - x, h.pos.z - z) > radius + h.radius || Math.abs(h.pos.y - y) > 6 + h.height) continue;
@@ -281,10 +339,11 @@ export class Combat {
     if (this.perfectT > 0) return;
     this.perfectT = 1.2;
     // an attack press in the next COUNTER_WINDOW (real time, so the slow-motion does not stretch it) is a counter
-    this.counterT = COUNTER_WINDOW;
+    this.counterT = COUNTER_WINDOW * (g.state.perk('quickdraw') ? 1.5 : 1);
+    if (g.state.perk('quickdraw')) { this.mag = XBOW.mag; this.reloadT = 0; g.state.d.energy = Math.min(g.state.maxEnergy, g.state.d.energy + 15); }
     g.hud.damage(g.player.center, 'DODGED', 'miss');
     g.state.d.energy = Math.min(g.state.maxEnergy, g.state.d.energy + 12);
-    this.addOverdrive(OD_DODGE);
+    this.addOverdrive(OD_DODGE * (g.state.perk('overclock') ? 2 : 1));
     g.sfx('dodge_perfect');
     g.slowMo(0.35, 0.35);
   }
@@ -314,6 +373,8 @@ export class Combat {
     let tier = dot ? 0 : pl.mode ? 1 : knock >= KNOCKDOWN_KNOCK || frac >= KNOCKDOWN_FRAC ? 3 : frac >= STAGGER_FRAC ? 2 : 1;
     // a released heavy and an ultimate are armoured: what would stagger only flinches (a knockdown still floors a heavy)
     if (this.skill?.startsWith('ult_') ? tier >= 2 : tier === 2 && this.committed) tier = 1;
+    // Iron Stance: a released heavy is not floored either
+    if (tier === 3 && this.committed && st.perk('iron') > 0) tier = 1;
     this.addOverdrive(OD_TAKEN * dmg / st.maxHp);
     g.hud.damage({ x: c.x, y: c.y + 0.9, z: c.z }, '-' + dmg, 'hurt');
     g.renderer.post.hurt = Math.min(1, g.renderer.post.hurt + (dot ? 0.25 : tier >= 2 ? 0.8 : 0.55));
@@ -403,12 +464,12 @@ export class Combat {
   }
   /** Arcing shell that lands after `flight` seconds with a ground warning. */
   lob(from: THREE.Vector3, to: THREE.Vector3, flight: number, radius: number, dmg: number, color: number, owner: Mob | null) {
-    this.game.fx.telegraph({ shape: 0, x: to.x, y: to.y, z: to.z, radius, dur: flight, color });
+    this.game.fx.telegraph({ shape: 0, x: to.x, y: to.y, z: to.z, radius, dur: flight, color: TELE_RED });
     this.strikes.push({ pos: to, t: 0, dur: flight, radius, dmg, color, owner, kind: 'shell', from: from.clone() });
   }
   /** Delayed strike from the sky at a point (lightning bolt or falling crate). */
   strike(pos: THREE.Vector3, delay: number, radius: number, dmg: number, color: number, owner: Mob | null, kind: 'bolt' | 'crate') {
-    this.game.fx.telegraph({ shape: 0, x: pos.x, y: pos.y, z: pos.z, radius, dur: delay, color });
+    this.game.fx.telegraph({ shape: 0, x: pos.x, y: pos.y, z: pos.z, radius, dur: delay, color: TELE_RED });
     this.strikes.push({ pos, t: 0, dur: delay, radius, dmg, color, owner, kind, from: null });
   }
   private aimDir(from: THREE.Vector3, out: THREE.Vector3, speed: number, grav: number, t: Hittable | null = this.target): THREE.Vector3 {
@@ -440,8 +501,10 @@ export class Combat {
   // ------------------------------------------------------------------ per-frame
   update(dt: number, rdt: number) {
     const g = this.game, pl = g.player, inp = g.input, st = g.state;
+    this.hookPerks();
     this.sinceHurt += dt; this.perfectT -= dt; this.sinceHit += dt; this.counterT -= rdt;
-    for (const id in this.cds) if (this.cds[id] > 0) this.cds[id] = Math.max(0, this.cds[id] - dt);
+    const cdK = st.perk('jury_rig') > 0 && g.mobs.brokenNear(pl.pos, 12) ? 1.4 : 1;
+    for (const id in this.cds) if (this.cds[id] > 0) this.cds[id] = Math.max(0, this.cds[id] - dt * cdK);
     this.potionCd = Math.max(0, this.potionCd - dt); this.swapCd = Math.max(0, this.swapCd - dt);
     this.fireCd = Math.max(0, this.fireCd - dt);
     if (this.overcharge > 0) this.overcharge -= dt;
@@ -692,7 +755,7 @@ export class Combat {
         if (d - h.radius > range) continue;
         if (d > h.radius + 0.6 && Math.abs(angleDiff(pl.yaw, Math.atan2(dx, dz))) > s.arc + Math.atan2(h.radius, d)) continue;
       }
-      this.strikeTarget(h, mult, { heavy: s.heavy, knock: s.knock, source: 'melee', quiet: n > 0, poise, crit: s.crit || undefined, stun: s.stun });
+      this.strikeTarget(h, mult, { heavy: s.heavy, knock: s.knock, source: 'melee', quiet: n > 0, poise, crit: s.crit || undefined, stun: s.stun, breaker: s === this.melee.breaker || undefined, move: this.moveOf(s) });
       n++;
     }
     if (n > 0) g.state.d.energy = Math.min(g.state.maxEnergy, g.state.d.energy + 5 + n);
@@ -730,7 +793,7 @@ export class Combat {
   }
   private swapStrike() {
     const g = this.game, pl = g.player, c = pl.center;
-    this.swapCd = SWAP_STRIKE_CD;
+    this.swapCd = SWAP_STRIKE_CD - 1.5 * Math.min(2, g.state.perk('hot_swap'));
     g.hud.damage({ x: c.x, y: c.y + 1.1, z: c.z }, 'SWAP STRIKE', 'crit');
     g.fx.ring(pl.pos, 2.6, g.state.weapon.color, 0.25, 3); g.sfx('xbow_ready', { pitch: 1.3 });
     this.quickAttack(false);
@@ -836,7 +899,7 @@ export class Combat {
     this.muzzlePos(_v); this.aimDir(_v, _d, 78, 0);
     if (spread) { _d.x += rand(-1, 1) * spread; _d.y += rand(-1, 1) * spread * 0.4; _d.z += rand(-1, 1) * spread; _d.normalize(); }
     // a special bolt is worth a whole old shot, so status ammunition keeps its value in a burst of small bolts
-    this.fire('bolt', _v, _d, 78, a === 'bolt' ? mult : Math.max(mult, 1) * A.mult, { color: A.color, ammo: a, crit, pierce: a === 'bolt_pierce', hit: a === 'bolt_pierce' ? new Set() : null, blast: a === 'bolt_blast' ? 4 : 0, stun: a === 'bolt_shock' ? 0.8 : 0 });
+    this.fire('bolt', _v, _d, 78, a === 'bolt' ? mult : Math.max(mult, 1) * A.mult, { color: A.color, ammo: a, crit, pierce: a === 'bolt_pierce', hit: a === 'bolt_pierce' ? new Set() : null, blast: a === 'bolt_blast' ? 4 : 0, stun: 0, status: a === 'bolt_shock' ? 'shock' : undefined });
     g.fx.muzzle(_v, _d, A.color, 0.5);
     g.sfx('xbow_fire', { pitch: rand(0.95, 1.05) });
     g.cameraRig.kick(0.008, rand(-0.004, 0.004));
@@ -895,6 +958,15 @@ export class Combat {
     st.d.hp = Math.min(st.maxHp, st.d.hp + amt);
     this.potionCd = 12 * (1 - 0.1 * tier);
     g.fx.heal(g.player.pos); g.sfx('potion');
+    if (st.perk('triage') > 0) {
+      // Triage: the kit's charge goes out as a shove that rattles everything close
+      const p = g.player.pos;
+      g.fx.ring(p, 11, 0x7dffb0, 0.4, 3); g.cameraRig.shake(0.3); g.sfx('arc_pulse', { pos: p });
+      for (const m of g.mobs.list) {
+        if (!m.alive || !m.targetable || Math.hypot(m.pos.x - p.x, m.pos.z - p.z) > 5.5 + m.radius) continue;
+        this.strikeTarget(m, 0.3, { source: 'skill', knock: 9, poise: 0.25 * m.staggerCap / Math.max(1, st.attackPower * 0.3), quiet: true });
+      }
+    }
     g.hud.damage({ x: g.player.pos.x, y: g.player.pos.y + 2, z: g.player.pos.z }, '+' + amt, 'heal');
     if (!this.busy) { g.player.action = 'drink'; g.player.actionT = 0; this.actDur = 0.7; }
   }
@@ -1170,7 +1242,7 @@ export class Combat {
       case 'shock_arrow':
         if (crossed(0.2)) {
           this.muzzlePos(_v); this.aimDir(_v, _d, 64, 4);
-          this.fire('arrow', _v, _d, 64, 1.5, { stun: 1.2, ammo: 'bolt_shock', color: 0x7ff0ff, knock: 4, src: 'skill', grav: 4 });
+          this.fire('arrow', _v, _d, 64, 1.5, { status: 'shock', ammo: 'bolt_shock', color: 0x7ff0ff, knock: 4, src: 'skill', grav: 4 });
           g.sfx('bow_release'); g.sfx('arc_zap', { vol: 0.5 }); g.cameraRig.kick(0.02);
         }
         break;
@@ -1288,7 +1360,7 @@ export class Combat {
           _v2.set(s.x + _d.x * hitT, s.y + _d.y * hitT, s.z + _d.z * hitT);
           // the strike and what follows it reuse the scratch vectors: keep the direction and the impact point
           const ix = _v2.x, iy = _v2.y, iz = _v2.z, ax = _d.x, ay = _d.y, az = _d.z;
-          this.strikeTarget(best, s.dmg, { source: s.src ?? (s.kind === 'arrow' ? 'arrow' : 'bolt'), knock: s.knock, crit: s.crit || undefined, stun: s.stun || undefined, heavy: s.heavy, poise: s.poise, fromX: s.x - ax * 2, fromZ: s.z - az * 2 });
+          this.strikeTarget(best, s.dmg, { source: s.src ?? (s.kind === 'arrow' ? 'arrow' : 'bolt'), knock: s.knock, crit: s.crit || undefined, stun: s.stun || undefined, heavy: s.heavy, poise: s.poise, fromX: s.x - ax * 2, fromZ: s.z - az * 2, status: s.status });
           if (s.blast) this.blast(_v2.set(ix, iy, iz), s.blast, s.dmg * 0.8);
           if (s.ammo === 'bolt_shock') this.chain(best, s.dmg * 0.6);
           if (s.zone) this.addZone(s.zone, ix, this.game.groundY(ix, iz, iy + 0.5), iz);
@@ -1329,7 +1401,7 @@ export class Combat {
   private blast(p: THREE.Vector3, radius: number, mult: number) {
     const g = this.game;
     g.fx.explosion(p, radius / 4, 0xff8a2a); g.sfx('explode_small', { pos: p }); g.cameraRig.shake(0.25);
-    this.aoe(p.x, p.y, p.z, radius, mult, { knock: 6, source: 'bolt', heavy: true });
+    this.aoe(p.x, p.y, p.z, radius, mult, { knock: 6, source: 'bolt', heavy: true, status: 'burn' });
   }
   private chain(from: Hittable, mult: number) {
     const g = this.game;
@@ -1340,7 +1412,7 @@ export class Combat {
       for (const h of this.candidates()) { if (seen.has(h)) continue; const d = h.pos.distanceTo(last.pos); if (d < bd) { bd = d; best = h; } }
       if (!best) break;
       g.fx.beam(last.center(_v).clone(), best.center(_v2).clone(), 0x7ff0ff, 0.25, 0.22, 0.35, 5);
-      this.strikeTarget(best, mult, { source: 'bolt', knock: 1, stun: 0.6, quiet: true });
+      this.strikeTarget(best, mult, { source: 'bolt', knock: 1, quiet: true, status: 'shock' });
       seen.add(best); last = best;
     }
     g.sfx('arc_zap', { pos: from.pos, vol: 0.6 });
@@ -1399,7 +1471,7 @@ export class Combat {
       _v2.set(x, y + 0.4, z);
       g.fx.explosion(_v2, 0.8, col); g.fx.ring(_v2, 9, col, 0.4, 3); g.sfx('arc_pulse', { pos: _v2 });
       g.fx.telegraph({ shape: 0, x, y, z, radius: 4.5, dur: 3, color: col });
-      this.aoe(x, y, z, 4.5, 0.5, { source: 'skill', stun: 1.2, knock: 1 });
+      this.aoe(x, y, z, 4.5, 0.5, { source: 'skill', knock: 1, status: 'jam' });
     } else this.zones.push({ kind, x, y, z, r: 2.8, t: 0, dur: 14, next: 0, color: col });
   }
   private updateZones(dt: number) {
@@ -1422,7 +1494,7 @@ export class Combat {
           }
         }
       } else if (z.kind === 'jam') {
-        // robots inside keep seizing: a short stun on every pulse
+        // robots inside keep seizing up: every pulse tops up the jam
         if (z.t >= z.next) {
           z.next += 0.75;
           for (let k = 0; k < 3; k++) {
@@ -1432,7 +1504,7 @@ export class Combat {
             g.fx.beam(_v, _v2, z.color, 0.14, 0.2, 0.5, 5);
           }
           _v2.set(z.x, z.y + 0.1, z.z); g.fx.ring(_v2, z.r * 2, z.color, 0.3, 2); g.sfx('arc_zap', { pos: _v2, vol: 0.35 });
-          this.aoe(z.x, z.y, z.z, z.r, 0.25, { source: 'skill', knock: 0, stun: 0.4, quiet: true });
+          this.aoe(z.x, z.y, z.z, z.r, 0.25, { source: 'skill', knock: 0, quiet: true, status: 'jam' });
         }
       } else {
         // mine: blinks once armed, and bursts when a robot comes near
@@ -1527,9 +1599,11 @@ export class Combat {
     if (typeof hud.setTargetState === 'function') {
       const t = this.target as (Hittable & Partial<Mob>) | null;
       const on = !!t && t.alive && typeof t.staggerFrac === 'number';
-      const broken = on && (t!.state === 'stagger' || t!.state === 'stun');
-      const sig = on ? (t!.id ?? 0) * 1000 + Math.round(t!.staggerFrac! * 100) + (broken ? 0.5 : 0) : -1;
-      if (sig !== this.tgtSig) { this.tgtSig = sig; hud.setTargetState(on ? { stagger: t!.staggerFrac!, broken, effects: NO_EFFECTS } : null); }
+      const broken = on && t!.state === 'broken';
+      const fx = on && t!.effects ? t!.effects() : NO_EFFECTS;
+      let bits = 0; for (const e of fx) bits |= e === 'shock' ? 1 : e === 'burn' ? 2 : 4;
+      const sig = on ? (t!.id ?? 0) * 100000 + Math.round(t!.staggerFrac! * 100) * 100 + (broken ? 50 : 0) + bits : -1;
+      if (sig !== this.tgtSig) { this.tgtSig = sig; hud.setTargetState(on ? { stagger: t!.staggerFrac!, broken, effects: fx.slice() } : null); }
     }
     if (typeof hud.setActionBar !== 'function') return;
     const slots = this.actionBar();

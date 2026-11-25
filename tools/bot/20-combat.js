@@ -302,15 +302,32 @@
       attack = d < K.far + 14;
     }
     if (B.noAttack || pl.rolling) attack = false;
-    // attack button: melee holds for a continuous combo; bows and rifles hold to full draw, then loose
+    // attack button: bows and rifles hold to full draw, then loose. Melee taps for the light string (holding
+    // charges a heavy); against something big, or one about to break, the second light is held into a breaker.
     const kind = c.kind;
     if (kind === 'bow' || kind === 'rifle') {
       const charging = kind === 'bow' ? c.drawing : c.aiming;
       if (charging) { if (c.draw >= 1 || !attack) B.setAttack(false); }
       else if (attack && B.now() - (B.lastLoose || 0) > 0.12) { B.setAttack(true); B.lastLoose = B.now(); }
       else if (!attack) B.setAttack(false);
-    } else B.setAttack(attack);
+    } else B.meleeButton(m, attack && near < K.range + 0.6);
     if (attack) B.useSkills(m, d, nClose);
+  };
+  /** Melee: tap lights; hold for a heavy (breaker after the second light) on big targets and on a finisher. */
+  B.meleeButton = (m, attack) => {
+    const g = G(), c = g.combat, now = B.now();
+    if (B.heavyUntil) {
+      if (!attack || now >= B.heavyUntil) { B.heavyUntil = 0; B.setAttack(false); B.lastHeavy = now; }
+      return;
+    }
+    if (!attack) { B.setAttack(false); return; }
+    const big = m.isBoss || m.cls === 'elite' || m.maxHp > 2.2 * g.state.attackPower * 4;
+    const breaking = (m.staggerFrac || 0) > 0.55 && m.state !== 'stagger' && m.state !== 'broken';
+    const want = (big || breaking) && now - (B.lastHeavy || 0) > (breaking ? 1.5 : 3) && c.combo === 2 && !c.charging;
+    if (want) { B.heavyUntil = now + 0.75; B.setAttack(true); return; }
+    // tap: a fresh press each time the string can take one (the game buffers 0.2 s)
+    if (B.attackHeld) { B.setAttack(false); return; }
+    if (now - (B.lastTapAtk || 0) > 0.2) { B.lastTapAtk = now; B.tapBtn('attack', 0.07); }
   };
   B.setAttack = (on) => { if (!!B.attackHeld !== on) { B.attackHeld = on; B.hold('attack', on); } };
 

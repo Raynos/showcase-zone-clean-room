@@ -9,8 +9,10 @@ import './style.css';
 const _v = new THREE.Vector3();
 export const el = (tag: string, cls = '', html = ''): HTMLElement => { const e = document.createElement(tag); if (cls) e.className = cls; if (html) e.innerHTML = html; return e; };
 
-interface Plate { root: HTMLElement; name: HTMLElement; bar: HTMLElement | null; fill: HTMLElement | null; mark: HTMLElement | null; used: boolean; key: string; sig: string }
-export interface PlateInfo { name: string; level?: number; hp?: number; cls?: string; title?: string; mark?: '' | 'y' | 'g' | 't'; markText?: string; scale?: number }
+interface Plate { root: HTMLElement; name: HTMLElement; bar: HTMLElement | null; fill: HTMLElement | null; mark: HTMLElement | null; used: boolean; key: string; sig: string; stag?: HTMLElement | null }
+export interface PlateInfo { name: string; level?: number; hp?: number; cls?: string; title?: string; mark?: '' | 'y' | 'g' | 't'; markText?: string; scale?: number;
+  /** robots: status icons (shock, burn, jam), the stagger meter (elites) and the broken state */
+  fx?: string[]; stagger?: number; broken?: boolean }
 interface Dmg { el: HTMLElement; t: number; x: number; y: number; z: number; vx: number; vy: number; life: number; crit: boolean }
 export type ActionId = 'attack' | 'dodge' | 'jump' | 'skill1' | 'skill2' | 'skill3' | 'overdrive' | 'swap' | 'kit' | 'target' | 'mount';
 /** One button of the action bar, as combat describes it (docs/COMBAT.md, "Combat to HUD interface"). */
@@ -534,7 +536,7 @@ export class Hud {
       this.plates.set(key, p);
     }
     p.used = true;
-    const sig = info.name + '|' + (info.level ?? '') + '|' + (info.cls ?? '') + '|' + (info.title ?? '') + '|' + (info.mark ?? '') + (info.markText ?? '') + (info.hp !== undefined ? 'h' : '');
+    const sig = info.name + '|' + (info.level ?? '') + '|' + (info.cls ?? '') + '|' + (info.title ?? '') + '|' + (info.mark ?? '') + (info.markText ?? '') + (info.hp !== undefined ? 'h' : '') + (info.stagger !== undefined ? 's' : '') + (info.broken ? 'B' : '') + (info.fx?.join(',') ?? '');
     if (sig !== p.sig) {
       p.sig = sig;
       p.root.className = 'plate ' + (info.cls ?? '');
@@ -543,10 +545,13 @@ export class Hud {
       html += `<div class="pn">${info.level !== undefined ? `<span class="pl">${info.level}</span>` : ''}${info.name}</div>`;
       if (info.title) html += `<div class="pt">${info.title}</div>`;
       if (info.hp !== undefined) html += `<div class="pb"><i></i></div>`;
+      if (info.stagger !== undefined) html += `<div class="${info.broken ? 'broken' : ''}"><div class="stg ps" style="display:block;width:64px;margin:2px auto 0"><i></i></div></div>`;
+      if (info.fx?.length || info.broken) html += `<div class="tfx" style="justify-content:center;margin-top:3px">${info.broken ? `<span class="fx brk">${icon('broken', 11, 2.2)}</span>` : ''}${(info.fx ?? []).map((e) => `<span class="fx ${e}">${icon(FX_ICON[e] ?? e, 11, 2.2)}</span>`).join('')}</div>`;
       p.root.innerHTML = html;
-      p.fill = p.root.querySelector('.pb i');
+      p.fill = p.root.querySelector('.pb:not(.ps) i'); p.stag = p.root.querySelector('.ps i');
     }
     if (p.fill && info.hp !== undefined) p.fill.style.transform = `scaleX(${clamp01(info.hp)})`;
+    if (p.stag && info.stagger !== undefined) p.stag.style.transform = `scaleX(${clamp01(info.stagger)})`;
     const sc = clamp(9 / s.d, 0.55, 1.1) * (info.scale ?? 1);
     p.root.style.transform = `translate(${s.x.toFixed(1)}px,${s.y.toFixed(1)}px) scale(${sc.toFixed(3)}) translate(-50%,-100%)`;
     p.root.style.opacity = s.d > 42 ? String(clamp01(1 - (s.d - 42) / 12)) : '1';

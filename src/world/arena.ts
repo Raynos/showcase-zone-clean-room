@@ -29,7 +29,8 @@ const X = ARENA.x, Y = ARENA.y, Z = ARENA.z;
 const N = 32, WR = 59, H = 50;
 /** player arrival / checkpoint, inside the alcove */
 const SPAWN_Z = Z + WR + 8.5, DOOR_Z = Z + WR + 0.4;
-const HP_MUL = 0.8, LEVEL = 20;
+/** doubled with the phase 4 retune: the player now has heavies, breaks, counters and an ultimate */
+const HP_MUL = 1.6, LEVEL = 20;
 const EXIT_Z = Z + 42;
 const PYLON_A = [0, 1, 2, 3].map((k) => Math.PI / 8 + k * Math.PI / 2), PYLON_R = 45;
 const CRATE_Y = 27;

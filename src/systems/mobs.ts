@@ -7,10 +7,19 @@ import type { Game } from '../game';
 import type { Telegraph } from '../gfx/fx';
 import { inTown } from '../world/layout';
 import { SP } from '../gfx/fx';
+import { RAY_WORLD } from '../core/physics';
 import type { HitInfo, Hittable } from './combat';
+import { Statuses, applyStatus, tickStatus } from './status';
+import { BREAK, MECH_ATTACKS, TELE_RED, threatMul } from '../data/enemies';
+import { Mech } from './mechanics';
+import { WindupArrows } from './warn';
+import { Finishers } from './finisher';
 
-const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _d = new THREE.Vector3();
-type MState = 'spawn' | 'idle' | 'chase' | 'windup' | 'active' | 'recover' | 'stagger' | 'stun' | 'return' | 'dead';
+const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _d = new THREE.Vector3(), _c = new THREE.Color();
+type MState = 'spawn' | 'idle' | 'chase' | 'windup' | 'active' | 'recover' | 'stagger' | 'stun' | 'broken' | 'return' | 'dead';
+/** A broken robot takes this much more damage. */
+export const BROKEN_TAKEN = 1.4;
+const NO_FX: string[] = [];
 
 export interface MobOpts {
   level: number; variant?: RobotVariant; x: number; z: number; y?: number; elite?: EliteDef; name?: string;
@@ -35,7 +44,7 @@ export class Mob implements Hittable {
   rig: RobotRig; radius: number; height: number; scale: number;
   pose: RobotPose = { time: 0, speed: 0, action: 'spawn', t: 0, aimYaw: 0, aimPitch: 0, charge: 0, damage: 0, phase: 1 };
   state: MState = 'spawn'; stT = 0;
-  atk: AttackDef | null = null; private cds = new Map<string, number>(); private gcd = 1;
+  atk: AttackDef | null = null; attacks: AttackDef[]; private cds = new Map<string, number>(); private gcd = 1;
   private tele: Telegraph | null = null;
   private lockYaw = 0; private locked = false; private aimPt = new THREE.Vector3();
   private fired = 0; private tick = 0; private startPos = new THREE.Vector3();
@@ -52,6 +61,22 @@ export class Mob implements Hittable {
   onDeath: (() => void) | null = null;
   hpBars = 1;
   dmgTakenMul = 1;
+  /** shock, burn, jam */
+  status = new Statuses();
+  /** status icons for the plate and target frame (reused array) */
+  fxList: string[] = [];
+  /** stagger meter, in damage points; breaks the robot at `staggerCap` */
+  private stag = 0; private stagIdle = 0;
+  /** after a break, elites and bosses cannot be broken (or stunned) again for this long */
+  breakImmune = 0; private brokenDur = 0;
+  /** line of sight to the player, refreshed a few times a second */
+  private seesT = 0; private seesV = false; private blindT = 0;
+  /** melee packs come at the player from different sides */
+  private flank = 0;
+  /** elite signature mechanic, if any */
+  mech: Mech | null = null;
+  /** stagger damage multiplier (elite armour) */
+  poiseMul = 1;
 
   constructor(public mobs: Mobs, kind: RobotKind, o: MobOpts) {
     const g = mobs.game;
@@ -62,7 +87,7 @@ export class Mob implements Hittable {
     const bossy = !!this.def.boss;
     this.maxHp = Math.round(enemyHp(o.level) * this.def.hp * (bossy ? 1 : V.hp) * (o.hpMul ?? 1));
     this.hp = this.maxHp;
-    this.dmg = enemyDamage(o.level) * this.def.dmg * (bossy ? 1 : V.dmg) * (o.dmgMul ?? 1);
+    this.dmg = enemyDamage(o.level) * this.def.dmg * (bossy ? 1 : V.dmg) * (o.dmgMul ?? 1) * threatMul(kind, o.level, bossy);
     this.scale = o.scale ?? o.elite?.scale ?? (bossy ? 1 : V.scale);
     this.rig = g.makeRobot(kind, { variant: this.variant, scale: this.scale });
     this.radius = this.rig.radius; this.height = this.rig.height;
@@ -75,9 +100,80 @@ export class Mob implements Hittable {
     this.noLoot = !!o.noLoot; this.xpMul = o.xpMul ?? 1;
     this.aggro = !!o.aggro;
     this.rig.root.position.copy(this.pos); this.rig.root.rotation.y = this.yaw;
+    // yaw first, then the lean the wind-ups and the broken slump put on the whole body
+    this.rig.root.rotation.order = 'YXZ';
+    this.baseScale.copy(this.rig.root.scale);
     g.scene.add(this.rig.root);
     this.rig.update(0, this.pose);
+    this.flank = (this.id % 2 ? 1 : -1) * rand(0.5, 1.1);
+    if (o.elite?.mech) this.mech = new Mech(this, o.elite.mech);
+    this.attacks = o.elite?.mech && MECH_ATTACKS[o.elite.mech] ? [...this.def.attacks, ...MECH_ATTACKS[o.elite.mech]!] : this.def.attacks;
   }
+  private get brk() { return this.isBoss ? BREAK.boss : this.cls === 'elite' ? BREAK.elite : BREAK.common; }
+  /** stagger damage that breaks this robot */
+  get staggerCap() { return this.maxHp * this.def.poise * this.brk.cap; }
+  get broken() { return this.state === 'broken'; }
+  /** Line of sight from the robot's head to the player's chest through world geometry, cached briefly. */
+  sees(): boolean {
+    if (this.seesT > 0) return this.seesV;
+    this.seesT = 0.2 + Math.random() * 0.1;
+    const g = this.mobs.game, pl = g.player;
+    _v.set(this.pos.x, this.pos.y + this.lift + Math.max(0.6, this.height * 0.8), this.pos.z);
+    _d.set(pl.pos.x, pl.pos.y + 1.2, pl.pos.z).sub(_v);
+    const len = _d.length();
+    if (len < 2) return (this.seesV = true);
+    _d.multiplyScalar(1 / len);
+    const hit = g.physics.raycast(_v, _d, len - 0.5, RAY_WORLD);
+    this.seesV = !hit;
+    return this.seesV;
+  }
+  /** Knock the robot out of what it is doing for `sec` (shock, stuns). Bosses only flinch. */
+  interrupt(sec: number) {
+    if (!this.alive || this.state === 'dead' || this.state === 'spawn' || this.state === 'broken' || this.state === 'return') return;
+    if (this.isBoss) return;
+    if (this.state === 'active' && this.atk && (this.atk.type === 'charge' || this.atk.type === 'leap')) return;
+    this.endTele(); this.locked = false; this.lift = 0;
+    if (this.atk) { this.mobs.release(this); this.atk = null; }
+    this.setState('stun'); this.stT = -sec + 0.6;
+  }
+  /** Damage over time and chain arcs: no flinch, no knockback, no stagger. */
+  takeDot(n: number, color: number) {
+    if (!this.alive || this.invuln || this.state === 'spawn') return;
+    const g = this.mobs.game;
+    const dmg = Math.max(1, Math.round(n * this.dmgTakenMul * (this.state === 'broken' ? BROKEN_TAKEN : 1) * (this.mech?.takenMul(null) ?? 1)));
+    this.hp -= dmg;
+    if (g.state.d.settings.dmgNumbers) { this.center(_v); g.hud.damage({ x: _v.x + rand(-0.4, 0.4), y: _v.y + this.height * 0.2, z: _v.z + rand(-0.4, 0.4) }, String(dmg), 'dot'); }
+    void color;
+    if (!this.aggro) { this.aggro = true; this.mobs.alertNear(this); }
+    if (this.hp <= 0) { this.hp = 0; this.die(); }
+  }
+  /** The stagger meter is full: the robot slumps, its core opens, and it takes more damage for a few seconds. */
+  private breakNow() {
+    const g = this.mobs.game, fx = g.fx;
+    this.endTele(); this.locked = false; this.lift = 0;
+    if (this.atk) { this.mobs.release(this); this.atk = null; }
+    this.brokenDur = this.brk.dur * (this.kind === 'titan' ? 1.2 : 1) + (g.state.perk('breakpoint') > 1 ? 1 : 0);
+    this.stag = this.staggerCap;
+    this.setState('broken');
+    this.status.t.shock = 0;
+    this.center(_v);
+    fx.emit(_v, { count: 26, speed: [4, 11], up: 3, life: [0.25, 0.6], size: [0.06, 0.14], color: 0xfff0c0, glow: 5, gravity: 14, sprite: SP.STREAK, stretch: 0.07, radius: this.radius * 0.5 });
+    fx.chunks(_v, this.isBoss ? 14 : 8, this.def.colors, this.isBoss ? 9 : 6, this.isBoss ? 0.35 : 0.16);
+    fx.ring(_v2.set(this.pos.x, this.pos.y + 0.1, this.pos.z), this.radius * 4 + 2, 0xffd27a, 0.45, 3);
+    fx.flash(_v, 0xffd27a, 70, 10 + this.height * 2, 0.35);
+    g.hud.damage({ x: _v.x, y: _v.y + this.height * 0.45 + 0.6, z: _v.z }, 'BROKEN', 'crit');
+    g.sfx(this.isBoss ? 'boss_slam' : 'enemy_crash', { pos: this.pos, vol: 1 });
+    g.cameraRig.shake(this.isBoss ? 0.5 : this.cls === 'elite' ? 0.35 : 0.15);
+    if (this.isBoss || this.cls === 'elite') { g.slowMo(0.3, 0.16); g.cameraRig.punch(-3); g.haptic?.(30); }
+    g.state.events.emit('mobBreak', { id: this.id, kind: this.kind, elite: this.cls === 'elite', boss: this.isBoss });
+    this.mech?.onBreak();
+  }
+  /** Keep a broken robot down for at least `sec` more (a finisher is landing on it). */
+  holdBroken(sec: number) { if (this.state === 'broken') this.brokenDur = Math.max(this.brokenDur, this.stT + sec); }
+  /** Break now whatever the meter says (Big Pallet countered out of its ram). */
+  forceBreak() { if (this.alive && this.state !== 'broken' && this.state !== 'spawn' && this.state !== 'dead') this.breakNow(); }
+  /** what the plate and target frame show: status icons */
+  effects(): string[] { return this.status.any ? this.status.list(this.fxList) : NO_FX; }
   get hpFrac() { return this.hp / this.maxHp; }
   get cls() { return this.def.boss ? 'boss' : this.variant === 'elite' || this.variant === 'nightElite' ? 'elite' : this.variant; }
   get isBoss() { return !!this.def.boss; }
@@ -86,36 +182,45 @@ export class Mob implements Hittable {
   private endTele() { if (this.tele) { this.mobs.game.fx.endTelegraph(this.tele); this.tele = null; } }
   private ground() { return this.floor ?? this.mobs.game.terrain.h(this.pos.x, this.pos.z); }
 
-  /** 0..1 of the way to a stagger: what the target frame draws under the health bar */
-  get staggerFrac() { return Math.min(1, this.poiseDmg / (this.maxHp * this.def.poise * (!this.isBoss && (this.variant === 'elite' || this.variant === 'nightElite') ? 0.55 : 1))); }
+  /** 0..1 of the stagger meter: what the target frame draws under the health bar. Empty while immune after a break. */
+  get staggerFrac() { return this.breakImmune > 0 && this.state !== 'broken' ? 0 : Math.min(1, this.stag / this.staggerCap); }
   takeHit(h: HitInfo): number {
     if (!this.alive || this.invuln || this.state === 'spawn') return 0;
     const g = this.mobs.game;
-    let dmg = Math.max(1, Math.round(h.dmg * this.dmgTakenMul));
+    const mechMul = this.mech ? this.mech.takenMul(h) : 1;
+    let dmg = Math.max(1, Math.round(h.dmg * this.dmgTakenMul * mechMul * (this.state === 'broken' ? BROKEN_TAKEN : 1)));
     if (this.state === 'return') dmg = Math.max(1, Math.round(dmg * 0.2));
     this.hp -= dmg;
     this.flash = this.isBoss ? 0.4 : this.variant === 'elite' || this.variant === 'nightElite' ? 0.7 : 1; // a screen-filling boss must not white out
     if (!this.aggro) { this.aggro = true; this.mobs.alertNear(this); }
-    this.farT = 0;   // being shot at keeps a mob interested however far off the shooter stands
+    this.farT = 0; this.blindT = 0;   // being shot at keeps a mob interested however far off the shooter stands
     if (this.state === 'idle') this.setState('chase');
-    // knockback (bosses barely budge)
-    const kb = h.knock * (this.isBoss ? 0.06 : this.variant === 'elite' || this.variant === 'nightElite' ? 0.35 : 1);
+    // knockback (bosses barely budge; a broken robot is a sack)
+    const kb = h.knock * (this.isBoss ? 0.06 : this.variant === 'elite' || this.variant === 'nightElite' ? 0.35 : 1) * (this.state === 'broken' ? 0.4 : 1);
     this.knockX += h.dirX * kb; this.knockZ += h.dirZ * kb;
-    // poise
-    this.poiseDmg += dmg * (h.poise ?? 1); this.poiseT = 1.4;
-    const interruptible = this.state === 'chase' || this.state === 'windup' || this.state === 'recover' || this.state === 'idle';
-    // elites shrug off heavy hits and commit to a wind-up once it has started: they have to be dodged, not stun-locked
-    const tough = this.isBoss || this.variant === 'elite' || this.variant === 'nightElite';
-    if (h.stun && !this.isBoss) { this.endTele(); this.locked = false; this.setState('stun'); this.stT = -h.stun + 0.6; }
-    else if ((this.poiseDmg > this.maxHp * this.def.poise * (tough && !this.isBoss ? 0.55 : 1) || h.heavy && !tough) && interruptible && !(tough && this.state === 'windup')) {
-      this.poiseDmg = 0; this.endTele(); this.locked = false; this.setState('stagger');
+    const tough = this.isBoss || this.cls === 'elite';
+    // the stagger meter: heavies, breakers and counters fill it fastest; it drains when the robot is left alone
+    if (this.state !== 'broken' && this.breakImmune <= 0) {
+      this.stag += dmg * (h.poise ?? 1) * (h.heavy ? 1.15 : 1) * this.poiseMul * (this.mech ? this.mech.poiseMul(h) : 1);
+      this.stagIdle = 0;
     }
-    if (this.hp <= 0) { this.hp = 0; this.die(); }
-    else if (this.def.boss && this.kind !== 'foreman') {
+    if (h.status) applyStatus(this, h.status, g.state.attackPower);
+    const interruptible = this.state === 'chase' || this.state === 'windup' || this.state === 'recover' || this.state === 'idle';
+    if (this.hp <= 0) { this.hp = 0; this.die(); return dmg; }
+    if (this.state !== 'broken' && this.breakImmune <= 0 && this.stag >= this.staggerCap) this.breakNow();
+    else if (h.stun && !this.isBoss && this.state !== 'broken') {
+      // hard stuns: full on commons; diminishing on elites, and none at all just after a break
+      const k = this.breakImmune > 0 && tough ? 0 : this.status.drMul('stun', tough);
+      if (k > 0) this.interrupt(h.stun * k);
+      else if (tough) this.mobs.resist(this);
+    }
+    // commons flinch from a heavy; elites commit to a wind-up once it has started: they have to be dodged
+    else if (h.heavy && !tough && interruptible) { this.endTele(); this.locked = false; if (this.atk) { this.mobs.release(this); this.atk = null; } this.setState('stagger'); }
+    this.mech?.onHit(h, dmg);
+    if (this.def.boss && this.kind !== 'foreman') {
       const want = this.hp / this.maxHp < 0.34 ? 3 : this.hp / this.maxHp < 0.67 ? 2 : 1;
       if (want > this.phase) { this.phase = want; this.pose.phase = want; this.onPhase?.(want); }
     }
-    void g;
     return dmg;
   }
 
@@ -133,8 +238,14 @@ export class Mob implements Hittable {
     this.stT += dt;
     this.pose.time += dt;
     this.flash = Math.max(0, this.flash - dt * 7);
-    for (const m of this.rig.materials) m.flash.value.w = this.flash;
-    this.poiseT -= dt; if (this.poiseT <= 0) this.poiseDmg = 0;
+    // the stagger meter drains once the robot has been left alone for a moment
+    this.stagIdle += dt;
+    if (this.state !== 'broken' && this.stagIdle > 2.2 && this.stag > 0) this.stag = Math.max(0, this.stag - this.staggerCap * 0.14 * dt);
+    if (this.breakImmune > 0) this.breakImmune -= dt;
+    this.seesT -= dt;
+    tickStatus(this, dt);
+    if (!this.alive && this.state !== 'dead') return;
+    this.mech?.update(dt);
     this.gcd -= dt;
     for (const [k, v] of this.cds) if (v > 0) this.cds.set(k, v - dt);
     this.pose.damage = 1 - this.hp / this.maxHp;
@@ -144,8 +255,10 @@ export class Mob implements Hittable {
     // the town is a safe zone: nothing out in the yard hunts a player who is inside it
     const outdoors = this.floor === null;
     const canSee = !pl.dead && this.mobs.playerHostile && Math.abs(pl.pos.y - this.pos.y) < (this.isBoss ? 40 : 9) && !(outdoors && inTown(pl.pos.x, pl.pos.z));
-    let wantVx = 0, wantVz = 0, face: number | null = null, turn = this.def.turn;
-    const speed = this.def.speed * (this.variant === 'night' || this.variant === 'nightElite' ? 1.1 : 1);
+    let wantVx = 0, wantVz = 0, face: number | null = null;
+    const jamK = this.status.moveMul;
+    let turn = this.def.turn * jamK;
+    const speed = this.def.speed * (this.variant === 'night' || this.variant === 'nightElite' ? 1.1 : 1) * jamK * (this.mech?.speedMul ?? 1);
 
     switch (this.state) {
       case 'spawn': {
@@ -167,7 +280,8 @@ export class Mob implements Hittable {
         // home and unbothered: mend, and forget an alert that can no longer be acted on
         if (!this.aggro && this.hp < this.maxHp) { this.hp = Math.min(this.maxHp, this.hp + this.maxHp * 0.35 * dt); if (this.hp >= this.maxHp) this.phase = 1; }
         if (this.aggro && !canSee && outdoors) this.aggro = false;
-        if (canSee && (dist < this.def.aggro * (this.level + 4 < g.state.d.level ? 0.6 : 1) || this.aggro)) {
+        // noticing needs a clear line of sight (a robot alerted by a packmate comes looking regardless)
+        if (canSee && (dist < this.def.aggro * (this.level + 4 < g.state.d.level ? 0.6 : 1) && this.sees() || this.aggro)) {
           this.aggro = true; this.farT = 0; this.setState('chase'); this.gcd = rand(0.3, 0.9);
           this.mobs.alertNear(this);
           g.sfx('enemy_alert', { pos: this.pos, vol: 0.6 });
@@ -179,7 +293,10 @@ export class Mob implements Hittable {
         const hd = Math.hypot(this.pos.x - this.home.x, this.pos.z - this.home.z);
         // give up on a player who has got away: out of sight, past the leash, or more than GIVE_UP metres off for 3 s
         this.farT = outdoors && dist > GIVE_UP ? this.farT + dt : 0;
-        if (!canSee || hd > this.leash || this.farT > 3) { this.aggro = false; this.farT = 0; this.setState('return'); break; }
+        // out of sight outdoors (behind a wall, inside the gauntlet courts) for long enough: lose interest
+        const seen = this.isBoss || !outdoors || this.sees();
+        this.blindT = seen ? 0 : this.blindT + dt;
+        if (!canSee || hd > this.leash || this.farT > 3 || this.blindT > 3.5) { this.aggro = false; this.farT = 0; this.blindT = 0; this.setState('return'); break; }
         face = toPlayer;
         const reach = this.radius + 0.5;
         const keep = this.def.keep;
@@ -190,28 +307,41 @@ export class Mob implements Hittable {
           const s = dist < keep[0] ? -0.8 : dist > keep[1] ? 1 : 0;
           wantVx = dx * speed * s + -dz * this.strafe * speed * 0.45; wantVz = dz * speed * s + dx * this.strafe * speed * 0.45;
         } else {
-          // melee: close in; if we cannot attack yet, circle instead of hugging
+          // melee: close in. A pack does not queue in front of the player: whoever is waiting for its turn
+          // works round to the player's flank or back, so the next attack can come from out of view.
           const waiting = this.gcd > 0.2 || !this.mobs.canAttack(this);
-          const stop = reach + (waiting ? 2.2 : 0.7);
-          if (dist > stop) { wantVx = dx * speed; wantVz = dz * speed; }
+          const stop = reach + (waiting ? 2.4 : 0.7);
+          if (waiting && !this.isBoss && this.mobs.packSize > 1) {
+            const ang = pl.yaw + Math.PI + this.flank * 1.2;  // behind the player's facing, off to one side
+            const tx = pl.pos.x + Math.sin(ang) * (stop + 0.6), tz = pl.pos.z + Math.cos(ang) * (stop + 0.6);
+            let ox = tx - this.pos.x, oz = tz - this.pos.z;
+            const od = Math.hypot(ox, oz);
+            // go round, not through: push the path out of the player's circle
+            if (dist < stop + 1.2) { ox -= dx * 1.5; oz -= dz * 1.5; }
+            const ol = Math.hypot(ox, oz) || 1;
+            if (od > 0.8) { wantVx = (ox / ol) * speed * 0.85; wantVz = (oz / ol) * speed * 0.85; }
+          } else if (dist > stop) { wantVx = dx * speed; wantVz = dz * speed; }
           else if (waiting) { wantVx = -dz * this.strafe * speed * 0.5; wantVz = dx * this.strafe * speed * 0.5; if (dist < stop - 1) { wantVx -= dx * speed * 0.5; wantVz -= dz * speed * 0.5; } }
         }
-        // pick an attack
-        if (this.gcd <= 0 && this.mobs.canAttack(this) && Math.abs(angleDiff(this.yaw, toPlayer)) < 0.9) {
+        // pick an attack (needs a line of sight; a player who stands still invites the leaps, lobs and charges)
+        if (this.gcd <= 0 && this.mobs.canAttack(this) && Math.abs(angleDiff(this.yaw, toPlayer)) < 0.9 && seen && (this.isBoss || this.sees())) {
           const eff = dist - this.radius * (this.isBoss ? 0.5 : 0.3);
+          const still = this.mobs.playerStill > 1.6;
           let total = 0;
           const ok: AttackDef[] = [];
-          for (const a of this.def.attacks) {
+          for (const a of this.attacks) {
             if ((this.cds.get(a.id) ?? 0) > 0) continue;
             if (eff < a.range[0] || eff > a.range[1]) continue;
             if (a.minPhase && this.phase < a.minPhase) continue;
             if (a.maxPhase && this.phase > a.maxPhase) continue;
             if (a.type === 'summon' && this.mobs.countSummons(this) >= 6) continue;
-            ok.push(a); total += a.weight ?? 1;
+            if (this.mech && !this.mech.allow(a)) continue;
+            const w = (a.weight ?? 1) * (still && (a.type === 'leap' || a.type === 'lob' || a.type === 'charge' || a.type === 'rain' || a.type === 'slam') ? 3 : 1);
+            ok.push(a); total += w; this.wts.set(a, w);
           }
           if (ok.length) {
             let r = Math.random() * total, pick = ok[0];
-            for (const a of ok) { r -= a.weight ?? 1; if (r <= 0) { pick = a; break; } }
+            for (const a of ok) { r -= this.wts.get(a) ?? 1; if (r <= 0) { pick = a; break; } }
             this.beginAttack(pick);
           }
         }
@@ -220,7 +350,8 @@ export class Mob implements Hittable {
       case 'windup': {
         const a = this.atk!;
         const hasteMul = this.variant === 'night' || this.variant === 'nightElite' ? 0.9 : 1;
-        const t = clamp01(this.stT / (a.windup * hasteMul));
+        const t = clamp01(this.stT / (this.windupOf(a) * hasteMul));
+        this.windupCue(a, t, dt);
         this.pose.action = 'windup'; this.pose.t = t; this.pose.charge = t;
         const lockAt = a.type === 'charge' || a.type === 'beam' ? 0.7 : a.type === 'leap' || a.type === 'lob' ? 0.6 : 0.85;
         if (!this.locked) {
@@ -245,8 +376,31 @@ export class Mob implements Hittable {
       }
       case 'recover': {
         const a = this.atk!;
-        this.pose.action = 'recover'; this.pose.t = clamp01(this.stT / a.recover); this.pose.charge = 0;
-        if (this.stT >= a.recover) { this.mobs.release(this); this.atk = null; this.locked = false; this.setState('chase'); this.gcd = rand(0.5, 1.1) * (this.isBoss ? 0.6 : 1); }
+        const rec = a.recover * this.status.attackMul;
+        this.pose.action = 'recover'; this.pose.t = clamp01(this.stT / rec); this.pose.charge = 0;
+        if (this.stT >= rec) { this.mobs.release(this); this.atk = null; this.locked = false; this.setState('chase'); this.gcd = rand(0.25, 0.7) * (this.isBoss ? 0.7 : 1) * this.status.attackMul; }
+        break;
+      }
+      case 'broken': {
+        // slumped, core open: cannot act. The meter runs down over the break to show when it will stand.
+        this.pose.action = 'stun'; this.pose.t = (this.pose.time * 0.45) % 1; this.pose.charge = 0;
+        this.stag = this.staggerCap * Math.max(0, 1 - this.stT / this.brokenDur);
+        if (this.rig.root.visible && Math.random() < dt * 30) {
+          // the open core: a hot star pulled out toward the camera so the shell does not hide it
+          const core = this.rig.sockets.core.getWorldPosition(_v);
+          _d.copy(g.camera.position).sub(core).setY(0).normalize();
+          core.addScaledVector(_d, this.radius * 0.75);
+          const s = (0.7 + this.radius * 0.6) * (0.85 + 0.3 * Math.sin(this.pose.time * 14));
+          g.fx.emit(core, { count: 1, speed: [0, 0], life: [0.07, 0.09], size: [s, s * 1.2], color: 0xffd890, glow: 5, sprite: SP.STAR });
+          if (Math.random() < 0.08) g.fx.ring(_v2.set(this.pos.x, this.pos.y + 0.08, this.pos.z), this.radius * 3.2 + 1, 0xffc870, 0.5, 2);
+          if (Math.random() < 0.3) g.fx.emit(core, { count: 1, speed: [1, 3], up: 1, life: [0.3, 0.6], size: [0.04, 0.08], color: 0xffd27a, glow: 4, gravity: 12, sprite: SP.STREAK, stretch: 0.06, radius: this.radius * 0.3 });
+          if (Math.random() < 0.12) g.fx.smoke(_v.set(this.pos.x, this.pos.y + this.height * 0.8, this.pos.z), 1, 0.5 + this.radius * 0.3, 0x30333a, 0.4);
+        }
+        if (this.stT >= this.brokenDur) {
+          this.stag = 0; this.breakImmune = this.brk.immune;
+          this.setState('chase'); this.gcd = Math.max(this.gcd, 0.5);
+          if (this.isBoss || this.cls === 'elite') { g.sfx(this.isBoss ? 'boss_roar' : 'enemy_alert', { pos: this.pos, vol: 0.8 }); g.fx.ring(_v.set(this.pos.x, this.pos.y + 0.1, this.pos.z), this.radius * 3 + 2, 0xffffff, 0.35, 2); }
+        }
         break;
       }
       case 'stagger': {
@@ -316,9 +470,74 @@ export class Mob implements Hittable {
     this.pose.speed = Math.hypot(this.vx, this.vz);
     this.pose.aimYaw = clamp(angleDiff(this.yaw, toPlayer), -1.2, 1.2) * (this.aggro ? 1 : 0);
     this.pose.aimPitch = this.aggro ? clamp(Math.atan2(pl.pos.y + 1 - (this.pos.y + this.height * 0.7), Math.max(1, dist)), -0.8, 0.8) : 0;
-    this.rig.root.position.set(this.pos.x, this.pos.y + this.lift, this.pos.z);
-    this.rig.root.rotation.y = this.yaw;
-    this.rig.update(dt, this.pose);
+    this.bodyLanguage(dt);
+    // a jammed robot moves like it is wading through glue: the whole rig runs slow and stutters
+    const jam = this.status.t.jam > 0;
+    this.rig.update(jam ? dt * (Math.sin(this.pose.time * 11) > 0.55 ? 0.05 : 0.45) : dt, this.pose);
+  }
+  private wts = new Map<AttackDef, number>();
+  private leanX = 0; private squash = 0; private cueT = 0;
+  windupOf(a: AttackDef) { return a.windup * this.status.attackMul; }
+  /**
+   * Whole-body pose the AI can give without touching the model: lean into a charge, rear back before a
+   * slam, crouch before a leap, slump when broken. Plus the hit-flash and status tint on every material.
+   */
+  private bodyLanguage(dt: number) {
+    const a = this.atk, st = this.state, root = this.rig.root;
+    let lean = 0, sq = 0;
+    if (st === 'windup' && a) {
+      const t = this.pose.t, e = t * t * (3 - 2 * t);
+      switch (a.type) {
+        case 'melee': lean = -0.16 * e; break;                 // draw back
+        case 'slam': lean = -0.3 * e; sq = -0.08 * e; break;   // rear up
+        case 'leap': lean = 0.12 * e; sq = 0.2 * e; break;     // crouch
+        case 'charge': lean = 0.24 * e; sq = 0.08 * e; break;  // head down, dig in
+        case 'ring': sq = 0.16 * e; break;                     // gather
+        case 'summon': lean = -0.22 * e; break;
+        default: lean = -0.08 * e; break;                      // brace for the shot
+      }
+    } else if (st === 'active' && a && (a.type === 'melee' || a.type === 'slam')) lean = 0.18 * (1 - this.pose.t);
+    else if (st === 'active' && a && a.type === 'charge') lean = 0.2;
+    else if (st === 'broken') { const t = clamp01(this.stT / 0.35); lean = 0.32 * t + Math.sin(this.pose.time * 2.2) * 0.03; sq = 0.14 * t; }
+    if (this.isBoss) { lean *= 0.4; sq *= 0.4; }
+    this.leanX = damp(this.leanX, lean, st === 'active' ? 30 : 14, dt); this.squash = damp(this.squash, sq, 14, dt);
+    root.position.set(this.pos.x, this.pos.y + this.lift, this.pos.z);
+    root.rotation.y = this.yaw; root.rotation.x = this.leanX;
+    const k = 1 - this.squash;
+    root.scale.set(this.baseScale.x * (1 + this.squash * 0.4), this.baseScale.y * k, this.baseScale.z * (1 + this.squash * 0.4));
+    // tint: hit flash wins, then broken, burn, shock, jam
+    const S = this.status, t = this.pose.time;
+    let col = 0xffffff, w = this.flash;
+    if (st === 'broken') { const b = 0.36 + 0.16 * Math.sin(t * 9); if (b > w) { col = 0xffb050; w = b; } }
+    else if (S.t.burn > 0) { const b = 0.2 + 0.12 * Math.sin(t * 17) * Math.sin(t * 5.3); if (b > w) { col = 0xff5a10; w = b; } }
+    else if (S.t.shock > 0) { const b = Math.random() < 0.25 ? 0.55 : 0.12; if (b > w) { col = 0x9ff6ff; w = b; } }
+    else if (S.t.jam > 0) { const b = Math.sin(t * 11) > 0.55 ? 0.45 : 0.26; if (b > w) { col = 0xffc21a; w = b; } }
+    if (col !== this.tintCol) { this.tintCol = col; _c.setHex(col); for (const m of this.rig.materials) m.flash.value.set(_c.r, _c.g, _c.b, w); }
+    else for (const m of this.rig.materials) m.flash.value.w = w;
+  }
+  private tintCol = 0xffffff;
+  private baseScale = new THREE.Vector3(1, 1, 1);
+  /**
+   * A cue for each attack at the start of its wind-up, before the floor shape means anything: a glint at
+   * the weapon in the attack's colour, a light on the ground, the robot's own wind-up sound.
+   */
+  private windupCue(a: AttackDef, t: number, dt: number) {
+    if (!this.rig.root.visible) return;
+    const g = this.mobs.game, fx = g.fx;
+    this.cueT -= dt;
+    if (this.cueT > 0) return;
+    this.cueT = 1 / 24;
+    const src = (this.rig.sockets.muzzle ?? this.rig.sockets.core).getWorldPosition(_v);
+    const col = a.color ?? this.def.glow;
+    const s = (0.25 + 0.55 * t) * (this.isBoss ? 2.5 : 0.7 + this.radius * 0.4);
+    fx.emit(src, { count: 1, speed: [0, 0], life: [0.06, 0.08], size: [s, s], color: col, glow: 5, sprite: SP.STAR });
+    if (a.type === 'charge' && Math.random() < 0.5) fx.dust(_v2.set(this.pos.x - Math.sin(this.yaw) * this.radius, this.pos.y + 0.1, this.pos.z - Math.cos(this.yaw) * this.radius), 1, 0.7);
+    if ((a.type === 'beam' || a.type === 'shot' || a.type === 'lob' || a.type === 'rain' || a.type === 'cone') && Math.random() < 0.6) {
+      // energy drawn in toward the muzzle
+      _d.set(rand(-1, 1), rand(-0.4, 1), rand(-1, 1)).normalize();
+      _v2.copy(src).addScaledVector(_d, 0.8 + this.radius * 0.5);
+      fx.emit(_v2, { count: 1, dir: _d.negate(), spread: 0.05, speed: [2.5, 3.5], life: [0.22, 0.26], size: [0.05, 0.09], color: col, glow: 5, sprite: SP.STREAK, stretch: 0.06 });
+    }
   }
 
   private beginAttack(a: AttackDef) {
@@ -327,7 +546,9 @@ export class Mob implements Hittable {
     this.cds.set(a.id, a.cd * rand(0.9, 1.2));
     this.mobs.claim(this);
     this.setState('windup');
-    const y = this.pos.y, col = a.color ?? 0xff5a2a, dur = a.windup;
+    // red on the floor always means "leave"; the attack's own colour is for the cue and the hit
+    const y = this.pos.y, col = TELE_RED, dur = this.windupOf(a) * (this.variant === 'night' || this.variant === 'nightElite' ? 0.9 : 1);
+    this.mobs.warn(this);
     const fx = g.fx;
     switch (a.type) {
       case 'melee': this.tele = fx.telegraph({ shape: 1, x: this.pos.x, y, z: this.pos.z, radius: a.radius! * (this.scale > 1.3 && !this.isBoss ? 1.25 : 1), angle: a.angle, yaw: this.yaw, dur, color: col }); break;
@@ -336,6 +557,7 @@ export class Mob implements Hittable {
       case 'charge': case 'beam': this.tele = fx.telegraph({ shape: 2, x: this.pos.x, y, z: this.pos.z, w: a.width, l: a.length, yaw: this.yaw, dur, color: col }); break;
       case 'leap': this.tele = fx.telegraph({ shape: 0, x: g.player.pos.x, y: g.player.pos.y, z: g.player.pos.z, radius: a.radius!, dur: dur + a.active, color: col }); break;
       case 'ring': this.tele = fx.telegraph({ shape: 0, x: this.pos.x, y, z: this.pos.z, radius: Math.min(5, a.radius!), dur, color: col }); break;
+      case 'channel': case 'spin': this.tele = fx.telegraph({ shape: 2, x: this.pos.x, y, z: this.pos.z, w: a.width! * 1.6, l: a.length, yaw: this.yaw, dur: dur + a.active, color: col, hold: true }); break;
       default: break;
     }
     g.sfx(this.isBoss ? 'boss_windup' : 'enemy_windup', { pos: this.pos, vol: 0.7 });
@@ -347,7 +569,7 @@ export class Mob implements Hittable {
     if (!t) return;
     const m = t.mesh;
     if (a.type === 'melee' || a.type === 'cone') { m.rotation.y = this.yaw; m.position.x = this.pos.x; m.position.z = this.pos.z; }
-    else if (a.type === 'charge' || a.type === 'beam') {
+    else if (a.type === 'charge' || a.type === 'beam' || a.type === 'channel' || a.type === 'spin') {
       const l = a.length! / 2;
       m.rotation.y = this.yaw;
       m.position.set(this.pos.x + Math.sin(this.yaw) * l, this.pos.y + 0.07, this.pos.z + Math.cos(this.yaw) * l);
@@ -390,6 +612,7 @@ export class Mob implements Hittable {
         break;
       }
       case 'leap': { g.sfx('enemy_leap', { pos: this.pos }); break; }
+      case 'channel': case 'spin': { this.fired = 0; this.tick = 0; this.spinYaw = this.yaw; g.sfx(this.isBoss ? 'boss_beam' : 'arc_zap', { pos: this.pos }); break; }
       case 'charge': { g.sfx('enemy_charge', { pos: this.pos }); break; }
       case 'beam': {
         this.endTele();
@@ -455,7 +678,8 @@ export class Mob implements Hittable {
           const ang = this.yaw + (i / n) * TAU + 0.5, r = this.radius + 3 + rand(0, 2);
           const x = this.pos.x + Math.sin(ang) * r, z = this.pos.z + Math.cos(ang) * r;
           this.mobs.after(0.15 * i, this, () => {
-            const m = this.mobs.spawn(a.summon!, { level: Math.max(1, this.level - 2), x, z, floor: this.floor ?? undefined, aggro: true, noLoot: true, xpMul: 0.25, leash: 400 });
+            const brood = this.mech?.kind === 'brood';
+            const m = this.mobs.spawn(a.summon!, { level: Math.max(1, this.level - (brood ? 1 : 2)), x, z, floor: this.floor ?? undefined, aggro: true, noLoot: true, xpMul: brood ? 0.1 : 0.25, leash: brood ? 60 : 400, hpMul: brood ? 0.4 : 1, scale: brood ? 0.62 : undefined, name: brood ? 'Mite Larva' : undefined });
             m.summoner = this;
             fx.ring(m.pos, 3, 0x7ff0ff, 0.5, 2);
           });
@@ -466,6 +690,8 @@ export class Mob implements Hittable {
     }
   }
   summoner: Mob | null = null;
+  shoulderT = -9;
+  private spinYaw = 0;
 
   private updateActive(a: AttackDef, dt: number, t: number, dist: number, toPlayer: number) {
     const g = this.mobs.game, pl = g.player, fx = g.fx;
@@ -525,6 +751,52 @@ export class Mob implements Hittable {
         }
         break;
       }
+      case 'channel': {
+        // a plumb laser held on the player: it tracks slowly, and only something solid in the way stops it
+        this.yaw = dampAngle(this.yaw, toPlayer, 1.6, dt);
+        const src = (this.rig.sockets.muzzle ?? this.rig.sockets.core).getWorldPosition(_v);
+        _v2.set(pl.pos.x, pl.pos.y + 1.1, pl.pos.z);
+        _d.copy(_v2).sub(src); const len = _d.length(); _d.multiplyScalar(1 / (len || 1));
+        const facing = Math.abs(angleDiff(this.yaw, toPlayer)) < 0.35;
+        const block = g.physics.raycast(src, _d, Math.min(len, a.length!));
+        const reach = block ? block.dist : facing ? Math.min(len, a.length!) : a.length!;
+        if (!facing) _d.set(Math.sin(this.yaw), _d.y, Math.cos(this.yaw)).normalize();
+        _v2.copy(src).addScaledVector(_d, reach);
+        fx.beam(src, _v2, a.color ?? 0xff4a3a, a.width! * (0.8 + 0.2 * Math.sin(this.stT * 40)), 0.05, 0.02, 5);
+        fx.beam(src, _v2, 0xffffff, a.width! * 0.25, 0.05, 0, 6);
+        if (block) fx.emit(_v2, { count: 2, speed: [1, 4], life: [0.1, 0.25], size: [0.05, 0.1], color: 0xffb08a, glow: 5, sprite: SP.STREAK, stretch: 0.06 });
+        if (this.tele) { const m = this.tele.mesh, l = Math.min(reach, a.length!) / 2; m.rotation.y = Math.atan2(_d.x, _d.z); m.scale.z = Math.max(0.5, l); m.position.set(src.x + _d.x * l, this.pos.y + 0.07, src.z + _d.z * l); }
+        this.tick -= dt;
+        if (this.tick <= 0) {
+          this.tick = a.interval ?? 0.2;
+          if (!block && facing && len < a.length!) {
+            const hit = g.combat.hurtPlayer(this.dmg * a.dmg, this.pos, 0.6, this, true);
+            if (hit) fx.emit(_v2, { count: 4, speed: [2, 5], life: [0.1, 0.25], size: [0.06, 0.12], color: 0xff6a4a, glow: 5, sprite: SP.STREAK, stretch: 0.07 });
+          }
+          g.sfx('arc_zap', { pos: this.pos, vol: 0.25 });
+        }
+        break;
+      }
+      case 'spin': {
+        // a beam swung round the room: roll through it or be somewhere else
+        const k = t * t * (3 - 2 * t);
+        const yaw = this.spinYaw + (a.angle ?? TAU) * k * (this.flank > 0 ? 1 : -1);
+        this.yaw = yaw;
+        const sy = Math.sin(yaw), cy = Math.cos(yaw);
+        const src = this.rig.sockets.core.getWorldPosition(_v); src.y = this.pos.y + 1.0;
+        _v2.set(this.pos.x + sy * a.length!, this.pos.y + 1.0, this.pos.z + cy * a.length!);
+        fx.beam(src, _v2, a.color ?? 0x7ff0ff, a.width!, 0.06, 0.08, 5);
+        fx.beam(src, _v2, 0xffffff, a.width! * 0.3, 0.06, 0, 6);
+        if (this.tele) { const m = this.tele.mesh, l = a.length! / 2; m.rotation.y = yaw; m.position.set(this.pos.x + sy * l, this.pos.y + 0.07, this.pos.z + cy * l); }
+        this.tick -= dt;
+        const dx = pl.pos.x - this.pos.x, dz = pl.pos.z - this.pos.z;
+        const along = dx * sy + dz * cy, side = Math.abs(dx * cy - dz * sy);
+        if (this.tick <= 0 && along > 0 && along < a.length! && side < a.width! / 2 + 0.4 && Math.abs(pl.pos.y - this.pos.y) < 2.4) {
+          this.tick = a.interval ?? 0.4;
+          this.hurt(a);
+        }
+        break;
+      }
       case 'cone': {
         const r = a.radius!, ang = a.angle ?? 0.5;
         if (this.tele) { this.tele.mesh.rotation.y = this.yaw; this.tele.mesh.position.x = this.pos.x; this.tele.mesh.position.z = this.pos.z; }
@@ -578,9 +850,28 @@ export class Mobs {
   /** outdoor camps are suspended while inside an interior */
   outdoor = true;
   inCombat = 0;
+  /** robots fighting the player last frame: a lone robot does not bother flanking */
+  packSize = 0;
+  /** seconds the player has stood (nearly) still while robots are on them */
+  playerStill = 0;
   private scanT = 0;
+  private arrows: WindupArrows;
+  /** the finisher prompt and kill (made on the first update, once the interact system exists) */
+  finishers: Finishers | null = null;
 
-  constructor(public game: Game) {}
+  constructor(public game: Game) { this.arrows = new WindupArrows(game); }
+  /** a broken robot within `r` metres (Jury Rig) */
+  brokenNear(p: { x: number; z: number }, r: number) { for (const m of this.list) if (m.alive && m.state === 'broken' && Math.hypot(m.pos.x - p.x, m.pos.z - p.z) < r) return true; return false; }
+  /** a wind-up began: the off-screen arrow picks it up from the robot's state */
+  warn(m: Mob) { void m; }
+  private resistT = 0;
+  /** an elite or boss shrugged off a stun or status (diminishing returns) */
+  resist(m: Mob) {
+    if (this.game.time - this.resistT < 0.6) return;
+    this.resistT = this.game.time;
+    m.center(_v);
+    this.game.hud.damage({ x: _v.x, y: _v.y + m.height * 0.4 + 0.4, z: _v.z }, 'RESIST', 'miss');
+  }
 
   spawn(kind: RobotKind, o: MobOpts): Mob {
     const m = new Mob(this, kind, o);
@@ -685,7 +976,8 @@ export class Mobs {
             const lvl = Math.round(rand(c.def.lo - 0.49, c.def.hi + 0.49));
             const nightNow = g.env.isNight();
             const variant: RobotVariant = c.def.night || (nightNow && Math.random() < 0.4) ? 'night' : Math.random() < 0.06 ? 'rare' : 'normal';
-            s.mob = this.spawn(c.def.kind, { level: clamp(lvl, c.def.lo, c.def.hi), variant, x, z, camp: c });
+            const si = c.slots.indexOf(s), kind = c.def.mix ? c.def.mix[si % c.def.mix.length] : c.def.kind;
+            s.mob = this.spawn(kind, { level: clamp(lvl, c.def.lo, c.def.hi), variant, x, z, camp: c });
             s.respawn = 0;
           });
         }
@@ -725,7 +1017,10 @@ export class Mobs {
       m.update(dt);
       if (m.alive && m.aggro && m.state !== 'return') combat++;
     }
-    this.inCombat = combat;
+    this.inCombat = combat; this.packSize = combat;
+    this.playerStill = combat > 0 && !pl.dead && Math.hypot(pl.vel.x, pl.vel.z) < 1 && !pl.rolling ? this.playerStill + dt : 0;
+    this.arrows.update();
+    (this.finishers ??= new Finishers(g)).update(dt);
     // separation between mobs, and soft push against the player
     const L = this.list;
     for (let i = 0; i < L.length; i++) {
@@ -746,6 +1041,11 @@ export class Mobs {
       }
       // player
       const dx = p.x - a.pos.x, dz = p.z - a.pos.z, rr = a.radius + 0.4, d = Math.hypot(dx, dz);
+      // Shoulder Check: a roll through a robot slams it
+      if (pl.rolling && d < rr + 0.3 && a.targetable && a.state !== 'spawn' && Math.abs(p.y - a.pos.y) < a.height && g.state.perk('shoulder') > 0 && g.time - a.shoulderT > 0.8) {
+        a.shoulderT = g.time;
+        g.combat.strikeTarget(a, 0.4, { source: 'melee', knock: 6, heavy: true, poise: 0.3 * a.staggerCap / Math.max(1, g.state.attackPower * 0.4), fromX: p.x, fromZ: p.z });
+      }
       if (d < rr && d > 1e-3 && Math.abs(p.y - a.pos.y) < a.height && !pl.rolling && !pl.mode) {
         const push = rr - d, nx = dx / d, nz = dz / d;
         if (!a.isBoss) { a.pos.x -= nx * push * 0.5; a.pos.z -= nz * push * 0.5; }

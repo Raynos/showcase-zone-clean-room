@@ -96,14 +96,14 @@ export class Game {
     await tick();
     const tex = buildTextureArrays(this.renderer.gl.capabilities.getMaxAnisotropy());
     GU.uTexA.value = tex.albedo; GU.uTexN.value = tex.normal; GU.uNoise.value = buildNoiseTexture();
+    // painted surfaces download while the world is built; whatever is late swaps in during play
+    const painted = loadPaintedArrays(tex, this.renderer.quality.name === 'low' ? 256 : 512, (t) => { GU.uTexA.value = t.albedo; GU.uTexN.value = t.normal; });
     // characters and robots are authored models: they download now and are awaited before anything spawns
     let modelsDone = 0, modelsTotal = 0;
     const models = loadModels(MODEL_NAMES, this.renderer.gl.capabilities.getMaxAnisotropy(), (d, n) => { modelsDone = d; modelsTotal = n; });
     progress(0.25, 'RAISING THE YARD');
     await tick();
     this.physics = await Physics.init();
-    // painted surfaces download while the world is built; whatever is late swaps in during play
-    const painted = loadPaintedArrays(tex, this.renderer.quality.name === 'low' ? 256 : 512, (t) => { GU.uTexA.value = t.albedo; GU.uTexN.value = t.normal; });
     this.terrain = new Terrain();
     this.terrain.build();
     this.scene.add(this.terrain.group);
@@ -150,12 +150,12 @@ export class Game {
     this.scene.add(this.grass.group);
     this.scene.add(this.contact.mesh);
     await content.startSystems(this);
+    progress(0.95, 'PAINTING SURFACES');
+    await Promise.race([painted, new Promise<void>((r) => setTimeout(r, 6000))]);
     this.wire();
     // place the player
     const d = this.state.d;
     const fresh = d.playTime < 1;
-    progress(0.95, 'PAINTING SURFACES');
-    await Promise.race([painted, new Promise<void>((r) => setTimeout(r, 6000))]);
     const at = fresh ? { x: SPAWN.x, y: this.terrain.h(SPAWN.x, SPAWN.z), z: SPAWN.z, yaw: SPAWN.yaw } : this.resolvePos(d.pos[0], d.pos[1], d.pos[2], d.yaw);
     this.player.teleport(at.x, at.y + 0.1, at.z, at.yaw);
     this.cameraRig.snap(this.player.yaw + Math.PI, 0.16);
@@ -383,7 +383,8 @@ export class Game {
       const d = Math.hypot(m.pos.x - p.x, m.pos.z - p.z);
       if (d > 40 || (!m.aggro && d > 24 && m.hp >= m.maxHp && m.cls === 'normal')) continue;
       _v.set(m.pos.x, m.pos.y + m.lift + m.height + 0.35, m.pos.z);
-      hud.plate('m' + m.id, _v, { name: m.name, level: m.level, hp: m.aggro || m.hp < m.maxHp ? m.hpFrac : undefined, cls: m.cls });
+      const tough = m.cls === 'elite' && (m.aggro || m.hp < m.maxHp);
+      hud.plate('m' + m.id, _v, { name: m.name, level: m.level, hp: m.aggro || m.hp < m.maxHp ? m.hpFrac : undefined, cls: m.cls, fx: m.effects(), stagger: tough ? m.staggerFrac : undefined, broken: m.broken });
     }
     for (const f of this.plateFns) f();
     hud.endPlates();

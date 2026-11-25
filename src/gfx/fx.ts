@@ -437,7 +437,8 @@ export class FX {
       const u = { uColor: { value: new THREE.Color() }, uT: { value: 0 }, uShape: { value: 0 }, uAngle: { value: 1 }, uInner: { value: 0 }, uFade: { value: 1 }, uAspect: { value: new THREE.Vector2(1, 1) } };
       const g = new THREE.PlaneGeometry(2, 2); g.rotateX(-Math.PI / 2);
       const mat = new THREE.ShaderMaterial({
-        uniforms: u, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+        // no depth test: a warning must read through grass (it lies on the ground, so nothing else should hide it)
+        uniforms: u, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
         polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
         vertexShader: `varying vec2 vUv; void main(){ vUv = uv * 2.0 - 1.0; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
         fragmentShader: /* glsl */ `
