@@ -36,6 +36,10 @@ export const CASTER = {
 const COLOR_MAX = 2, EMIT_MAX = 6.25;
 /** Size keys above any real size: ground-hugging slabs (never cast), then hand-built triangles. */
 const KEY_FLAT = 1e9, KEY_ALWAYS = 1e6;
+/** Glowing primitives under GLOW_CAST metres: always drawn, sorted beside the slabs so they stay out of the shadow pass too. */
+const KEY_GLOW = 1e8, GLOW_CAST = 1.5;
+/** Leaf primitives under this size key (a crown's fill cards, see below) throw no shadow in any cascade: the core and the other half of the cards do. */
+const LEAF_CAST = 0.16;
 /** A slab whose top is within this of the terrain throws no shadow worth drawing. */
 const FLAT_TOP = 0.08;
 /** Primitive flags kept for the occlusion bake. */
@@ -137,7 +141,7 @@ function packedMaterial(wind: boolean): WorldMaterial {
 interface Cell {
   mesh: THREE.Mesh;
   box: THREE.Box3;
-  /** indices of ground slabs at the head of the buffer: drawn always, never cast */
+  /** indices of ground slabs and small glowing things at the head of the buffer: drawn always, never cast */
   flat: number;
   /** indices drawn at any distance */
   always: number;
@@ -261,7 +265,9 @@ export class Chunks {
       let key = Math.sqrt(big * Math.max(mid, 1e-3));
       // lamps, signs and lit windows bloom into points of light that carry across the whole zone
       // at night, however small they are: they are never dropped
-      if (named || glow > 0.5) key = KEY_ALWAYS;
+      // a small glowing thing (a bulb, a lantern glass, a light strip) is a light, not a caster
+      if (named) key = KEY_ALWAYS;
+      else if (glow > 0.5) key = key < GLOW_CAST ? KEY_GLOW : KEY_ALWAYS;
       else if (ground && big >= 0.8
         && y1 - ground(x0, z0) <= FLAT_TOP && y1 - ground(x1, z0) <= FLAT_TOP && y1 - ground(x0, z1) <= FLAT_TOP && y1 - ground(x1, z1) <= FLAT_TOP
         && y1 - ground((x0 + x1) / 2, (z0 + z1) / 2) <= FLAT_TOP) key = KEY_FLAT;
@@ -540,7 +546,7 @@ export class Chunks {
     let w = 0, flat = 0, always = 0;
     for (const p of sorted) {
       I.set(st.I.subarray(pI[p], pI[p] + pN[p]), w); w += pN[p];
-      if (pS[p] >= KEY_FLAT) flat = w;
+      if (pS[p] >= KEY_GLOW) flat = w;
       if (pS[p] >= KEY_ALWAYS) always = w; else { sizes.push(pS[p]); counts.push(w); }
     }
     const box = new THREE.Box3();
@@ -583,7 +589,7 @@ export class Chunks {
     mesh.onBeforeShadow = (_r, _o, _cam, shadowCam) => {
       const sc = shadowCam as THREE.OrthographicCamera;
       const texel = sc.isOrthographicCamera ? (sc.right - sc.left) / CASTER.mapSize : 0;
-      const n = name ? cell.total : countFor(cell, texel * CASTER.texels);
+      const n = name ? cell.total : countFor(cell, Math.max(texel * CASTER.texels, st.leaf ? LEAF_CAST : 0));
       geo.setDrawRange(cell.flat, n - cell.flat);
     };
     mesh.onAfterShadow = () => { geo.setDrawRange(0, cell.main); };
