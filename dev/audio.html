@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>audio audition</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body { margin: 0; background: #14171c; color: #d9dee6; font: 13px/1.35 ui-sans-serif, system-ui, sans-serif; }
+      body { padding: 12px 16px 140px; }
+      h1 { font-size: 16px; margin: 0 0 8px; }
+      h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #7fd6e8; margin: 18px 0 6px; }
+      button { background: #232a34; color: #e6ebf2; border: 1px solid #36404e; border-radius: 6px; padding: 6px 9px; margin: 2px; font: inherit; cursor: pointer; }
+      button:hover { background: #2d3644; }
+      button:active { background: #f0a23a; color: #111; }
+      button.on { background: #1f6f80; border-color: #7fd6e8; }
+      button.c-impact, button.c-huge { border-color: #c96a3a; }
+      button.c-loud { border-color: #8c6a3a; }
+      button.c-soft, button.c-ui { border-color: #2c3440; color: #aab3c0; }
+      .row { display: flex; align-items: center; gap: 8px; margin: 3px 0; flex-wrap: wrap; }
+      .row label { width: 84px; color: #aab3c0; }
+      input[type=range] { width: 150px; }
+      #hud { position: fixed; left: 0; right: 0; bottom: 0; background: #0d1014ee; border-top: 1px solid #2c3440; padding: 8px 16px; }
+      .meter { height: 10px; background: #232a34; border-radius: 3px; overflow: hidden; margin: 3px 0; position: relative; }
+      .meter i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: linear-gradient(90deg, #3ac97a, #e8d24a 70%, #e8563a); }
+      #stats { font: 12px ui-monospace, monospace; color: #aab3c0; white-space: pre; }
+      #out { font: 11px ui-monospace, monospace; white-space: pre; overflow: auto; max-height: 420px; background: #0d1014; padding: 8px; border-radius: 6px; }
+      #unlock { background: #f0a23a; color: #111; font-weight: 700; padding: 10px 16px; }
+    </style>
+  </head>
+  <body>
+    <h1>CRATEFALL audio audition</h1>
+    <div class="row">
+      <button id="unlock">Unlock audio</button>
+      <button id="mute">Mute</button>
+      <button id="duck">Duck 0.8 / 0.35 s</button>
+      <button id="stopall">Stop loops + music</button>
+    </div>
+    <div id="vols"></div>
+    <h2>Music</h2>
+    <div id="music"></div>
+    <div class="row"><label>intensity</label><input id="intensity" type="range" min="0" max="1" step="0.01" value="0" /></div>
+    <h2>Loops</h2>
+    <div id="loops"></div>
+    <div id="sfx"></div>
+    <h2>Checks</h2>
+    <div class="row" id="checks"></div>
+    <div id="out"></div>
+    <div id="hud">
+      <div class="meter"><i id="mpeak"></i></div>
+      <div class="meter"><i id="mrms"></i></div>
+      <div id="stats"></div>
+    </div>
+    <script type="module" src="/src/dev/audio.ts"></script>
+  </body>
+</html>
