@@ -1,0 +1,200 @@
+// Effects strips and draw-call measurements. Run in the page by tools/vfx/strip.sh after
+// tools/golden/lib.js, on the same fixed 60 Hz clock and seeded RNG as the golden frames.
+//
+// A strip scene is { name, hour?, weather?, every, cells, crop?, setup(G, g), act(G, g) }:
+// `setup` stages the fight, `act` starts the move, and from that frame on every `every`-th
+// rendered frame is copied from the game canvas into one cell of a contact sheet (4 across).
+// A measure scene is { name, measure: seconds, setup, act }: it records the worst draw calls
+// and triangles of any frame, and how many of those calls the effects layer made.
+(() => {
+  const PI = Math.PI, G = window.GOLDEN, H = window.__golden;
+  const skill = async (kind, id) => (await import('/src/data/weapons.ts')).SKILLS[kind].find((s) => s.id === id);
+  const arm = (G, g, lvl, weapon) => { G.noCamps(); G.clearMobs(); G.level(lvl); G.weapon(weapon); g.player.invuln = 600; };
+  /** hero at (52,-16) facing a robot `dist` metres away; the camera sits behind and to one side */
+  const duel = async (G, g, kind, o = {}) => {
+    const yaw = 1.2, d = o.dist ?? 3.2;
+    G.place(52, -16, yaw);
+    const m = G.spawn(kind, 52 + Math.sin(yaw) * d, -16 + Math.cos(yaw) * d, { level: o.level ?? 3, hpMul: o.hpMul ?? 30, ...(o.opts || {}) });
+    if (o.extra) for (let i = 0; i < o.extra; i++) G.spawn('mite', 52 + Math.sin(yaw + 0.5 - i * 0.5) * (d + 1.5), -16 + Math.cos(yaw + 0.5 - i * 0.5) * (d + 1.5), { level: 2, hpMul: o.hpMul ?? 30 });
+    G.camTrack(m, o.pitch ?? 0.16, o.zoom ?? 0.95, o.off ?? 0.35);
+    await G.settleMobs();
+    g.combat.target = m;
+    await G.secs(0.6); G.quiet();
+    return m;
+  };
+  const castNow = async (g, kind, id) => { const sk = await skill(kind, id); g.state.d.energy = g.state.maxEnergy; g.combat.cds = {}; g.combat.cast(sk); };
+
+  const SCENES = [
+    { name: 'sword-light', every: 2, cells: 12,
+      async setup(G, g) { arm(G, g, 3, 'shop_blade'); await duel(G, g, 'pallet'); },
+      async act(G, g) { await G.tap('attack', 3); } },
+    { name: 'sword-heavy', every: 2, cells: 12,
+      async setup(G, g) { arm(G, g, 3, 'shop_blade'); await duel(G, g, 'pallet'); g.input.press('attack'); await G.secs(1.25); },
+      async act(G, g) { g.input.release('attack'); } },
+    { name: 'spear-light', every: 2, cells: 12,
+      async setup(G, g) { arm(G, g, 5, 'rebar_pike'); await duel(G, g, 'pallet', { dist: 4.2 }); },
+      async act(G, g) { await G.tap('attack', 3); } },
+    { name: 'skill-sword-arcwave', every: 3, cells: 12,
+      async setup(G, g) { arm(G, g, 10, 'shop_blade'); await duel(G, g, 'pallet', { dist: 7, extra: 2 }); },
+      async act(G, g) { await castNow(g, 'sword', 'arc_wave'); } },
+    { name: 'skill-sword-whirlwind', every: 3, cells: 12,
+      async setup(G, g) { arm(G, g, 10, 'shop_blade'); await duel(G, g, 'pallet', { dist: 3, extra: 2 }); },
+      async act(G, g) { await castNow(g, 'sword', 'whirlwind'); } },
+    { name: 'skill-spear-javelin', every: 3, cells: 12,
+      async setup(G, g) { arm(G, g, 10, 'rebar_pike'); await duel(G, g, 'pallet', { dist: 9 }); },
+      async act(G, g) { await castNow(g, 'spear', 'javelin'); } },
+    { name: 'ult-spear-meteor', every: 5, cells: 20,
+      async setup(G, g) { arm(G, g, 12, 'rebar_pike'); await duel(G, g, 'pallet', { dist: 6, extra: 2, zoom: 1.2 }); g.combat.od = 100; },
+      async act(G, g) { await G.tap('overdrive', 3); } },
+    { name: 'skill-bow-piercer', every: 4, cells: 12,
+      async setup(G, g) { arm(G, g, 10, 'trainer_bow'); await duel(G, g, 'pallet', { dist: 10 }); G.camFree(); await G.secs(0.5); },
+      async act(G, g) { await castNow(g, 'bow', 'piercer'); } },
+    { name: 'skill-crossbow-backstep', every: 3, cells: 12,
+      async setup(G, g) { arm(G, g, 10, 'bolt_driver'); await duel(G, g, 'pallet', { dist: 6 }); G.camFree(); await G.secs(0.5); },
+      async act(G, g) { await castNow(g, 'crossbow', 'flip_volley'); } },
+    { name: 'skill-rifle-concussion', every: 3, cells: 12,
+      async setup(G, g) { arm(G, g, 10, 'rivet_rifle'); await duel(G, g, 'pallet', { dist: 12 }); G.camFree(); await G.secs(0.5); },
+      async act(G, g) { await castNow(g, 'rifle', 'concussion'); } },
+    { name: 'rifle-magazine', every: 5, cells: 16,
+      async setup(G, g) { arm(G, g, 10, 'rivet_rifle'); await duel(G, g, 'pallet', { dist: 12 }); G.camFree(); await G.secs(0.5); },
+      async act(G, g) { for (let i = 0; i < 6; i++) { await G.tap('attack', 3); await G.secs(0.55); } } },
+    { name: 'robot-death', every: 5, cells: 16,
+      async setup(G, g) { arm(G, g, 3, 'shop_blade'); await duel(G, g, 'pallet', { hpMul: 0.05 }); },
+      async act(G, g) { await G.tap('attack', 3); } },
+    { name: 'broken-elite', every: 6, cells: 8, hour: 14,
+      async setup(G, g) {
+        arm(G, g, 12, 'shop_blade');
+        const e = g.mobs.elites.map((x) => x.def).find((d) => d.id === 'slag_boss');
+        G.place(e.x + Math.sin(0.25) * 6.5, e.z + Math.cos(0.25) * 6.5, 0.25 - PI);
+        const m = G.spawn(e.kind, e.x, e.z, { level: e.level, variant: e.variant, elite: e, hpMul: e.hpMul, aggro: true });
+        G.camTrack(m, 0.08, 1, -0.3);
+        await G.settleMobs(); g.combat.target = m; this.m = m;
+        await G.secs(0.8); G.quiet();
+      },
+      async act(G, g) { this.m.forceBreak(); } },
+    { name: 'titan-p2', every: 14, cells: 16, crop: [0, 0.12, 1, 0.76],
+      async setup(G, g) { await titanP2(G, g); },
+      async act() {} },
+    { name: 'world-levelup', every: 6, cells: 12,
+      async setup(G, g) { arm(G, g, 5, 'shop_blade'); G.place(52, -16, 1.2); G.cam(1.2 + PI, 0.2, 1.0); await G.secs(0.5); G.quiet(); },
+      async act(G, g) { g.fx.levelUp(g.player.pos); await G.secs(0.6); g.fx.heal(g.player.pos); await G.secs(0.35); g.fx.pickup(g.player.pos); } },
+
+    // ---- measurements: worst frame over ten seconds of fighting ----
+    { name: 'm-camp', measure: 10,
+      async setup(G, g) {
+        arm(G, g, 7, 'shop_blade'); g.state.god = true;
+        G.place(60, -20, 1.2);
+        const kinds = ['mite', 'pallet', 'drone', 'welder', 'mite', 'riveter'];
+        kinds.forEach((k, i) => G.spawn(k, 60 + Math.sin(1.2 + (i - 2.5) * 0.45) * (4 + (i % 2) * 2), -20 + Math.cos(1.2 + (i - 2.5) * 0.45) * (4 + (i % 2) * 2), { level: 7, aggro: true, hpMul: 6 }));
+        G.cam(1.2 + PI, 0.2, 1.1);
+        await G.settleMobs(); g.combat.target = g.mobs.list[1];
+      },
+      async act(G, g) { await brawl(G, g, 10); } },
+    { name: 'm-elite', measure: 10, hour: 14,
+      async setup(G, g) {
+        arm(G, g, 12, 'shop_blade'); g.state.god = true;
+        const e = g.mobs.elites.map((x) => x.def).find((d) => d.id === 'slag_boss');
+        G.place(e.x + Math.sin(0.25) * 4.5, e.z + Math.cos(0.25) * 4.5, 0.25 - PI);
+        const m = G.spawn(e.kind, e.x, e.z, { level: e.level, variant: e.variant, elite: e, hpMul: e.hpMul * 4, aggro: true });
+        G.camTrack(m, 0.12, 1, -0.3);
+        await G.settleMobs(); g.combat.target = m;
+      },
+      async act(G, g) { await brawl(G, g, 10); } },
+    { name: 'm-titan', measure: 10,
+      async setup(G, g) { await titanP2(G, g); g.state.god = true; G.weapon('shop_blade'); g.combat.target = g.arena.titan; },
+      async act(G, g) { await brawl(G, g, 10); } },
+  ];
+
+  async function titanP2(G, g) {
+    G.level(20);
+    g.hooks.enterArena();
+    await G.until(() => g.interior === 'arena' && !g.travelling && g.arena.titan, 600);
+    await G.secs(0.5);
+    g.arena.retry = true;
+    g.player.teleport(80, -180, -100, PI);
+    await G.until(() => g.arena.stage === 'fight', 900);
+    const t = g.arena.titan;
+    g.player.invuln = 600;
+    t.takeHit({ dmg: t.maxHp * 0.42, crit: false, dirX: 0, dirZ: -1, knock: 0, heavy: false, source: 'skill', color: 0xffffff });
+    await G.secs(8.5);
+    g.player.teleport(80, -180, -110, PI);
+    G.camTrack(t, -0.1, 1.2, 0.1);
+    await G.secs(0.6); G.quiet();
+  }
+  /** attack strings, a heavy and both skills in rotation */
+  async function brawl(G, g, secs) {
+    const end = H.frame + secs * 60;
+    let i = 0;
+    while (H.frame < end) {
+      g.state.d.energy = g.state.maxEnergy; g.player.invuln = 5;
+      const k = i++ % 6;
+      if (k === 3) { g.input.press('attack'); await G.secs(0.7); g.input.release('attack'); await G.secs(0.5); }
+      else if (k === 4) { await G.tap('skill1', 3); await G.secs(0.8); }
+      else if (k === 5) { await G.tap('skill2', 3); await G.secs(0.6); }
+      else { await G.tap('attack', 3); await G.secs(0.28); }
+    }
+  }
+
+  const fxCalls = (g) => {
+    let n = 0;
+    g.fx.group.traverse((o) => {
+      if (!o.isMesh || !o.visible) return;
+      const geo = o.geometry;
+      if (o.isInstancedMesh ? o.count > 0 : geo.isInstancedBufferGeometry ? geo.instanceCount > 0 : geo.drawRange.count > 0) n++;
+    });
+    return n;
+  };
+
+  const V = (window.VFX = {
+    status: 'idle', error: '', strip: '', result: null,
+    list: () => SCENES.map((s) => s.name),
+    start(name) {
+      const sc = SCENES.find((s) => s.name === name);
+      if (!sc) { V.status = 'error'; V.error = 'no scene ' + name; return; }
+      V.status = 'running'; V.strip = ''; V.result = null;
+      G.scenes = [{ n: 77, name, hour: sc.hour ?? 12.5, weather: sc.weather ?? 'clear', setup: (G2, g) => V.shoot(sc, g) }];
+      G.run(name).then(() => { V.status = 'done'; }, (e) => { V.status = 'error'; V.error = String((e && e.stack) || e); H.freeze(); });
+      return 'started';
+    },
+    async shoot(sc, g) {
+      const q = new URLSearchParams(location.search);
+      if (q.has('hour')) { G.time(+q.get('hour')); G.settleEnv(); }
+      if (q.has('weather')) { G.weather(q.get('weather')); G.settleEnv(); }
+      await sc.setup(G, g);
+      // --q "fp=1": the same scene through the hero's eyes
+      if (q.has('fp')) { G.camFree(); g.cameraRig.setView('first', true); await G.secs(0.4); }
+      if (sc.measure) {
+        const r = { calls: 0, tris: 0, fx: 0, fxAtWorst: 0 };
+        const end = H.frame + sc.measure * 60;
+        G._waiters.push(() => {
+          const i = g.renderer.gl.info.render, f = fxCalls(g);
+          // who else is on screen at the worst frame: the effects layer is only ever a handful of these calls
+          if (i.calls > r.calls) { r.calls = i.calls; r.fxAtWorst = f; r.robots = g.mobs.list.filter((m) => m.alive).length; r.frame = H.frame; }
+          r.tris = Math.max(r.tris, i.triangles); r.fx = Math.max(r.fx, f);
+          return H.frame >= end;
+        });
+        await sc.act(G, g);
+        await G.until(() => H.frame >= end, sc.measure * 60 + 60);
+        V.result = r;
+        return;
+      }
+      const src = g.renderer.gl.domElement, crop = sc.crop ?? [0.06, 0.24, 0.88, 0.56];
+      const sx = crop[0] * src.width, sy = crop[1] * src.height, sw = crop[2] * src.width, sh = crop[3] * src.height;
+      const cols = 4, rows = Math.ceil(sc.cells / cols), cw = 320, ch = Math.round(cw * sh / sw);
+      const cv = document.createElement('canvas'); cv.width = cols * cw; cv.height = rows * ch;
+      const c2 = cv.getContext('2d');
+      let n = 0, f0 = H.frame + 1;
+      G._waiters.push(() => {
+        if (n >= sc.cells) return true;
+        if ((H.frame - f0) % sc.every !== 0) return false;
+        c2.drawImage(src, sx, sy, sw, sh, (n % cols) * cw, Math.floor(n / cols) * ch, cw, ch);
+        c2.fillStyle = '#fff'; c2.font = '12px monospace'; c2.fillText(String(H.frame - f0), (n % cols) * cw + 4, Math.floor(n / cols) * ch + 13);
+        n++;
+        return false;
+      });
+      sc.act(G, g).catch((e) => { V.error = String(e); });
+      await G.until(() => n >= sc.cells, sc.cells * sc.every + 120);
+      V.strip = cv.toDataURL('image/jpeg', 0.86);
+    },
+  });
+})();
