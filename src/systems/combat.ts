@@ -232,7 +232,7 @@ export class Combat {
   }
   private respawn() {
     const g = this.game, pl = g.player, st = g.state;
-    const cp = this.checkpoint ?? { x: -30, y: g.terrain.h(-30, 6), z: 6, yaw: -Math.PI / 2 };
+    const cp = this.checkpoint ?? g.hooks.respawnPoint?.() ?? { x: -30, y: g.terrain.h(-30, 6), z: 6, yaw: -Math.PI / 2 };
     pl.dead = false; pl.controllable = true; pl.invuln = 2.5;
     st.d.hp = st.maxHp; st.d.energy = st.maxEnergy;
     pl.teleport(cp.x, cp.y + 0.2, cp.z, cp.yaw);

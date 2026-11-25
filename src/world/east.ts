@@ -283,6 +283,17 @@ export class East implements System {
       g.pois.push({ id: 'gauntlet', x: GAUNTLET.x, z: GAUNTLET.z, icon: 'skull', label: 'The Gauntlet', color: '#ff5a3c', big: true });
       st.events.on('respawn', () => { if (this.gState !== 'idle') this.resetGauntlet(); });
     }
+    // Field respawns: the nearest opened band gate (on its safe side), or town.
+    g.hooks.respawnPoint = () => {
+      const p = g.player.pos;
+      let best = { x: -30, y: terrain.h(-30, 6), z: 6, yaw: -Math.PI / 2 }, bd = Math.hypot(p.x + 30, p.z - 6);
+      for (const gt of this.gates) {
+        if (!this.gateUnlocked(gt.def)) continue;
+        const [dx, dz] = gateDir(gt.def), x = gt.x - dx * 9, z = gt.z - dz * 9, d = Math.hypot(p.x - x, p.z - z);
+        if (d < bd) { bd = d; best = { x, y: terrain.h(x, z), z, yaw: yawOf(dx, dz) }; }
+      }
+      return best;
+    };
     // storm state restored from the save
     this.applyStorm();
     st.events.on('flag', (f) => { if (f.key === 'storm') this.applyStorm(); });
