@@ -11,8 +11,8 @@ import { HALF, PAL, groundAt, heightRaw } from '../layout';
  * rim is the first foothill of what lies beyond it:
  *
  *  1. the rim itself (terrain, unchanged: it is what stops the player),
- *  2. a near ridge 40-90 m out and a far, snow-topped one 150-200 m out, one heightfield mesh that
- *     starts on the terrain's own edge vertices and thins out with distance,
+ *  2. three ranks of peaks, 40-90 m, 110-170 m and 170-250 m out, the last snow-topped: one
+ *     heightfield mesh that starts on the terrain's own edge vertices and thins out with distance,
  *  3. the wider freight yard to the south (ship cranes, rack towers, crate stacks the size of
  *     buildings) and the pylon line that leaves the Arc Field over the north pass,
  *     one merged mesh,
@@ -46,24 +46,28 @@ export function beyondH(x: number, z: number): number {
   const lat = Math.abs(x) > HALF && Math.abs(z) <= HALF ? Math.abs(z) : Math.abs(z) > HALF && Math.abs(x) <= HALF ? Math.abs(x) : 1e9;
   const pass = smooth(12 + d * 0.14, 40 + d * 0.4, lat);
   const floor = 1.2 + d * 0.085 + (fbm(x * 0.02, z * 0.02, 2, 31) - 0.5) * 3;
-  // the tablelands give way to the far range behind them
-  const yard = yardAt(x, z), mesa = mesaAt(x, z) * smooth(196, 138, d);
+  // the tablelands stand close behind the rim and break up into peaks further out
+  const yard = yardAt(x, z), mesa = mesaAt(x, z) * smooth(128, 64, d);
   // the distance wanders, so no ridge runs parallel to the zone's edge
   const dw = d + (fbm(x * 0.0075, z * 0.0075, 2, 71) - 0.5) * 60;
-  // ---- mountain country: foothills, a near range of crags, a far range with snow on it
+  // ---- mountain country: three ranks of peaks, each higher and further off than the one in front.
+  // A rank is a ridge line whose crest rises and falls along its length: where two ridge fields
+  // cross it stands up as a horn, between them it drops to a col, so the skyline is teeth, not a wall.
   const cragA = ridged(x * 0.0125, z * 0.0125, 3, 13), cragB = ridged(x * 0.0071, z * 0.0071, 3, 29);
-  const a = Math.exp(-(((dw - 72) / 30) ** 2)), b = Math.exp(-(((dw - 196) / 50) ** 2));
-  const spike = ridged(x * 0.029, z * 0.029, 2, 61);
+  const spike = ridged(x * 0.029, z * 0.029, 2, 61), tooth = ridged(x * 0.0178, z * 0.0178, 3, 83);
+  const a = Math.exp(-(((dw - 72) / 30) ** 2)), mid = Math.exp(-(((dw - 140) / 27) ** 2)), b = Math.exp(-(((dw - 208) / 40) ** 2));
+  const horn = tooth * tooth * (0.35 + 0.65 * cragA), peak = cragB * cragB * (0.5 + 0.5 * tooth);
   let m = 14 + d * 0.1 + (fbm(x * 0.024, z * 0.024, 2, 47) - 0.5) * 16
     + a * (8 + 56 * cragA * cragA + 14 * spike)
-    + b * (34 + 150 * cragB * cragB * (0.55 + 0.45 * cragA) + 26 * spike);
+    + mid * (8 + 50 * horn + 14 * spike * tooth)
+    + b * (26 + 54 * peak + 40 * horn + 14 * spike);
   if (mesa > 0) {
     // ---- sandstone country: tablelands that step up away from the zone, cut apart by canyons
     const t = fbm(x * 0.0085, z * 0.0085, 2, 91) * 4.4 + smooth(0, 190, d) * 1.5 + 0.4;
     const q = Math.floor(t), f = t - q;
-    let table = 14 + (q + smooth(0.84, 0.99, f)) * 19 + (fbm(x * 0.05, z * 0.05, 2, 97) - 0.5) * 5;
+    let table = 14 + (q + smooth(0.84, 0.99, f)) * 12.5 + (fbm(x * 0.05, z * 0.05, 2, 97) - 0.5) * 5;
     // a ledge half way up each riser
-    table += smooth(0.68, 0.76, f) * (1 - smooth(0.84, 0.99, f)) * 6;
+    table += smooth(0.68, 0.76, f) * (1 - smooth(0.84, 0.99, f)) * 4;
     const canyon = smooth(0.035, 0.13, Math.abs(fbm(x * 0.0068, z * 0.0068, 2, 113) - 0.5));
     table = 10 + d * 0.06 + (table - 10) * (0.18 + 0.82 * canyon);
     m += (table - m) * mesa;
@@ -143,9 +147,12 @@ varying float vSnow;`)
   vec3 col = diffuseColor.rgb * alb;
   col = mix(col, mix(vec3(0.5, 0.4, 0.25), diffuseColor.rgb * 0.8, 0.45) * (0.8 + 0.4 * macro2), turf * 0.75);
   // snow gathers on the high shelves and leaves the faces bare
-  float line = 78.0 + (macro - 0.5) * 40.0;
-  float snow = vSnow * smoothstep(line, line + 16.0, wp.y) * smoothstep(0.42, 0.7, wn.y + (bed2.y - 0.5) * 0.35);
-  col = mix(col, vec3(0.86, 0.9, 0.97), snow * 0.94);
+  // and it lies in drifts: whole only on the highest tops, in tongues down the gullies below them
+  float line = 58.0 + (macro - 0.5) * 30.0;
+  float drift = smoothstep(0.38, 0.56, texture2D(uNoise, wp.xz * vec2(0.011, 0.0074) + 0.21).g);
+  float snow = vSnow * smoothstep(line, line + 14.0, wp.y) * smoothstep(0.26, 0.56, wn.y + (bed2.y - 0.5) * 0.35) * mix(drift, 1.0, smoothstep(line + 26.0, line + 50.0, wp.y));
+  // (under a storm deck it is one more grey in the murk, not a white flag)
+  col = mix(col, vec3(0.86, 0.9, 0.97) * mix(1.0, 0.3, uWet), snow * 0.94);
   diffuseColor.rgb = col * mix(1.0, 0.8, uWet);
 }`)
       // The ranges stand in clear air, not in the mist of the yard: most of what dims them is distance
@@ -160,7 +167,7 @@ varying float vSnow;`)
   vec3 fn = normalize(cross(dFdx(vFogWorld), dFdy(vFogWorld)));
   if (fn.y < 0.0) fn = -fn;
   float sunlit = smoothstep(0.0, 0.45, dot(fn, uFogX[0].xyz)) * smoothstep(0.0, 0.15, uFogX[0].y);
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, yf.rgb, fa * mix(1.0, 0.3, sunlit * smoothstep(0.8, 0.45, fa)));
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, yf.rgb, fa * mix(1.0, 0.52, sunlit * smoothstep(0.8, 0.45, fa)));
 }`);
   };
   mat.customProgramCacheKey = () => 'beyond-land';
@@ -181,12 +188,13 @@ function buildLand(game: Game): THREE.Mesh {
       // the rock of whatever lies inside the edge here, a little paler and cooler further out
       const g = groundAt(clamp(bx, -HALF + 2, HALF - 2), clamp(bz, -HALF + 2, HALF - 2), 0.6, 26);
       c.setRGB(g.r, g.g, g.b, THREE.SRGBColorSpace);
-      const mesa = mesaAt(x, z) * (1 - 0.45 * smooth(138, 196, d)), yard = yardAt(x, z) * smooth(8, 40, d);
+      // (red rock keeps its red out to the far range, paling as it goes)
+      const mesa = mesaAt(x, z) * (1 - 0.5 * smooth(110, 210, d)), yard = yardAt(x, z) * smooth(8, 40, d);
       if (mesa > 0) c.lerp(_c2.setHex(0xc06a3a), mesa * 0.6);
       if (yard > 0) c.lerp(_c2.setHex(0x8f8777), yard);
       c.lerp(_c2.setHex(0x9a9088), smooth(30, 150, d) * 0.7 * (1 - mesa) * (1 - yard));
       col.push(c.r, c.g, c.b);
-      snow.push((1 - mesaAt(x, z) * smooth(196, 138, d)) * (1 - yard));
+      snow.push((1 - mesaAt(x, z) * smooth(132, 96, d)) * (1 - yard));
     };
     SIDES.forEach((s, i) => {
       for (let j = 0; j < nSide; j++) { const t = j / nSide; put(s.x + s.dx * t * HALF * 2, s.z + s.dz * t * HALF * 2, s.nx, s.nz, i + t * 0.8); }
