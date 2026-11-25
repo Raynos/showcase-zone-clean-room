@@ -135,9 +135,8 @@ export class Game {
     // place the player
     const d = this.state.d;
     const fresh = d.playTime < 1;
-    const px = fresh ? SPAWN.x : d.pos[0], pz = fresh ? SPAWN.z : d.pos[2];
-    const py = fresh || d.pos[1] < -20 ? this.terrain.h(px, pz) : d.pos[1];
-    this.player.teleport(px, py + 0.1, pz, fresh ? SPAWN.yaw : d.yaw);
+    const at = fresh ? { x: SPAWN.x, y: this.terrain.h(SPAWN.x, SPAWN.z), z: SPAWN.z, yaw: SPAWN.yaw } : this.resolvePos(d.pos[0], d.pos[1], d.pos[2], d.yaw);
+    this.player.teleport(at.x, at.y + 0.1, at.z, at.yaw);
     this.cameraRig.snap(this.player.yaw + Math.PI, 0.16);
     d.hp = clamp(d.hp, 1, this.state.maxHp);
     window.addEventListener('resize', () => this.resize());
@@ -246,6 +245,40 @@ export class Game {
   }
   npcName(id: string) { return NPC_NAMES[id]?.name ?? id; }
   addSystem<T extends System>(s: T): T { this.systems.push(s); return s; }
+  /** Places a saved position must never resume in (sealed courts, locked yards): return the way out, or null when the point is fine. */
+  safeSpots: Array<(x: number, y: number, z: number) => { x: number; z: number; yaw: number } | null> = [];
+  /** Where a surface position should really put the player: itself when it is a valid place to stand, else somewhere safe. */
+  resolvePos(x: number, y: number, z: number, yaw: number): { x: number; y: number; z: number; yaw: number; moved: boolean } {
+    const ok = [x, y, z, yaw].every(Number.isFinite) && Math.abs(x) <= 248.5 && Math.abs(z) <= 248.5;
+    if (!ok) return { x: SPAWN.x, y: this.terrain.h(SPAWN.x, SPAWN.z), z: SPAWN.z, yaw: SPAWN.yaw, moved: true };
+    for (const f of this.safeSpots) {
+      const s = f(x, y, z);
+      if (s) return { x: s.x, y: this.terrain.h(s.x, s.z), z: s.z, yaw: s.yaw, moved: true };
+    }
+    // under the ground (an interior's depth, or a fall through the world): back up to the surface
+    const h = this.terrain.h(x, z);
+    return y < h - 1.5 ? { x, y: h, z, yaw, moved: true } : { x, y, z, yaw, moved: false };
+  }
+  /** Seconds until "Return to Brasswick" may be used again. */
+  returnCd = 0;
+  /** Why the player cannot be pulled back to town right now, or null when they can. */
+  returnBlocked(): string | null {
+    if (!this.started || this.travelling) return 'Not available right now';
+    if (this.player.dead) return 'Not while you are down';
+    if (this.cameraRig.cine || !this.player.controllable) return 'Not during a cutscene';
+    if (this.bossMob || this.hooks.arenaBusy?.()) return 'Not during a boss fight';
+    if (this.returnCd > 0) return `Ready again in ${Math.ceil(this.returnCd)}s`;
+    return null;
+  }
+  /** The way out of anywhere: fade to the town square. Encounters notice the player has gone and stand down. */
+  async returnToTown(): Promise<boolean> {
+    if (this.returnBlocked()) return false;
+    this.returnCd = 30;
+    await this.travel({ x: SPAWN.x, y: this.terrain.h(SPAWN.x, SPAWN.z), z: SPAWN.z, yaw: SPAWN.yaw, interior: null });
+    this.hud.toast('Returned to Brasswick', 'good');
+    this.savePos();
+    return true;
+  }
   savePos() {
     const p = this.player.pos, d = this.state.d;
     if (!this.interior && !this.player.dead) { d.pos = [p.x, p.y, p.z]; d.yaw = this.player.yaw; }
@@ -323,6 +356,7 @@ export class Game {
     const rdt = Math.min(0.05, Math.max(0.001, (now - this.last) / 1000));
     this.last = now;
     this.time += rdt;
+    if (this.returnCd > 0) this.returnCd -= rdt;
     this.fpsAcc += rdt; this.fpsN++;
     if (this.fpsAcc > 0.5) { this.fps = this.fpsN / this.fpsAcc; this.fpsAcc = 0; this.fpsN = 0; }
     this.renderer.tickPerf(rdt);

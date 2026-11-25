@@ -383,6 +383,7 @@ export class Arena implements System {
         enabled: () => g.interior === 'arena' && this.stage === 'done' && this.exitRise >= 1, onUse: () => this.leave() });
     }
     g.hooks.enterArena = () => this.enter();
+    g.hooks.arenaBusy = () => this.stage !== 'idle' && this.stage !== 'wait' && this.stage !== 'done';
     g.addSystem(this);
   }
 

@@ -308,11 +308,14 @@ export class Vault implements System {
   }
   leave() {
     const g = this.game, P = VAULT_PORTAL;
-    void g.travel({ x: P.x - 4, y: g.terrain.h(P.x - 4, P.z), z: P.z, yaw: -Math.PI / 2, interior: null, onArrive: () => {
-      this.group.visible = false; this.stage = 'idle';
-      g.combat.checkpoint = null; g.mobs.bounds = null; g.musicOverride = null;
-      for (let i = 0; i < 4; i++) this.setDoor(i, true, true);
-    } });
+    void g.travel({ x: P.x - 4, y: g.terrain.h(P.x - 4, P.z), z: P.z, yaw: -Math.PI / 2, interior: null, onArrive: () => this.shutdown() });
+  }
+  private shutdown() {
+    const g = this.game;
+    if (this.stage === 'intro') { if (g.cameraRig.cine) g.cameraRig.endCine(); g.player.controllable = true; }
+    this.group.visible = false; this.stage = 'idle';
+    g.combat.checkpoint = null; g.mobs.bounds = null; g.musicOverride = null;
+    for (let i = 0; i < 4; i++) this.setDoor(i, true, true);
   }
   /** Fresh run. */
   private reset() {
@@ -482,7 +485,8 @@ export class Vault implements System {
 
   update(dt: number, rdt: number) {
     const g = this.game;
-    if (g.interior !== 'vault' || this.stage === 'idle') return;
+    if (this.stage === 'idle') return;
+    if (g.interior !== 'vault') { if (!g.travelling) this.shutdown(); return; }   // left by some other road (Return to Brasswick, dev teleport)
     this.t += rdt;
     const p = g.player.pos;
     for (const d of this.doors) {

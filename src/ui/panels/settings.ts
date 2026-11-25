@@ -10,6 +10,7 @@ export const settingsPanel: PanelSpec = {
   make(host) {
     const g = host.game, st = g.state, s = st.d.settings;
     let fpsEl: HTMLElement | null = null, fpsT = 0;
+    let townWhy: string | null = null;
     const sliders: Record<string, { min: number; max: number; get: () => number; set: (v: number) => void; fmt: (v: number) => string }> = {
       sfx: { min: 0, max: 1, get: () => s.sfx, set: (v) => { s.sfx = v; g.audio?.setVolumes?.({ sfx: s.sfx, music: s.music }); }, fmt: (v) => Math.round(v * 100) + '%' },
       music: { min: 0, max: 1, get: () => s.music, set: (v) => { s.music = v; g.audio?.setVolumes?.({ sfx: s.sfx, music: s.music }); }, fmt: (v) => Math.round(v * 100) + '%' },
@@ -48,7 +49,11 @@ export const settingsPanel: PanelSpec = {
       h += C('Interact', 'Prompt above the buttons', 'E');
       h += C('Pack · Quests · Map', 'Top-left buttons', 'I · L · M');
       h += '</div>';
-      h += `<div class="pn-sec">Game</div><div class="pn-acts wide">${btn('Save now', 'save', '', '')}${btn('Reset progress', 'reset', '', 'danger')}</div>`;
+      const why = g.returnBlocked();
+      townWhy = why;
+      h += `<div class="pn-sec">Game</div><div class="pn-acts wide">${btn('Return to Brasswick', 'town', '', why ? 'off' : '')}</div>`;
+      h += `<div class="pn-note">${why ?? 'Stuck or lost? This takes you back to the town square from anywhere.'}</div>`;
+      h += `<div class="pn-acts">${btn('Save now', 'save', '', '')}${btn('Reset progress', 'reset', '', 'danger')}</div>`;
       h += '<div class="pn-note c">CRATEFALL · The Proving Yard · your progress saves automatically on this device.</div>';
       const top = host.body.scrollTop;
       host.body.innerHTML = h;
@@ -72,12 +77,22 @@ export const settingsPanel: PanelSpec = {
     };
     return {
       render,
-      update(dt) { fpsT -= dt; if (fpsT <= 0 && fpsEl) { fpsT = 0.5; fpsEl.textContent = String(Math.round(g.fps)); } },
+      update(dt) {
+        fpsT -= dt;
+        if (fpsT > 0) return;
+        fpsT = 0.5;
+        if (fpsEl) fpsEl.textContent = String(Math.round(g.fps));
+        if (g.returnBlocked() !== townWhy) render();   // the cooldown counts down while the sheet is open
+      },
       dispose() { st.save(); },
       act(a, v) {
         if (a === 'quality') { s.quality = v; st.touch(); g.sfx('ui_click'); applyQuality(); render(); }
         else if (a === 'toggle') { (s as any)[v] = !(s as any)[v]; st.touch(); g.sfx('ui_click'); render(); }
         else if (a === 'save') { g.savePos(); g.sfx('ui_click'); g.hud.toast('Game saved', 'good'); }
+        else if (a === 'town') {
+          host.confirm('Return to Brasswick?<small>You will be taken to the town square. Anything you are in the middle of out there is abandoned.</small>', 'Return', 'Stay')
+            .then((ok) => { if (ok && !g.returnBlocked()) { host.close(true); void g.returnToTown(); } });
+        }
         else if (a === 'reset') {
           host.confirm('Reset all progress?<small>Your level, gear, quests and records on this device will be erased. This cannot be undone.</small>', 'Erase everything', 'Keep playing', true)
             .then((ok) => { if (ok) { st.reset(); location.reload(); } });

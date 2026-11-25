@@ -199,7 +199,7 @@ export class East implements System {
   private beaconFx: Array<{ shaft: THREE.Mesh; lamp: THREE.Mesh; x: number; y: number; z: number }> = [];
   private t = 0; private checkT = 0;
   // gauntlet
-  gWave = -1; private gMobs: Mob[] = []; private gDelay = 0; private gState: 'idle' | 'pre' | 'fight' | 'between' | 'done' = 'idle';
+  gWave = -1; private gMobs: Mob[] = []; private gDelay = 0; private gRun = 0; private gState: 'idle' | 'pre' | 'fight' | 'between' | 'done' = 'idle';
   private portals: Array<{ mat: THREE.ShaderMaterial }> = [];
 
   constructor(private game: Game) {
@@ -276,13 +276,25 @@ export class East implements System {
       this.doors.push(this.makeDoor(C[0].x, y, C[0].z + hs, 0, 2.5, 6.4, 0xff5a2a));
       this.doors.push(this.makeDoor(C[1].x + hs, y, C[1].z, Math.PI / 2, 2.5, 6.4, 0xff5a2a));
       this.doors.push(this.makeDoor(C[2].x + hs, y, C[2].z, Math.PI / 2, 2.5, 6.4, 0xff5a2a));
-      this.doors[0].want = true; this.doors[1].want = false; this.doors[2].want = false;
-      for (const d of this.doors) this.snapDoor(d);
+      // every door stands open while the gauntlet is idle: a reload must never find the player behind a sealed one
+      for (const d of this.doors) { d.want = true; this.snapDoor(d); }
       g.interact.add({ id: 'gauntlet_start', pos: new THREE.Vector3(C[0].x, y + 0.5, C[0].z), radius: 3, icon: 'skull', priority: 1,
         label: () => (st.flag('gauntlet_clear') ? 'Run the gauntlet again' : 'Start the gauntlet'), enabled: () => this.gState === 'idle', onUse: () => this.startGauntlet() });
       g.pois.push({ id: 'gauntlet', x: GAUNTLET.x, z: GAUNTLET.z, icon: 'skull', label: 'The Gauntlet', color: '#ff5a3c', big: true });
       st.events.on('respawn', () => { if (this.gState !== 'idle') this.resetGauntlet(); });
+      // a running gauntlet seals its courts: a save taken in there resumes at the entrance
+      g.safeSpots.push((x, _y, z) => {
+        if (this.gState === 'idle' || !C.some((c) => Math.abs(x - c.x) < hs + 0.6 && Math.abs(z - c.z) < hs + 0.6)) return null;
+        return { x: C[0].x, z: C[0].z + hs + 6, yaw: Math.PI };
+      });
     }
+    // the Titan yard is walled in until the gauntlet opens its gate
+    g.safeSpots.push((x, _y, z) => {
+      if (st.flag('gauntlet_clear')) return null;
+      const Y = TITAN_YARD, sy = Math.sin(Y.yaw), cy = Math.cos(Y.yaw), dx = x - Y.x, dz = z - Y.z, h = Y.side / 2 + 0.6;
+      if (Math.abs(dx * cy - dz * sy) > h || Math.abs(dx * sy + dz * cy) > h) return null;
+      return { x: Y.x + sy * (h + 6), z: Y.z + cy * (h + 6), yaw: Y.yaw };
+    });
     // Field respawns: the nearest opened band gate (on its safe side), or town.
     g.hooks.respawnPoint = () => {
       const p = g.player.pos;
@@ -365,11 +377,12 @@ export class East implements System {
     g.hud.banner(w.title.split(' · ')[0].toUpperCase(), w.title.split(' · ')[1] ?? '', 'danger');
     g.sfx('wave_start');
     let k = 0;
-    const lvl = Math.max(16, Math.min(18, g.state.d.level));
+    const lvl = Math.max(16, Math.min(18, g.state.d.level)), run = this.gRun;
     for (const [kind, n, variant, name] of w.spawns) for (let j = 0; j < n; j++) {
       const corner = k++ % 4, sx = corner & 1 ? 1 : -1, sz = corner & 2 ? 1 : -1;
       const x = c.x + sx * hs + rand(-1.2, 1.2), z = c.z + sz * hs + rand(-1.2, 1.2);
       g.mobs.after(0.25 * k, null, () => {
+        if (run !== this.gRun) return;   // the run was reset while this spawn was queued
         const m = g.mobs.spawn(kind, { level: lvl, variant: variant ?? 'normal', name, x, z, floor: this.courtFloor(), aggro: true, leash: 400, xpMul: 0.8 });
         this.gMobs.push(m);
         g.fx.ring(m.pos, 3, 0xff5a2a, 0.5, 2);
@@ -380,14 +393,21 @@ export class East implements System {
   private resetGauntlet() {
     const g = this.game;
     for (const m of this.gMobs) if (m.alive) g.mobs.remove(m);
-    this.gMobs.length = 0; this.gState = 'idle'; this.gWave = -1;
-    this.doors[0].want = true; this.doors[1].want = false; this.doors[2].want = false;
-    for (const d of this.doors) this.doorCollider(d);
+    this.gMobs.length = 0; this.gState = 'idle'; this.gWave = -1; this.gRun++;
+    for (const d of this.doors) { d.want = true; this.doorCollider(d); }
     g.mobs.bounds = null; g.combat.checkpoint = null;
   }
   private updateGauntlet(dt: number) {
     const g = this.game, st = g.state;
     if (this.gState === 'idle') return;
+    // the player left some other way (Return to Brasswick, a portal): stand the run down instead of holding sealed courts
+    const p = g.player.pos;
+    if (g.interior || Math.abs(p.x - GAUNTLET.x) > GAUNTLET.size * 1.5 + 22 || Math.abs(p.z - GAUNTLET.z) > GAUNTLET.size / 2 + 22) {
+      const live = this.gState !== 'done';
+      this.resetGauntlet();
+      if (live) g.hud.toast('Gauntlet abandoned', 'warn', 'The courts have reset');
+      return;
+    }
     this.gDelay -= dt;
     const alive = this.gMobs.filter((m) => m.alive).length;
     if (this.gState !== 'done') g.hud.setTimer('The Gauntlet', this.gWave < 0 ? 'READY' : `WAVE ${Math.min(5, this.gWave + 1)} / 5`, this.gState === 'fight' ? `${alive} left` : '');
@@ -415,7 +435,7 @@ export class East implements System {
         st.d.hp = Math.min(st.maxHp, st.d.hp + st.maxHp * 0.25);
       }
     } else if (this.gState === 'between' && this.gDelay <= 0) {
-      const next = WAVES[this.gWave + 1], c = GAUNTLET.courts[next.court], p = g.player.pos;
+      const next = WAVES[this.gWave + 1], c = GAUNTLET.courts[next.court];
       // wait until the player has stepped into the next court, then seal it behind them
       if (Math.abs(p.x - c.x) < GAUNTLET.size / 2 - 1.5 && Math.abs(p.z - c.z) < GAUNTLET.size / 2 - 1.5) {
         if (next.court !== WAVES[this.gWave].court) { const d = this.doors[next.court]; d.want = false; this.doorCollider(d); }
