@@ -870,9 +870,7 @@ export class Mob implements Hittable {
         const reach = block ? block.dist : facing ? Math.min(len, a.length!) : a.length!;
         if (!facing) _d.set(Math.sin(this.yaw), _d.y, Math.cos(this.yaw)).normalize();
         _v2.copy(src).addScaledVector(_d, reach);
-        fx.beam(src, _v2, a.color ?? 0xff4a3a, a.width! * (0.8 + 0.2 * Math.sin(this.stT * 40)), 0.05, 0.02, 5);
-        fx.beam(src, _v2, 0xffffff, a.width! * 0.25, 0.05, 0, 6);
-        if (block) fx.emit(_v2, { count: 2, speed: [1, 4], life: [0.1, 0.25], size: [0.05, 0.1], color: 0xffb08a, glow: 5, sprite: SP.STREAK, stretch: 0.06 });
+        fx.laser(src, _v2, a.color ?? 0xff4a3a, a.width!, !!block);
         if (this.tele) { const m = this.tele.mesh, l = Math.min(reach, a.length!) / 2; m.rotation.y = Math.atan2(_d.x, _d.z); m.scale.z = Math.max(0.5, l); m.position.set(src.x + _d.x * l, this.pos.y + 0.07, src.z + _d.z * l); }
         this.tick -= dt;
         if (this.tick <= 0) {

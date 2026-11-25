@@ -107,10 +107,7 @@ export class Finishers {
       m.center(_v);
       const fx = g.fx;
       if (!c.melee) { pl.center.clone(); _w.set(pl.pos.x, pl.pos.y + 1.35, pl.pos.z); fx.beam(_w, _v, g.state.weapon.color, 0.5, 0.25, 0, 6); fx.beam(_w, _v, 0xffffff, 0.18, 0.2, 0, 7); }
-      fx.flash(_v, 0xffe2a0, 140, 16, 0.5);
-      fx.emit(_v, { count: 40, speed: [6, 16], up: 3, life: [0.3, 0.8], size: [0.07, 0.16], color: 0xfff0c0, glow: 6, gravity: 14, sprite: SP.STREAK, stretch: 0.08, radius: m.radius * 0.4 });
-      fx.chunks(_v, 18, m.def.colors, 10, 0.24);
-      fx.ring(_w.set(m.pos.x, m.pos.y + 0.1, m.pos.z), m.radius * 6 + 4, 0xffd27a, 0.6, 3);
+      fx.play('robot.finish', _v, _w.set(Math.sin(pl.yaw), 0.15, Math.cos(pl.yaw)), g.state.weapon.color, m.radius, m.height, m.def.colors);
       g.hitStop(0.16); g.slowMo(0.2, 0.45); g.cameraRig.shake(0.85); g.cameraRig.punch(-6);
       g.renderer.post.flash.w = Math.max(g.renderer.post.flash.w, 0.12);
       g.sfx('hit_heavy', { pos: m.pos, pitch: 0.7 }); g.sfx('boss_slam', { pos: m.pos, vol: 0.8 }); g.haptic(70);

@@ -90,7 +90,7 @@ export const RECIPES: Record<string, Recipe> = {
     fx.emit(p, { count: 1, speed: [0, 0], life: [0.11, 0.14], size: [1.7 * s, 2.1 * s], grow: 1.5, color: HOT, glow: 4, sprite: SP.FLASH, core: 1 });
     // the fireball: lobes of flame that are eaten away into smoke
     fx.emit(p, { count: Math.round(4 + 3 * s), speed: [1 * s, 4 * s], life: [0.26, 0.5], size: [0.7 * s, 1.2 * s], grow: 1.9, color: c.tint, color2: 0xffd27a, glow: 2.1, drag: 3, sprite: SP.SMOKE, spin: 2, core: 0.7 });
-    fx.emit(p, { additive: false, count: Math.round(3 + 2 * s), speed: [0.6 * s, 2.4 * s], up: 1.3 * s, life: [0.8, 1.5], size: [0.8 * s, 1.3 * s], grow: 2.2, color: 0x2e2a28, alpha: 0.8, drag: 2, gravity: -0.5, sprite: SP.SMOKE, spin: 1.5, ground: low ? gy : undefined });
+    fx.emit(p, { additive: false, count: Math.round(3 + 2 * s), speed: [0.6 * s, 2.4 * s], up: 1.3 * s, life: [0.7, 1.2], size: [0.6 * s, 1.0 * s], grow: 2.1, color: 0x5e5852, alpha: 0.5, drag: 2, gravity: -0.5, sprite: SP.SMOKE, spin: 1.5, ground: low ? gy : undefined });
     sparks(fx, p, undefined, c.tint, 12 + 8 * s, 15 * s, Math.PI);
     fx.emit(p, { additive: false, count: Math.round(4 + 3 * s), speed: [3 * s, 8 * s], up: 3, life: [0.5, 0.9], size: [0.08, 0.16], grow: 1, color: 0x2a2622, gravity: 18, drag: 0.5, spin: 14, sprite: SP.SHARD });
     fx.emit(p, { count: 1, speed: [0, 0], life: [0.2, 0.24], size: [1.2 * s, 1.2 * s], grow: 3.6, color: c.tint, glow: 1.6, sprite: SP.RING2, erode: 0.9 });
@@ -326,6 +326,54 @@ export const RECIPES: Record<string, Recipe> = {
     fx.emit(c.p, { count: 6, speed: [0.3, 1.5], up: 1.6, life: [0.7, 1.4], size: [0.04, 0.08], color: EMBER, glow: 3, gravity: -0.8, drag: 0.8, sprite: SP.EMBER, radius: 0.4 * c.s });
   },
   /** the stagger meter fills: armour bursts off and the core is laid open (s: radius, k: height) */
+  /**
+   * A boss changes phase (s: its radius, k: the phase it enters). Phase 2 is a call: rings rolling out and light
+   * climbing off the floor. Phase 3 is a loss: the shield's cells fly off it and the floor cracks.
+   */
+  'boss.phase': (fx, c) => {
+    const p = c.p, r = Math.max(1.5, c.s), last = c.k >= 3, gy = fx.groundY(p.x, p.z, p.y + 0.5);
+    _a.set(p.x, gy + r * 0.9, p.z);
+    ringOut(fx, { x: p.x, y: gy, z: p.z }, r * 3.2, c.tint, 0.5, 2.2);
+    fx.after(0.12, 'ring.out', { x: p.x, y: gy, z: p.z }, UP, WHITE, 1, r * 2.2);
+    fx.after(0.26, 'ring.out', { x: p.x, y: gy, z: p.z }, UP, c.tint, 1, r * 4.4);
+    fx.emit({ x: p.x, y: gy + 0.2, z: p.z }, { count: 14, ringR: r * 1.3, dir: UP, align: true, speed: [5, 12], life: [0.3, 0.55], size: [1.4, 2.6], aspect: 0.08, color: c.tint, color2: WHITE, glow: 2.2, sprite: SP.LINE, drag: 1.5 });
+    for (let i = 0; i < (last ? 7 : 4); i++) { _b.set(rnd(-1, 1), rnd(-0.1, 1), rnd(-1, 1)).normalize(); fx.emit(_a, { count: 1, dir: _b, align: true, speed: [0, 0], life: [0.12, 0.3], size: [r * 1.2, r * 2], aspect: 0.6, color: c.tint, color2: WHITE, glow: 2.8, sprite: SP.BOLT, core: 1, radius: r * 0.4 }); }
+    if (last) {
+      // the shield comes off in its cells
+      fx.emit(_a, { count: 16, speed: [5, 12], up: 3, life: [0.5, 0.9], size: [0.3, 0.55], grow: 0.6, color: c.tint, color2: WHITE, glow: 2, gravity: 7, drag: 1.2, spin: 7, sprite: SP.HEX, radius: r * 0.7, erode: 0.8 });
+      fx.emit(_a, { count: 1, speed: [0, 0], life: [0.12, 0.15], size: [r * 1.6, r * 1.9], grow: 1.5, color: c.tint, color2: HOT, glow: 2.4, sprite: SP.FLASH, core: 0.8 });
+      crack(fx, p, gy, r * 2.4, c.tint, 3);
+      sparks(fx, _a, undefined, c.tint, 24, 13, Math.PI);
+    }
+    fx.flash(_a, c.tint, last ? 70 : 45, 18, 0.35);
+  },
+  /** the two ends of a held laser, every frame (p: emitter, d: where it lands, s: width, k: 1 when something solid stopped it) */
+  'laser.ends': (fx, c) => {
+    const w = c.s;
+    fx.emit(c.p, { count: 1, speed: [0, 0], life: [0.04, 0.05], size: [w * 3.2, w * 3.6], grow: 1, color: c.tint, color2: WHITE, glow: 2.6, sprite: SP.SPARKLE, rot: fx.time * 2, core: 1 });
+    fx.emit(c.d, { count: 1, speed: [0, 0], life: [0.04, 0.05], size: [w * 2.6, w * 3], grow: 1, color: c.tint, glow: 2.4, sprite: SP.DOT, core: 0.9 });
+    if (Math.random() < (c.k ? 0.9 : 0.35)) fx.emit(c.d, { count: c.k ? 2 : 1, speed: [1.5, 5], up: 1.5, life: [0.12, 0.3], size: [0.04, 0.08], color: c.tint, color2: HOT, glow: 4.5, gravity: 9, sprite: SP.STREAK, stretch: 0.07 });
+    if (c.k && Math.random() < 0.25) fx.emit(c.d, { additive: false, count: 1, speed: [0.2, 0.6], up: 0.8, life: [0.4, 0.7], size: [0.14, 0.22], grow: 2.2, color: 0x8a8580, alpha: 0.4, sprite: SP.PUFF, spin: 2 });
+  },
+  /**
+   * The finishing blow on a Broken robot (s: its radius, k: its height, d: the way the blow travels): two cuts of
+   * light crossing through it, the shell thrown off down the blow in its own paint, and the ground opened under it.
+   */
+  'robot.finish': (fx, c) => {
+    const p = c.p, s = Math.max(0.6, c.s), d = c.d, paint = c.paint ?? STEEL, gy = fx.groundY(p.x, p.z, p.y);
+    for (let i = 0; i < 2; i++) fx.emit(p, { count: 1, speed: [0, 0], life: [0.16, 0.2], size: [2.6 * s + 0.8, 3 * s + 0.8], aspect: 0.5, grow: 1.25, color: c.tint, color2: WHITE, glow: 2.6, sprite: SP.SLASH, rot: (i ? -0.7 : 0.7) + rnd(-0.15, 0.15), core: 0.9, erode: 1 });
+    fx.emit(p, { count: 1, speed: [0, 0], life: [0.09, 0.12], size: [1.5 * s + 0.4, 1.8 * s + 0.4], grow: 1.5, color: c.tint, color2: HOT, glow: 2.4, sprite: SP.FLASH, core: 0.8 });
+    sparks(fx, p, d, 0xffe2a0, 26, 15, 0.8);
+    sparks(fx, p, undefined, c.tint, 10, 9, Math.PI);
+    _a.copy(p).addScaledVector(d, s * 0.3);
+    fx.chunks(_a, 10, paint, 10, 0.22, T.FLAT, 'plate', 0.3);
+    fx.chunks(_a, 6, paint, 11, 0.12, T.FLAT, 'strut');
+    for (const sp of [SP.GEAR, SP.NUT, SP.SCREW]) fx.emit(p, { additive: false, count: 3, dir: d, spread: 1.1, speed: [3, 9], up: 4, life: [0.8, 1.2], size: [0.12, 0.2], grow: 1, colors: STEEL, gravity: 15, spin: 16, sprite: sp });
+    ringOut(fx, { x: p.x, y: gy, z: p.z }, s * 3 + 2, 0xffd27a, 0.45, 2);
+    crack(fx, p, gy, s * 2.2 + 1, c.tint, 2.4);
+    dustRing(fx, p, gy, 0.5 * s, 7, 1, 4);
+    fx.flash(p, 0xffe2a0, 60, 12, 0.3);
+  },
   'robot.break': (fx, c) => {
     const p = c.p, s = c.s, paint = c.paint ?? STEEL;
     fx.emit(p, { count: 1, speed: [0, 0], life: [0.12, 0.15], size: [1.4 * s + 0.4, 1.7 * s + 0.4], grow: 1.6, color: HOT, glow: 3, sprite: SP.FLASH, core: 1 });

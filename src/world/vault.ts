@@ -461,7 +461,7 @@ export class Vault implements System {
     });
     m.onPhase = (ph) => {
       g.hud.banner(ph === 2 ? 'EXAM: PRACTICAL' : 'EXAM: FINAL', ph === 2 ? 'The Warden calls its drones' : 'Its shield is gone: the core is open', 'danger');
-      g.sfx('elite_roar', { pos: m.pos }); g.cameraRig.shake(0.5); g.fx.ring(m.pos, 14, 0x7ff0ff, 0.7, 3);
+      g.sfx('elite_roar', { pos: m.pos }); g.cameraRig.shake(0.5); g.fx.play('boss.phase', m.pos, undefined, 0x7ff0ff, m.radius, ph);
       if (ph === 3) {
         // the final: the shield plates blow off and the core runs hot. It hits harder and faster
         // (sweeping beam, triple rings, a slam that chases), and takes more damage for it.

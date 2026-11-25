@@ -216,6 +216,7 @@ class Pool {
 
 // ---------------------------------------------------------------------------------------------
 const _c1 = new THREE.Color(), _c2 = new THREE.Color(), _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion();
+const _ba = new THREE.Vector3(), _bb = new THREE.Vector3(), _bd = new THREE.Vector3();
 const _m = new THREE.Matrix4(), _s = new THREE.Vector3(), _e = new THREE.Euler();
 const UP = new THREE.Vector3(0, 1, 0), ZP = new THREE.Vector3(0, 0, 1);
 
@@ -250,7 +251,7 @@ export class FX {
   time = 0;
   private camPos = new THREE.Vector3();
   /** metres from the lens inside which an effect is born 'in the sights': it is sized to its distance and leaves no smoke (longer through a scope) */
-  private reach = 1.7;
+  private reach = 2.6;
   /** weak points as light (vfx/glints.ts), and where and when one was last struck */
   private glints = new Glints();
   private weakHit = { x: 0, y: 0, z: 0, t: 0 };
@@ -291,7 +292,7 @@ export class FX {
     const pool = o.additive === false ? this.alpha : this.add;
     // born within reach of the lens (first person, the sights, a scope): the same size on screen as it
     // would be from the shoulder, and no smoke left hanging in the sight picture
-    const cp = this.camPos, nd = Math.hypot(pos.x - cp.x, pos.y - cp.y, pos.z - cp.z), near = nd < this.reach ? Math.max(0.3, nd / this.reach) : 1;
+    const cp = this.camPos, nd = Math.hypot(pos.x - cp.x, pos.y - cp.y, pos.z - cp.z), near = nd < this.reach ? Math.max(0.25, nd / this.reach) : 1;
     if (near < 0.8 && pool === this.alpha && (o.sprite === SP.PUFF || o.sprite === SP.SMOKE)) return;
     let count = o.count ?? 1;
     if (this.calm && count > 2) count = Math.ceil(count * 0.6);
@@ -449,7 +450,7 @@ export class FX {
     best.color.setHex(color);
     intensity *= this.calm ? 0.15 : 0.3;
     // a light beside the lens whites out the weapon in hand
-    { const cp = this.camPos; if (Math.hypot(pos.x - cp.x, pos.y - cp.y, pos.z - cp.z) < this.reach) intensity *= 0.3; }
+    { const cp = this.camPos; if (Math.hypot(pos.x - cp.x, pos.y - cp.y, pos.z - cp.z) < this.reach) intensity *= 0.1; }
     best.peak = intensity; best.life = best.dur = dur;
     FLASHL[i + 1].set(best.color.r * intensity, best.color.g * intensity, best.color.b * intensity, intensity);
   }
@@ -460,26 +461,61 @@ export class FX {
 
   /** Straight or jagged energy line between two points. `row` picks the ribbon's paint (RB.BEAM, RB.ARC, RB.TRACER, ...). */
   beam(a: THREE.Vector3, b: THREE.Vector3, color = 0x7ff0ff, width = 0.12, dur = 0.14, jag = 0, glow = 4, row?: number) {
-    this.ribbons.beam(a, b, color, width, dur, jag, glow * 0.55, row);
+    // a line that starts within reach of the lens (a tracer from the sights) starts where it is first a line and not a wall
+    const sa = this.clear(a, b, _ba), sb = this.clear(b, a, _bb);
+    if (sa.distanceToSquared(sb) < 0.25) return;
+    this.ribbons.beam(sa, sb, color, width, dur, jag, glow * 0.55, row);
+  }
+  /** `p`, or the point toward `to` where the segment leaves the lens's reach. */
+  private clear(p: THREE.Vector3, to: THREE.Vector3, out: THREE.Vector3): THREE.Vector3 {
+    const d = p.distanceTo(this.camPos);
+    if (d >= this.reach) return p;
+    const len = p.distanceTo(to);
+    return len < 1e-3 ? p : out.copy(p).addScaledVector(_bd.subVectors(to, p).divideScalar(len), Math.min(len, this.reach - d + 0.4));
+  }
+  /**
+   * A laser held from a to b, for this frame (call every frame it burns): a steady line with the energy
+   * running down it, a lens star at the emitter and a hot spot where it lands. `stopped`: it has met
+   * something solid short of its mark, and spits there.
+   */
+  laser(a: THREE.Vector3, b: THREE.Vector3, color: number, width: number, stopped = false) {
+    const c = this.camPos, rb = this.ribbons;
+    _bd.subVectors(b, a); const len = _bd.length();
+    if (len < 0.2) return;
+    _ba.set((a.x + b.x) / 2 - c.x, (a.y + b.y) / 2 - c.y, (a.z + b.z) / 2 - c.z);
+    _bb.crossVectors(_bd, _ba);
+    if (_bb.lengthSq() < 1e-8) _bb.set(0, 1, 0);
+    _bb.normalize();
+    _c1.setHex(color);
+    const flick = 0.9 + 0.1 * Math.sin(this.time * 47), u0 = -this.time * 3.2, u1 = u0 + len / Math.max(width * 9, 0.6);
+    // the glow, then the hair of white inside it
+    for (let pass = 0; pass < 2; pass++) {
+      const w = pass ? width * 0.3 : width * 1.5 * flick, g = pass ? 1.5 : 1.25, r = pass ? 1 : _c1.r, gg = pass ? 1 : _c1.g, bl = pass ? 1 : _c1.b;
+      rb.imBegin();
+      rb.imPoint(a.x - _bb.x * w, a.y - _bb.y * w, a.z - _bb.z * w, a.x + _bb.x * w, a.y + _bb.y * w, a.z + _bb.z * w, u0, r * g, gg * g, bl * g, 1, RB.BEAM, 0, pass ? 1 : 0.35, 1);
+      rb.imPoint(b.x - _bb.x * w, b.y - _bb.y * w, b.z - _bb.z * w, b.x + _bb.x * w, b.y + _bb.y * w, b.z + _bb.z * w, u1, r * g, gg * g, bl * g, 1, RB.BEAM, 0, pass ? 1 : 0.35, 1);
+    }
+    this.play('laser.ends', a, b, color, width, stopped ? 1 : 0);
   }
   /** A weapon trail to feed with the blade's base and tip each frame. */
   trail(): Trail { return this.ribbons.trail(); }
   /** A tail behind a moving thing; call every frame with the same key. */
-  follow(key: object, pos: { x: number; y: number; z: number }, color: number, look: FollowLook) { this.ribbons.follow(key, pos.x, pos.y, pos.z, color, look); }
+  follow(key: object, pos: { x: number; y: number; z: number }, color: number, look: FollowLook) { if (this.inReach(pos)) return; this.ribbons.follow(key, pos.x, pos.y, pos.z, color, look); }
+  private inReach(p: { x: number; y: number; z: number }) { const c = this.camPos; return Math.hypot(p.x - c.x, p.y - c.y, p.z - c.z) < this.reach; }
   /**
    * A projectile in flight, once a frame: its tail, its head, and for the shaped ones (the Arc Wave's
    * crescent, the javelin's lance) the body itself. `s` is the shot: { x, y, z, kind, color, enemy, radius, crit, status, life }.
    */
   shot(s: { x: number; y: number; z: number; kind: string; color: number; enemy: boolean; radius: number; crit?: boolean; status?: string; life: number; ammo?: string | null }, dir: THREE.Vector3) {
     const lk = s.enemy ? SHOT_LOOKS.enemy : SHOT_LOOKS[s.kind] ?? SHOT_LOOKS.arrow;
-    if (lk.tail) this.ribbons.follow(s, s.x, s.y, s.z, s.color, lk.tail);
+    if (lk.tail && !this.inReach(s)) this.ribbons.follow(s, s.x, s.y, s.z, s.color, lk.tail);
     if (lk.fly) { const c = this.ctx[5]; c.p.set(s.x, s.y, s.z); c.d.copy(dir); c.tint = s.color; c.s = s.radius; c.k = s.life; c.paint = null; lk.fly(this, c, s); }
   }
 
   update(dt: number, camera: THREE.Camera, fogColor: THREE.Color, fogDensity: number) {
     this.time += dt;
     this.camPos.copy(camera.position);
-    this.reach = 1.7 * Math.max(1, camera.projectionMatrix.elements[5] / 1.6);
+    this.reach = 2.6 * Math.max(1, camera.projectionMatrix.elements[5] / 1.6);
     // timeline: beats that were set to follow
     for (let i = 0; i < this.cueN; i++) {
       const c = this.cues[i];

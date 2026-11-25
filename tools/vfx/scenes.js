@@ -101,6 +101,49 @@
           g.fx.shotImpact(pt, g.player.pos.clone().sub(pt).normalize(), 'weak', g.state.weapon.color, m.def.colors);
         }
       } },
+    { name: 'elite-laser', every: 10, cells: 8, crop: [0, 0.16, 1, 0.62],
+      async setup(G, g) {
+        arm(G, g, 12, 'shop_blade');
+        const e = g.mobs.elites.map((x) => x.def).find((d) => d.id === 'plumb_prime');
+        // in the open yard, not at its gate, so the line is seen whole
+        G.place(52, -16, 1.2);
+        const m = G.spawn(e.kind, 52 + Math.sin(1.2) * 11, -16 + Math.cos(1.2) * 11, { level: e.level, variant: e.variant, elite: e, hpMul: e.hpMul, aggro: true });
+        G.camTrack(m, 0.1, 1.25, 0.5);
+        await G.settleMobs(); g.combat.target = m; G.quiet();
+        await G.until(() => m.atk && m.atk.id === 'plumbline' && m.state === 'active', 2400);
+      },
+      async act() {} },
+    { name: 'finisher', every: 5, cells: 16, hour: 14, crop: [0, 0.12, 1, 0.7],
+      async setup(G, g) {
+        arm(G, g, 12, 'shop_blade');
+        const e = g.mobs.elites.map((x) => x.def).find((d) => d.id === 'slag_boss');
+        G.place(e.x + Math.sin(0.25) * 3.2, e.z + Math.cos(0.25) * 3.2, 0.25 - PI);
+        const m = G.spawn(e.kind, e.x, e.z, { level: e.level, variant: e.variant, elite: e, hpMul: e.hpMul, aggro: true });
+        G.camTrack(m, 0.08, 1, -0.3);
+        await G.settleMobs(); g.combat.target = m;
+        m.hp = m.maxHp * 0.15; m.forceBreak();
+        await G.secs(0.5); G.quiet(); G.camFree();
+      },
+      async act(G, g) { const f = g.interact.list.find((i) => i.id === 'finisher'); if (f && f.enabled()) f.onUse(); else throw new Error('no finisher'); } },
+    { name: 'warden-phase', every: 9, cells: 16, crop: [0, 0.12, 1, 0.7],
+      async setup(G, g) {
+        G.level(12); G.weapon('shop_blade');
+        g.hooks.enterVault();
+        await G.until(() => g.interior === 'vault' && !g.travelling, 600);
+        await G.secs(0.5);
+        g.player.teleport(200, -54, -58, PI);
+        g.vault.startBoss();
+        await G.until(() => g.vault.stage === 'boss', 600);
+        const m = this.m = g.vault.warden;
+        g.player.teleport(200, -54, -66, PI); g.player.invuln = 600;
+        G.camTrack(m, 0.06, 1.2, 0.3);
+        g.combat.target = m;
+        await G.secs(1.2); G.quiet();
+      },
+      async act(G, g) {
+        const m = this.m, hit = (f) => m.takeHit({ dmg: m.maxHp * f, crit: false, dirX: 0, dirZ: -1, knock: 0, heavy: false, source: 'skill', color: 0xffffff });
+        hit(0.4); await G.secs(1.1); hit(0.35);
+      } },
     { name: 'world-levelup', every: 6, cells: 12,
       async setup(G, g) { arm(G, g, 5, 'shop_blade'); G.place(52, -16, 1.2); G.cam(1.2 + PI, 0.2, 1.0); await G.secs(0.5); G.quiet(); },
       async act(G, g) { g.fx.levelUp(g.player.pos); await G.secs(0.6); g.fx.heal(g.player.pos); await G.secs(0.35); g.fx.pickup(g.player.pos); } },
@@ -203,6 +246,8 @@
       await sc.setup(G, g);
       // --q "fp=1": the same scene through the hero's eyes
       if (q.has('fp')) { G.camFree(); g.cameraRig.setView('first', true); await G.secs(0.4); }
+      // --q "ads=1": aimed down the sights (first person; the rifle's scope)
+      if (q.has('ads')) { G.camFree(); await G.tap('aim', 3); await G.secs(0.7); }
       if (sc.measure) {
         const r = { calls: 0, tris: 0, fx: 0, fxAtWorst: 0 };
         const end = H.frame + sc.measure * 60;
