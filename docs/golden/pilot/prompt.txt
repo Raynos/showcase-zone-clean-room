@@ -1,0 +1,18 @@
+The attached image golden.png is a portrait phone screenshot of a stylised third-person action MMO running in a browser.
+
+Use your image generation tool to create a "polished PS5 remaster" paint-over of this exact frame and save it as mockup.png in the current directory, in the same portrait aspect ratio.
+
+Keep the same camera, composition, hero pose, enemies, landmarks, palette (warm orange and cool grey with cyan accents) and the same HUD layout.
+
+Improve only the rendering quality:
+- rich lighting with soft ambient occlusion and bounce light
+- atmospheric depth and layered distant scenery
+- detailed hand-painted stylised materials
+- lush, fine grass
+- a dramatic sky with volumetric clouds
+- a heroic stylised character with a sculpted face and layered gear instead of a blocky toy
+- enemy robots with crisp mechanical detail
+
+Do not add new gameplay elements or new text. Stay stylised; do not make it photorealistic.
+
+After saving, reply with one line stating the file path and its size in pixels. If you have no image generation tool available, say so plainly and do not draw the image with code.
