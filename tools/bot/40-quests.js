@@ -89,7 +89,14 @@
       const r = await B.goTo(d.x, d.z, { r: Math.max(4, d.r * 0.35), partialOk: d.r, roadOnly: true, until: () => B.mobs(30, match).length > 0 });
       if (r === 'combat') { await B.fight(); await B.afterFight(); return true; }
       B.campBad = B.campBad || {};
-      if (r === 'nopath' || r === 'stuck') { B.campBad[camp.__i] = B.now() + 240; B.note(`cannot reach ${d.kind} camp at ${d.x},${d.z}: ${r}`); return true; }
+      if (r === 'nopath' || r === 'stuck') {
+        // inside an interior, or when every camp fails at once, the fault is ours (the planner), not the camp's:
+        // blacklisting them all left the bot standing in town for four minutes
+        if (g.interior) return false;
+        B.noPathRun = (B.now() - (B.lastCampNoPath || -99) < 8 ? (B.noPathRun || 0) : 0) + 1; B.lastCampNoPath = B.now();
+        if (B.noPathRun >= 3) { B.nav.invalidate(); B.note(`no path to ${B.noPathRun} camps in a row: replanning from scratch`); await B.sleep(2); return true; }
+        B.campBad[camp.__i] = B.now() + 240; B.note(`cannot reach ${d.kind} camp at ${d.x},${d.z}: ${r}`); return true;
+      }
       cand = B.mobs(45, match)[0];
       if (!cand) { B.campBad[camp.__i] = B.now() + 35; return true; }
     }

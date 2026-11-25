@@ -200,6 +200,12 @@
         b.damageTaken += dd; L.dmg += dd; if (fr) fr.dmg += dd;
         B.lastHurt = { t, by: B.blame ? B.blame() : '' };
       }
+      // cinematics (opening shot, gate reveals, boss intros): how long each held the camera, and whether a robot
+      // had us in its sights while it did
+      const cine = !!g.cameraRig.cine;
+      if (cine && !B.cineRec) B.cineRec = { at: B.stamp(), t0: t, hostile: false, where: B.where ? B.where() : '' };
+      if (cine && B.cineRec && !B.cineRec.hostile) B.cineRec.hostile = g.mobs.list.some((m) => m.alive && m.aggro && Math.hypot(m.pos.x - pl.pos.x, m.pos.z - pl.pos.z) < 25);
+      if (!cine && B.cineRec) { const c = B.cineRec; B.cineRec = null; (rep.cines = rep.cines || []).push({ at: c.at, sec: Math.round((t - c.t0) * 10) / 10, hostile: c.hostile, where: c.where, interior: g.interior || null }); }
       // (a death drops the bar to zero in one step: that step is counted too)
       if (B.lastHp !== undefined && pl.dead && !B.wasDead && B.lastHp > 0) { b.damageTaken += B.lastHp; L.dmg += B.lastHp; if (fr) fr.dmg += B.lastHp; }
       if (fr) fr.minHp = Math.min(fr.minHp, hp / st.maxHp);
