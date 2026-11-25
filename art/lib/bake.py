@@ -114,8 +114,12 @@ def _bake_material(obj, size):
     return mat, nt, em, img_node
 
 
-def gbuffer(obj, size, ao_dist=0.3, edge_dist=0.03, samples=48, margin=4):
-    """Bake the UV-space G-buffer. Returns dict of float arrays (size, size, 3), top row first."""
+def gbuffer(obj, size, ao_dist=0.3, edge_dist=0.03, samples=48, margin=4, apart=None):
+    """
+    Bake the UV-space G-buffer. Returns dict of float arrays (size, size, 3), top row first.
+    `apart` is an optional (n_verts, 3) array of Blender-space offsets applied only while the
+    occlusion pass bakes: variant dressing is moved clear of the body so it does not shadow it.
+    """
     sc = bpy.context.scene
     mat, nt, em, img_node = _bake_material(obj, size)
     N = nt.nodes
@@ -162,7 +166,16 @@ def gbuffer(obj, size, ao_dist=0.3, edge_dist=0.03, samples=48, margin=4):
         sc.cycles.samples = spp
         sc.render.bake.margin = mg
         t0 = time.time()
-        bpy.ops.object.bake(type='EMIT')
+        if name == 'ao' and apart is not None:
+            rest = np.empty(len(obj.data.vertices) * 3, dtype=np.float32)
+            obj.data.vertices.foreach_get('co', rest)
+            obj.data.vertices.foreach_set('co', (rest.reshape(-1, 3) + apart).ravel())
+            obj.data.update()
+            bpy.ops.object.bake(type='EMIT')
+            obj.data.vertices.foreach_set('co', rest)
+            obj.data.update()
+        else:
+            bpy.ops.object.bake(type='EMIT')
         px = np.empty(size * size * 4, dtype=np.float32)
         img.pixels.foreach_get(px)
         res[name] = px.reshape(size, size, 4)[::-1, :, :3].copy()

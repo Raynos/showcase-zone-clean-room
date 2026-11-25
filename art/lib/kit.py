@@ -32,7 +32,16 @@ SLOTS = [
 SURF = {
     'flat': 0, 'paint': 1, 'metal': 2, 'wood': 3, 'rubber': 4, 'glow': 5, 'cloth': 6, 'leather': 7,
     'skin': 8, 'hair': 9, 'eye': 10, 'dark': 11, 'stripe': 12, 'endgrain': 13, 'glass': 14, 'knit': 15,
+    'panel': 16, 'vent': 17,
 }
+# Painter notes (art/lib/paint.py):
+#   paint     painted metal: light edges, chips to bare steel, grime
+#   panel     paint plus an inset panel line and corner rivets on every box face big enough
+#   metal     brushed bare metal with rivets at the ends of long box members
+#   vent      dark louvre slats inside a painted frame (box faces)
+#   stripe    black hazard bands over the face's colour (give it the yellow as a fixed colour)
+#   wood      plank grain along the primitive's long axis, end grain, pale chipped edges, nails
+#   glow / glass / dark / rubber / flat   what they say; glow and glass never get dirty
 
 PI = math.pi
 
@@ -113,6 +122,9 @@ class Model:
 
     # material presets -----------------------------------------------------------------------
     def paint(self, slot='body', **k): return self.mat(slot=slot, surf='paint', metal=0.25, rough=0.62, emit=0, **k)
+    def panel(self, slot='body', **k): return self.mat(slot=slot, surf='panel', metal=0.25, rough=0.62, emit=0, **k)
+    def vent(self, slot='dark', **k): return self.mat(slot=slot, surf='vent', metal=0.5, rough=0.6, emit=0, **k)
+    def stripe(self, color=0xffc23a, **k): return self.mat(slot='fixed', surf='stripe', color=color, metal=0.2, rough=0.6, emit=0, **k)
     def steel(self, slot='steel', **k): return self.mat(slot=slot, surf='metal', metal=0.9, rough=0.42, emit=0, **k)
     def darkmetal(self, slot='dark', **k): return self.mat(slot=slot, surf='metal', metal=0.7, rough=0.55, emit=0, **k)
     def rubber(self, slot='rubber', **k): return self.mat(slot=slot, surf='rubber', metal=0.0, rough=0.95, emit=0, **k)

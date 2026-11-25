@@ -5,7 +5,6 @@ With no names every model is rebuilt. Each model is a module with make() -> kit.
 TEX (texture size) and BUILD (bake / paint settings). Output goes to public/models/.
 """
 import importlib
-import json
 import os
 import sys
 import time
@@ -16,26 +15,26 @@ sys.path.insert(0, HERE)
 from lib import export  # noqa: E402
 
 MODELS = {
-    'mite': 'robots.mite',
+    'mite': 'robots.mite', 'pallet': 'robots.pallet', 'drone': 'robots.drone', 'sentry': 'robots.sentry',
+    'riveter': 'robots.riveter', 'welder': 'robots.welder', 'foreman': 'robots.foreman',
+    'warden': 'robots.warden', 'titan': 'robots.titan',
+    'rook': 'people.rook', 'folk': 'people.folk',
+    'horse': 'mounts.horse', 'hoverboard': 'mounts.hoverboard',
 }
+
+
+def exists(mod):
+    return os.path.exists(os.path.join(HERE, *mod.split('.')) + '.py')
 
 
 def main():
     argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
-    names = [a for a in argv if not a.startswith('-')] or list(MODELS)
+    names = [a for a in argv if not a.startswith('-')] or [n for n, m in MODELS.items() if exists(m)]
     t0 = time.time()
-    index_path = os.path.join(export.OUT, 'index.json')
-    index = {}
-    if os.path.exists(index_path):
-        with open(index_path) as f: index = json.load(f)
     for n in names:
         mod = importlib.import_module(MODELS[n])
         model = mod.make()
         meta = export.build(model, tex=getattr(mod, 'TEX', 512), post=getattr(mod, 'post', None), **getattr(mod, 'BUILD', {}))
-        index[n] = meta
-    with open(index_path, 'w') as f:
-        json.dump(index, f, indent=1, sort_keys=True)
-        f.write('\n')
     print(f'done: {len(names)} model(s) in {time.time() - t0:.0f}s')
 
 

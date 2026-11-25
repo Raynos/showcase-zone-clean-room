@@ -28,8 +28,11 @@ const PAL_N = 24;
 /** The painter stores values scaled by this so highlights have headroom (art/lib/paint.py). */
 const HEADROOM = 0.8;
 
-/** Every model the game uses. Loaded together at boot. */
-export const MODEL_NAMES = ['mite'] as const;
+/** Every model the game uses, one art/ script each (art/build.py). Loaded together at boot. */
+export const MODEL_NAMES = [
+  'mite', 'pallet', 'drone', 'sentry', 'riveter', 'welder', 'foreman', 'warden', 'titan',
+  'rook', 'folk', 'horse', 'hoverboard',
+] as const;
 export type ModelName = (typeof MODEL_NAMES)[number];
 
 interface Asset {
@@ -139,8 +142,8 @@ export async function loadModels(names: readonly string[] = MODEL_NAMES, maxAnis
   const need = names.filter((n) => !assets.has(n));
   let done = 0;
   await Promise.all(need.map(async (n) => {
-    const a = await loadOne(n, maxAniso);
-    assets.set(n, a);
+    // a model that is not built yet must not stop the game: whoever needs it checks hasModel
+    try { assets.set(n, await loadOne(n, maxAniso)); } catch (e) { console.warn(`model ${n} not loaded:`, (e as Error)?.message ?? e); }
     progress?.(++done, need.length, n);
   }));
 }

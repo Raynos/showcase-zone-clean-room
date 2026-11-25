@@ -163,6 +163,34 @@ def paint(gb, **cfg):
     grime = np.clip(grime, 0, 0.85)
     gcol = np.array([0.42, 0.34, 0.27])
 
+    # ---- face-plane coordinates of box primitives (u, v in metres from the face centre) -----
+    ax_u = np.where(face_ax == 0, 2, 0); ax_v = np.where(face_ax == 1, 2, 1)
+    fu = np.take_along_axis(tco, ax_u[..., None], axis=-1)[..., 0]; fv = np.take_along_axis(tco, ax_v[..., None], axis=-1)[..., 0]
+    hu = np.take_along_axis(tsz, ax_u[..., None], axis=-1)[..., 0]; hv = np.take_along_axis(tsz, ax_v[..., None], axis=-1)[..., 0]
+    isbox = ptype == 0
+    # panel: an inset seam with a rivet in each corner
+    pn = is_('panel')
+    val = np.where(pn, 0.94 + 0.12 * (n_macro - 0.5) + 0.05 * (n_mid - 0.5), val)
+    hi = np.where(pn, edge_hi * c['edge_gain'], hi)
+    inset = 0.017
+    big = isbox & (hu > 0.05) & (hv > 0.05)
+    seam = pn & big & (np.abs(d_edge - inset) < 0.0032)
+    seam_hi = pn & big & (d_edge > inset + 0.0032) & (d_edge < inset + 0.0075)
+    rv = np.sqrt((np.abs(fu) - (hu - inset * 2.3)) ** 2 + (np.abs(fv) - (hv - inset * 2.3)) ** 2)
+    rivet = pn & big & (rv < 0.0062)
+    rivet_sh = pn & big & (rv >= 0.0062) & (rv < 0.0095)
+    val = np.where(seam, val * 0.5, val)
+    hi = np.where(seam_hi, hi + 0.10, hi)
+    hi = np.where(rivet, hi + 0.20, hi)
+    val = np.where(rivet_sh, val * 0.62, val)
+    pm = pm | pn
+    chip = np.clip(chip_e + scratch * 0.85 * c['chip'], 0, 1) * pm * (ao_s > 0.35)
+    # vent: louvre slats inside a frame
+    vt = is_('vent')
+    slat = (np.mod(fv / 0.024 + 0.5, 1.0) < 0.52) & (d_edge > 0.012)
+    val = np.where(vt, np.where(slat, 0.30, 0.95 + 0.08 * (n_mid - 0.5)), val)
+    hi = np.where(vt, np.where(slat, 0.0, 0.10 * (np.mod(fv / 0.024 + 0.5, 1.0) > 0.86) + edge_hi * 0.2), hi)
+
     # ---- bare metal ----------------------------------------------------------------------
     bm_ = is_('metal')
     lv = np.take_along_axis(tco, long_ax[..., None], axis=-1)[..., 0]
@@ -194,6 +222,13 @@ def paint(gb, **cfg):
     nail = wd & ~endg & (face_ax != mid_ax) & (nail_d < 0.0065) & (half_l > 0.08)
     val = np.where(nail, 0.34, val)
     hi = np.where(wd & ~endg & (nail_d < 0.0095) & (nail_d >= 0.0065) & (face_ax != mid_ax) & (half_l > 0.08), hi - 0.12, hi)
+
+    # bolt heads at both ends of long bare-metal box members
+    mnail = bm_ & isbox & (face_ax != long_ax) & (half_l > 0.09) & (half_m > 0.016)
+    bolt_d = np.sqrt((np.abs(lv) - (half_l - np.minimum(0.022, half_m))) ** 2 + mv ** 2)
+    val = np.where(mnail & (bolt_d < 0.0058), val * 1.12, val)
+    hi = np.where(mnail & (bolt_d < 0.0058), hi + 0.12, hi)
+    val = np.where(mnail & (bolt_d >= 0.0058) & (bolt_d < 0.0092), val * 0.6, val)
 
     # ---- rubber, dark, glow, flat, glass -------------------------------------------------
     rb = is_('rubber')

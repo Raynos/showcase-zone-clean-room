@@ -92,7 +92,13 @@ def build(model: kit.Model, tex=512, ao_dist=0.3, edge_dist=0.03, samples=48, ma
     bake.reset_scene()
     obj = bake.build_object(model)
     bake.unwrap(obj, model, margin=max(0.002, 2.0 / tex))
-    gb = bake.gbuffer(obj, tex, ao_dist=ao_dist, edge_dist=edge_dist, samples=samples, margin=margin)
+    # variant dressing (opt_* bones) must not shadow the body it is optional on
+    apart = np.zeros((len(model.V), 3), dtype=np.float32)
+    opt = {i: k for k, i in enumerate(i for i, b in enumerate(model.bones) if b['name'].startswith('opt_'))}
+    for f, bi in zip(model.F, model.f_bone):
+        if bi in opt:
+            for i in f: apart[i] = (0.0, 0.0, 40.0 * (opt[bi] + 1))
+    gb = bake.gbuffer(obj, tex, ao_dist=ao_dist, edge_dist=edge_dist, samples=samples, margin=margin, apart=apart if opt else None)
     rgba, cover = paint.paint(gb, **paint_cfg)
     if post: rgba = post(rgba, gb, cover) or rgba
     tex_path = os.path.join(OUT, model.name + '.webp')
