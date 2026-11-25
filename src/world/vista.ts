@@ -6,6 +6,7 @@ import { startTraffic } from './vista/traffic';
 import { startWeather } from './vista/weather';
 import { startCinematics, type Cinematics } from './vista/cinematics';
 import { startTrophyWall } from './trophies';
+import { buildSeals } from './vista/seals';
 
 /**
  * World scale and drama: what lies beyond the wall, what stands on the skyline, what crosses the
@@ -19,6 +20,7 @@ export function build(game: Game) {
   v.beyond = buildBeyond(game);
   v.beams = buildBeams(game);
   if (v.beams) game.scene.add(v.beams);
+  buildSeals(game);
 }
 
 export function start(game: Game) {
