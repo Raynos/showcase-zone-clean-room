@@ -78,11 +78,14 @@ export class State {
     } catch { return null; }
   }
   static hasSave(): boolean { try { return !!localStorage.getItem(KEY); } catch { return false; } }
+  /** set by reset(): nothing is written again until the page reloads, so the wipe sticks */
+  private wiped = false;
   save() {
+    if (this.wiped) return;
     try { localStorage.setItem(KEY, JSON.stringify(this.d)); } catch { /* storage unavailable */ }
     this.dirty = false;
   }
-  reset() { try { localStorage.removeItem(KEY); } catch { /* ignore */ } this.d = freshSave(); this.events.emit('stateChanged', {}); }
+  reset() { try { localStorage.removeItem(KEY); } catch { /* ignore */ } this.wiped = true; this.d = freshSave(); this.events.emit('stateChanged', {}); }
   touch() { this.dirty = true; }
   update(dt: number) {
     this.d.playTime += dt;
