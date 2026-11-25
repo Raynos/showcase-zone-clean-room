@@ -156,8 +156,26 @@ and `null` goes out when there is no target.
 - **Telegraphs.** Red floor shapes mean "leave". Each attack has its own
   wind-up pose. Decals draw over grass. Wind-ups from off screen raise an
   arrow at the screen edge.
-- **Aggro.** Robots need line of sight to notice the player and give up as
-  the plan's phase 0 fix describes.
+- **Aggro.** Robots need line of sight to notice the player. When they stop
+  is below (Leash and reset).
+
+### Leash and reset (`src/systems/mobs.ts`)
+
+A robot is tied to its home, not to the player, and in both stances:
+
+- It chases while it is inside its leash of home. For 8 s after each hit
+  the leash stretches to ×1.6 + 12 m, so a robot being shot comes out.
+- Past that it falls back home **on guard** (blue ring, shield mark on its
+  frame) and takes a quarter of the damage while it walks or holds there.
+  Gunners first hold the edge of the leash and keep shooting.
+- A robot that cannot close (a ledge, a wall, a player beyond its longest
+  attack for 2.5 s) also falls back on guard instead of being plinked.
+- It only **resets** when the player is gone: dead, in town, 30 m beyond
+  the leash from home for 4 s, or out of its sight for 9 s, and not hurting
+  it for 8 s. Then it mends 7 % of its health a second with green sparks
+  and the "Mending" mark (about 14 s from empty), and a hit stops it.
+- Being hit always re-arms it; a robot on guard re-engages when the player
+  comes back inside its reach.
 
 ### As tuned (`src/data/enemies.ts`, `src/systems/status.ts`)
 
@@ -214,14 +232,32 @@ recoil, reload), `ballistics.ts` (hit solving), `weakpoints.ts`,
 - Nothing targets or turns for the player. The crosshair is at the centre of
   the view; the body faces the camera's aim and the stick strafes.
 - Third person is over the right shoulder (left with left-handed controls):
-  the lens looks straight down the aim from beside the head, so the hero
-  stands low and left of the crosshair. First person uses the eye camera.
+  the lens looks straight down the aim from beside the head. How far out
+  is solved each frame from the lens distance and view width
+  (`camera.ts` `SHOULDER`), so the head sits a fixed share of the
+  half-width off the crosshair at every pitch, zoom and orientation;
+  portrait shows back, head and weapon arm from the waist up.
+- First person uses the eye camera with a view model
+  (`src/systems/viewmodel.ts`): the weapon is placed on the camera, low
+  right at the hip, with the `sight` node on the view axis when aimed (the
+  bow aims past its arrow rest). Shots and muzzle effects leave the
+  `muzzle` node. Reload dips and rolls the weapon; shots kick it. The hands
+  are solved onto the weapon (grip, `foregrip`, the bow's grip and nock)
+  and the authored part, elbows and reload hand paths, is
+  `fpview.ts` `fpHold`. Third person drives the authored holds of
+  `shootpose.ts` (hip, aimed, draw, reload, kick).
+- In the shooter stance R reloads, so skill 2's keycap reads 2.
 - Every shot is solved from the camera through the crosshair (plus spread)
-  to the first thing on that ray: the animated robot mesh, its weak-point
-  spheres, or the world. The stretch of ray behind the hero is skipped. The
-  shot then leaves the muzzle for that point. If something else stands
-  between the muzzle and the point, it takes the shot. A weak point counts
-  when the ray reaches its sphere no later than the surface around it.
+  to the first thing on that ray: the posed robot body, its weak-point
+  spheres, or the world. The body test cuts each skinned mesh once into
+  rigid per-bone triangle pieces and tests only the pieces whose box the
+  ray crosses (`ballistics.ts` `bodyCast`): the same answer as a skinned
+  mesh raycast on 1014 test rays, about 0.02 ms a solve instead of 1 ms,
+  so the crosshair runs it every frame. The stretch of ray behind the
+  hero is skipped. The shot then leaves the muzzle for that point. If
+  something else stands between the muzzle and the point, it takes the
+  shot. A weak point counts when the ray reaches its sphere no later than
+  the surface around it.
 - Rifle rounds are hitscan through up to three robots (×1, ×0.6, ×0.35).
   Arrows and bolts are projectiles with travel time and drop, zeroed so they
   land on the crosshair out to the zero range and fall short beyond it. A

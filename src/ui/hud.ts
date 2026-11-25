@@ -83,7 +83,7 @@ const LEGACY_ID: Record<string, ActionId> = { potion: 'kit' };
 const ACT_IDS = Object.keys(ACT) as ActionId[];
 const IDX = Object.fromEntries(ACT_IDS.map((k, i) => [k, i])) as Record<ActionId, number>;
 /** status effect id -> icon id */
-const FX_ICON: Record<string, string> = { shock: 'shock', burn: 'burn', jam: 'jam' };
+const FX_ICON: Record<string, string> = { shock: 'shock', burn: 'burn', jam: 'jam', guard: 'shield', mend: 'kit' };
 
 /** Portrait-first MMO HUD built from DOM: frames, touch controls, toasts, nameplates, damage text. */
 export class Hud {

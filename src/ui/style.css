@@ -90,6 +90,7 @@
 .tfx { display: flex; gap: 4px; align-items: center; }
 .tfx .fx { display: grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; background: #0c0f13e6; border: 1.5px solid currentColor; box-shadow: 0 1px 4px #000a; }
 .tfx .fx.shock { color: var(--cyan); } .tfx .fx.burn { color: #ff8a3c; } .tfx .fx.jam { color: var(--purple); }
+.tfx .fx.guard { color: #9fd8ff; } .tfx .fx.mend { color: #7dffb0; }
 .tfx .fx.brk { width: auto; display: flex; gap: 3px; padding: 0 7px 0 5px; border-radius: 10px; color: #0b0e12; background: linear-gradient(180deg, #fff, #9ff6ff); border-color: #fff; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .bossbar .tfx { justify-content: center; margin-top: 4px; }
 .bossbar .tfx:empty { display: none; }

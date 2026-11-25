@@ -33,8 +33,16 @@ interface Wave { x: number; y: number; z: number; r: number; max: number; speed:
 interface Pending { t: number; fn: () => void; owner: Mob | null }
 
 let NEXT_ID = 1;
-/** Outdoor mobs drop a chase once the player has been further than this (m) for 3 s. Longer than any attack range out there. */
-const GIVE_UP = 30;
+/**
+ * When a robot stops fighting (docs/COMBAT.md, "Leash and reset"). It is tied to its home, not to the
+ * player: it chases while it is within its leash of home, which stretches by LEASH_HURT (times, plus
+ * LEASH_ADD m) for ANGRY s after each hit. Past that it falls back home on guard (taking GUARD of the
+ * damage) and stays on guard there while the player is out of its reach; ranged robots hold the edge
+ * and keep shooting first. It truly resets only when the player has left the area (GIVE_UP m beyond
+ * the leash, from home) or been out of sight for LOST s, and it has not been hit for ANGRY s; then it
+ * mends MEND of its health a second, visibly, with the "Mending" mark.
+ */
+const GIVE_UP = 30, ANGRY = 8, LOST = 9, LEASH_HURT = 1.6, LEASH_ADD = 12, GUARD = 0.25, MEND = 0.07;
 
 export class Mob implements Hittable {
   id = NEXT_ID++;
@@ -56,8 +64,10 @@ export class Mob implements Hittable {
   floor: number | null; leash: number; hover: number; lift = 0;
   phase = 1; invuln = false; noLoot: boolean; xpMul: number;
   private avoidT = 0; private avoid = 0;
-  /** seconds the player has been out of reach while we chase (outdoors) */
-  private farT = 0;
+  /** seconds the player has been out of the area (outdoors); seconds since the player last hurt this robot */
+  private farT = 0; hurtT = 99;
+  /** true after a real reset while health comes back (the "Mending" mark) */
+  mending = false;
   /** hooks for boss scripting */
   onPhase: ((p: number) => void) | null = null;
   onDeath: (() => void) | null = null;
@@ -193,12 +203,29 @@ export class Mob implements Hittable {
   /** Break now whatever the meter says (Big Pallet countered out of its ram). */
   forceBreak() { if (this.alive && this.state !== 'broken' && this.state !== 'spawn' && this.state !== 'dead') this.breakNow(); }
   /** what the plate and target frame show: status icons */
-  effects(): string[] { return this.status.any ? this.status.list(this.fxList) : NO_FX; }
+  effects(): string[] {
+    const guard = this.guarded, mend = this.mending && this.hp < this.maxHp;
+    if (!this.status.any && !guard && !mend) return NO_FX;
+    const l = this.status.any ? this.status.list(this.fxList) : (this.fxList.length = 0, this.fxList);
+    if (guard) l.push('guard');
+    if (mend) l.push('mend');
+    return l;
+  }
+  /** falling back to its home or holding it, out of the player's reach: shots do GUARD of their damage */
+  get guarded() { return this.aggro && (this.state === 'return' || (this.state === 'idle' && this.holdT > 0)); }
+  /** seconds left of standing guard at home against a player out of reach */
+  private holdT = 0;
+  /** chasing: the nearest it has got to the player, and seconds without closing in on that */
+  private bestD = 1e9; private stuckT = 0;
+  /** the furthest any of its attacks reaches, metres */
+  private get maxRange() { let r = 0; for (const a of this.attackList()) r = Math.max(r, a.range[1]); return r; }
+  /** how far from home this robot will chase right now */
+  private get reachLeash() { return this.hurtT < ANGRY ? this.leash * LEASH_HURT + LEASH_ADD : this.leash; }
   get hpFrac() { return this.hp / this.maxHp; }
   get cls() { return this.def.boss ? 'boss' : this.variant === 'elite' || this.variant === 'nightElite' ? 'elite' : this.variant; }
   get isBoss() { return !!this.def.boss; }
   center(out: THREE.Vector3) { return out.set(this.pos.x, this.pos.y + this.lift + this.fly + this.height * (this.kind === 'titan' ? 0.3 : 0.55), this.pos.z); }
-  private setState(s: MState) { this.state = s; this.stT = 0; }
+  private setState(s: MState) { if (s === 'chase' && this.state !== 'chase') { this.bestD = 1e9; this.stuckT = 0; } this.state = s; this.stT = 0; }
   private endTele() { if (this.tele) { this.mobs.game.fx.endTelegraph(this.tele); this.tele = null; } }
   private ground() { return this.floor ?? this.mobs.game.terrain.h(this.pos.x, this.pos.z); }
 
@@ -207,14 +234,16 @@ export class Mob implements Hittable {
   takeHit(h: HitInfo): number {
     if (!this.alive || this.invuln || this.state === 'spawn') return 0;
     const g = this.mobs.game;
-    const mechMul = this.mech ? this.mech.takenMul(h) : 1;
+    const mechMul = (this.mech ? this.mech.takenMul(h) : 1) * (this.summoner?.mech?.larvaMul(h) ?? 1);
     let dmg = Math.max(1, Math.round(h.dmg * this.dmgTakenMul * mechMul * (this.state === 'broken' ? BROKEN_TAKEN : 1)));
-    if (this.state === 'return') dmg = Math.max(1, Math.round(dmg * 0.2));
+    if (this.guarded) dmg = Math.max(1, Math.round(dmg * GUARD));
+    else if (this.state === 'return') dmg = Math.max(1, Math.round(dmg * 0.2));
+    this.hurtT = 0; this.mending = false;
     this.hp -= dmg;
     this.flash = this.isBoss ? 0.4 : this.variant === 'elite' || this.variant === 'nightElite' ? 0.7 : 1; // a screen-filling boss must not white out
     if (!this.aggro) { this.aggro = true; this.mobs.alertNear(this); }
     this.farT = 0; this.blindT = 0;   // being shot at keeps a mob interested however far off the shooter stands
-    if (this.state === 'idle') this.setState('chase');
+    if (this.state === 'idle' && this.holdT <= 0) this.setState('chase');
     // knockback (bosses barely budge; a broken robot is a sack)
     const kb = h.knock * (this.isBoss ? 0.06 : this.variant === 'elite' || this.variant === 'nightElite' ? 0.35 : 1) * (this.state === 'broken' ? 0.4 : 1);
     this.knockX += h.dirX * kb; this.knockZ += h.dirZ * kb;
@@ -274,8 +303,28 @@ export class Mob implements Hittable {
     const toPlayer = Math.atan2(px, pz);
     // the town is a safe zone: nothing out in the yard hunts a player who is inside it
     const outdoors = this.floor === null;
-    const canSee = !pl.dead && this.mobs.playerHostile && Math.abs(pl.pos.y - this.pos.y) < (this.isBoss ? 40 : 9) && !(outdoors && inTown(pl.pos.x, pl.pos.z));
+    const hostile = !pl.dead && this.mobs.playerHostile && !(outdoors && inTown(pl.pos.x, pl.pos.z));
+    const canSee = hostile && Math.abs(pl.pos.y - this.pos.y) < (this.isBoss ? 40 : 9);
     let wantVx = 0, wantVz = 0, face: number | null = null;
+    this.hurtT += dt;
+    // where the player stands against this robot's home: inside its reach, or out of it
+    const phd = Math.hypot(pl.pos.x - this.home.x, pl.pos.z - this.home.z), inReach = canSee && phd < this.reachLeash - 2;
+    if (this.aggro && this.state !== 'dead' && this.state !== 'spawn') {
+      // a real reset: the player is gone (dead, in town, left the area, or long out of sight) and has stopped hurting it
+      const angry = this.hurtT < ANGRY;
+      const seen = hostile && (this.isBoss || !outdoors || this.sees());
+      this.blindT = seen ? 0 : this.blindT + dt;
+      // a player up a ledge it cannot climb counts as out of the area once they stop shooting
+      this.farT = outdoors && !angry && (phd > this.leash + GIVE_UP || !canSee) ? this.farT + dt : 0;
+      if (!hostile || this.farT > 4 || (this.blindT > LOST && !angry)) {
+        this.aggro = false; this.farT = 0; this.blindT = 0; this.holdT = 0; this.mending = true;
+        if (this.state === 'chase' || this.state === 'idle') this.setState('return');
+      }
+    }
+    if (this.mending && this.hp < this.maxHp && !this.aggro && this.alive && this.rig.root.visible && Math.random() < dt * 5) {
+      // mending: a slow rise of green sparks, so a robot getting its health back reads at a glance
+      this.mobs.game.fx.emit(this.center(_v), { count: 1, speed: [0.3, 0.8], up: 1.2, life: [0.6, 1], size: [0.08, 0.14], color: 0x7dffb0, glow: 3, gravity: -2, sprite: SP.STAR, radius: this.radius * 0.8 });
+    }
     const jamK = this.status.moveMul;
     let turn = this.def.turn * jamK;
     const speed = this.def.speed * (this.variant === 'night' || this.variant === 'nightElite' ? 1.1 : 1) * jamK * (this.mech?.speedMul ?? 1);
@@ -298,8 +347,15 @@ export class Mob implements Hittable {
         const wx = this.wanderX - this.pos.x, wz = this.wanderZ - this.pos.z, wd = Math.hypot(wx, wz);
         if (wd > 0.6 && !this.isBoss) { wantVx = (wx / wd) * speed * 0.3; wantVz = (wz / wd) * speed * 0.3; face = Math.atan2(wx, wz); this.pose.action = 'move'; }
         // home and unbothered: mend, and forget an alert that can no longer be acted on
-        if (!this.aggro && this.hp < this.maxHp) { this.hp = Math.min(this.maxHp, this.hp + this.maxHp * 0.35 * dt); if (this.hp >= this.maxHp) this.phase = 1; }
+        if (!this.aggro && this.hp < this.maxHp) { this.hp = Math.min(this.maxHp, this.hp + this.maxHp * (this.mending ? MEND : 0.35) * dt); if (this.hp >= this.maxHp) { this.phase = 1; this.mending = false; } }
         if (this.aggro && !canSee && outdoors) this.aggro = false;
+        // on guard at home: the player is still about but out of reach. Face them, shields up, until they come in
+        if (this.aggro && hostile && (!inReach || this.holdT > 1)) {
+          this.holdT = Math.max(1, this.holdT - dt); face = toPlayer; wantVx = 0; wantVz = 0; this.pose.action = 'idle';
+          if (this.rig.root.visible && Math.random() < dt * 1.2) this.mobs.game.fx.ring(_v.set(this.pos.x, this.pos.y + 0.08, this.pos.z), this.radius * 2.4 + 0.6, 0x9fd8ff, 0.4, 1.4);
+          break;
+        }
+        this.holdT = 0;
         // noticing needs a clear line of sight (a robot alerted by a packmate comes looking regardless)
         if (canSee && (dist < this.def.aggro * (this.level + 4 < g.state.d.level ? 0.6 : 1) && this.sees() || this.aggro)) {
           this.aggro = true; this.farT = 0; this.setState('chase'); this.gcd = rand(0.3, 0.9);
@@ -311,12 +367,15 @@ export class Mob implements Hittable {
       case 'chase': {
         this.pose.action = 'move'; this.pose.charge = 0;
         const hd = Math.hypot(this.pos.x - this.home.x, this.pos.z - this.home.z);
-        // give up on a player who has got away: out of sight, past the leash, or more than GIVE_UP metres off for 3 s
-        this.farT = outdoors && dist > GIVE_UP ? this.farT + dt : 0;
-        // out of sight outdoors (behind a wall, inside the gauntlet courts) for long enough: lose interest
+        if (!this.aggro) { this.setState('return'); break; }
         const seen = this.isBoss || !outdoors || this.sees();
-        this.blindT = seen ? 0 : this.blindT + dt;
-        if (!canSee || hd > this.leash || this.farT > 3 || this.blindT > 3.5) { this.aggro = false; this.farT = 0; this.blindT = 0; this.setState('return'); break; }
+        // tied to home: past its reach it falls back on guard (a ranged robot first holds the edge and shoots)
+        const lim = this.reachLeash, ranged = !!(this.role?.keep ?? this.def.keep);
+        // and when it cannot close on a player beyond its attacks (a ledge, a wall, a player out past its reach),
+        // it breaks off rather than stand there being plinked
+        if (dist < this.bestD - 1) { this.bestD = dist; this.stuckT = 0; } else this.stuckT += dt;
+        const cannot = this.stuckT > (inReach ? 4 : 2.5) && dist > this.maxRange + this.radius + 2 && !this.isBoss;
+        if (hd > lim + (ranged ? 6 : 0) || (!canSee && !ranged) || cannot) { this.bestD = 1e9; this.stuckT = 0; this.holdT = cannot ? 6 : 0; this.setState('return'); break; }
         face = toPlayer;
         const reach = this.radius + 0.5;
         // against a ranged weapon some robots fight differently (data/shooter-roles.ts)
@@ -327,7 +386,8 @@ export class Mob implements Hittable {
         if (this.strafeT <= 0) { this.strafeT = role?.strafe ? rand(0.9, 2.2) : rand(1.5, 3.5); this.strafe = Math.random() < 0.5 ? -1 : 1; }
         const dx = px / (dist || 1), dz = pz / (dist || 1);
         if (keep) {
-          const s = dist < keep[0] ? -0.8 : dist > keep[1] ? 1 : 0;
+          // at the edge of its reach a gunner does not step further out after the player
+          const s = dist < keep[0] ? -0.8 : dist > keep[1] && hd < lim ? 1 : 0;
           wantVx = dx * speed * s + -dz * this.strafe * speed * sk; wantVz = dz * speed * s + dx * this.strafe * speed * sk;
         } else {
           // melee: close in. A pack does not queue in front of the player: whoever is waiting for its turn
@@ -444,11 +504,12 @@ export class Mob implements Hittable {
       case 'return': {
         this.pose.action = 'move'; this.pose.charge = 0;
         const hx = this.home.x - this.pos.x, hz = this.home.z - this.pos.z, hd = Math.hypot(hx, hz);
-        this.hp = Math.min(this.maxHp, this.hp + this.maxHp * 0.35 * dt);
-        if (hd < 1.5) { this.setState('idle'); this.phase = this.hp >= this.maxHp ? 1 : this.phase; }
+        // a real reset mends over several seconds; falling back on guard mends nothing
+        if (this.mending) { this.hp = Math.min(this.maxHp, this.hp + this.maxHp * MEND * dt); if (this.hp >= this.maxHp) this.mending = false; }
+        if (hd < (this.aggro ? 4 : 1.5)) { this.setState('idle'); this.phase = this.hp >= this.maxHp ? 1 : this.phase; }
         else { wantVx = (hx / hd) * speed * 1.5; wantVz = (hz / hd) * speed * 1.5; face = Math.atan2(hx, hz); }
-        // re-aggro when the player comes back in close
-        if (canSee && dist < this.def.aggro * 0.6 && hd < this.leash * 0.5) { this.aggro = true; this.setState('chase'); }
+        // back into the fight when the player comes into reach (or, reset, comes back in close)
+        if (this.aggro ? canSee && inReach && hd < this.reachLeash * 0.8 : canSee && dist < this.def.aggro * 0.6 && hd < this.leash * 0.5) { this.aggro = true; this.mending = false; this.setState('chase'); }
         break;
       }
       case 'dead': {
@@ -1005,7 +1066,7 @@ export class Mobs {
     this.waves.length = 0; this.pending.length = 0;
   }
   /** Drop aggro on everything and send it home (player died). */
-  resetAggro() { for (const m of this.list) if (m.alive && !m.isBoss) { m.aggro = false; if (m.state === 'chase') m.state = 'return'; } }
+  resetAggro() { for (const m of this.list) if (m.alive && !m.isBoss) { m.aggro = false; m.mending = true; if (m.state === 'chase') m.state = 'return'; } }
 
   private manageCamps(dt: number) {
     const g = this.game, p = g.player.pos, night = g.env.isNight();
