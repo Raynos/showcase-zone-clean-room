@@ -276,6 +276,8 @@ ${wind ? /* glsl */ `  // foliage cards (gfx/foliage.ts): a painted clump from t
       gTA = vec4(dk.rgb, 0.86); gTN = vec4(0.5, 0.5, 0.0, 1.0);
     }
   }
+  // (a flat-shaded material has no interpolated normal to measure, and no bevels to wear)
+  #ifndef FLAT_SHADED
   {
     // edge wear: where a surface turns sharply within a few centimetres (a bevel, a rim) the
     // paint is rubbed pale. Curvature is the change of normal per metre across the pixel.
@@ -284,6 +286,7 @@ ${wind ? /* glsl */ `  // foliage cards (gfx/foliage.ts): a painted clump from t
     gTA.rgb = mix(gTA.rgb, gTA.rgb * 1.3 + 0.09, worn * 0.75);
     gTA.a = mix(gTA.a, gTA.a * 0.8, worn);
   }
+  #endif
 ` : ''}${rim ? '' : /* glsl */ `  // slow drift in tone and warmth, so a wall or a square is never one flat fill
   vec2 mv = texture2D(uNoise, vWUv * 0.037).rg;
   gTA.rgb *= (0.78 + 0.44 * mv.x) * mix(vec3(1.05, 1.0, 0.94), vec3(0.95, 1.0, 1.07), mv.y);`}
