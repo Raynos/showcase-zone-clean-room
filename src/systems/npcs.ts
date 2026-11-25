@@ -218,6 +218,9 @@ export class Npcs implements System {
 
   /** One merged snapshot of the rig (and whatever it holds) in its current pose, in root space. */
   private snapshot(n: Npc): THREE.BufferGeometry | null {
+    // a skinned rig bakes its own posed, low-detail surface (what it holds in its hands stays with the rig)
+    const bake = (n.rig as HumanoidRig & { bake?: () => THREE.BufferGeometry }).bake;
+    if (bake) return bake();
     const root = n.rig!.root;
     root.updateWorldMatrix(true, true);
     _mi.copy(root.matrixWorld).invert();
