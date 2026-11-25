@@ -159,16 +159,17 @@ export class ZoneEvents implements System {
     }
     return best;
   }
-  private okSpot(x: number, z: number): boolean {
+  /** Open ground for a drop. k loosens the rules step by step (0 strict, 2 loosest) when the band is crowded. */
+  private okSpot(x: number, z: number, k = 0): boolean {
     const g = this.game, ctx = (g as unknown as { dressing?: { ctx?: { free(x: number, z: number, r?: number, camps?: boolean): boolean } } }).dressing?.ctx;
     if (x < 18 || x > HALF - 16 || Math.abs(z) > HALF - 16) return false;
-    if (ridgeAt(x, z) > 0.2 || roadDist(x, z) < 6 || g.terrain.slope(x, z) > 0.14) return false;
+    if (ridgeAt(x, z) > 0.2 || roadDist(x, z) < [6, 4, 3][k] || g.terrain.slope(x, z) > [0.14, 0.2, 0.26][k]) return false;
     // never in the gauntlet, the Titan's yard, the vault's ring, or on top of an elite or a camp
     if (Math.abs(x - GAUNTLET.x) < 58 && Math.abs(z - GAUNTLET.z) < 30) return false;
     if (Math.hypot(x - TITAN_GATE.x, z - TITAN_GATE.z) < 36 || Math.hypot(x - VAULT_PORTAL.x, z - VAULT_PORTAL.z) < 24) return false;
     for (const e of ELITES) if (Math.hypot(x - e.x, z - e.z) < 30) return false;
-    for (const c of CAMPS) if (Math.hypot(x - c.x, z - c.z) < c.r + 12) return false;
-    return ctx ? ctx.free(x, z, 3.5, false) : true;
+    for (const c of CAMPS) if (Math.hypot(x - c.x, z - c.z) < c.r + [12, 8, 5][k]) return false;
+    return ctx ? ctx.free(x, z, [3.5, 2.8, 2.2][k], false) : true;
   }
   /** Where this pass's crate should come down: open ground in the right band, a run away from the player or the band's way in. */
   pickAim(): { x: number; z: number } | null {
@@ -185,12 +186,17 @@ export class ZoneEvents implements System {
     }
     const near = inBand ? [40, 95] : band.id === 1 ? [45, 85] : [30, 85];
     let best: { x: number; z: number } | null = null, bs = -1e9;
-    for (let i = 0; i < 90; i++) {
-      const x = rand(band.x0 + 14, band.x1 - 14), z = rand(band.z0 + 14, band.z1 - 14);
-      if (!this.okSpot(x, z)) continue;
-      const d = Math.hypot(x - fx, z - fz);
-      const s = -Math.abs(d - (near[0] + near[1]) / 2) - (d < near[0] ? 40 : 0) + rand(0, 12);
-      if (s > bs) { bs = s; best = { x, z }; }
+    // half the tries on the ring the player would run to, half anywhere in the band; looser rules if nothing fits
+    for (let k = 0; k < 3 && !best; k++) {
+      for (let i = 0; i < 140; i++) {
+        let x: number, z: number;
+        if (i % 2) { const an = rand(0, TAU), r = rand(near[0], near[1]); x = clamp(fx + Math.cos(an) * r, band.x0 + 14, band.x1 - 14); z = clamp(fz + Math.sin(an) * r, band.z0 + 14, band.z1 - 14); }
+        else { x = rand(band.x0 + 14, band.x1 - 14); z = rand(band.z0 + 14, band.z1 - 14); }
+        if (!this.okSpot(x, z, k)) continue;
+        const d = Math.hypot(x - fx, z - fz);
+        const s = -Math.abs(d - (near[0] + near[1]) / 2) - (d < near[0] ? 40 : 0) + rand(0, 12);
+        if (s > bs) { bs = s; best = { x, z }; }
+      }
     }
     this.aimPt = best;
     return best;
