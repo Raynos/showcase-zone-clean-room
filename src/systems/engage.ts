@@ -18,8 +18,14 @@ export class Engagement {
   flee = 0;
   /** true once the target has been dropped for running away */
   disengaged = false;
-  private awayT = 0; private fleeT = 0; private calmT = 0;
+  private awayT = 0; private fleeT = 0; private calmT = 0; private manual = false;
   constructor(private game: Game) {}
+
+  /**
+   * The player let go of the target on purpose (held the target button): drop it, and leave
+   * auto-targeting off until they attack, pick a target or the fight ends.
+   */
+  clearTarget() { this.game.combat.target = null; this.disengaged = true; this.manual = true; this.calmT = 0; }
 
   update(dt: number) {
     const g = this.game, c = g.combat, pl = g.player;
@@ -54,7 +60,7 @@ export class Engagement {
     if (this.disengaged) {
       this.calmT = away || sprintOff ? 0 : this.calmT + dt;
       // back in it: the player attacked or chose a target, the fight ended, or they stopped running
-      if (attacking || c.target || !inFight || this.calmT > 0.8) { this.disengaged = false; this.calmT = 0; }
+      if (attacking || c.target || !inFight || (!this.manual && this.calmT > 0.8)) { this.disengaged = false; this.manual = false; this.calmT = 0; }
     }
     c.autoTargetOff = this.disengaged;
     this.framed = t && !fleeing && inFight && c.target === t ? t : null;

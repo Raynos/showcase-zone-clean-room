@@ -2,7 +2,8 @@ import { clamp } from './util';
 
 export type Btn =
   | 'attack' | 'skill1' | 'skill2' | 'dodge' | 'jump' | 'interact' | 'swap' | 'sprint' | 'mount'
-  | 'potion' | 'target' | 'menu' | 'map' | 'bag' | 'quests' | 'char';
+  | 'potion' | 'target' | 'menu' | 'map' | 'bag' | 'quests' | 'char'
+  | 'skill3' | 'overdrive';
 
 interface BtnState { down: boolean; pressed: boolean; released: boolean; heldFor: number; downAt: number }
 
@@ -11,6 +12,7 @@ const KEYMAP: Record<string, Btn> = {
   KeyF: 'swap', Tab: 'target', KeyX: 'mount', KeyH: 'potion', ControlLeft: 'dodge', KeyC: 'dodge',
   KeyM: 'map', KeyI: 'bag', KeyB: 'bag', KeyL: 'quests', KeyJ: 'quests', KeyP: 'char', Escape: 'menu',
   Digit1: 'skill1', Digit2: 'skill2', Digit3: 'potion', Digit4: 'swap',
+  KeyT: 'skill3', KeyG: 'overdrive',
 };
 
 const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
@@ -36,6 +38,8 @@ export class Input {
   stick = { active: false, ox: 0, oy: 0, x: 0, y: 0 };
   lookSensitivity = 1;
   invertY = false;
+  /** left-handed layout: the stick lives on the right half of the screen and the buttons on the left */
+  mirror = false;
   private btn = new Map<Btn, BtnState>();
   private keys = new Set<string>();
   private stickId = -1;
@@ -107,7 +111,7 @@ export class Input {
     }
     this.isTouch = true;
     const w = window.innerWidth, h = window.innerHeight;
-    const inStickZone = e.clientX < w * 0.5 && e.clientY > h * 0.42;
+    const inStickZone = (this.mirror ? e.clientX > w * 0.5 : e.clientX < w * 0.5) && e.clientY > h * 0.42;
     if (inStickZone && this.stickId < 0) {
       this.stickId = e.pointerId;
       this.stick.active = true; this.stick.ox = e.clientX; this.stick.oy = e.clientY; this.stick.x = 0; this.stick.y = 0;
@@ -165,6 +169,15 @@ export class Input {
       this.pinchDist = 0;
       if (e.pointerType === 'mouse') this.mouseLook = false;
     }
+  }
+  /**
+   * Look by a drag that began on a HUD button (steering the aim with the finger that holds the
+   * attack button). Same scale as a look-drag on the view.
+   */
+  dragLook(dx: number, dy: number) {
+    const k = 0.0052 * this.lookSensitivity;
+    this.lookX -= dx * k;
+    this.lookY -= dy * k * (this.invertY ? -1 : 1);
   }
   /** true while a finger rests on the stick or a movement key is down (a scripted `stick` does not count) */
   get holdingMove() {

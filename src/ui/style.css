@@ -113,25 +113,107 @@
 .stick.on { opacity: 1; }
 .stick.rest { opacity: .38; }
 .stick i { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffffffcc, #ffb968aa 60%, #ff9a3c66); box-shadow: 0 3px 12px #0008; }
-.acts { position: absolute; right: calc(0px + var(--sar)); bottom: calc(14px + var(--sab)); width: 232px; height: 232px; pointer-events: none; }
-.abtn { position: absolute; width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 50%; pointer-events: auto; display: grid !important; place-items: center;
-  background: radial-gradient(circle at 35% 28%, #3a424e, #1b1f26 70%) !important; border: 1.5px solid #ffffff38 !important; box-shadow: 0 3px 10px #000a, inset 0 1px 0 #ffffff30; color: #f3ede2 !important; transition: transform .06s, filter .1s; overflow: hidden; }
-.abtn.down { transform: scale(.9); filter: brightness(1.5); }
-.abtn.big { width: 92px; height: 92px; margin: -46px 0 0 -46px; background: radial-gradient(circle at 35% 28%, #ffc07a, #f0782a 55%, #a8400c) !important; border: 2px solid #ffe3bf !important; color: #2a1608 !important; box-shadow: 0 4px 16px #000b, 0 0 22px #ff7a1a55, inset 0 2px 0 #ffffff66; }
-.abtn.cy { border-color: #5ef0ffaa !important; color: var(--cyan) !important; }
-.abtn.sm { width: 46px; height: 46px; margin: -23px 0 0 -23px; }
-.abtn .cd { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(#000b var(--cd, 0%), transparent 0); pointer-events: none; }
-.abtn .cdt { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; font-size: 17px; color: #fff; text-shadow: 0 1px 3px #000; pointer-events: none; }
-.abtn .cnt { position: absolute; right: 6px; bottom: 4px; font-size: 11px; font-weight: 800; color: #fff; text-shadow: 0 1px 2px #000; pointer-events: none; }
-.abtn.off { filter: grayscale(.8) brightness(.6); }
-.abtn.ready-flash { animation: readyflash .35s; }
-@keyframes readyflash { 0% { box-shadow: 0 0 0 0 #5ef0ffcc; } 100% { box-shadow: 0 0 0 16px #5ef0ff00; } }
-.abtn .key { position: absolute; left: 50%; top: 2px; transform: translateX(-50%); font-size: 9px; font-weight: 800; color: #ffffffaa; display: none; }
+/* ---------- action cluster ----------
+   Every button hangs off a zero-size anchor in the thumb-side bottom corner; hud.ts places them on
+   two arcs around the attack button (left/top are offsets from the anchor, --d the diameter). */
+.acts { position: absolute; right: var(--sar); bottom: var(--sab); width: 0; height: 0; pointer-events: none; }
+.hud.lefty .acts { right: auto; left: var(--sal); }
+.abtn { --d: 58px; position: absolute; width: var(--d); height: var(--d); margin: calc(var(--d) / -2) 0 0 calc(var(--d) / -2); border-radius: 50%; pointer-events: auto; display: grid; place-items: center;
+  /* bevelled metal rim; the dark glass face sits inside it */
+  background: conic-gradient(from 215deg, #aab3bf, #323943 20%, #7a8491 44%, #1a1e24 68%, #b9c1cc 88%, #aab3bf) !important;
+  box-shadow: 0 4px 10px #000c, 0 0 0 1px #0009; color: #f3ede2 !important; transition: transform .07s; }
+.abtn .face { position: absolute; inset: 3px; border-radius: 50%; background: radial-gradient(circle at 36% 22%, #4a5562 0%, #1d222a 46%, #0b0e12 100%); box-shadow: inset 0 0 0 1px #000b, inset 0 2px 3px #ffffff33, inset 0 -6px 10px #0009; transition: filter .1s; }
+.abtn .ico { position: relative; display: grid; place-items: center; transition: opacity .15s; }
+.abtn .ico svg { width: calc(var(--d) * .47); height: calc(var(--d) * .47); filter: drop-shadow(0 1px 1px #000c); }
+.abtn.sm .ico svg { width: calc(var(--d) * .5); height: calc(var(--d) * .5); }
+/* attack: the one warm button, and the biggest */
+.abtn.atk { background: conic-gradient(from 215deg, #fff1da, #c96a1e 22%, #ffd9a8 46%, #873808 70%, #fff4e2 88%, #fff1da) !important; box-shadow: 0 6px 18px #000c, 0 0 26px #ff7a1a70, 0 0 0 1px #3a1602; }
+.abtn.atk .face { inset: 4px; background: radial-gradient(circle at 36% 22%, #ffd49a 0%, #f78d30 40%, #c9530f 76%, #8f3505 100%); box-shadow: inset 0 0 0 1px #5a2204, inset 0 3px 5px #fff9, inset 0 -10px 16px #6a240088; }
+.abtn.atk .ico { color: #2a1406; }
+.abtn.atk .ico svg { width: calc(var(--d) * .5); height: calc(var(--d) * .5); stroke-width: 2.3; filter: drop-shadow(0 1px 0 #ffd9a8aa); }
+/* skills carry the energy colour */
+.abtn.sk .face { box-shadow: inset 0 0 0 1.5px #5ef0ffb8, inset 0 0 12px #5ef0ff40, inset 0 2px 3px #ffffff33, inset 0 -6px 10px #0009; }
+.abtn.sk .ico { color: var(--cyan); }
+/* Overdrive: gold, with its meter as a ring that fills */
+.abtn.od .face { box-shadow: inset 0 0 0 1.5px #ffcf5a99, inset 0 0 12px #ffcf5a33, inset 0 2px 3px #ffffff33, inset 0 -6px 10px #0009; }
+.abtn.od .ico { color: var(--gold); opacity: .5; }
+.abtn.od.full .ico, .abtn.od.s-active .ico { opacity: 1; }
+.abtn.od.full { animation: odready 1.1s ease-in-out infinite; }
+.abtn.od.full .face { background: radial-gradient(circle at 36% 22%, #8a6a22 0%, #4a340c 50%, #1c1404 100%); }
+@keyframes odready { 50% { box-shadow: 0 4px 10px #000c, 0 0 0 1px #0009, 0 0 20px 4px #ffcf5aaa; } }
+
+/* pressed: the face lights, the button sinks, a ring snaps on round it */
+.abtn::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; border: 2px solid #fff; opacity: 0; transition: opacity .28s, inset .28s; pointer-events: none; }
+.abtn.down { transform: scale(.91); }
+.abtn.down .face { filter: brightness(1.7); }
+.abtn.down::after { opacity: .95; inset: -2px; transition: none; }
+.abtn.aim::after { inset: -9px; border-color: var(--cyan); border-style: dashed; opacity: .9; }
+.abtn.held::after { border-color: var(--red); }
+.abtn.deny { animation: deny .22s; }
+@keyframes deny { 25% { translate: -3px 0; } 75% { translate: 3px 0; } }
+.abtn.ready-flash { animation: readyflash .4s; }
+@keyframes readyflash { 0% { box-shadow: 0 4px 10px #000c, 0 0 0 0 #5ef0ffdd; } 100% { box-shadow: 0 4px 10px #000c, 0 0 0 16px #5ef0ff00; } }
+
+/* cooldown: a dark sweep with a bright leading edge and the seconds left */
+.abtn .cd { position: absolute; inset: 3px; border-radius: 50%; pointer-events: none; display: none;
+  background: conic-gradient(#05070be0 calc(var(--cd, 0%) - 1.4%), #b8f8ff var(--cd, 0%), transparent 0); }
+.abtn.has-cd .cd { display: block; }
+.abtn.s-cooldown .ico { opacity: .34; }
+.abtn .cdt { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; font-size: calc(var(--d) * .34); color: #fff; text-shadow: 0 1px 3px #000, 0 0 6px #000; pointer-events: none; }
+/* not enough energy: drained of colour, with the energy bolt struck in red at the corner */
+.abtn.s-noenergy .face { filter: saturate(.15) brightness(.62); }
+.abtn.s-noenergy .ico { opacity: .32; color: #9aa3ad; }
+.abtn .en { position: absolute; left: -3px; top: -3px; width: 19px; height: 19px; border-radius: 50%; background: #2a0d0a; border: 1.5px solid #ff6a4a; color: #ff8a6a; display: none; place-items: center; box-shadow: 0 1px 4px #000; animation: enlow 1s ease-in-out infinite; z-index: 2; }
+.abtn.sk.s-noenergy .en { display: grid; }
+/* Overdrive short of full is told by its ring, and a kit button with no kits by its count */
+.abtn.od.s-noenergy .face { filter: none; }
+.abtn.od.s-noenergy .ico { opacity: .5; color: var(--gold); }
+@keyframes enlow { 50% { border-color: #ff6a4a55; color: #ff8a6a77; } }
+/* locked: no colour, a padlock and the level that opens it */
+.abtn.s-locked { background: conic-gradient(from 215deg, #5c626b, #24282e 20%, #474d56 44%, #15181c 68%, #666c75 88%, #5c626b) !important; }
+.abtn.s-locked .face { background: repeating-linear-gradient(135deg, #171a1f 0 5px, #1e2228 5px 10px); box-shadow: inset 0 0 0 1px #000b, inset 0 0 10px #000c; }
+.abtn.s-locked .ico { display: none; }
+.abtn .lk { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #aeb5bf; pointer-events: none; }
+.abtn .lk b { font-size: 10px; font-weight: 800; letter-spacing: .08em; color: #e3d7c3; line-height: 1; }
+.abtn.s-locked .lk { display: flex; }
+/* active: the action is running */
+.abtn.s-active .face { filter: brightness(1.45); }
+.abtn.s-active::after { opacity: .9; border-color: var(--cyan); box-shadow: 0 0 14px #5ef0ffaa; }
+.abtn.atk.s-active::after { border-color: #ffe3bf; box-shadow: 0 0 16px #ff9a3caa; }
+/* charge ring: a held attack, or the Overdrive meter */
+.abtn .ring { position: absolute; inset: -6px; width: calc(100% + 12px); height: calc(100% + 12px); transform: rotate(-90deg); pointer-events: none; opacity: 0; transition: opacity .12s; overflow: visible; }
+.abtn .ring circle { fill: none; stroke-width: 5.5; }
+.abtn .ring .trk { stroke: #000a; }
+.abtn .ring .val { stroke: #fff3d6; stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 100; }
+.abtn.charging .ring, .abtn.od:not(.s-locked) .ring { opacity: 1; }
+.abtn.s-locked .ring { opacity: 0; }
+.abtn.full .ring .val { stroke: #fff; filter: drop-shadow(0 0 3px #fff); }
+.abtn.od .ring .val { stroke: var(--gold); }
+.abtn.od.full .ring .val { stroke: #ffe9a8; filter: drop-shadow(0 0 3px #ffcf5a); }
+/* count pip: kits left, bolts in the magazine */
+.abtn .cnt { position: absolute; left: -4px; top: -4px; min-width: 19px; height: 19px; padding: 0 4px; border-radius: 10px; background: #0c0f13; border: 1px solid #ffffff55; font-size: 11.5px; line-height: 17px; font-weight: 800; color: #fff; text-align: center; pointer-events: none; box-shadow: 0 1px 4px #000a; z-index: 2; }
+.abtn .cnt:empty { display: none; }
+.abtn.atk .cnt { left: auto; right: 3px; top: 1px; min-width: 22px; height: 22px; line-height: 20px; font-size: 13px; border-radius: 11px; }
+.hud.lefty .abtn .en, .hud.lefty .abtn .cnt { left: auto; right: -4px; }
+.hud.lefty .abtn.atk .cnt { right: auto; left: 3px; }
+.abtn.none-left .cnt { color: #ff8a6a; border-color: #ff6a4a; }
+.abtn.none-left .ico { opacity: .32; }
+.abtn.none-left .face { filter: saturate(.2) brightness(.7); }
+/* the name of the action, until it has been used a few times */
+.abtn .lbl { position: absolute; left: 50%; top: calc(100% - 8px); transform: translateX(-50%); width: max-content; max-width: 78px; padding: 1.5px 5px 1px; border-radius: 7px; background: #0a0d11e6; border: 1px solid #ffffff2e;
+  font-size: 9px; line-height: 1.08; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; text-align: center; color: #fff; pointer-events: none; transition: opacity .8s; z-index: 1; }
+.abtn.sk .lbl { color: #c9f9ff; border-color: #5ef0ff66; }
+.abtn.atk .lbl { top: calc(100% - 13px); font-size: 10.5px; max-width: 96px; color: #ffe3bf; border-color: #ffb96899; }
+.abtn .lbl.gone, .abtn .lbl:empty { opacity: 0; }
+.abtn.s-locked .lbl { display: none; }
+.abtn .key { position: absolute; left: 50%; top: -11px; transform: translateX(-50%); font-size: 9px; font-weight: 800; color: #ffffffcc; text-shadow: 0 1px 2px #000; display: none; }
 body.desktop .abtn .key { display: block; }
-.ibtn { position: absolute; left: 50%; bottom: calc(262px + var(--sab)); transform: translate(-50%, 8px) scale(.94); pointer-events: none; opacity: 0; transition: opacity .14s, transform .14s cubic-bezier(.2, 1.4, .4, 1);
+.ibtn { position: absolute; left: 50%; bottom: calc(296px * var(--k, 1) + var(--sab)); transform: translate(-50%, 8px) scale(.94); pointer-events: none; opacity: 0; transition: opacity .14s, transform .14s cubic-bezier(.2, 1.4, .4, 1);
   padding: 9px 18px 9px 12px !important; border-radius: 26px; background: linear-gradient(180deg, #2a313bee, #14171cee) !important; border: 1.5px solid var(--cyan) !important; box-shadow: 0 4px 16px #000a, 0 0 18px #5ef0ff44;
   display: flex !important; align-items: center; gap: 8px; font-size: 15px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #fff !important; white-space: nowrap; }
 .ibtn.on { opacity: 1; transform: translate(-50%, 0) scale(1); pointer-events: auto; }
+/* landscape: the buttons are off to the side, so the prompt can sit low, above the tip strip */
+@media (max-height: 520px) { .ibtn { bottom: calc(104px + var(--sab)); } }
 .ibtn svg { color: var(--cyan); }
 .ibtn small { color: var(--dim); font-size: 10px; font-weight: 700; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; display: none; }
 body.desktop .ibtn small { display: block; }

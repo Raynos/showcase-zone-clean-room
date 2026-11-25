@@ -47,6 +47,25 @@ const P: Record<string, string> = {
   trophy: '<path d="M7 4h10v5a5 5 0 0 1-10 0zM7 6H4c0 3 1 4 3 4.5M17 6h3c0 3-1 4-3 4.5M12 14v4m-4 2h8"/>',
   hammer: '<path d="M14 4l6 6-3 3-6-6zM12 9l-9 9 3 3 9-9"/>',
   coin: '<circle cx="12" cy="12" r="8"/><path d="M12 7v10M9 9.5h4.5a1.75 1.75 0 0 1 0 3.5H10a1.75 1.75 0 0 0 0 3.5H15"/>',
+  // ---- action bar ----
+  kit: '<path d="M4 8h16v12H4zM9 8V5h6v3M12 11v6M9 14h6"/>',
+  overdrive: '<path d="M12 2l2.2 6.2L20 6l-3.4 5.3L22 14l-6.2.6L17 21l-5-4-5 4 1.2-6.4L2 14l5.4-2.7L4 6l5.8 2.2z"/><circle cx="12" cy="12.5" r="2"/>',
+  nexttarget: '<circle cx="10" cy="12" r="6"/><circle cx="10" cy="12" r="1.6"/><path d="M10 3v3m0 12v3M1 12h3M17 8l4 4-4 4"/>',
+  heavy: '<path d="M5 19L16 8m-3-5l8 8-3 1-6-6zM4 20l-1 1"/><path d="M6 6l-2-2m6 0V2M4 10H2"/>',
+  // skills
+  rise: '<path d="M6 21C6 12 10 6 18 4m0 0l-5 .5M18 4l-1.5 5M9 21c1-4 3-7 6-9"/>',
+  wave: '<path d="M4 20c9 0 15-6 15-16M8 20c6-1 9-5 9-11M12 20c2-1 3-3 3-5M19 4l-3 2m3-2l2 3"/>',
+  impale: '<path d="M2 12h17m-4-4l5 4-5 4M6 7v10M10 9v6M14 10v4"/>',
+  javelin: '<path d="M3 21L19 5m2-2l-1.5 5.5L15 4.5zM5 15l-2 1m6 2l-1 2M3 21l1-4 3 3z"/>',
+  shock: '<path d="M11 2L5 12h5l-2 10 9-13h-5l2-7zM18 4l2-1m-1 6h2M4 17l-2 1"/>',
+  rainfall: '<path d="M7 3v9m-2-2l2 2 2-2M12 6v11m-2-2l2 2 2-2M17 3v9m-2-2l2 2 2-2M4 21h16"/>',
+  jam: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.2 2.2m8.4 8.4l2.2 2.2M5.6 18.4l2.2-2.2"/><path d="M15 9l5-5m-4 0l4 4"/>',
+  flip: '<path d="M4 18a8 8 0 0 1 14-8M18 5v5h-5"/><path d="M4 12h5m-2-2l2 2-2 2M8 18h5m-2-2l2 2-2 2"/>',
+  snap: '<path d="M3 15l3 3 3-4 6-6M14 7l3 3"/><path d="M17 4l1 3 3 1-3 1-1 3-1-3-3-1 3-1z"/>',
+  mine: '<circle cx="12" cy="14" r="5"/><path d="M12 9V5m-2 0h4M5 14H3m18 0h-2M7 9L5.5 7.5M17 9l1.5-1.5M9 20l-1 1.5m7-1.5l1 1.5"/><circle cx="12" cy="14" r="1.4"/>',
+  // status effects
+  burn: '<path d="M12 3c1 4 5 5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-5 1-9z"/>',
+  broken: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM12 3l-2 6 4 3-3 4 1 5"/>',
 };
 export function icon(name: string, size = 24, strokeWidth = 2): string {
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round">${P[name] ?? P.star}</svg>`;

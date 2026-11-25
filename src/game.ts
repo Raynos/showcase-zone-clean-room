@@ -22,6 +22,7 @@ import { NPC_NAMES } from './data/quests';
 import { State } from './systems/state';
 import { Movers, Triggers, type Course } from './systems/world';
 import { Hud } from './ui/hud';
+import { actionSlots } from './ui/actionbar';
 import { Chunks } from './world/chunks';
 import { Environment } from './world/environment';
 import { FLORA_KEEPOUT, scatterFlora } from './world/flora';
@@ -364,14 +365,9 @@ export class Game {
   }
 
   private updateHudButtons() {
-    const c = this.combat, hud = this.hud, st = this.state, k = c.kind;
-    const sk = c.skills;
-    hud.setAct('attack', { icon: k === 'none' ? 'sword' : k, count: c.attackLabel() });
-    hud.setAct('skill1', { icon: sk[0].icon, cd: c.cd1, cdMax: sk[0].cd, off: st.d.energy < sk[0].energy });
-    hud.setAct('skill2', { icon: sk[1].icon, cd: c.cd2, cdMax: sk[1].cd, off: st.d.energy < sk[1].energy });
-    hud.setAct('dodge', { cd: this.player.rollCd, cdMax: 0.75 });
-    hud.setAct('potion', { cd: c.potionCd, cdMax: 12, count: String(st.count('kit')), off: st.count('kit') <= 0 });
-    hud.setAct('swap', { hidden: !st.d.loadout[1] });
+    const c = this.combat, hud = this.hud;
+    // combat feeds the action bar itself once it can; until then the bar is derived from its state here
+    if (typeof (c as { actionBar?: unknown }).actionBar !== 'function') hud.setActionBar(actionSlots(this));
     const t = c.target;
     hud.setTarget(t && t.alive && t.cls !== 'boss' ? { name: t.name, level: t.level, frac: t.hpFrac, cls: t.cls, sub: t.cls === 'elite' ? 'Elite' : t.cls === 'rare' ? 'Rare' : t.cls === 'night' ? 'Night shift' : '' } : null);
     if (t && t.alive) { t.center(_v); hud.setReticle(_v, clamp(t.radius * 1.4, 0.7, 4)); } else hud.setReticle(null);
@@ -405,6 +401,7 @@ export class Game {
     GU.uTime.value = this.time;
     const inp = this.input;
     inp.lookSensitivity = this.state.d.settings.sens; inp.invertY = this.state.d.settings.invertY;
+    this.hud.setMirror(this.state.d.settings.lefty);
     this.cameraRig.autoFollow = this.state.d.settings.autoFollow;
     inp.update(rdt);
     this.cameraRig.setStick(inp.moveX, inp.moveY);

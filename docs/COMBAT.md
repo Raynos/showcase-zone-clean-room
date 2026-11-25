@@ -112,11 +112,39 @@ interface ActionSlot {
   cd?: number;           // 0..1 remaining, for the sweep
   charge?: number;       // 0..1, attack hold or Overdrive meter
   count?: number;        // kits left, ammo
+  cdSec?: number;        // seconds of cooldown left, printed over the sweep
+  unlock?: number;       // level that opens a locked slot (skill 3: 6,
+                         // Overdrive: 10 when left out)
 }
 ```
 
 A slot in state `locked` shows its unlock level; `hidden` takes no space.
 The HUD decides position, size, press feedback and when labels fade.
 
+How the HUD (`src/ui/hud.ts`) reads a slot:
+
+- A slot left out of the array is hidden. The HUD keeps the last array and
+  redraws from it every frame, so calling only on change is enough.
+- With `cdSec` the HUD prints the seconds and runs the sweep down smoothly
+  between calls. Without it the sweep moves only when `cd` is sent again.
+- `charge` draws a ring round the button: on `attack` while it is held, on
+  `overdrive` always (the meter). At 1 the ring flares.
+- `noenergy` dims the button; skills also get a struck energy bolt. A
+  `count` of 0 turns the count red and dims the icon.
+- A label fades for good after the action has been pressed four times. A
+  label on `attack` while its state is `active` is a live caption ("Counter",
+  "Full") and never fades.
+- `hud.setAct(id, { icon, off, hidden })` from older callers (mounts) is laid
+  over the slots for as long as the caller keeps calling each frame.
+- Buttons press `attack`, `dodge`, `jump`, `skill1..3`, `overdrive`, `swap`,
+  `mount`, `target`, and `potion` for the kit, through `game.input`. A tap on
+  the target button presses `target`; holding it calls
+  `game.engage.clearTarget()`. A drag that starts on the held attack button
+  turns the camera after 8 px, like a look-drag.
+
 Target-frame extras come through `hud.setTargetState({ stagger: 0..1,
-broken: boolean, effects: string[] })`.
+broken: boolean, effects: string[] })`. `stagger` fills a bar under the
+health bar, `broken` flashes it and adds a "Broken" chip, and `effects` are
+icon ids (`shock`, `burn`, `jam`). The same state shows on the boss bar when
+that is up. What was last given stays until the next call: send it when the
+target changes as well as when its values do, and pass `null` to show none.
