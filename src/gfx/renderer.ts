@@ -4,6 +4,11 @@ import { clamp } from '../core/util';
 export interface Quality {
   name: string;
   maxPixelRatio: number;
+  /**
+   * contrast-adaptive sharpening folded into the final pass: 0 off, 1 strongest. This is the
+   * strength when the browser upscales the canvas 2× or more; it eases to half at native size.
+   */
+  sharpen: number;
   msaa: number;
   shadowSize: number;
   /** how far from the camera sun shadows reach, metres */
@@ -14,10 +19,10 @@ export interface Quality {
   viewDist: number;
 }
 export const QUALITY: Record<string, Quality> = {
-  low: { name: 'low', maxPixelRatio: 1.25, msaa: 0, shadowSize: 1024, shadowDist: 55, bloom: true, godrays: false, grass: 0.45, viewDist: 420 },
-  medium: { name: 'medium', maxPixelRatio: 1.75, msaa: 2, shadowSize: 2048, shadowDist: 80, bloom: true, godrays: true, grass: 0.75, viewDist: 600 },
-  high: { name: 'high', maxPixelRatio: 2.0, msaa: 4, shadowSize: 2048, shadowDist: 120, bloom: true, godrays: true, grass: 1, viewDist: 800 },
-  ultra: { name: 'ultra', maxPixelRatio: 2.5, msaa: 4, shadowSize: 4096, shadowDist: 140, bloom: true, godrays: true, grass: 1.3, viewDist: 900 },
+  low: { name: 'low', maxPixelRatio: 1.25, sharpen: 1, msaa: 0, shadowSize: 1024, shadowDist: 55, bloom: true, godrays: false, grass: 0.45, viewDist: 420 },
+  medium: { name: 'medium', maxPixelRatio: 1.5, sharpen: 1, msaa: 2, shadowSize: 2048, shadowDist: 80, bloom: true, godrays: true, grass: 0.75, viewDist: 600 },
+  high: { name: 'high', maxPixelRatio: 2.0, sharpen: 0.7, msaa: 4, shadowSize: 2048, shadowDist: 120, bloom: true, godrays: true, grass: 1, viewDist: 800 },
+  ultra: { name: 'ultra', maxPixelRatio: 2.5, sharpen: 0.5, msaa: 4, shadowSize: 4096, shadowDist: 140, bloom: true, godrays: true, grass: 1.3, viewDist: 900 },
 };
 
 const FS_VERT = /* glsl */ `
@@ -151,12 +156,29 @@ export class Renderer {
     this.mFinal = fsMat(/* glsl */ `
       varying vec2 vUv;
       uniform sampler2D tMap; uniform sampler2D tBloom; uniform sampler2D tRays;
-      uniform float uExposure, uBloom, uSat, uContrast, uVig, uHurt, uDesat, uSpeed, uFade, uLetter, uChroma, uRays, uTime, uAspect;
+      uniform float uExposure, uBloom, uSat, uContrast, uVig, uHurt, uDesat, uSpeed, uFade, uLetter, uChroma, uRays, uTime, uAspect, uSharp;
+      uniform vec2 uTexel;
       uniform vec4 uFlash; uniform vec3 uTint, uShadowTint, uHighTint, uSunCol; uniform vec3 uSun;
       vec3 aces(vec3 x) {
         // ACES fitted (Narkowicz), slightly lifted toe for a stylised look
         const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
         return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
+      }
+      // Contrast-adaptive sharpening (after AMD FidelityFX CAS) on the scene colour only, before
+      // bloom is added. It works on a reversibly tone-mapped, gamma-like copy of the five taps so
+      // the weights see what the eye sees: flat areas and already-hard edges are left alone, HDR
+      // emitters get no halo, and the result goes back to linear for the rest of the grade.
+      vec3 sEnc(vec3 c) { c *= uExposure; return sqrt(c / (1.0 + max(c.r, max(c.g, c.b)))); }
+      vec3 sharpen(vec3 c0) {
+        vec3 e = sEnc(c0);
+        vec3 b = sEnc(texture2D(tMap, vUv + vec2(0.0, -uTexel.y)).rgb), h = sEnc(texture2D(tMap, vUv + vec2(0.0, uTexel.y)).rgb);
+        vec3 d = sEnc(texture2D(tMap, vUv + vec2(-uTexel.x, 0.0)).rgb), f = sEnc(texture2D(tMap, vUv + vec2(uTexel.x, 0.0)).rgb);
+        vec3 mn = min(e, min(min(b, h), min(d, f))), mx = max(e, max(max(b, h), max(d, f)));
+        vec3 w = sqrt(clamp(min(mn, 1.0 - mx) / max(mx, 1e-4), 0.0, 1.0)) * (-1.0 / mix(8.0, 5.0, uSharp));
+        // never past the local range: edges get steeper but no pixel overshoots into a halo or sparkle
+        vec3 s = min(clamp((e + (b + h + d + f) * w) / (1.0 + 4.0 * w), mn, mx), 0.999);
+        s *= s;
+        return s / (1.0 - max(s.r, max(s.g, s.b))) / max(uExposure, 1e-4);
       }
       void main() {
         vec2 uv = vUv;
@@ -170,7 +192,7 @@ export class Renderer {
         } else if (uChroma > 0.0005) {
           vec2 o = cc * uChroma * dot(cc, cc) * 4.0;
           col = vec3(texture2D(tMap, uv + o).r, texture2D(tMap, uv).g, texture2D(tMap, uv - o).b);
-        } else col = texture2D(tMap, uv).rgb;
+        } else { col = texture2D(tMap, uv).rgb; if (uSharp > 0.0) col = sharpen(col); }
         vec3 bloom = texture2D(tBloom, uv).rgb;
         col += bloom * uBloom;
         col += texture2D(tRays, uv).rgb * uSunCol * uRays;
@@ -201,7 +223,7 @@ export class Renderer {
       tMap: { value: null }, tBloom: { value: null }, tRays: { value: null },
       uExposure: { value: 1 }, uBloom: { value: 1 }, uSat: { value: 1 }, uContrast: { value: 1 }, uVig: { value: 0.4 },
       uHurt: { value: 0 }, uDesat: { value: 0 }, uSpeed: { value: 0 }, uFade: { value: 0 }, uLetter: { value: 0 }, uChroma: { value: 0 },
-      uRays: { value: 0 }, uTime: { value: 0 }, uAspect: { value: 1 },
+      uRays: { value: 0 }, uTime: { value: 0 }, uAspect: { value: 1 }, uSharp: { value: 0 }, uTexel: { value: new THREE.Vector2() },
       uFlash: { value: new THREE.Vector4() }, uTint: { value: new THREE.Color() }, uShadowTint: { value: new THREE.Color() },
       uHighTint: { value: new THREE.Color() }, uSunCol: { value: new THREE.Color() }, uSun: { value: new THREE.Vector3() },
     });
@@ -305,6 +327,10 @@ export class Renderer {
     u.uVig.value = p.vignette; u.uHurt.value = p.hurt; u.uDesat.value = p.desat; u.uSpeed.value = p.speed; u.uFade.value = p.fade;
     u.uLetter.value = p.letterbox; u.uChroma.value = p.chroma; u.uRays.value = rays; u.uTime.value = this.time % 100;
     u.uAspect.value = this.width / this.height;
+    // the more the browser has to stretch the canvas to the screen, the more sharpening it needs
+    const stretch = (window.devicePixelRatio || 1) / Math.max(this.pixelRatio, 0.01);
+    u.uSharp.value = q.sharpen * (0.5 + 0.5 * clamp(stretch - 1, 0, 1));
+    u.uTexel.value.set(1 / this.rtMain.width, 1 / this.rtMain.height);
     u.uFlash.value.copy(p.flash); u.uTint.value.copy(p.tint); u.uShadowTint.value.copy(p.shadowTint); u.uHighTint.value.copy(p.highTint);
     u.uSunCol.value.copy(p.sunColor);
     this.pass(this.mFinal, null);
