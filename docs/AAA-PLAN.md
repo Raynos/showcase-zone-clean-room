@@ -525,6 +525,61 @@ as soon as phase 6 delivers the adventurer bodies.
 live URL that tracks the branch, measured headroom, and 24 remaster targets
 for the owner to accept or reject before any art is built.
 
+## Progress
+
+### Run 1 (2026-11-25): phases 0, 1 and 2
+
+All numbers are headless desktop Chrome on the phone tier at 402×874. None
+are from a phone.
+
+**Phase 0, done except one item.**
+- Fixed, each reproduced first and then proven in the running game: the
+  gauntlet trap, the main-quest dead end, Storm Hour, aggro that never
+  dropped, autosave position, the dead content, the physics-yard lock-up.
+  Settings has "Return to Brasswick".
+- Not fixed: the arena fall-through. It could not be reproduced in 407
+  stress drops or three minutes of random movement in the live fight. The
+  safety net stays.
+- Guard rails: `?perf` overlay, `tools/golden.sh`, and a workflow that
+  publishes every push to the live URL. The playthrough bot is still being
+  built.
+
+**Phase 1, done and signed off.** 25 golden pairs, `docs/LOOK.md`, and the
+owner's approval of the direction.
+
+**Phase 2, done except the wasm split.**
+
+| Budget | Before | After | Target |
+|---|---|---|---|
+| Triangles, worst view | 1.75M | 624k | 900k |
+| Draw calls, worst view | 442 | 266 | 280 |
+| Grass triangles in view | 570k | 5k–91k | 150k |
+| Shadow share, town | 44% | 38% | 25% |
+| JS heap, steady | 210 MB | 132 MB | 200 MB |
+
+- The phone tier now renders at 1.5× with sharpening, 26% fewer pixels at
+  the same measured crispness as before. It is not crisper.
+- A re-shoot of the golden frames from the new build showed no rendering
+  change; the differences were fight timing and the new buff row.
+- A lost WebGL context now saves and reloads, because world geometry is no
+  longer kept on the CPU.
+- Pending: the physics wasm split (entry script 4.6 MB to 0.13 MB) works in
+  a trial copy and lands once the bot's long run is finished.
+
+**Found along the way, for later phases.**
+- Fog never follows sun direction, weather or interiors: its values are
+  frozen at startup (`FOGX` in `src/gfx/material.ts`). The fix changes the
+  look, so it belongs in phase 5.
+- Outdoor mobs aggro and hit a player inside the gauntlet courts through
+  the walls. Needs a line-of-sight check (phase 3).
+- The camera clips into the hero's head at some headings near walls
+  (phase 3).
+- Shadow share in town is still above target, wide vistas cost more draw
+  calls than before (lookout 156 to 227), and the rim crags are 247k
+  triangles with no far LOD.
+- Sharpening only makes the image crisper than before at 1.75×. Revisit the
+  resolution once a phone reading exists.
+
 ## 7. Risks
 
 - **Phone reality.** Every performance number is from desktop Chrome. The
