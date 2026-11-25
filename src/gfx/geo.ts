@@ -398,6 +398,15 @@ function chamferBox(w: number, h: number, d: number, b: number, fit: boolean): T
     const a = c * 3, f = sx * sy * sz > 0;
     if (f) idx.push(a, a + 1, a + 2); else idx.push(a, a + 2, a + 1);
   }
+  // make every triangle wind outward: compare its geometric normal with its vertex normals
+  for (let i = 0; i < idx.length; i += 3) {
+    const a = idx[i] * 3, b2 = idx[i + 1] * 3, c = idx[i + 2] * 3;
+    const ux = pos[b2] - pos[a], uy = pos[b2 + 1] - pos[a + 1], uz = pos[b2 + 2] - pos[a + 2];
+    const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const sx = nor[a] + nor[b2] + nor[c], sy = nor[a + 1] + nor[b2 + 1] + nor[c + 1], sz = nor[a + 2] + nor[b2 + 2] + nor[c + 2];
+    if (nx * sx + ny * sy + nz * sz < 0) { const t = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t; }
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
