@@ -43,7 +43,7 @@ const KEYS: Key[] = [
  */
 export const GRADE = {
   liftDay: [0.6, 0.58, 1.0, 0.06], liftNight: [0.3, 0.55, 1.0, 0.1], liftIn: [0.42, 0.6, 1.0, 0.09],
-  expDay: 1.1, expNight: 0.9, vibDay: 0.45, vibNight: 0.3, satDay: 1.12, satNight: 1.05, conDay: 1.06, conNight: 1.04,
+  expDay: 1.1, expNight: 0.9, vibDay: 0.38, vibNight: 0.3, satDay: 1.12, satNight: 1.05, conDay: 1.06, conNight: 1.04,
   /** baked lamp light: gain by day, after dark and indoors */
   lampDay: 0.3, lampNight: 1.1, lampIn: 1.2,
   /** glossy answer of floors to lamp light */
@@ -53,7 +53,7 @@ export const GRADE = {
   farShade: 0.8,
 };
 
-export type WeatherKind ='clear' | 'cloudy' | 'rain' | 'storm';
+export type WeatherKind = 'clear' | 'cloudy' | 'rain' | 'storm';
 interface WeatherParams { cover: number; fogMul: number; sunMul: number; rain: number; wind: number; wet: number; dim: number }
 const WEATHER: Record<WeatherKind, WeatherParams> = {
   clear: { cover: 0.5, fogMul: 1, sunMul: 1, rain: 0, wind: 1, wet: 0, dim: 0 },
@@ -343,7 +343,8 @@ export class Environment {
     mixHex(su.uCloudDark.value, a.cloudDark, b.cloudDark, t);
     // overcast greys everything toward a flat slate
     const dim = this.w.dim;
-    const grey = cB.setRGB(0.36, 0.4, 0.46).multiplyScalar(lerp(1, 0.16, k.night));
+    // (a storm goes past slate to navy: the deck is thick enough to shut the daylight out)
+    const grey = cB.setRGB(0.36, 0.4, 0.46).lerp(cA.setRGB(0.15, 0.19, 0.31), smooth(0.3, 0.42, dim)).multiplyScalar(lerp(1, 0.16, k.night));
     su.uZenith.value.lerp(grey, dim * 1.5 > 1 ? 1 : dim * 1.5);
     su.uHorizon.value.lerp(cA.copy(grey).multiplyScalar(1.5), Math.min(1, dim * 1.6));
     su.uCloudLit.value.lerp(cA.copy(grey).multiplyScalar(1.7), Math.min(1, dim * 1.9));
