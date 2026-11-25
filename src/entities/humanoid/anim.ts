@@ -329,24 +329,92 @@ function ground(P: Pose, hp: HumanPose, st: AnimState) {
   else if (mv >= 1) gait(P, hp, st, mv);
   else { idle(P, hp, st); gait(tmpA, hp, st, mv); P.mix(tmpA, mv); }
   landSquash(P, hp.landT);
+  settle(P, hp.settleT);
+  pivot(P, hp);
+  takeoff(P, hp);
 }
 
-function air(P: Pose, hp: HumanPose) {
+/** Take-off: the legs load for the first instant of a jump, so the rise reads as a push and not a lift. */
+function takeoff(P: Pose, hp: HumanPose) {
+  const jt = hp.jumpT ?? 9;
+  if (jt > 0.12 || hp.vy < 1) return;
+  const k = jt < 0.03 ? jt / 0.03 : 1 - smooth(0.05, 0.12, jt);
+  P.hipsPos.y -= 0.24 * k; P.hipsPos.z -= 0.03 * k;
+  qmul(P.hipsQ, 0.3 * k); qmul(P.chestQ, 0.14 * k); qmul(P.headQ, -0.3 * k);
+  for (let s = 0; s < 2; s++) { P.handPos[s].z -= 0.2 * k; P.handPos[s].y -= 0.04 * k; P.knee[s].set(sx(s) * 0.25, 0, 1); }
+}
+/** Letting go of the stick at a run: the weight carries on over the feet, then rocks back and settles. */
+function settle(P: Pose, t: number | undefined) {
+  if (t === undefined || t > 0.7 || t < 0) return;
+  const e = t < 0.1 ? t / 0.1 : Math.exp(-(t - 0.1) * 6.5) * Math.cos((t - 0.1) * 9.5);
+  if (Math.abs(e) < 0.004) return;
+  P.hipsPos.z += 0.085 * e; P.hipsPos.y -= 0.05 * Math.abs(e);
+  qmul(P.hipsQ, 0.14 * e); qmul(P.chestQ, 0.1 * e); qmul(P.headQ, -0.16 * e);
+  for (let s = 0; s < 2; s++) { P.handPos[s].z += 0.1 * e; P.handPos[s].y += 0.02 * Math.abs(e); }
+}
+/** Sharp reversal: one leg braces out along the slide, the hips sink and the body leans back against it. */
+function pivot(P: Pose, hp: HumanPose) {
+  const k = hp.pivot ?? 0;
+  if (k < 0.004) return;
+  // slide direction in rig space (rig +X is the character's left)
+  const dx = -(hp.pivotX ?? 0), dz = hp.pivotZ ?? -1;
+  const lead = dx > 0.3 ? L : dx < -0.3 ? R : R, rear = lead === L ? R : L;
+  _v1.set(sx(lead) * 0.12 + dx * 0.42, SK.ankle, dz * 0.46);
+  P.footPos[lead].lerp(_v1, k); qe(_q2, -0.3, Math.atan2(dx, dz) * 0.35 + sx(lead) * 0.2); P.footQ[lead].slerp(_q2, k);
+  _v1.set(sx(rear) * 0.14 - dx * 0.1, SK.ankle, -dz * 0.14);
+  P.footPos[rear].lerp(_v1, k); qe(_q2, 0.12, sx(rear) * 0.3); P.footQ[rear].slerp(_q2, k);
+  P.hipsPos.x += -dx * 0.03 * k; P.hipsPos.z += -dz * 0.03 * k; P.hipsPos.y -= 0.15 * k;
+  // lean away from the slide: +pitch is forward, +roll tips to the character's right (-X)
+  qmul(P.hipsQ, -dz * 0.2 * k, 0, dx * 0.16 * k);
+  qmul(P.spineQ, -dz * 0.14 * k, 0, dx * 0.1 * k);
+  qmul(P.headQ, dz * 0.2 * k, 0, -dx * 0.14 * k);
+  for (let s = 0; s < 2; s++) { P.handPos[s].x += sx(s) * 0.14 * k; P.handPos[s].y += 0.1 * k; P.handPos[s].z += dz * 0.08 * k; }
+}
+
+// Three separate airborne poses, blended by vertical speed, so a jump has a push, a hang and a drop.
+function airRise(P: Pose) {
+  // stretched: chest up, lead knee driving, trailing leg long with the toe pointed, off arm punched high
   neutral(P);
-  const up = clamp01(hp.vy / 7 * 0.5 + 0.5); // 1 rising, 0 falling
-  const t = hp.time;
-  const fl = Math.sin(t * 9) * 0.02 * (1 - up);
-  P.hipsPos.y = SK.hipY - 0.02;
-  qe(P.hipsQ, lerp(0.12, -0.04, up), 0, 0);
-  qe(P.spineQ, lerp(0.05, -0.08, up));
-  qe(P.chestQ, lerp(0.02, -0.1, up));
-  qe(P.headQ, lerp(0.15, 0.0, up));
-  // rising: lead knee up, trail leg back, lead arm thrown high.  falling: legs reach for the ground, arms out wide
-  foot(P, L, 0.1, lerp(0.1 + fl, 0.46, up), lerp(0.16, 0.2, up), lerp(0.3, 0.5, up));
-  foot(P, R, -0.11, lerp(0.04 - fl, 0.3, up), lerp(-0.14, -0.3, up), lerp(0.45, 0.9, up));
-  hand(P, L, lerp(0.6, 0.3, up), lerp(0.16 + fl * 2, 0.44, up), lerp(-0.02, 0.22, up));
-  hand(P, R, lerp(-0.6, -0.38, up), lerp(0.2 - fl * 2, -0.1, up), lerp(-0.06, -0.2, up));
-  P.elbow[L].set(0.6, -0.6, -0.6); P.elbow[R].set(-0.6, -0.6, -0.6);
+  P.hipsPos.y = SK.hipY + 0.02;
+  qe(P.hipsQ, -0.06); qe(P.spineQ, -0.1); qe(P.chestQ, -0.14); qe(P.headQ, -0.12);
+  foot(P, L, 0.1, 0.5, 0.26, 0.55);
+  foot(P, R, -0.11, 0.06, -0.26, 1.15);
+  P.knee[L].set(0.15, 0.3, 1); P.knee[R].set(-0.1, 0, 1);
+  hand(P, L, 0.26, 0.5, 0.26); hand(P, R, -0.4, -0.16, -0.24);
+  P.elbow[L].set(0.8, -0.6, -0.4); P.elbow[R].set(-0.6, -0.4, -0.8);
+}
+function airApex(P: Pose, t: number) {
+  // the hang: knees gathered under, arms floated wide, eyes on the landing
+  neutral(P);
+  const fl = Math.sin(t * 5) * 0.012;
+  P.hipsPos.y = SK.hipY + 0.03;
+  qe(P.hipsQ, 0.16); qe(P.spineQ, 0.08); qe(P.chestQ, 0.02); qe(P.headQ, 0.04);
+  foot(P, L, 0.13, 0.44 + fl, 0.2, 0.25);
+  foot(P, R, -0.14, 0.36 - fl, 0.02, 0.6);
+  P.knee[L].set(0.3, 0.2, 1); P.knee[R].set(-0.3, 0.2, 1);
+  hand(P, L, 0.58, 0.14 + fl, 0.1); hand(P, R, -0.58, 0.1 - fl, 0.06);
+  P.elbow[L].set(0.5, -0.8, -0.5); P.elbow[R].set(-0.5, -0.8, -0.5);
+}
+function airFall(P: Pose, t: number, fast: number) {
+  // the drop: legs reaching for the ground one ahead of the other, arms thrown up and fluttering, back arched
+  neutral(P);
+  const fl = Math.sin(t * 11) * 0.03 * (0.4 + 0.6 * fast);
+  P.hipsPos.y = SK.hipY - 0.03;
+  qe(P.hipsQ, 0.1 - 0.06 * fast); qe(P.spineQ, -0.04 - 0.06 * fast); qe(P.chestQ, -0.06 - 0.08 * fast); qe(P.headQ, 0.26);
+  foot(P, L, 0.13, 0.1 + fl, 0.2, 0.2);
+  foot(P, R, -0.14, 0.04 - fl, -0.1, 0.5);
+  P.knee[L].set(0.2, 0, 1); P.knee[R].set(-0.2, 0, 1);
+  hand(P, L, 0.5, 0.3 + 0.22 * fast + fl * 2, 0.02); hand(P, R, -0.52, 0.26 + 0.2 * fast - fl * 2, -0.04);
+  P.elbow[L].set(0.7, -0.5, -0.6); P.elbow[R].set(-0.7, -0.5, -0.6);
+}
+function air(P: Pose, hp: HumanPose) {
+  const rise = smooth(1.2, 5, hp.vy), fall = smooth(1.2, 6, -hp.vy);
+  airApex(P, hp.time);
+  if (rise > 0) { airRise(tmpA); P.mix(tmpA, rise); }
+  if (fall > 0) { airFall(tmpA, hp.time, smooth(8, 22, -hp.vy)); P.mix(tmpA, fall); }
+  // an air jump snaps into a tuck before it stretches again
+  const jt = hp.jumpT ?? 9;
+  if (jt < 0.2 && hp.vy > 1) { const k = 1 - smooth(0.04, 0.2, jt); for (let s = 0; s < 2; s++) P.footPos[s].y += 0.14 * k; qmul(P.hipsQ, 0.22 * k); }
   carryAir(P, hp);
 }
 function carryAir(P: Pose, hp: HumanPose) {

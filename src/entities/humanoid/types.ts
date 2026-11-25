@@ -81,6 +81,12 @@ export interface HumanPose {
   flinch?: number; flinchX?: number; flinchZ?: number;
   /** seconds since a knockdown began, when locomotion === 'down' */
   downT?: number;
+  /** seconds since the last jump impulse (drives the take-off crouch and the push into the rise) */
+  jumpT?: number;
+  /** 0..1 while braking through a sharp reversal, and the unit direction the body is still sliding (x right, z forward) */
+  pivot?: number; pivotX?: number; pivotZ?: number;
+  /** seconds since the stick was let go at a run (the weight rocks forward over the feet and settles) */
+  settleT?: number;
 }
 
 /** Knockdown timeline in seconds: thrown back until `fall`, lying until `lie`, on the feet again at `end`. A roll can start from `rollAt`. */

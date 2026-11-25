@@ -62,6 +62,9 @@ export class Player {
   /** seconds since a knockdown began, or -1 when on the feet */
   downT = -1;
   private flinchT = 9; private flinchPow = 0;
+  // visual inertia only: none of these change how the capsule moves
+  private jumpT = 9; private pivotT = 9; private settleT = 9; private prevMag = 0;
+  private pivotDir = new THREE.Vector3();
   /** velocity of the platform under our feet */
   groundVel = new THREE.Vector3();
   groundTag = '';
@@ -221,7 +224,7 @@ export class Player {
     this.landT += dt;
     this.stunT = Math.max(0, this.stunT - dt);
     if (this.downT >= 0) { this.downT += dt; if (this.downT >= KNOCKDOWN.end || this.mode || this.dead) this.downT = -1; }
-    this.flinchT += dt;
+    this.flinchT += dt; this.jumpT += dt; this.pivotT += dt; this.settleT += dt;
 
     if (this.mode) {
       this.mode.update(this, dt);
@@ -241,6 +244,15 @@ export class Player {
     if (!this.mode) p.locomotion = this.dead ? 'dead' : this.downT >= 0 ? 'down' : this.rolling ? 'roll' : this.grounded || this.airTime < 0.08 ? 'ground' : 'air';
     else p.locomotion = this.dead ? 'dead' : this.mode.name;
     p.rollT = this.rollT; p.downT = this.downT;
+    p.jumpT = this.jumpT; p.settleT = this.grounded ? this.settleT : 9;
+    {
+      const t = this.pivotT;
+      p.pivot = !this.grounded || t > 0.34 ? 0 : t < 0.05 ? t / 0.05 : 1 - (t - 0.05) / 0.29;
+      if (p.pivot > 0) p.pivot = p.pivot * p.pivot * (3 - 2 * p.pivot);
+      // the slide direction in character space (the character is already turning to the new heading)
+      const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
+      p.pivotX = this.pivotDir.x * cy - this.pivotDir.z * sy; p.pivotZ = this.pivotDir.x * sy + this.pivotDir.z * cy;
+    }
     // flinch envelope: there in 40 ms, gone in about a third of a second
     p.flinch = this.flinchT < 0.04 ? (this.flinchT / 0.04) * this.flinchPow : this.flinchT < 0.6 ? Math.exp(-(this.flinchT - 0.04) * 9) * Math.cos((this.flinchT - 0.04) * 6) * this.flinchPow : 0;
     // local move direction
@@ -288,6 +300,14 @@ export class Player {
       this.vel.x = this.lunge.x * k; this.vel.z = this.lunge.z * k;
       if (this.lungeT <= 0) { this.vel.x *= 0.3; this.vel.z *= 0.3; this.lungeDur = 0; }
     } else {
+      // weight cues for the animation: a hard reversal plants and pivots, letting go at a run settles
+      const sp0 = Math.hypot(this.vel.x, this.vel.z);
+      if (this.grounded && mag > 0.5 && sp0 > 3.8 && this.pivotT > 0.5 && (this.vel.x * wx + this.vel.z * wz) / (sp0 * Math.hypot(wx, wz)) < -0.45) {
+        this.pivotT = 0; this.pivotDir.set(this.vel.x / sp0, 0, this.vel.z / sp0);
+        g.fx.dust(this.pos, 4, 0.9); g.sfx('slide', { vol: 0.3, pitch: 1.2 });
+      }
+      if (this.grounded && mag <= 0.01 && this.prevMag > 0.5 && sp0 > 4.5) { this.settleT = 0; g.fx.dust(this.pos, 2, 0.6); }
+      this.prevMag = mag;
       const tx = mag > 0.01 ? (wx / Math.hypot(wx, wz)) * maxSp * mag : 0, tz = mag > 0.01 ? (wz / Math.hypot(wx, wz)) * maxSp * mag : 0;
       const acc = this.grounded ? (mag > 0.01 ? 58 : 46) : 16;
       const dx = tx - this.vel.x, dz = tz - this.vel.z, dl = Math.hypot(dx, dz);
@@ -305,9 +325,11 @@ export class Player {
       if (this.coyote > 0) {
         this.vel.y = 9.4; this.grounded = false; this.coyote = 0; this.jumpBuf = 0; this.jumpsLeft = 1; this.fallStart = this.pos.y;
         this.vel.x += this.groundVel.x; this.vel.z += this.groundVel.z;
+        this.jumpT = 0;
         this.onJump?.(false);
       } else if (this.jumpsLeft > 0 && this.airTime > 0.12) {
         this.vel.y = 8.6; this.jumpsLeft--; this.jumpBuf = 0; this.fallStart = Math.max(this.fallStart, this.pos.y);
+        this.jumpT = 0;
         this.onJump?.(true);
       }
     }
