@@ -1,4 +1,6 @@
+import { FP_FOV } from '../../core/camera';
 import { QUALITY } from '../../gfx/renderer';
+import { setView } from '../../systems/view';
 import { icon } from '../icons';
 import { btn, cap, type PanelSpec } from './common';
 
@@ -23,6 +25,8 @@ export const settingsPanel: PanelSpec = {
       music: { min: 0, max: 1, get: () => s.music, set: (v) => { s.music = v; g.audio?.setVolumes?.({ sfx: s.sfx, music: s.music }); }, fmt: (v) => Math.round(v * 100) + '%' },
       sens: { min: 0.4, max: 2, get: () => s.sens, set: (v) => { s.sens = v; }, fmt: (v) => v.toFixed(2) + '×' },
       shake: { min: 0, max: 1.5, get: () => s.shake, set: (v) => { s.shake = v; }, fmt: (v) => Math.round(v * 100) + '%' },
+      // first person: degrees on top of the default for the way the phone is held; shows the field of view it gives
+      fpFov: { min: -10, max: 15, get: () => s.fpFov ?? 0, set: (v) => { s.fpFov = Math.round(v); }, fmt: (v) => Math.round((innerWidth < innerHeight ? FP_FOV.portrait : FP_FOV.landscape) + v) + '°' },
     };
     const slider = (id: string, label: string, ic: string) => {
       const d = sliders[id], f = (d.get() - d.min) / (d.max - d.min);
@@ -40,7 +44,11 @@ export const settingsPanel: PanelSpec = {
       h += group(`<div class="pn-seg" role="radiogroup" aria-label="Quality">${QN.map((q) => `<div class="${s.quality === q ? 'on' : ''}" data-a="quality" data-v="${q}" role="radio" aria-checked="${s.quality === q}">${QL[q]}</div>`).join('')}</div>
         <div class="pn-qd">${QD[s.quality] ?? ''}</div>${toggle('fps', 'Frame-rate counter', 'charge', s.fps !== false, 'Under your health bars · tap it for detail')}<div class="pn-note fps">Running at <b class="fpsv">${Math.round(g.fps)}</b> fps on <b>${cap(g.renderer.quality.name)}</b>. Resolution adapts on its own to hold 60.</div>`).replace('pn-group bev', 'pn-group bev pad');
       h += '<div class="pn-sec">Audio</div>' + group(slider('sfx', 'Effects', 'bolt') + slider('music', 'Music', 'star'));
-      h += '<div class="pn-sec">Camera</div>' + group(slider('sens', 'Look speed', 'target') + slider('shake', 'Screen shake', 'blast')
+      // view: third or first person (systems/view.ts setView)
+      const fp = s.view === 'first', still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      h += '<div class="pn-sec">Camera</div>' + group(`<div class="pn-seg" role="radiogroup" aria-label="View">${(['third', 'first'] as const).map((v) => `<div class="${s.view === v ? 'on' : ''}" data-a="view" data-v="${v}" role="radio" aria-checked="${s.view === v}">${v === 'third' ? 'Third person' : 'First person'}</div>`).join('')}</div>`
+        + (fp ? slider('fpFov', 'Field of view', 'target') + toggle('headBob', 'Head bob', 'jump', s.headBob !== false && !still, still ? 'Off: your device asks for reduced motion' : 'The view rises and falls with your stride') : '')).replace('pn-group bev', 'pn-group bev pad')
+        + group(slider('sens', 'Look speed', 'target') + slider('shake', 'Screen shake', 'blast')
         + toggle('invertY', 'Invert vertical look', 'swap', s.invertY) + toggle('autoFollow', 'Camera follows movement', 'dash', s.autoFollow, 'Swings behind you as you run'));
       let ctl = toggle('lefty', 'Left-handed controls', 'swap', s.lefty, 'Stick on the right, buttons on the left');
       ctl += toggle('haptics', 'Vibration', 'blast', s.haptics, g.input.isTouch && g.haptics.mode === 'none' ? 'This browser cannot vibrate, so this does nothing here' : 'A buzz on hits and button presses');
@@ -98,7 +106,8 @@ export const settingsPanel: PanelSpec = {
       },
       dispose() { st.save(); },
       act(a, v) {
-        if (a === 'quality') { s.quality = v; st.touch(); g.sfx('ui_click'); applyQuality(); render(); }
+        if (a === 'view') { setView(g, v === 'first' ? 'first' : 'third'); g.sfx('ui_click'); render(); }
+        else if (a === 'quality') { s.quality = v; st.touch(); g.sfx('ui_click'); applyQuality(); render(); }
         else if (a === 'toggle') { (s as any)[v] = !(s as any)[v]; st.touch(); g.sfx('ui_click'); if (v === 'haptics' && s.haptics) { g.haptics.enabled = true; g.haptics.heavy(); } render(); }
         else if (a === 'save') { g.savePos(); g.sfx('ui_click'); g.hud.toast('Game saved', 'good'); }
         else if (a === 'town') {

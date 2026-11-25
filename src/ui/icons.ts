@@ -16,6 +16,7 @@ const P: Record<string, string> = {
   map: '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14"/>',
   char: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.5 3.5-7 8-7s8 2.5 8 7"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M4.9 4.9l2.1 2.1m10 10l2.1 2.1M4.9 19.1l2.1-2.1m10-10l2.1-2.1"/>',
+  eye: '<path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
   spin: '<path d="M20 12a8 8 0 1 1-3-6.2M20 4v5h-5"/><path d="M12 8v8M8 12h8"/>',
   dash: '<path d="M3 12h12m-4-5l5 5-5 5M17 6l4 6-4 6"/>',

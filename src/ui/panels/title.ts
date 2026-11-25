@@ -1,4 +1,5 @@
 import { State } from '../../systems/state';
+import { setView } from '../../systems/view';
 import { bandAt, inTown } from '../../world/layout';
 import { el } from '../hud';
 import { icon } from '../icons';
@@ -35,9 +36,11 @@ export function showTitle(host: Host, root: HTMLElement): Promise<void> {
         <div class="tt-sub">The Proving Yard</div></div>
       <div class="tt-menu">
         ${has ? `${saveCard(host)}<div class="tt-btn pri" data-t="go"><b>Continue</b><small>${where(host)}</small></div>
-          <div class="tt-row"><div class="tt-btn" data-t="new"><b>New game</b></div><div class="tt-btn" data-t="set">${icon('gear', 16)}<b>Settings</b></div></div>`
+          <div class="tt-row"><div class="tt-btn" data-t="new"><b>New game</b></div><div class="tt-btn" data-t="set">${icon('gear', 16)}<b>Settings</b></div></div>
+          <div class="tt-btn ghost" data-t="view"><b>${st.d.settings.view === 'first' ? 'First person' : 'Third person'}</b><small>View · tap to switch</small></div>`
           : `<div class="tt-btn pri" data-t="go"><b>Start</b><small>Level 1 in Brasswick to the Crate Titan</small></div>
         <div class="tt-btn ghost" data-t="set">${icon('gear', 16)}<b>Settings</b></div>
+        <div class="tt-btn ghost" data-t="view"><b>${st.d.settings.view === 'first' ? 'First person' : 'Third person'}</b><small>View · tap to switch</small></div>
         <div class="tt-tap">Tap to start</div>`}
       </div>
       <div class="tt-ver">Single-player zone · v1.0 · saves on this device</div>`;
@@ -62,6 +65,11 @@ export function showTitle(host: Host, root: HTMLElement): Promise<void> {
       const a = b.dataset.t;
       if (a === 'go') start();
       else if (a === 'set') { g.sfx('ui_click'); host.open('menu'); }
+      else if (a === 'view') {
+        g.sfx('ui_click');
+        setView(g, st.d.settings.view === 'first' ? 'third' : 'first');
+        b.querySelector('b')!.textContent = st.d.settings.view === 'first' ? 'First person' : 'Third person';
+      }
       else if (a === 'new') {
         g.sfx('ui_click');
         host.confirm(`Start a new game?<small>Your level ${st.d.level} character and all progress on this device will be erased.</small>`, 'Erase and restart', 'Cancel', true)

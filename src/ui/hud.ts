@@ -3,6 +3,7 @@ import type { Btn } from '../core/input';
 import { clamp, clamp01, fmtNum } from '../core/util';
 import type { Game } from '../game';
 import { BLAST_WALL } from '../world/layout';
+import { toggleView } from '../systems/view';
 import { icon } from './icons';
 import './style.css';
 
@@ -150,9 +151,9 @@ export class Hud {
 
     // menu strip
     const ms = el('div', 'mstrip');
-    for (const [id, ic] of [['bag', 'bag'], ['quests', 'quests'], ['map', 'map'], ['menu', 'gear']] as const) {
+    for (const [id, ic] of [['bag', 'bag'], ['quests', 'quests'], ['map', 'map'], ['menu', 'gear'], ['view', 'eye']] as const) {
       const b = el('button', 'mbtn', icon(ic, 20) + '<i class="pip"></i>');
-      b.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); g.sfx('ui_click'); this.onMenu(id); });
+      b.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); g.sfx('ui_click'); if (id === 'view') toggleView(g); else this.onMenu(id); });
       ms.appendChild(b); this.menuBtns[id] = b;
     }
     h.appendChild(ms);
