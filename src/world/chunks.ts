@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Physics } from '../core/physics';
+import { foliageDepthMaterial } from '../gfx/foliage';
 import { Geo, type ColliderSpec } from '../gfx/geo';
 import { WorldMaterial } from '../gfx/material';
 import { HALF } from './layout';
@@ -415,6 +416,8 @@ export class Chunks {
     const mesh = new THREE.Mesh(geo, mat);
     cell.mesh = mesh;
     mesh.castShadow = true; mesh.receiveShadow = true;
+    // leaf cards throw the shadow of their leaves, not of a square
+    if (st.leaf) mesh.customDepthMaterial = foliageDepthMaterial();
     mesh.matrixAutoUpdate = false;
     // a box fits a cell of tall, thin things far better than the default bounding sphere
     mesh.intersectsFrustum = (f) => cell.force || (f as THREE.Frustum).intersectsBox(box);

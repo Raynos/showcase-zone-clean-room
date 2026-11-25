@@ -5,101 +5,14 @@ import type { Geo } from '../gfx/geo';
 import type { Chunks } from './chunks';
 import { BAND_GATES, BLAST_WALL, HALF, LAKE, PADS, PAL, ROCK, bandAt, inTown, rectMask, ridgeAt, roadDist } from './layout';
 import type { Terrain } from './terrain';
+import { bush, emberTree, poplar, slatePine } from './trees';
 
 const TAU = Math.PI * 2;
 
 // ---- individual plants (built at origin of the current Geo transform) -----------------------
 
-/** Round-canopied emberleaf: the signature orange tree of the yard. */
-export function emberTree(g: Geo, r: Rng, s = 1, palette: [number, number, number] = [PAL.leafRust, PAL.leafOrange, PAL.leafGold]) {
-  const h = (4.2 + r.range(0, 2.2)) * s, tr = (0.26 + r.range(0, 0.1)) * s;
-  const lean = r.range(-0.07, 0.07), lean2 = r.range(-0.07, 0.07);
-  g.mat(0x6b4a34, T.BARK).uvScale(0.6).sway(0);
-  g.push().rotateZ(lean).rotateX(lean2);
-  g.cylUp(tr * 0.72, tr * 1.25, h * 0.55, 7, { grad: 0.6 });
-  g.push().translate(0, h * 0.53, 0).rotateZ(r.range(-0.2, 0.2));
-  g.cylUp(tr * 0.45, tr * 0.72, h * 0.4, 6);
-  g.pop();
-  // boughs
-  const nb = r.int(2, 3);
-  for (let i = 0; i < nb; i++) {
-    const a = (i / nb) * TAU + r.range(0, 1.2);
-    g.push().translate(0, h * (0.42 + i * 0.07), 0).rotateY(a).rotateZ(-0.9 - r.range(0, 0.3));
-    g.cylUp(tr * 0.22, tr * 0.42, h * 0.38, 5);
-    g.pop();
-  }
-  // canopy
-  g.layer(T.LEAF).uvScale(0.35);
-  const cy = h * 0.92, cr = (1.9 + r.range(0, 0.7)) * s;
-  const blobs = r.int(5, 7);
-  for (let i = 0; i < blobs; i++) {
-    const main = i === 0;
-    const a = (i / (blobs - 1)) * TAU + r.range(0, 0.9);
-    const d = main ? 0 : cr * r.range(0.55, 0.85);
-    const br = main ? cr * 1.05 : cr * r.range(0.55, 0.8);
-    const by = main ? cy + cr * 0.25 : cy + r.range(-0.35, 0.3) * cr;
-    const col = palette[main ? 1 : r.int(0, 2)];
-    g.ico(br, main ? 2 : 1, {
-      at: [Math.cos(a) * d, by, Math.sin(a) * d], rot: [r.range(0, 3), r.range(0, 3), 0], scale: [1, 0.78 + r.range(0, 0.12), 1],
-      lump: 0.14, seed: r.int(0, 5), color: col, grad: 0.5, sway: 0.16 + r.range(0, 0.06),
-    });
-  }
-  g.pop();
-  g.sway(0);
-  return { h, r: tr * 1.2 };
-}
-
-/** Tall narrow gold poplar. */
-export function poplar(g: Geo, r: Rng, s = 1) {
-  const h = (7.5 + r.range(0, 3)) * s, tr = 0.2 * s;
-  g.mat(0x77563c, T.BARK).uvScale(0.6).sway(0);
-  g.cylUp(tr * 0.6, tr * 1.2, h * 0.5, 6, { grad: 0.6 });
-  g.layer(T.LEAF).uvScale(0.35);
-  const n = 4;
-  for (let i = 0; i < n; i++) {
-    const t = i / (n - 1);
-    const br = (1.15 - t * 0.55) * s * (1 + r.range(-0.08, 0.08));
-    g.ico(br, 1, {
-      at: [r.range(-0.15, 0.15), h * (0.34 + t * 0.6), r.range(-0.15, 0.15)], scale: [1, 1.7, 1], rot: [0, r.range(0, 3), 0],
-      lump: 0.12, seed: r.int(0, 5), color: t > 0.6 ? PAL.leafGold : r.chance(0.5) ? 0xe2a03a : PAL.leafOrange, grad: 0.55, sway: 0.22 + t * 0.2,
-    });
-  }
-  g.sway(0);
-  return { h, r: tr * 1.3 };
-}
-
-/** Slate-teal conifer: the cool counterweight to all the orange. */
-export function slatePine(g: Geo, r: Rng, s = 1) {
-  const h = (6.5 + r.range(0, 3.5)) * s, tr = 0.22 * s;
-  g.mat(0x4a3c36, T.BARK).uvScale(0.6).sway(0);
-  g.cylUp(tr * 0.5, tr * 1.15, h * 0.45, 6, { grad: 0.6 });
-  g.layer(T.LEAF).uvScale(0.4);
-  const tiers = 4;
-  for (let i = 0; i < tiers; i++) {
-    const t = i / (tiers - 1);
-    const rr = (2.0 - t * 1.25) * s, hh = (2.5 - t * 0.5) * s;
-    g.cone(rr, hh, 8, {
-      at: [0, h * (0.26 + t * 0.56) + hh * 0.5, 0], rot: [r.range(-0.05, 0.05), r.range(0, 3), r.range(-0.05, 0.05)],
-      color: t > 0.6 ? 0x4f9aa0 : r.chance(0.5) ? PAL.leafTeal : 0x2f6a76, grad: 0.45, sway: 0.08 + t * 0.12, col: 'none',
-    });
-  }
-  g.sway(0);
-  return { h, r: tr * 1.3 };
-}
-
-export function bush(g: Geo, r: Rng, s = 1, color?: number) {
-  const n = r.int(2, 4);
-  g.layer(T.LEAF).uvScale(0.45);
-  for (let i = 0; i < n; i++) {
-    const a = r.range(0, TAU), d = i === 0 ? 0 : r.range(0.3, 0.7) * s;
-    const br = (i === 0 ? 0.7 : r.range(0.4, 0.6)) * s;
-    g.ico(br, 1, {
-      at: [Math.cos(a) * d, br * 0.55, Math.sin(a) * d], scale: [1, 0.75, 1], rot: [0, r.range(0, 3), 0], lump: 0.15, seed: r.int(0, 5),
-      color: color ?? r.pick([PAL.leafRust, PAL.leafOrange, 0xd9962e, PAL.leafTeal]), grad: 0.5, sway: 0.06, col: 'none',
-    });
-  }
-  g.sway(0);
-}
+// trees and shrubs live in trees.ts; re-exported here, where their callers look for them
+export { bush, emberTree, poplar, slatePine };
 
 /** Boulder cluster. Returns approximate radius. */
 export function boulders(g: Geo, r: Rng, s = 1, color: number = 0x8a9099, solid = true) {

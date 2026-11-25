@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { FOLIAGE, ensureFoliage } from './foliage';
 
 /** Uniforms shared by reference across every world material. */
 export const GU = {
@@ -174,7 +175,8 @@ export class WorldMaterial extends THREE.MeshStandardMaterial {
       vertexColors: true,
       roughness: o.roughness ?? 1,
       metalness: o.metalness ?? 1,
-      side: o.side ?? THREE.FrontSide,
+      // foliage is built from single-sided leaf cards that must show from both sides
+      side: o.side ?? (o.wind ? THREE.DoubleSide : THREE.FrontSide),
       transparent: o.transparent ?? false,
       opacity: o.opacity ?? 1,
       flatShading: o.flatShading ?? false,
@@ -189,6 +191,7 @@ export class WorldMaterial extends THREE.MeshStandardMaterial {
       sh.uniforms.uWet = GU.uWet; sh.uniforms.uEmitBoost = GU.uEmitBoost; sh.uniforms.uCharFill = GU.uCharFill;
       sh.uniforms.uFlash = this.flash; sh.uniforms.uRim = this.rim; sh.uniforms.uEmitMul = this.emitMul;
       sh.uniforms.uNearFade = GU.uNearFade;
+      if (wind) { ensureFoliage(); sh.uniforms.uLeaf = FOLIAGE.uLeaf; }
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', /* glsl */ `#include <common>
 attribute float aLayer; attribute float aEmit;
@@ -215,7 +218,7 @@ precision highp sampler2DArray;
 uniform sampler2DArray uTexA; uniform sampler2DArray uTexN; uniform sampler2D uNoise;
 uniform vec4 uFlash; uniform vec4 uRim; uniform float uEmitBoost; uniform float uEmitMul; uniform float uWet; uniform vec3 uCharFill; uniform vec2 uNearFade; uniform vec2 uNearFade;
 varying float vLayer; varying float vEmit; varying vec2 vWUv;
-${wind ? 'varying float vSway;' : ''}
+${wind ? 'varying float vSway; uniform sampler2D uLeaf; float gLeaf;' : ''}
 vec4 gTA; vec4 gTN;`)
         .replace('#include <map_fragment>', /* glsl */ `${wind ? /* glsl */ `if (vSway > 0.02) {
   // leaves between the camera and the hero dissolve instead of filling the screen
@@ -238,11 +241,19 @@ vec4 gTA; vec4 gTN;`)
   float lay = floor(vLayer + 0.5);
   gTA = texture(uTexA, vec3(vWUv, lay));
   gTN = texture(uTexN, vec3(vWUv, lay));
-  diffuseColor.rgb *= gTA.rgb * mix(1.0, 0.8, uWet);
+${wind ? /* glsl */ `  // foliage cards (gfx/foliage.ts): a painted clump from the leaf atlas, cut out by its alpha
+  vec4 lf = texture2D(uLeaf, vWUv);
+  gLeaf = step(99.5, lay);
+  if (gLeaf > 0.5) {
+    if (lf.a < mix(0.5, 0.3, smoothstep(14.0, 60.0, length(vViewPosition)))) discard;
+    gTA = vec4(lf.rgb, 0.82); gTN = vec4(0.5, 0.5, 0.0, 1.0);
+  }
+` : ''}  diffuseColor.rgb *= gTA.rgb * mix(1.0, 0.8, uWet);
 }`)
         .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = roughness * gTA.a * mix(1.0, 0.5, uWet);')
         .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = metalness * gTN.b;')
-        .replace('#include <normal_fragment_maps>', /* glsl */ `{
+        .replace('#include <normal_fragment_maps>', /* glsl */ `${wind ? '// a leaf card keeps the crown-shaped normal it was built with on both of its faces\nif (gLeaf > 0.5) normal *= faceDirection;' : ''}
+{
   vec3 q0 = dFdx(-vViewPosition), q1 = dFdy(-vViewPosition);
   vec2 st0 = dFdx(vWUv), st1 = dFdy(vWUv);
   vec3 q1p = cross(q1, normal), q0p = cross(normal, q0);
@@ -262,7 +273,15 @@ ${rim ? '' : /* glsl */ `  // slow drift in tone and warmth, so a wall or a squa
   outgoingLight += uRim.rgb * rimF * uRim.a * (0.35 + 0.65 * saturate(normal.y * 0.5 + 0.7));
   outgoingLight += diffuseColor.rgb * uCharFill * (0.6 + 0.4 * saturate(normal.y * 0.5 + 0.5));
 }` : ''}
-outgoingLight = mix(outgoingLight, uFlash.rgb, uFlash.a);
+${wind ? /* glsl */ `#if NUM_SUN_LIGHTS > 0
+if (gLeaf > 0.5) {
+  // sun coming through the leaves: the far side of a crown glows instead of going flat dark
+  vec3 sunD = sunLights[0].direction;
+  float thru = saturate(-dot(normal, sunD)) * 0.3 + pow(saturate(-dot(normalize(vViewPosition), sunD)), 3.0) * 0.35;
+  outgoingLight += diffuseColor.rgb * sunLights[0].color * (thru * RECIPROCAL_PI);
+}
+#endif
+` : ''}outgoingLight = mix(outgoingLight, uFlash.rgb, uFlash.a);
 #include <opaque_fragment>`);
     };
   }
