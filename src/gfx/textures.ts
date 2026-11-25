@@ -1,5 +1,7 @@
 import * as THREE from 'three';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { clamp01, smooth } from '../core/util';
+import { loadstats } from '../core/loadstats';
 
 /** Texture-array layer ids. Every surface in the game samples one of these. */
 export const T = {
@@ -581,10 +583,27 @@ function resample(src: Uint8Array, S0: number, dst: Uint8Array, S1: number, laye
   }
 }
 
+/** Painted tile file (under public/tex, no extension) per layer id; layers not listed keep their code-generated look. */
+export function paintedFiles(): Record<number, string> {
+  const out: Record<number, string> = {};
+  for (const id in PAINT) out[id] = PAINT[id].file;
+  return out;
+}
+
+/**
+ * One layer of the final arrays: the painting if there is one, else the code-generated layer
+ * scaled to `size`. Shared by the in-page loader and the offline bake (tools/tex/ktx.ts), so the
+ * compressed arrays hold exactly what the page would have built.
+ */
+export function composeLayer(A0: Uint8Array, N0: Uint8Array, S0: number, A: Uint8Array, N: Uint8Array, size: number, layer: number, tile: Uint8ClampedArray | Uint8Array | null) {
+  if (tile) paintLayer(tile as Uint8ClampedArray, size, PAINT[layer], A, N, layer, layerMean(A0, S0, layer));
+  else { resample(A0, S0, A, size, layer); resample(N0, S0, N, size, layer); }
+}
+
 async function loadTile(file: string, S: number): Promise<Uint8ClampedArray | null> {
   try {
     // relative to the page, so it works from any sub-path the site is served under
-    const res = await fetch(`tex/${file}.webp`);
+    const res = await loadstats.fetch(`tex/${file}.webp`, 'surfaces');
     if (!res.ok) return null;
     const bmp = await createImageBitmap(await res.blob());
     const cv = document.createElement('canvas');
@@ -598,12 +617,63 @@ async function loadTile(file: string, S: number): Promise<Uint8ClampedArray | nu
 }
 
 /**
+ * The same arrays, baked ahead of time to GPU-compressed KTX2 (tools/tex/ktx.ts writes
+ * public/tex/k): transcoded to ASTC on a phone and BC7 on a desktop, they take one byte a texel
+ * on the GPU where the uncompressed arrays take four, and the normal array ships at half the
+ * albedo's size. Returns null when the files or a usable format are missing, and the caller
+ * falls back to building the arrays from the painted tiles in the page.
+ */
+async function loadCompressedArrays(base: TexArrays, size: number, progress?: (k: number) => void): Promise<TexArrays | null> {
+  let loader: KTX2Loader | null = null;
+  try {
+    // which formats the GPU takes: asked of a throwaway context, so this module needs no renderer
+    const cv = document.createElement('canvas');
+    const gl = cv.getContext('webgl2');
+    if (!gl) return null;
+    const ext = { has: (n: string) => !!gl.getExtension(n), get: (n: string) => gl.getExtension(n) };
+    loader = new KTX2Loader().setTranscoderPath('basis/');
+    loader.detectSupport({ isWebGPURenderer: false, extensions: ext } as unknown as THREE.WebGLRenderer);
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    const cfg = (loader as unknown as { workerConfig: Record<string, boolean> }).workerConfig;
+    if (!cfg.astcSupported && !cfg.bptcSupported && !cfg.etc2Supported && !cfg.dxtSupported) return null;
+    let got = 0;
+    const get = async (name: string, like: THREE.DataArrayTexture) => {
+      const res = await loadstats.fetch(`tex/k/${name}-${size}.ktx2`, 'surfaces');
+      if (!res.ok) throw new Error(`${name}: ${res.status}`);
+      const buf = await res.arrayBuffer();
+      progress?.(++got * 0.4);
+      const t = await new Promise<THREE.CompressedArrayTexture>((ok, no) => loader!.parse(buf, (x) => ok(x as THREE.CompressedArrayTexture), no));
+      if (!(t as { isCompressedArrayTexture?: boolean }).isCompressedArrayTexture || t.image.depth !== LAYER_COUNT) throw new Error(`${name}: not the layer set this build expects`);
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
+      t.anisotropy = like.anisotropy; t.colorSpace = like.colorSpace;
+      t.needsUpdate = true;
+      return t as unknown as THREE.DataArrayTexture;
+    };
+    const [albedo, normal] = await Promise.all([get('albedo', base.albedo), get('normal', base.normal)]);
+    return { albedo, normal, size };
+  } catch (e) {
+    console.warn('surfaces: compressed arrays unavailable, painting them in the page', e);
+    return null;
+  } finally {
+    loader?.dispose();
+  }
+}
+
+/**
  * Loads the painted tiles and swaps them in for the code-generated layers: the world is drawn
  * with `base` until every tile has arrived, then `swap` receives arrays of `size` texels a side
  * holding the paintings (and the code-generated layers that have none, scaled to match).
  * A tile that fails to load leaves its layer as it was. `progress` runs 0..1.
  */
 export async function loadPaintedArrays(base: TexArrays, size: number, swap: (t: TexArrays) => void, progress?: (k: number) => void): Promise<void> {
+  const packed = await loadCompressedArrays(base, size, progress);
+  if (packed) {
+    swap(packed);
+    base.albedo.dispose(); base.normal.dispose();
+    progress?.(1);
+    return;
+  }
   const ids = Object.keys(PAINT).map(Number);
   let got = 0;
   const tiles = await Promise.all(ids.map(async (id) => {
@@ -615,8 +685,7 @@ export async function loadPaintedArrays(base: TexArrays, size: number, swap: (t:
   const A = new Uint8Array(size * size * 4 * LAYER_COUNT), N = new Uint8Array(size * size * 4 * LAYER_COUNT);
   for (let layer = 0; layer < LAYER_COUNT; layer++) {
     const k = ids.indexOf(layer), tile = k >= 0 ? tiles[k] : null;
-    if (tile) paintLayer(tile, size, PAINT[layer], A, N, layer, layerMean(A0, S0, layer));
-    else { resample(A0, S0, A, size, layer); resample(N0, S0, N, size, layer); }
+    composeLayer(A0, N0, S0, A, N, size, layer, tile);
     // a layer at a time, so a swap that lands during play does not stall a frame for long
     if (layer % 2 === 1) await new Promise((r) => setTimeout(r, 0));
   }
