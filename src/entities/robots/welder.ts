@@ -24,6 +24,16 @@ export function makeWelder(look: RobotLook): RobotRig {
   rig.socket('core', torso, 0, 0.6, 0.1);
   rig.socket('head', head, 0, 0.45, 0);
   rig.socket('muzzle', flame, 0, 0, 0.1);
+  rig.socket('weak', torso, 0, 0.62, -0.42);   // the gas bottle on its back
+  // broken: sat down on its heels, folded over at the waist, head hung, both arms dead at its sides
+  rig.slump = (k, tm) => {
+    hips.position.y -= 0.3 * k; hips.rotation.z += 0.08 * k;
+    torso.rotation.x += 0.62 * k; torso.rotation.y += 0.2 * k;
+    head.rotation.x += (0.6 + Math.sin(tm * 2.1) * 0.04) * k; head.rotation.y += 0.3 * k;
+    armR.rotation.x = armR.rotation.x * (1 - k) + 0.25 * k; armL.rotation.x = armL.rotation.x * (1 - k) + 0.3 * k;
+    foreL.rotation.x *= 1 - k;
+    flame.scale.multiplyScalar(1 - k * 0.98);
+  };
 
   rig.animate = (dt, pose) => {
     const t = pose.t, tm = pose.time, a = pose.action;

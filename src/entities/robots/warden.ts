@@ -14,6 +14,16 @@ export function makeWarden(look: RobotLook): RobotRig {
   rig.socket('head', head, 0, 0.5, 0);
   rig.socket('muzzle', fist, 0, -1.05, 0);
   rig.socket('shield', armL, -0.1, -1.0, 0.9);
+  rig.socket('weak', dial, 0, 0, 0.1);         // the vault dial in its chest
+  // broken: shield arm dropped away from the dial, down on one side, head hung, fist on the floor
+  rig.slump = (k, tm) => {
+    hips.position.y -= 0.18 * k; hips.rotation.z += 0.08 * k;
+    torso.rotation.x += 0.2 * k; torso.rotation.y -= 0.3 * k;
+    head.rotation.x += (0.6 + Math.sin(tm * 1.7) * 0.03) * k;
+    armL.rotation.set(armL.rotation.x * (1 - k) + 0.15 * k, armL.rotation.y, armL.rotation.z * (1 - k) + 0.75 * k);
+    armR.rotation.x = armR.rotation.x * (1 - k) + 0.2 * k;
+    dial.rotation.z += Math.sin(tm * 23) * 0.3 * k;
+  };
 
   let dialA = 0, tick = 0;
   rig.animate = (dt, pose) => {

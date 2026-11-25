@@ -23,7 +23,7 @@ export interface RobotLook {
 
 export type RobotAction =
   | 'idle' | 'move' | 'windup' | 'attack' | 'attack2' | 'attack3' | 'recover'
-  | 'stagger' | 'stun' | 'death' | 'spawn' | 'roar';
+  | 'stagger' | 'stun' | 'broken' | 'death' | 'spawn' | 'roar';
 
 /** Written by the AI each frame; the rig turns it into motion. */
 export interface RobotPose {
@@ -42,6 +42,14 @@ export interface RobotPose {
   damage: number;
   /** Titan only: fight phase 1..3 */
   phase?: number;
+  /**
+   * What kind of attack a 'windup' is building to, when the rig has a pose of its own for it:
+   * 'channel' (a held beam: the Plumb Drone locks on and hangs dead still) or 'spin' (a sweeping
+   * beam: the Titan winds its torso back). Anything else, or nothing, is the general wind-up.
+   */
+  cue?: string | null;
+  /** a status the robot is under, worn on the whole body so it reads from behind the hero: burning thrashes, shocked locks and twitches, jammed lists and judders */
+  status?: 'burn' | 'shock' | 'jam' | null;
 }
 
 export interface RobotRig {
@@ -50,7 +58,10 @@ export interface RobotRig {
   /** standing height and body radius in metres (after scale) for nameplates/hit tests */
   height: number;
   radius: number;
-  /** attach points: at least 'core' (chest/centre mass), 'head', 'muzzle' (weapon tip / mouth) */
+  /**
+   * attach points: at least 'core' (chest/centre mass), 'head', 'muzzle' (weapon tip / mouth) and
+   * 'weak' (the part that reads as "shoot here": power cell, vent, core, hopper, beacon or furnace)
+   */
   sockets: Record<string, THREE.Object3D>;
   /** every material instance on the rig, for hit-flash (material.flash.value.w = 0..1) */
   materials: WorldMaterial[];

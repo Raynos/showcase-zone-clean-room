@@ -21,6 +21,16 @@ export function makePallet(look: RobotLook): RobotRig {
   rig.socket('core', truck, 0, 0.5, -0.4);
   rig.socket('head', eye, 0, 0.2, 0);
   rig.socket('muzzle', forks, 0, 0, 1.3);
+  rig.socket('weak', truck, 0, 0.55, -0.88);   // the lit vent on the counterweight, at the back
+  // broken: forks dropped and twisted, nose down on its front axle, engine flap hanging open, eye and tiller flopped
+  rig.slump = (k, tm) => {
+    truck.rotation.x += 0.1 * k; truck.rotation.z += 0.07 * k;
+    forks.position.y = forks.position.y * (1 - k) + 0.02 * k; forks.rotation.x += 0.09 * k; forks.rotation.z += 0.13 * k;
+    eye.rotation.x += 0.75 * k; eye.rotation.z += 0.35 * k;
+    tiller.rotation.x += 0.7 * k; tiller.rotation.z += 0.3 * k;
+    flap.rotation.x = flap.rotation.x * (1 - k) - (1.25 + Math.sin(tm * 2.7) * 0.06) * k;
+    armL.rotation.x += 0.5 * k; armR.rotation.x += 0.35 * k;
+  };
   let spin = 0;
 
   rig.animate = (dt, pose) => {

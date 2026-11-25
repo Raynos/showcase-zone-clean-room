@@ -353,7 +353,7 @@ export class Mob implements Hittable {
         const hasteMul = this.variant === 'night' || this.variant === 'nightElite' ? 0.9 : 1;
         const t = clamp01(this.stT / (this.windupOf(a) * hasteMul));
         this.windupCue(a, t, dt);
-        this.pose.action = 'windup'; this.pose.t = t; this.pose.charge = t;
+        this.pose.action = 'windup'; this.pose.t = t; this.pose.charge = t; this.pose.cue = a.type;
         const lockAt = a.type === 'charge' || a.type === 'beam' ? 0.7 : a.type === 'leap' || a.type === 'lob' ? 0.6 : 0.85;
         if (!this.locked) {
           face = toPlayer; turn = this.def.turn * 1.4;
@@ -384,7 +384,7 @@ export class Mob implements Hittable {
       }
       case 'broken': {
         // slumped, core open: cannot act. The meter runs down over the break to show when it will stand.
-        this.pose.action = 'stun'; this.pose.t = (this.pose.time * 0.45) % 1; this.pose.charge = 0;
+        this.pose.action = 'broken'; this.pose.t = (this.pose.time * 0.45) % 1; this.pose.charge = 0;
         this.stag = this.staggerCap * Math.max(0, 1 - this.stT / this.brokenDur);
         if (this.rig.root.visible && Math.random() < dt * 30) {
           // the open core: a hot star pulled out toward the camera so the shell does not hide it
@@ -472,6 +472,8 @@ export class Mob implements Hittable {
     this.pose.aimYaw = clamp(angleDiff(this.yaw, toPlayer), -1.2, 1.2) * (this.aggro ? 1 : 0);
     this.pose.aimPitch = this.aggro ? clamp(Math.atan2(pl.pos.y + 1 - (this.pos.y + this.height * 0.7), Math.max(1, dist)), -0.8, 0.8) : 0;
     this.bodyLanguage(dt);
+    const S = this.status.t;
+    this.pose.status = S.burn > 0 ? 'burn' : S.shock > 0 ? 'shock' : S.jam > 0 ? 'jam' : null;
     // a jammed robot moves like it is wading through glue: the whole rig runs slow and stutters
     const jam = this.status.t.jam > 0;
     this.rig.update(jam ? dt * (Math.sin(this.pose.time * 11) > 0.55 ? 0.05 : 0.45) : dt, this.pose);

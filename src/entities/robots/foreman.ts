@@ -20,6 +20,16 @@ export function makeForeman(look: RobotLook): RobotRig {
   rig.socket('head', head, 0, 1.15, 0);
   rig.socket('muzzle', foreR, 0, -0.72, 1.6);
   rig.socket('whistle', head, 0, 0.13, 0.62);
+  rig.socket('weak', beacon, 0, 0, 0);         // the beacon on its hard hat
+  // broken: down on its haunches, chest pitched forward, head hung with the jaw open, hammer arm dropped
+  rig.slump = (k, tm) => {
+    hips.position.y -= 0.22 * k; hips.rotation.z += 0.06 * k;
+    torso.rotation.x += 0.3 * k; torso.rotation.y -= 0.18 * k;
+    head.rotation.x += (0.55 + Math.sin(tm * 1.9) * 0.04) * k; head.rotation.y += 0.25 * k;
+    jaw.rotation.x = Math.max(jaw.rotation.x, 0.5 * k);
+    armR.rotation.x = armR.rotation.x * (1 - k) + 0.2 * k; foreR.rotation.x = foreR.rotation.x * (1 - k) - 0.15 * k;
+    armL.rotation.x = armL.rotation.x * (1 - k) + 0.3 * k; foreL.rotation.x = foreL.rotation.x * (1 - k) - 0.2 * k;
+  };
 
   let bSpin = 0;
   rig.animate = (dt, pose) => {

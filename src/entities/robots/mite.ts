@@ -13,6 +13,14 @@ export function makeMite(look: RobotLook): RobotRig {
   rig.socket('core', chassis, 0, 0, 0);
   rig.socket('head', lid, 0, 0.12, 0.27);
   rig.socket('muzzle', chassis, 0, 0.2, 0.32);
+  rig.socket('weak', chassis, 0, 0.17, 0);     // the power cell under the lid
+  // broken: lid thrown right back off the cell, body dropped askew on splayed legs
+  rig.slump = (k, tm) => {
+    lid.rotation.x -= (1.75 + Math.sin(tm * 3.1) * 0.05) * k;
+    chassis.position.y -= 0.13 * k; chassis.rotation.z += 0.24 * k; chassis.rotation.x += 0.1 * k;
+    legsA.scale.set(1 + 0.3 * k, 1 - 0.45 * k, 1 + 0.3 * k); legsB.scale.set(1 + 0.22 * k, 1 - 0.5 * k, 1 + 0.22 * k);
+    legsA.position.y += 0.1 * k; legsB.position.y += 0.1 * k;
+  };
 
   rig.animate = (dt, pose) => {
     const t = pose.t, tm = pose.time, a = pose.action;

@@ -63,6 +63,16 @@ export function makeTitan(look: RobotLook): RobotRig {
   rig.socket('muzzle', chestM, 0, 2.25, 1.6);
   rig.socket('head', head, 0, 3.6, 0);
   rig.socket('mouth', head, 0, 0.3, 1.4);
+  rig.socket('weak', chestM, 0, 2.25, 1.1);    // the furnace behind the chest crates
+  // broken: knees gone, chest folded over them, head hung and jaw slack, arms hanging to the ground
+  rig.slump = (k, tm) => {
+    hipsB.position.y -= 0.9 * k;
+    chestB.rotation.x += 0.8 * k; chestB.rotation.z += 0.1 * k;
+    headB.rotation.x += (0.65 + Math.sin(tm * 1.3) * 0.03) * k;
+    jawB.rotation.x = Math.max(jawB.rotation.x, 0.45 * k);
+    armLB.rotation.x = armLB.rotation.x * (1 - k) + 0.25 * k; armRB.rotation.x = armRB.rotation.x * (1 - k) + 0.2 * k;
+    foreLB.rotation.x = foreLB.rotation.x * (1 - k) - 0.1 * k; foreRB.rotation.x = foreRB.rotation.x * (1 - k) - 0.1 * k;
+  };
   rig.socket('handL', handL, 0, -3.2, 0); rig.socket('handR', handR, 0, -3.2, 0);
   rig.socket('footL', footL, 0, -3.6, 0.4); rig.socket('footR', footR, 0, -3.6, 0.4);
 
@@ -93,6 +103,10 @@ export function makeTitan(look: RobotLook): RobotRig {
       const s = Math.sin(g), c = Math.cos(g);
       tg.thL = s * 0.34 - Math.max(0, c) * 0.3; tg.knL = Math.max(0, c) * 0.8; tg.thR = -s * 0.34 - Math.max(0, -c) * 0.3; tg.knR = Math.max(0, -c) * 0.8;
       tg.roll = -c * 0.035; tg.twist = s * 0.1; tg.lean = 0.1 + Math.abs(s) * 0.02; tg.aL = s * 0.3; tg.aR = -s * 0.3; tg.eL = -0.35; tg.eR = -0.35; tg.hyw = pose.aimYaw * 0.5; tg.cr = 0.08;
+    } else if (a === 'windup' && pose.cue === 'spin') {
+      // winding up a sweeping beam: torso wrung right round to one side, arms flung wide to balance, jaw opening on the light
+      tg.twist = -1.0 * (0.4 + 0.6 * t); tg.lean = 0.16; tg.cr = 0.2; tg.aL = -0.5; tg.aR = 0.3; tg.sL = 1.0; tg.sR = 0.85; tg.eL = -0.25; tg.eR = -0.5;
+      tg.hp = 0.12; tg.hyw = 0.5; tg.jaw = 0.2 + t * 0.5; tg.shake = 0.008 + t * 0.012;
     } else if (a === 'windup') {
       tg.lean = -0.14 - t * 0.05; tg.cr = 0.28; tg.aL = 0.55; tg.aR = 0.55; tg.sL = 0.4; tg.sR = 0.4; tg.eL = -0.8; tg.eR = -0.8; tg.hp = 0.2; tg.hyw = 0; tg.jaw = 0.15 + t * 0.15; tg.shake = 0.006 + t * 0.008;
     } else if (a === 'attack') {

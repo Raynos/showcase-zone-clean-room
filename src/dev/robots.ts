@@ -6,8 +6,8 @@ import { Stage } from './stage';
 interface Slot { kind: RobotKind; variant: RobotVariant; rig: RobotRig; pose: RobotPose; x: number; z: number; action: RobotAction; fixedT: number | null; dur: number; clock: number; phase: number }
 const VARIANTS: RobotVariant[] = ['normal', 'rare', 'night', 'elite'];
 const NIGHT_ELITES: RobotKind[] = ['mite', 'welder', 'riveter'];
-const ACTIONS: RobotAction[] = ['idle', 'move', 'windup', 'attack', 'attack2', 'attack3', 'recover', 'stagger', 'stun', 'death', 'spawn', 'roar'];
-const DUR: Record<RobotAction, number> = { idle: 3, move: 3, windup: 0.8, attack: 1.0, attack2: 1.3, attack3: 1.4, recover: 1.2, stagger: 0.6, stun: 2, death: 1.4, spawn: 1.0, roar: 1.6 };
+const ACTIONS: RobotAction[] = ['idle', 'move', 'windup', 'attack', 'attack2', 'attack3', 'recover', 'stagger', 'stun', 'broken', 'death', 'spawn', 'roar'];
+const DUR: Record<RobotAction, number> = { idle: 3, move: 3, windup: 0.8, attack: 1.0, attack2: 1.3, attack3: 1.4, recover: 1.2, stagger: 0.6, stun: 2, broken: 3, death: 1.4, spawn: 1.0, roar: 1.6 };
 
 const slots: Slot[] = [];
 const stage = await Stage.create({ hour: 9 });

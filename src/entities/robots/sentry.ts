@@ -22,6 +22,16 @@ export function makeSentry(look: RobotLook): RobotRig {
   rig.socket('head', mastP, 0, 1.95, 0);
   rig.socket('muzzle', mastP, 0, 1.66, 0);
   rig.socket('eye', eye, 0, 0, 0.2);
+  rig.socket('weak', core, 0, 0, 0);           // the tesla core on the mast
+  // broken: hub dropped on buckled legs, mast keeled over, rings fallen down it and stopped, eye hanging
+  rig.slump = (k, tm) => {
+    body.position.y -= 0.42 * k; body.rotation.z += 0.12 * k;
+    mastP.rotation.x += 0.5 * k; mastP.rotation.z = 0.2 * k;
+    ringA.position.y -= 0.4 * k; ringB.position.y -= 0.62 * k;
+    ringA.rotation.x += 0.5 * k; ringB.rotation.z += 0.6 * k;
+    eye.rotation.x += 0.9 * k;
+    core.scale.setScalar(core.scale.x * (1 - k) + (0.8 + Math.sin(tm * 31) * 0.12) * k);
+  };
 
   let spinA = 0, spinB = 0, spinC = 0, arcSeed = 0, arcT = 0;
   rig.animate = (dt, pose) => {

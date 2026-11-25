@@ -50,6 +50,13 @@ export class Rig implements RobotRig {
   /** accumulated gait phase (radians) */
   gait = 0;
   animate: (dt: number, pose: RobotPose) => void = () => {};
+  /**
+   * The Broken slump, set by each robot: called after `animate` (which has posed the robot winded and
+   * still) with k easing 0..1, to add the collapse on top: lids thrown open, heads hung, arms dropped.
+   */
+  slump: ((k: number, time: number) => void) | null = null;
+  private brokenK = 0; private worn = false;
+  private still: RobotPose | null = null;
   private cur: Record<string, number> | null = null;
   private key: string;
   private prevAction = '';
@@ -139,7 +146,43 @@ export class Rig implements RobotRig {
   }
   update(dt: number, pose: RobotPose) {
     if (pose.action !== this.prevAction) { this.prevAction = pose.action; this.since = 0; } else this.since += dt;
-    this.animate(dt, pose);
+    const broken = pose.action === 'broken';
+    if (broken) {
+      // helpless: no aim, no charge, the winded pose held still, then the slump on top of it
+      const s = this.still ?? (this.still = { ...pose });
+      Object.assign(s, pose); s.action = 'recover'; s.t = 0.5; s.speed = 0; s.aimYaw = 0; s.aimPitch = 0; s.charge = 0; s.cue = null;
+      this.animate(dt, s);
+    } else this.animate(dt, pose);
+    this.brokenK += ((broken ? 1 : 0) - this.brokenK) * Math.min(1, dt * (broken ? 9 : 6));
+    if (this.brokenK > 0.01 && pose.action !== 'death') {
+      const k = this.brokenK * this.brokenK * (3 - 2 * this.brokenK), tm = pose.time;
+      this.slump?.(k, tm);
+      // lights nearly out, with the odd short spit from the opened core
+      const spit = Math.sin(tm * 47) * Math.sin(tm * 13.1) > 0.7 ? 3.2 : 0;
+      this.mat.emitMul.value += (0.16 + spit - this.mat.emitMul.value) * k;
+    }
+    // statuses, worn on the whole body
+    const inner = this.inner, st = broken || pose.action === 'death' ? null : pose.status, tm = pose.time, sc = this.scale;
+    if (st === 'burn') {
+      // thrashing to put itself out
+      inner.rotation.set(Math.sin(tm * 11.3) * 0.045, Math.sin(tm * 7.1) * 0.08, Math.sin(tm * 14.2) * 0.06);
+      inner.position.set(0, Math.abs(Math.sin(tm * 9)) * 0.03 * this.height, 0);
+      this.mat.emitMul.value *= 1.25 + Math.sin(tm * 21) * 0.35;
+    } else if (st === 'shock') {
+      // locked rigid, thrown about in snaps
+      const snap = Math.floor(tm * 19), on = (snap * 7919) % 5 < 2;
+      const r = (n: number) => (((snap + n) * 2654435761) % 1000) / 500 - 1;
+      inner.rotation.set(on ? r(1) * 0.07 : 0, 0, on ? r(2) * 0.1 : 0);
+      inner.position.set(on ? r(3) * 0.03 * this.radius : 0, 0, on ? r(4) * 0.03 * this.radius : 0);
+      this.mat.emitMul.value *= on ? 2.4 : 0.5;
+    } else if (st === 'jam') {
+      // seized on one side: listing, juddering against the stuck part
+      const j = Math.sin(tm * 11) > 0.55 ? 1 : 0;
+      inner.rotation.set(0.05, 0, 0.13 + j * 0.035);
+      inner.position.set(0, -0.02 * this.height + j * 0.008 * this.height, 0);
+    } else if (this.worn) { inner.rotation.set(0, 0, 0); inner.position.set(0, 0, 0); }
+    this.worn = !!st;
+    inner.scale.setScalar(sc);
     // badly damaged robots brown out: lights stutter below ~half health
     if (pose.damage > 0.5 && pose.action !== 'death') this.mat.emitMul.value *= 1 - (pose.damage - 0.5) * 1.1 * (Math.sin(pose.time * 31) * Math.sin(pose.time * 7.3) > 0.25 ? 1 : 0);
   }

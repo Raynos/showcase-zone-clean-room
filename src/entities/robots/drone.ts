@@ -19,6 +19,17 @@ export function makeDrone(look: RobotLook): RobotRig {
   rig.socket('head', body, 0, 0.3, 0);
   rig.socket('muzzle', gimbal, 0, 0, 0.18);
   rig.socket('bob', bob, 0, -1.17, 0);
+  rig.socket('weak', body, 0, 0.03, -0.38);    // the lit battery vent on the tail
+  // broken: rotors stalled, hull hanging nose-down near the ground with its tail vent up, bob dragging
+  let stall = 0;
+  rig.slump = (k, tm) => {
+    body.position.y -= (DRONE_HOVER - 0.75) * k - Math.sin(tm * 2.3) * 0.04 * k;
+    body.rotation.x += 0.62 * k; body.rotation.z += (0.2 + Math.sin(tm * 1.7) * 0.06) * k;
+    stall += 0.02;
+    for (let i = 0; i < 4; i++) rotors[i].rotation.y = rotors[i].rotation.y * (1 - k) + (i * 1.3 + Math.sin(tm * 9 + i) * 0.25 + stall * (i % 2 ? 1 : -1)) * k;
+    gimbal.rotation.x += 0.9 * k; ant.rotation.x += 0.7 * k;
+    bob.rotation.x -= 0.62 * k;
+  };
 
   let spin = 0, bx = 0, bz = 0, bvx = 0, bvz = 0, yawSpin = 0, ax = 0, avx = 0, az = 0, avz = 0;
   rig.animate = (dt, pose) => {
@@ -28,6 +39,10 @@ export function makeDrone(look: RobotLook): RobotRig {
       rpm: 46, gy: pose.aimYaw * 0.9 + Math.sin(tm * 0.8) * 0.3, gp: -pose.aimPitch + 0.2 + Math.sin(tm * 1.1) * 0.1, bobX: Math.min(0.6, pose.speed * 0.07), bobK: 30, tum: 0,
     };
     if (a === 'move') { tg.pitch = Math.min(0.38, 0.1 + pose.speed * 0.05); tg.rpm = 60; tg.gy = pose.aimYaw * 0.9; tg.gp = 0.1; }
+    else if (a === 'windup' && pose.cue === 'channel') {
+      // lining up a held beam: climbs, noses down onto the target and hangs dead still, bob true, rotors screaming
+      tg.y = 0.35 + t * 0.15; tg.pitch = 0.2; tg.roll = 0; tg.rpm = 96 + t * 20; tg.gy = pose.aimYaw * 0.9; tg.gp = -pose.aimPitch + 0.1; tg.bobX = 0; tg.bobK = 160;
+    }
     else if (a === 'windup') { tg.y = 0.25 + t * 0.1; tg.pitch = -0.22; tg.rpm = 80; tg.roll = Math.sin(tm * 40) * 0.03; tg.gy = 0; tg.gp = 0.25; tg.bobX = -0.25; }
     else if (a === 'attack') { const r = recoil(Math.min(1, t * 1.6), 2.5) * (t > 0.04 ? 1 : t / 0.04); tg.z = -0.2 * r; tg.pitch = -0.3 * r; tg.gy = 0; tg.gp = 0.25; tg.y = 0.1; tg.bobX = 0.35 * r; }
     else if (a === 'attack2') {

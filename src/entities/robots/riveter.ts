@@ -17,6 +17,14 @@ export function makeRiveter(look: RobotLook): RobotRig {
   rig.socket('core', turret, 0, 0.3, 0);
   rig.socket('head', turret, 0.12, 1.0, -0.14);
   rig.socket('muzzle', barrel, 0, 0, 0.95);
+  rig.socket('weak', drum, 0, 0, 0);           // the rivet hopper
+  // broken: sunk on its legs, turret slewed off and nodding at the ground, eye rolled up
+  rig.slump = (k, tm) => {
+    base.position.y -= 0.22 * k; base.rotation.z += 0.1 * k;
+    turret.rotation.x += (0.5 + Math.sin(tm * 2.4) * 0.03) * k; turret.rotation.y += 0.5 * k; turret.rotation.z += 0.12 * k;
+    eye.rotation.x -= 0.7 * k;
+    barrel.position.z -= 0.1 * k;
+  };
 
   const kick = (t: number, t0: number) => (t < t0 ? 0 : Math.exp(-(t - t0) * 13));
   let spin = 0;
