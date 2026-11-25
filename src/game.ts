@@ -15,6 +15,7 @@ import { buildNoiseTexture, buildTextureArrays, loadPaintedArrays } from './gfx/
 import { MODEL_NAMES, loadModels } from './gfx/models';
 import { Combat } from './systems/combat';
 import { Engagement } from './systems/engage';
+import { ViewSystem, setView } from './systems/view';
 import { Interact } from './systems/interact';
 import { Loot } from './systems/loot';
 import { Mobs } from './systems/mobs';
@@ -57,6 +58,8 @@ export class Game {
   combat!: Combat;
   /** engaged-or-fleeing tracker that tells the camera whether to frame the target */
   engage!: Engagement;
+  /** third or first person: switched only through setView (systems/view.ts) */
+  view!: ViewSystem;
   mobs!: Mobs;
   loot!: Loot;
   interact!: Interact;
@@ -126,6 +129,7 @@ export class Game {
     this.hud = new Hud(this);
     this.combat = new Combat(this);
     this.engage = new Engagement(this);
+    this.view = new ViewSystem(this);
     this.mobs = new Mobs(this);
     this.loot = new Loot(this);
     this.interact = new Interact(this);
@@ -177,6 +181,7 @@ export class Game {
       document.addEventListener('visibilitychange', () => { if (!document.hidden && (lost || glc.isContextLost())) { lost = true; setTimeout(recover, 600); } });
     }
     this.resize();
+    setView(this, this.state.d.settings.view === 'first' ? 'first' : 'third', { instant: true, save: false });
     progress(1, 'READY');
     // warm the shaders before the first visible frame
     this.cameraRig.update(0.016, this.player.pos, { lookX: 0, lookY: 0, zoom: 0, moveHeading: null, speed: 0 });
@@ -445,12 +450,12 @@ export class Game {
     this.cameraRig.update(rdt, pl.pos.clone().setY(pl.pos.y + 1.0), {
       lookX: inp.lookX, lookY: inp.lookY, zoom: inp.zoom, moveHeading: pl.moveHeading, speed: sp,
       aimTarget: eng.framed ? eng.framed.pos : null, aimHeight: eng.framed ? eng.framed.height + ((eng.framed as Partial<import('./systems/mobs').Mob>).lift ?? 0) : 0,
-      flee: eng.flee, latch: inp.holdingMove,
+      flee: eng.flee, latch: inp.holdingMove, fp: this.view.feed(rdt),
       fovExtra: (pl.sprinting ? 5 : 0) + (this.combat.aiming ? -16 * this.combat.draw : 0) + this.fovExtra,
       distMul: this.camDist * (this.combat.aiming ? 0.62 : this.mobs.inCombat > 2 ? 1.12 : 1),
     });
     // things within a metre of the lens dissolve, except in cutscenes, which frame their own close-ups
-    { const k = 1 - this.cameraRig.cineAmount; GU.uNearFade.value.set(0.38 * k, k); }
+    this.view.nearFade(GU.uNearFade.value);
     this.cameraRig.shoulder = damp(this.cameraRig.shoulder, this.combat.aiming ? 0.7 : 0, 8, rdt);
     if (this.state.d.settings.shake !== 1) this.cameraRig.trauma *= 0.5 + 0.5 * this.state.d.settings.shake;
 

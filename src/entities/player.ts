@@ -260,6 +260,7 @@ export class Player {
     if (sp > 0.2) { p.moveX = (this.vel.x * _r.x + this.vel.z * _r.z) / sp; p.moveZ = (this.vel.x * _f.x + this.vel.z * _f.z) / sp; }
     else { p.moveX = 0; p.moveZ = 0; }
     p.action = this.action; p.actionT = this.actionT;
+    p.fp = g.cameraRig.eyeAmount;
     this.root.position.copy(this.pos);
     this.root.rotation.y = this.yaw;
     this.rig?.update(dt, p);
@@ -370,7 +371,9 @@ export class Player {
     }
     // facing
     if (!this.rolling) {
-      if (this.faceYaw !== null) this.yaw = dampAngle(this.yaw, this.faceYaw, 22, dt);
+      // first person: the body turns with the view and the stick strafes (systems/view.ts)
+      if (cam.fp) this.yaw = dampAngle(this.yaw, g.view.bodyYaw(cam.yaw + Math.PI, this.faceYaw), 30, dt);
+      else if (this.faceYaw !== null) this.yaw = dampAngle(this.yaw, this.faceYaw, 22, dt);
       else if (this.moveHeading !== null && this.lungeT <= 0) this.yaw = dampAngle(this.yaw, this.moveHeading, this.grounded ? 14 : 8, dt);
     }
     // safety net: never fall out of the world

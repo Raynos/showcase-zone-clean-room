@@ -58,7 +58,9 @@ export interface SaveData {
   perks?: Record<string, number>;
   /** a rolled extra trait per weapon, from rare salvage (see data/traits) */
   wtraits?: Record<string, string>;
-  settings: { quality: string; sfx: number; music: number; sens: number; invertY: boolean; autoFollow: boolean; shake: number; dmgNumbers: boolean; haptics: boolean; lefty: boolean; /** the always-on frame-rate readout */ fps: boolean };
+  settings: { quality: string; sfx: number; music: number; sens: number; invertY: boolean; autoFollow: boolean; shake: number; dmgNumbers: boolean; haptics: boolean; lefty: boolean; /** the always-on frame-rate readout */ fps: boolean;
+    /** third or first person (systems/view.ts); degrees added to the first-person field of view; head bob in first person */
+    view: 'third' | 'first'; fpFov: number; headBob: boolean };
 }
 
 const KEY = 'cratefall.save.v1';
@@ -73,7 +75,7 @@ export function freshSave(): SaveData {
     weapons: ['shop_blade'], loadout: ['shop_blade', null], active: 0, ammo: 'bolt', skills: {},
     inv: { kit: 3 }, upgrades: {}, quests: {}, kills: {}, contracts: {}, trophies: [], titles: [], title: null,
     pbs: {}, found: {}, flags: {}, playTime: 0,
-    settings: { quality: 'auto', sfx: 0.8, music: 0.6, sens: 1, invertY: false, autoFollow: true, shake: 1, dmgNumbers: true, haptics: true, lefty: false, fps: true },
+    settings: { quality: 'auto', sfx: 0.8, music: 0.6, sens: 1, invertY: false, autoFollow: true, shake: 1, dmgNumbers: true, haptics: true, lefty: false, fps: true, view: 'third', fpFov: 0, headBob: true },
   };
 }
 

@@ -93,6 +93,8 @@ export interface HumanPose {
   settleT?: number;
   /** 0..1 strain of a held charge (the coiled pose sinks and trembles) */
   charge?: number;
+  /** 0..1 while the picture is taken from these eyes: a drawn melee weapon is carried higher, into view (rig.ts) */
+  fp?: number;
 }
 
 /** Knockdown timeline in seconds: thrown back until `fall`, lying until `lie`, on the feet again at `end`. A roll can start from `rollAt`. */
@@ -127,7 +129,19 @@ export interface HumanoidRig {
   setWeapon(model: WeaponModel | null): void;
   update(dt: number, pose: HumanPose): void;
   dispose(): void;
+  /** Midpoint of the eyes in world space, as last posed (first person). */
+  eyes?(out: THREE.Vector3): THREE.Vector3;
+  /** Where the eyes sit at rest above the feet and ahead of the body's centre line, metres. */
+  eyeRest?: { y: number; z: number };
+  /**
+   * First person: `fn` is asked, for each camera that draws this body, how much of it to draw
+   * (systems/view.ts decides). The shadow is always the whole body. null turns it off.
+   */
+  setFirstPerson?(fn: ((cam: THREE.Camera) => FpDraw) | null): void;
 }
+
+/** What the eye camera draws of the hero: everything, all but the head (face, hair, scarf), or nothing but the shadow. */
+export type FpDraw = 'full' | 'body' | 'none';
 
 export interface WeaponModel {
   id: WeaponId; kind: WeaponKind;

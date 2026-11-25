@@ -1,10 +1,38 @@
 import * as THREE from 'three';
-import { RAY_WORLD, type Physics } from './physics';
+import { CG, groups, RAY_WORLD, type Physics } from './physics';
 import { angleDiff, clamp, damp, dampAngle, lerp, smooth, vnoise, wrapAngle } from './util';
 
 const _v = new THREE.Vector3(), _dir = new THREE.Vector3(), _t = new THREE.Vector3();
+const _fq = new THREE.Quaternion(), _fe = new THREE.Euler(0, 0, 0, 'YXZ'), _fp = new THREE.Vector3(), _fd = new THREE.Vector3();
 /** radius of the ball swept for camera collision, metres */
 const LENS_R = 0.3;
+
+/** The player's camera setting. Switched only through `setView` (systems/view.ts). */
+export type View = 'third' | 'first';
+/** First person: near plane, the ball kept clear of walls around the eye, pitch limits (up, down). */
+const FP_NEAR = 0.05, FP_R = 0.13, FP_UP = -1.3, FP_DOWN = 1.38;
+/** how far the eyes move forward and down at a full nod (and back at a full look up), metres */
+const FP_NECK = { fwd: 0.2, down: 0.07, back: 0.05 };
+/** what the eye collides with: everything the capsule does, so the lens never goes where the body cannot */
+const RAY_EYE = groups(0xffff, CG.WORLD | CG.PROP | CG.NOCAM);
+/** Vertical field of view in first person, before the player's offset. Chosen by looking (docs/UI-ENGINE-PLAN.md U4). */
+export const FP_FOV = { portrait: 72, landscape: 50 };
+
+/** What the view system hands the camera each frame in first person (systems/view.ts builds it). */
+export interface FirstPersonFeed {
+  /** the hero's feet */
+  base: THREE.Vector3;
+  /** where the eyes should be relative to `base`, with the gentler treatments already applied */
+  off: THREE.Vector3;
+  /** how fast the lens follows `off` across and up (per second); a slow vertical rate filters the gait out */
+  hRate: number; vRate: number;
+  /** extra drop of the lens (m), roll of the view and nod (rad, + looks down) */
+  dip: number; roll: number; tilt: number;
+  /** a point inside the hero's capsule at about eye height: the collision sweep starts here */
+  anchor: THREE.Vector3;
+  /** a ride's heading to drift the view toward when the player is not steering, or null */
+  heading: number | null;
+}
 
 export interface CineShot {
   /** camera position and look-at, both evaluated every frame */
@@ -65,22 +93,63 @@ export class CameraRig {
   /** how much of the picture a cutscene owns right now, 0..1 */
   get cineAmount() { return this.cineBlend; }
 
+  // ---- first person
+  /** the view the player asked for; set it through setView (systems/view.ts), never directly */
+  view: View = 'third';
+  /** 0..1 blend from the orbit to the eyes, eased over a quarter second when the view switches */
+  private fpK = 0;
+  /** degrees added to the first-person field of view (Settings) */
+  fpFovOffset = 0;
+  private fpFov = FP_FOV.portrait;
+  private fpOff = new THREE.Vector3(); private fpBaseY = 0; private fpInit = false;
+  private fpDip = 0; private fpRoll = 0; private fpTilt = 0;
+  /** where the eye lens is this frame (after collision), world space */
+  readonly eye = new THREE.Vector3();
+  /** 1 when the picture is taken from the hero's eyes (first person, no cutscene), 0 when not */
+  get eyeAmount() { return this.fpK * (1 - this.cineBlend); }
+  get fp() { return this.view === 'first'; }
+  /**
+   * True when a point is in front of the view, near enough to aim a melee move at. Always true in
+   * third person, where the hero turns to its target on its own.
+   */
+  inView(p: { x: number; z: number }, cone = 0.75) {
+    if (this.view !== 'first') return true;
+    const pos = this.cam.position;
+    return Math.abs(angleDiff(this.yaw + Math.PI, Math.atan2(p.x - pos.x, p.z - pos.z))) < cone;
+  }
+
   constructor(cam: THREE.PerspectiveCamera, private physics: Physics) { this.cam = cam; }
 
   setAspect(aspect: number) {
     this.cam.aspect = aspect;
     const portrait = aspect < 1;
     this.baseFov = portrait ? 64 : 52;
+    this.fpFov = portrait ? FP_FOV.portrait : FP_FOV.landscape;
     this.dist = portrait ? 5.9 : 5.6;
     this.lift = portrait ? 0.9 : 0.45;
     this.cam.updateProjectionMatrix();
   }
+  /** The first-person field of view for the current orientation, with the player's offset. */
+  get fpFovNow() { return this.fpFov + this.fpFovOffset; }
 
   shake(amount: number) { this.trauma = Math.min(1, this.trauma + amount); }
   kick(pitch: number, yaw = 0) { this.kickPitch += pitch; this.kickYaw += yaw; }
   punch(fov: number) { this.fovPunch += fov; }
-  /** Snap behind a heading immediately. */
-  snap(yaw: number, pitch = 0.2) { this.yaw = yaw; this.pitch = pitch; this.inited = false; }
+  /** Snap behind a heading immediately (in first person: look along it). */
+  snap(yaw: number, pitch = 0.2) { this.yaw = yaw; this.pitch = pitch; this.inited = false; this.fpInit = false; }
+  /**
+   * Change view. Only systems/view.ts calls this. `instant` skips the quarter-second blend (a load,
+   * a cutscene that owns the picture anyway).
+   */
+  setView(v: View, instant = false) {
+    if (v === this.view && !instant) return;
+    this.view = v;
+    // the orbit looks down at the hero; the eyes look a little higher for the same aim
+    this.pitch = v === 'first' ? clamp(this.pitch - 0.1, FP_UP, FP_DOWN) : clamp(this.pitch + 0.1, -0.62, 1.25);
+    this.anchor = null; this.moveOff = 0; this.effOff = 0; this.reframe = false;
+    this.inited = false; this.fpInit = false;
+    if (instant) this.fpK = v === 'first' ? 1 : 0;
+  }
 
   startCine(shot: CineShot) { this.cine = shot; this.cineT = 0; }
   endCine() { this.cine = null; }
@@ -168,16 +237,25 @@ export class CameraRig {
     /** a finger or key is holding the move input, so a large automatic turn may latch its direction */
     latch?: boolean;
     fovExtra?: number; distMul?: number;
+    /** first person: where the eyes are and how the lens treats them (systems/view.ts) */
+    fp?: FirstPersonFeed | null;
   }) {
     this.time += dt;
+    const first = this.view === 'first' && !!opts.fp;
+    this.fpK = first ? (this.fpK > 0.995 ? 1 : damp(this.fpK, 1, 11, dt)) : this.fpK < 0.005 ? 0 : damp(this.fpK, 0, 11, dt);
     this.steering = Math.abs(opts.lookX) + Math.abs(opts.lookY) > 0.0005;
     if (this.steering) this.idleLook = 0; else this.idleLook += dt;
     this.yaw += opts.lookX;
-    this.pitch = clamp(this.pitch - opts.lookY, -0.62, 1.25);
-    this.zoom = clamp(this.zoom + opts.zoom, 0.55, 1.7);
+    this.pitch = first ? clamp(this.pitch - opts.lookY, FP_UP, FP_DOWN) : clamp(this.pitch - opts.lookY, -0.62, 1.25);
+    if (!first) this.zoom = clamp(this.zoom + opts.zoom, 0.55, 1.7);
+    // first person on a ride: the view drifts round to the heading once the player stops steering
+    if (first && opts.fp!.heading !== null && this.autoFollow && this.idleLook > 0.7 && opts.speed > 1.5) {
+      this.yaw = dampAngle(this.yaw, opts.fp!.heading + Math.PI, 1.5 * Math.min(1, opts.speed / 6), dt);
+    }
 
-    const aim = opts.aimTarget ?? null, flee = aim ? 0 : opts.flee ?? 0;
-    const moving = opts.moveHeading !== null && opts.speed > 1.5;
+    // first person never turns the view by itself: no target framing, no swing behind a retreat
+    const aim = first ? null : opts.aimTarget ?? null, flee = aim || first ? 0 : opts.flee ?? 0;
+    const moving = !first && opts.moveHeading !== null && opts.speed > 1.5;
     // A latched turn is only for a thumb pulled back toward the lens: that is the one case plain
     // camera-relative control cannot follow (the heading would chase the camera for ever), and it
     // keeps the upper half of the stick meaning exactly what it always has.
@@ -261,6 +339,15 @@ export class CameraRig {
     _v.copy(pivot);
     cam.lookAt(_v);
 
+    // first person, blended over the orbit while the view switches
+    if (this.fpK > 0 && opts.fp) {
+      this.firstPerson(dt, opts.fp);
+      const e = this.fpK * this.fpK * (3 - 2 * this.fpK);
+      if (e >= 1) { cam.position.copy(this.eye); cam.quaternion.copy(_fq); }
+      else { cam.position.lerp(this.eye, e); cam.quaternion.slerp(_fq, e); }
+      _v.set(0, 0, -8).applyQuaternion(cam.quaternion).add(cam.position);
+    }
+
     // cinematic override (blended)
     this.cineBlend = damp(this.cineBlend, this.cine ? 1 : 0, this.cine ? 5 : 4, dt);
     let fovTarget = this.baseFov;
@@ -284,8 +371,9 @@ export class CameraRig {
       cam.rotateX((vnoise(t, 1.3, 1) - 0.5) * 0.11 * s);
       cam.rotateY((vnoise(t, 7.7, 2) - 0.5) * 0.11 * s);
       cam.rotateZ((vnoise(t, 3.1, 3) - 0.5) * 0.09 * s);
-      // the swept ball leaves 0.3 m around the lens: the shake stays inside it, and well inside when hemmed in
-      const room = blocked ? 0.08 : 0.3;
+      // the swept ball leaves 0.3 m around the lens: the shake stays inside it, and well inside when hemmed in.
+      // At the eyes it is a shudder of the head, not a lens thrown about.
+      const room = lerp(blocked ? 0.08 : 0.3, 0.025, this.eyeAmount);
       cam.position.x += (vnoise(t, 11.1, 4) - 0.5) * room * s;
       cam.position.y += (vnoise(t, 5.5, 5) - 0.5) * room * s;
     }
@@ -295,8 +383,47 @@ export class CameraRig {
     // fov
     this.fovPunch = damp(this.fovPunch, 0, 7, dt);
     this.fovExtra = damp(this.fovExtra, opts.fovExtra ?? 0, 4, dt);
+    if (!this.cine && this.fpK > 0) fovTarget = lerp(fovTarget, this.fpFovNow, this.fpK);
     const fov = fovTarget + this.fovExtra + this.fovPunch + (this.cine ? 0 : this.bigFov * this.bigK);
-    if (Math.abs(fov - cam.fov) > 0.02) { cam.fov = damp(cam.fov, fov, 10, dt); cam.updateProjectionMatrix(); }
+    // at the eyes the hero's own arms and blade are a hand's breadth from the lens
+    const near = lerp(0.3, FP_NEAR, this.eyeAmount);
+    let proj = false;
+    if (Math.abs(near - cam.near) > 1e-4) { cam.near = near; proj = true; }
+    if (Math.abs(fov - cam.fov) > 0.02) { cam.fov = damp(cam.fov, fov, 10, dt); proj = true; }
+    if (proj) cam.updateProjectionMatrix();
     cam.updateMatrixWorld();
+  }
+
+  /**
+   * The eye camera: the feed's eye offset, smoothed so procedural head motion does not shake the
+   * view, plus the treatment (dip, roll, nod), kept a ball's width out of walls. Writes `eye` and
+   * the orientation into _fq.
+   */
+  private firstPerson(dt: number, f: FirstPersonFeed) {
+    if (!this.fpInit) { this.fpOff.copy(f.off); this.fpBaseY = f.base.y; this.fpDip = f.dip; this.fpRoll = f.roll; this.fpTilt = f.tilt; this.fpInit = true; }
+    // steps and kerbs pop the capsule up: ease the feet, but never let them trail far
+    this.fpBaseY = clamp(damp(this.fpBaseY, f.base.y, 16, dt), f.base.y - 0.3, f.base.y + 0.3);
+    this.fpOff.x = damp(this.fpOff.x, f.off.x, f.hRate, dt);
+    this.fpOff.z = damp(this.fpOff.z, f.off.z, f.hRate, dt);
+    this.fpOff.y = damp(this.fpOff.y, f.off.y, f.vRate, dt);
+    this.fpDip = damp(this.fpDip, f.dip, 12, dt);
+    this.fpRoll = damp(this.fpRoll, f.roll, 10, dt);
+    this.fpTilt = damp(this.fpTilt, f.tilt, 10, dt);
+    _fp.set(f.base.x + this.fpOff.x, this.fpBaseY + this.fpOff.y - this.fpDip, f.base.z + this.fpOff.z);
+    // the neck: looking down tips the head forward, so the chest does not fill the view and the feet show
+    const nod = Math.sin(clamp(this.pitch + this.fpTilt, -1.2, 1.4));
+    const fw = nod > 0 ? FP_NECK.fwd * nod : FP_NECK.back * nod, dn = nod > 0 ? FP_NECK.down * nod : 0;
+    _fp.x -= Math.sin(this.yaw) * fw; _fp.z -= Math.cos(this.yaw) * fw; _fp.y -= dn;
+    // collision: sweep a ball from inside the capsule out to the eye, so no wall, prop or ceiling is ever seen through
+    _fd.copy(_fp).sub(f.anchor);
+    const len = _fd.length();
+    if (len > 1e-4) {
+      _fd.multiplyScalar(1 / len);
+      const hit = this.physics.spherecast(f.anchor, _fd, len, FP_R, RAY_EYE);
+      if (hit !== null) _fp.copy(f.anchor).addScaledVector(_fd, Math.max(0, hit - 0.01));
+    }
+    this.eye.copy(_fp);
+    _fe.set(-(this.pitch + this.fpTilt), this.yaw, this.fpRoll, 'YXZ');
+    _fq.setFromEuler(_fe);
   }
 }

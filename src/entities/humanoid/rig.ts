@@ -15,13 +15,47 @@
  * If the rig root is parented to a HorseRig saddle the rider's posting syncs to the horse's gait.
  */
 import * as THREE from 'three';
-import { WorldMaterial } from '../../gfx/material';
+import { GU, WorldMaterial } from '../../gfx/material';
 import { instantiate } from '../../gfx/models';
 import { AnimState, evaluate, L, R, SK } from './anim';
 import { applyFit, fitLook } from './fit';
 import { basisYZ, solve2 as solve } from './ik';
 import { Ribbon } from './ribbon';
-import type { HumanLook, HumanPose, HumanoidRig, WeaponKind, WeaponModel } from './types';
+import type { FpDraw, HumanLook, HumanPose, HumanoidRig, WeaponKind, WeaponModel } from './types';
+
+/**
+ * First person draws this body from inside its own head. The bones whose skin the eye camera
+ * skips while it sits there: the head and everything on it (face, eyes, hair, goggles). Cloth
+ * ribbons (the scarf) go too. The shadow pass always draws the whole body. When dedicated
+ * first-person arms arrive, ViewSystem.draw (systems/view.ts) is where the body is traded for them.
+ */
+const FP_HIDE = (bone: THREE.Bone, head: THREE.Bone) => { for (let b: THREE.Object3D | null = bone; b; b = b.parent) if (b === head) return true; return false; };
+
+/** how far hands on a drawn melee weapon are carried up and out in first person (chest space, metres) */
+const FP_LIFT = { sword: { up: 0.2, out: 0.1 }, spear: { up: 0.1, out: 0.18 } };
+const damp1 = (a: number, b: number, k: number) => a + (b - a) * Math.min(1, k);
+
+/**
+ * Skip a mesh's triangles past `keep()` for the cameras that ask. three.js reads the draw range as
+ * it issues the draw, after onBeforeRender, and the shadow pass calls neither hook, so the shadow
+ * keeps the whole surface while the eye sees only the front part of the index.
+ */
+function eyeCull(mesh: THREE.Mesh, keep: (cam: THREE.Camera, geo: THREE.BufferGeometry) => number, own?: (cam: THREE.Camera) => boolean) {
+  const before = mesh.onBeforeRender, after = mesh.onAfterRender;
+  let saved = -1, fadeX = 0, fadeY = 0, faded = false;
+  mesh.onBeforeRender = function (r, s, cam, geo, mat, grp) {
+    before.call(this, r, s, cam, geo, mat, grp);
+    const g = geo as THREE.BufferGeometry, n = keep(cam, g);
+    if (n < g.drawRange.count) { saved = g.drawRange.count; g.drawRange.count = n; }
+    // what the eyes see of their own body never dissolves near the lens (robots a dash passes through still do)
+    if (n > 0 && own?.(cam)) { const v = GU.uNearFade.value; fadeX = v.x; fadeY = v.y; faded = true; v.set(0, 0); }
+  };
+  mesh.onAfterRender = function (r, s, cam, geo, mat, grp) {
+    after.call(this, r, s, cam, geo, mat, grp);
+    if (saved >= 0) { (geo as THREE.BufferGeometry).drawRange.count = saved; saved = -1; }
+    if (faded) { GU.uNearFade.value.set(fadeX, fadeY); faded = false; }
+  };
+}
 
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
@@ -88,6 +122,49 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
   const clothMat = fit.ribbons.length ? new WorldMaterial() : null;
   const ribbons = fit.ribbons.map((spec) => { const r = new Ribbon(spec, clothMat!); r.mesh.castShadow = false; body.add(r.mesh); meshes++; tris += spec.n * 4; return r; });
 
+  // ---- first person: the eye camera skips the head's triangles (moved to the end of a private index) and the cloth
+  let fpFn: ((cam: THREE.Camera) => FpDraw) | null = null;
+  let fpGeo: THREE.BufferGeometry | null = null, fpBody = 0;
+  const buildFp = () => {
+    const src = inst.mesh.geometry, ix = src.index!, si = src.getAttribute('skinIndex'), sw = src.getAttribute('skinWeight');
+    const hidden = inst.mesh.skeleton.bones.map((b) => FP_HIDE(b, head));
+    const onHead = (v: number) => { let w = 0; for (let j = 0; j < 4; j++) if (hidden[si.getComponent(v, j)]) w += sw.getComponent(v, j); return w >= 0.5; };
+    const front: number[] = [], back: number[] = [];
+    for (let i = 0; i < ix.count; i += 3) {
+      const a = ix.getX(i), b = ix.getX(i + 1), c = ix.getX(i + 2);
+      (onHead(a) || onHead(b) || onHead(c) ? back : front).push(a, b, c);
+    }
+    const geo = new THREE.BufferGeometry();
+    for (const k in src.attributes) geo.setAttribute(k, src.attributes[k]);
+    const n = src.getAttribute('position').count, all = front.concat(back);
+    geo.setIndex(new THREE.BufferAttribute(n > 65535 ? new Uint32Array(all) : new Uint16Array(all), 1));
+    geo.boundingSphere = src.boundingSphere ? src.boundingSphere.clone() : null;
+    geo.boundingBox = src.boundingBox ? src.boundingBox.clone() : null;
+    fpGeo = geo; fpBody = front.length;
+  };
+  const fpAsk = (cam: THREE.Camera): FpDraw => (fpFn ? fpFn(cam) : 'full');
+  eyeCull(inst.mesh, (cam, geo) => {
+    if (!fpFn || !fpGeo) return Infinity;
+    // the private index takes over from the next frame (the draw list for this one is already made)
+    if (inst.mesh.geometry !== fpGeo) inst.mesh.geometry = fpGeo;
+    const d = fpFn(cam);
+    return d === 'full' ? Infinity : d === 'body' && geo === fpGeo ? fpBody : 0;
+  }, (cam) => fpAsk(cam) !== 'full');
+  const cullWeapon = (o: THREE.Object3D) => o.traverse((m) => {
+    if (!(m as THREE.Mesh).isMesh || m.userData.fpCull) return;
+    m.userData.fpCull = true;
+    // in the hand it is drawn; slung on the back it would lie across the bottom of the view
+    eyeCull(m as THREE.Mesh, (cam) => { const d = fpAsk(cam); return d === 'none' || (d === 'body' && weapon?.object.parent === backMount) ? 0 : Infinity; }, (cam) => fpAsk(cam) !== 'full');
+  });
+  for (const r of ribbons) eyeCull(r.mesh, (cam) => (fpAsk(cam) === 'full' ? Infinity : 0));
+  const eyeRest = (() => {
+    root.updateWorldMatrix(true, true);
+    _a.setFromMatrixPosition(eye[0].matrixWorld).add(_b.setFromMatrixPosition(eye[1].matrixWorld)).multiplyScalar(0.5);
+    return { y: _a.y, z: _a.z };
+  })();
+
+  let fpLift = 0;
+  const handAt = [new THREE.Vector3(), new THREE.Vector3()];
   const st = new AnimState();
   let weapon: WeaponModel | null = null;
   let time = 0;
@@ -104,9 +181,21 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
     materials: clothMat ? [mat, clothMat] : [mat],
     stats: { meshes, tris },
     anim: st,
+    eyeRest,
+    eyes(out) {
+      eye[0].updateWorldMatrix(true, false); eye[1].updateWorldMatrix(false, false);
+      return out.setFromMatrixPosition(eye[0].matrixWorld).add(_b.setFromMatrixPosition(eye[1].matrixWorld)).multiplyScalar(0.5);
+    },
+    setFirstPerson(fn) {
+      fpFn = fn;
+      if (fn && !fpGeo) buildFp();
+      if (fn && fpGeo) inst.mesh.geometry = fpGeo;
+      if (fn && weapon) cullWeapon(weapon.object);
+    },
     setWeapon(model) {
       if (weapon && weapon !== model) weapon.object.removeFromParent();
       weapon = model;
+      if (model && fpFn) cullWeapon(model.object);
       if (model && model.kind !== 'none') {
         const bm = BACK_MOUNT[model.kind];
         backMount.position.set(bm.pos[0], bm.pos[1], bm.pos[2]);
@@ -121,11 +210,16 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
       st.rideSync = pose.locomotion === 'ride' && ud && typeof ud.gaitPhase === 'number' ? ud.gaitPhase : -1;
       st.ridePitch = pose.locomotion === 'ride' && ud && typeof ud.pitch === 'number' ? ud.pitch : 0;
       const P = evaluate(pose, st, dt);
+      // first person: the eyes sit above a blade swung at chest height, so a drawn melee weapon and the
+      // hands on it are carried higher and further out, into the bottom of the view
+      fpLift = damp1(fpLift, (pose.fp ?? 0) * (pose.drawn && (pose.weapon === 'sword' || pose.weapon === 'spear') && pose.locomotion !== 'dead' ? 1 : 0), dt * 8);
+      const lift = pose.weapon === 'spear' ? FP_LIFT.spear : FP_LIFT.sword;
+      for (let s = 0; s < 2; s++) handAt[s].copy(P.handPos[s]).add(_c0.set(0, lift.up * fpLift, lift.out * fpLift));
       hips.position.copy(P.hipsPos); hips.quaternion.copy(P.hipsQ);
       spine.quaternion.copy(P.spineQ); chest.quaternion.copy(P.chestQ); head.quaternion.copy(P.headQ);
       for (let s = 0; s < 2; s++) {
         // arm, in chest space
-        solve(shoulder[s], P.handPos[s], P.elbow[s], SK.upper, SK.fore, _q1, _q2);
+        solve(shoulder[s], handAt[s], P.elbow[s], SK.upper, SK.fore, _q1, _q2);
         armU[s].quaternion.copy(_q1);
         armF[s].quaternion.copy(_q3.copy(_q1).invert()).multiply(_q2);
         hand[s].quaternion.copy(_q3.copy(_q2).invert()).multiply(P.handQ[s]);

@@ -10,6 +10,8 @@ import type { Hittable } from './combat';
  * releases the framing and asks the camera to swing behind the direction of travel. About three
  * seconds of that drops the target altogether and holds off auto-targeting until the player
  * attacks, picks a target, or stops running.
+ *
+ * In first person nothing is framed and nothing swings: the view is the player's alone.
  */
 export class Engagement {
   /** the target to frame this frame, or null */
@@ -64,5 +66,8 @@ export class Engagement {
     }
     c.autoTargetOff = this.disengaged;
     this.framed = t && !fleeing && inFight && c.target === t ? t : null;
+    // First person never turns the view by itself: the target keeps its marker and the player looks.
+    // Engagement still decides when a retreat drops the target.
+    if (g.cameraRig.view === 'first') { this.framed = null; this.flee = 0; }
   }
 }
