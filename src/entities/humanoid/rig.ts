@@ -19,6 +19,7 @@ import { GU, WorldMaterial } from '../../gfx/material';
 import { instantiate } from '../../gfx/models';
 import { AnimState, evaluate, L, R, SK } from './anim';
 import { applyFit, fitLook } from './fit';
+import { FpArms, fpPresent } from './fpview';
 import { basisYZ, solve2 as solve } from './ik';
 import { Ribbon } from './ribbon';
 import type { FpDraw, HumanLook, HumanPose, HumanoidRig, WeaponKind, WeaponModel } from './types';
@@ -31,8 +32,6 @@ import type { FpDraw, HumanLook, HumanPose, HumanoidRig, WeaponKind, WeaponModel
  */
 const FP_HIDE = (bone: THREE.Bone, head: THREE.Bone) => { for (let b: THREE.Object3D | null = bone; b; b = b.parent) if (b === head) return true; return false; };
 
-/** how far hands on a drawn melee weapon are carried up and out in first person (chest space, metres) */
-const FP_LIFT = { sword: { up: 0.2, out: 0.1 }, spear: { up: 0.1, out: 0.18 } };
 const damp1 = (a: number, b: number, k: number) => a + (b - a) * Math.min(1, k);
 
 /**
@@ -164,7 +163,7 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
   })();
 
   let fpLift = 0;
-  const handAt = [new THREE.Vector3(), new THREE.Vector3()];
+  const arms = new FpArms();
   const st = new AnimState();
   let weapon: WeaponModel | null = null;
   let time = 0;
@@ -211,18 +210,18 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
       st.ridePitch = pose.locomotion === 'ride' && ud && typeof ud.pitch === 'number' ? ud.pitch : 0;
       const P = evaluate(pose, st, dt);
       // first person: the eyes sit above a blade swung at chest height, so a drawn melee weapon and the
-      // hands on it are carried higher and further out, into the bottom of the view
+      // hands on it are re-framed for the eye (fpview.ts)
       fpLift = damp1(fpLift, (pose.fp ?? 0) * (pose.drawn && (pose.weapon === 'sword' || pose.weapon === 'spear') && pose.locomotion !== 'dead' ? 1 : 0), dt * 8);
-      const lift = pose.weapon === 'spear' ? FP_LIFT.spear : FP_LIFT.sword;
-      for (let s = 0; s < 2; s++) handAt[s].copy(P.handPos[s]).add(_c0.set(0, lift.up * fpLift, lift.out * fpLift));
+      const sc = body.scale.y || 1;
+      fpPresent(P, pose, fpLift < 0.002 ? 0 : fpLift, eyeRest.y / sc, eyeRest.z / sc, arms);
       hips.position.copy(P.hipsPos); hips.quaternion.copy(P.hipsQ);
       spine.quaternion.copy(P.spineQ); chest.quaternion.copy(P.chestQ); head.quaternion.copy(P.headQ);
       for (let s = 0; s < 2; s++) {
         // arm, in chest space
-        solve(shoulder[s], handAt[s], P.elbow[s], SK.upper, SK.fore, _q1, _q2);
+        solve(shoulder[s], arms.handPos[s], arms.elbow[s], SK.upper, SK.fore, _q1, _q2);
         armU[s].quaternion.copy(_q1);
         armF[s].quaternion.copy(_q3.copy(_q1).invert()).multiply(_q2);
-        hand[s].quaternion.copy(_q3.copy(_q2).invert()).multiply(P.handQ[s]);
+        hand[s].quaternion.copy(_q3.copy(_q2).invert()).multiply(arms.handQ[s]);
         // leg, in root space
         _a.set((s === L ? 1 : -1) * hipX, -SK.hipDrop, 0).applyQuaternion(P.hipsQ).add(P.hipsPos);
         thigh[s].position.copy(_a);
@@ -250,7 +249,7 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
         if (pose.locomotion === 'ground' && pose.speed > 4 && !holding) want = 0.75;      // running fists
         if (act === 'cheer' || act === 'carry' || act === 'sweep') want = Math.max(want, 0.9);
         if (act === 'wave' || act === 'point') want = holding ? 1 : 0.05;
-        if (act === 'talk' && !holding) want = 0.3;
+        if (act === 'talk' && !holding) want = 0.72 + 0.14 * Math.sin(time * 1.3 + s * 2.4 + phase);   // loose fists, not splayed fingers
         if (dead) want = 0.3;
         curl[s] += (want - curl[s]) * Math.min(1, dt * 14);
         const k = s === L ? 1 : -1, c = curl[s];

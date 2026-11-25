@@ -260,7 +260,7 @@ export class Player {
     if (sp > 0.2) { p.moveX = (this.vel.x * _r.x + this.vel.z * _r.z) / sp; p.moveZ = (this.vel.x * _f.x + this.vel.z * _f.z) / sp; }
     else { p.moveX = 0; p.moveZ = 0; }
     p.action = this.action; p.actionT = this.actionT;
-    p.fp = g.cameraRig.eyeAmount;
+    p.fp = g.cameraRig.eyeAmount; p.fpPitch = g.cameraRig.pitch;
     this.root.position.copy(this.pos);
     this.root.rotation.y = this.yaw;
     this.rig?.update(dt, p);

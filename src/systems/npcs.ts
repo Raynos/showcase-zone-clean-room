@@ -561,8 +561,13 @@ export class Npcs implements System {
     // eyes on the player (or a lazy glance about)
     let ly = 0, lp = 0;
     if (lookAtPlayer && d > 0.4) {
-      const rel = angleDiff(n.yaw, Math.atan2(dx, dz));
-      if (Math.abs(rel) < 2.0) { ly = clamp(rel, -1.05, 1.05); lp = clamp((1.6 - n.height * 0.92) / Math.max(1, d), -0.3, 0.3); }
+      // in conversation they look into the dialogue camera: that is where the player is looking from
+      const cam = n.mode === 'dialog' ? this.game.camera.position : null;
+      const rel = angleDiff(n.yaw, cam ? Math.atan2(cam.x - n.x, cam.z - n.z) : Math.atan2(dx, dz));
+      if (Math.abs(rel) < 2.0) {
+        ly = clamp(rel, -1.05, 1.05);
+        lp = cam ? clamp((cam.y - n.y - n.height * 0.9) / Math.max(1, Math.hypot(cam.x - n.x, cam.z - n.z)), -0.3, 0.3) : clamp((1.6 - n.height * 0.92) / Math.max(1, d), -0.3, 0.3);
+      }
     } else if (!action && p.locomotion === 'ground' && !n.path) {
       ly = Math.sin(p.time * 0.37 + n.seed * 9) * 0.35 * (Math.sin(p.time * 0.11 + n.seed * 5) > 0.2 ? 1 : 0.2);
     } else if (n.mode === 'pause') ly = Math.sin(n.modeT * 1.6) * 0.7;
