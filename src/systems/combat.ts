@@ -590,6 +590,8 @@ export class Combat {
     }
 
     if (pl.dead) {
+      // the aim drops with the hero (and a third-person aim's lens leaves the eyes)
+      this.shooter.ads = false; g.cameraRig.adsEye = false;
       this.deadT += rdt;
       g.renderer.post.desat = damp(g.renderer.post.desat, 1, 3, rdt);
       if (this.deadT > 2.6) g.renderer.post.fade = Math.min(1, g.renderer.post.fade + rdt * 2.2);

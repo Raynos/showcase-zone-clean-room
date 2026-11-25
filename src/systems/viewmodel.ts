@@ -23,6 +23,8 @@ type Kind = 'bow' | 'crossbow' | 'rifle';
 export const FP_PLACE: Record<Kind, {
   hipP: [number, number, number]; hipL: [number, number, number]; conv: number; roll: number;
   relief: number; adsRoll: number;
+  /** aimed: how far (m) the sight sits under the view axis, so a solid sight never hides the point aimed at */
+  drop?: number;
   reload: { dip: number; roll: number; tip: number; side: number };
   kick: { back: number; up: number };
 }> = {
@@ -31,7 +33,7 @@ export const FP_PLACE: Record<Kind, {
     reload: { dip: 0.11, roll: 0.6, tip: 0.1, side: -0.02 }, kick: { back: 0.07, up: 0.11 },
   },
   crossbow: {
-    hipP: [0.66, -1.0, 0.32], hipL: [0.5, -0.85, 0.34], conv: 40, roll: 0.22, relief: 0.24, adsRoll: 0,
+    hipP: [0.66, -1.0, 0.32], hipL: [0.5, -0.85, 0.34], conv: 40, roll: 0.22, relief: 0.24, adsRoll: 0, drop: 0.025,
     reload: { dip: 0.1, roll: 0.65, tip: 0.08, side: -0.02 }, kick: { back: 0.025, up: 0.035 },
   },
   bow: {
@@ -125,7 +127,7 @@ export class ViewModel {
     aimQ(_q2, _v.set(0, 0, -1), _y.set(0, 1, 0), P.adsRoll * (kind === 'bow' ? 1 : 0));
     const sightL = w.sight ? w.sight.position : _p2.set(0, 0.1, 0);
     // a bow drawn but not aimed sits a little under the axis, so the arrow and the target both show
-    const under = kind === 'bow' ? 0.035 * (1 - this.aimK) : 0;
+    const under = kind === 'bow' ? 0.035 * (1 - this.aimK) : (P.drop ?? 0);
     _p2.copy(sightL).multiplyScalar(s).applyQuaternion(_q2).negate().add(_v.set(0, -under, -P.relief));
     const rel = raise;
     _p.lerp(_p2, rel);

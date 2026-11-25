@@ -263,10 +263,17 @@ recoil, reload), `ballistics.ts` (hit solving), `weakpoints.ts`,
   land on the crosshair out to the zero range and fall short beyond it. A
   projectile that strikes the robot the crosshair was on within 0.7 m of
   the aimed point takes the aimed weak point.
-- Aim down sights (hold or tap-to-toggle, Settings; tap on touch, hold
-  with a mouse by default): the shoulder lens pulls in and the view
-  narrows; at the eyes the view narrows, and the rifle shows a scope. Look
-  speed while aimed is the setting (×0.8) times the zoom.
+- Aim down sights always goes to the eyes (owner's ruling). Toggle by
+  default (tap on touch, right-click with a mouse); hold is a Settings
+  choice. From third person the lens travels from the shoulder into the
+  eyes in about 0.15 s and back on release (`camera.ts` `adsEye`). Through
+  the blend it keeps looking at the point under the crosshair and the aim
+  is turned so the lens it ends at looks there too: measured drift under
+  0.3 px. The head is hidden while the lens passes it. A dodge, knockdown,
+  death, weapon swap, sprint, mount or cutscene drops the aim back to the
+  shoulder; a reload stays at the eyes with the weapon lowered and comes
+  back up aimed. At the eyes the view narrows and the rifle shows a scope.
+  Look speed while aimed is the setting (×0.8) times the zoom.
 - Recoil kicks the view up and sideways; it is real aim the player pulls
   back down. When firing stops the climb the player did not pull down
   recovers. A small camera punch per shot is visual only.

@@ -57,8 +57,8 @@ export const settingsPanel: PanelSpec = {
         + group(slider('sens', 'Look speed', 'target') + slider('shake', 'Screen shake', 'blast')
         + toggle('invertY', 'Invert vertical look', 'swap', s.invertY) + toggle('autoFollow', 'Camera follows movement', 'dash', s.autoFollow, 'Swings behind you as you run'));
       // shooter stance: bows, crossbows and rifles aim through a crosshair (systems/shooter.ts)
-      const adsMode = s.adsMode ?? (g.input.isTouch ? 'tap' : 'hold'), assist = s.aimAssist !== false;
-      h += '<div class="pn-sec">Aiming · bows, crossbows, rifles</div>' + group(`<div class="pn-seg" role="radiogroup" aria-label="Aim button">${(['tap', 'hold'] as const).map((v) => `<div class="${adsMode === v ? 'on' : ''}" data-a="adsMode" data-v="${v}" role="radio" aria-checked="${adsMode === v}">${v === 'tap' ? 'Tap to aim' : 'Hold to aim'}</div>`).join('')}</div>`
+      const adsMode = s.adsMode ?? 'tap', assist = s.aimAssist !== false;
+      h += '<div class="pn-sec">Aiming · bows, crossbows, rifles</div>' + group(`<div class="pn-seg" role="radiogroup" aria-label="Aim button">${(['tap', 'hold'] as const).map((v) => `<div class="${adsMode === v ? 'on' : ''}" data-a="adsMode" data-v="${v}" role="radio" aria-checked="${adsMode === v}">${v === 'tap' ? (g.input.isTouch ? 'Tap to aim' : 'Click to aim') : 'Hold to aim'}</div>`).join('')}</div>`
         + slider('adsSens', 'Look speed when aimed', 'target')).replace('pn-group bev', 'pn-group bev pad')
         + group(toggle('aimAssist', 'Aim assist', 'target', assist, 'Touch only · the view slows over a robot, and aimed it eases toward a weak point. Never snaps')
         + (assist ? slider('assistSlow', 'Slow-down', 'dash') + slider('assistPull', 'Pull to weak points', 'target') : '')

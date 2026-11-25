@@ -18,17 +18,18 @@ const RAY_EYE = groups(0xffff, CG.WORLD | CG.PROP | CG.NOCAM);
 /** Vertical field of view in first person, before the player's offset. Chosen by looking (docs/UI-ENGINE-PLAN.md U4). */
 export const FP_FOV = { portrait: 72, landscape: 50 };
 /**
- * Shooter stance in third person (docs/UI-ENGINE-PLAN.md U5): the pivot sits at head height and out
- * over the right shoulder, `dist` behind it, looking straight down the aim, so the crosshair at screen
- * centre is the aim and the hero stands to one side with the head level with it. Hip fire, then fully
- * aimed down sights. How far out the pivot goes is worked out each frame from the lens's distance and
- * field of view, so the hero's head sits `frac` of the half-width from the centre whatever the pitch,
- * the zoom or a wall pulling the lens in, and the near shoulder and weapon arm stay `clear` of it.
- * Portrait is narrow: the hero sits farther out, back, head and weapon arm from the waist up.
+ * Shooter stance in third person (docs/UI-ENGINE-PLAN.md U5): hip fire is over the shoulder. The pivot
+ * sits at head height and out over the right shoulder, `dist` behind it, looking straight down the aim,
+ * so the crosshair at screen centre is the aim and the hero stands to one side with the head level with
+ * it. How far out the pivot goes is worked out each frame from the lens's distance and field of view,
+ * so the hero's head sits `frac` of the half-width from the centre whatever the pitch or a wall pulling
+ * the lens in, and the near shoulder and weapon arm stay `clear` of it. Portrait is narrow: the hero
+ * sits farther out, back, head and weapon arm from the waist up. Aiming down sights always goes to the
+ * eyes (`adsEye`, the owner's ruling): there is no tighter aimed shoulder camera.
  */
 export const SHOULDER = {
-  portrait: { frac: [0.6, 0.62], dist: [2.6, 3.0], lift: 0.72, clear: 0.12 },
-  landscape: { frac: [0.34, 0.5], dist: [2.9, 2.0], lift: 0.8, clear: 0.12 },
+  portrait: { frac: 0.6, dist: 2.6, lift: 0.72, clear: 0.12 },
+  landscape: { frac: 0.34, dist: 2.9, lift: 0.8, clear: 0.12 },
 };
 /** half the width of the hero's shoulders and weapon arm, seen from behind, metres */
 const HERO_HALF = 0.32;
@@ -131,7 +132,18 @@ export class CameraRig {
   stance: 'melee' | 'shooter' = 'melee';
   /** 0..1 aimed down sights, fed every frame by the shooter */
   ads = 0;
-  /** degrees of third-person field of view taken off at full aim, and the first-person zoom factor (1 none, 0.36 a scope) */
+  /**
+   * Aimed down sights in third person: the lens goes to the eyes and the weapon's sights (systems/
+   * viewmodel.ts), and back over the shoulder on release. Fed by the shooter with `aimDist`, how far
+   * off the thing under the crosshair is: through the blend the lens keeps looking at that point, and
+   * the aim is turned so the destination lens looks at it too, so the crosshair does not jump.
+   */
+  adsEye = false; aimDist = 30;
+  private adsFpWas = false; private lock: 'in' | 'out' | null = null; private lockSet = false;
+  private readonly lockP = new THREE.Vector3();
+  /** true while the lens is travelling between the shoulder and the eyes for an aim */
+  get aimBlend() { return this.lock !== null; }
+  /** degrees of field of view a gun takes off aimed (unused since aiming goes to the eyes), and the eyes' zoom factor (1 none, 0.36 a scope) */
   adsFov = 14; adsZoom = 0.75;
   /** which shoulder the lens sits over: 1 right, -1 left (left-handed setting) */
   side = 1;
@@ -283,8 +295,19 @@ export class CameraRig {
     fp?: FirstPersonFeed | null;
   }) {
     this.time += dt;
-    const first = this.view === 'first' && !!opts.fp;
-    this.fpK = first ? (this.fpK > 0.995 ? 1 : damp(this.fpK, 1, 11, dt)) : this.fpK < 0.005 ? 0 : damp(this.fpK, 0, 11, dt);
+    const adsFp = this.adsEye && this.view === 'third' && this.stance === 'shooter' && !this.cine;
+    if (adsFp !== this.adsFpWas) {
+      this.adsFpWas = adsFp;
+      // aiming in or out from third person: hold the point under the crosshair for the blend
+      if (this.view === 'third' && this.inited) {
+        _v.set(0, 0, -1).applyQuaternion(this.cam.quaternion);
+        this.lockP.copy(this.cam.position).addScaledVector(_v, clamp(this.aimDist, 1.5, 200));
+        this.lock = adsFp ? 'in' : 'out'; this.lockSet = false;
+      }
+    }
+    const first = (this.view === 'first' || adsFp) && !!opts.fp;
+    const rate = adsFp || this.lock ? 15 : 11;
+    this.fpK = first ? (this.fpK > 0.995 ? 1 : damp(this.fpK, 1, rate, dt)) : this.fpK < 0.005 ? 0 : damp(this.fpK, 0, rate, dt);
     const shooter = this.stance === 'shooter';
     this.shK = shooter ? (this.shK > 0.995 ? 1 : damp(this.shK, 1, 9, dt)) : this.shK < 0.005 ? 0 : damp(this.shK, 0, 9, dt);
     this.steering = Math.abs(opts.lookX) + Math.abs(opts.lookY) > 0.0005;
@@ -335,7 +358,7 @@ export class CameraRig {
 
     // large-target framing
     const cfg = this.shoulderCfg, sh = this.shK;
-    const baseDist = lerp(this.dist * this.zoom * (opts.distMul ?? 1), lerp(cfg.dist[0], cfg.dist[1], this.ads), sh);
+    const baseDist = lerp(this.dist * this.zoom * (opts.distMul ?? 1), cfg.dist, sh);
     let big = 0;
     if (aim && opts.aimHeight && opts.aimHeight > 2.4 && !this.cine) {
       const gap = Math.hypot(aim.x - focus.x, aim.z - focus.z);
@@ -358,7 +381,7 @@ export class CameraRig {
       // lens looks straight down the aim from behind it, so the hero stands off the crosshair
       // the hero's head at `frac` of the half-width out from the crosshair, the near shoulder `clear` of it
       const tanH = Math.tan((this.cam.fov * Math.PI) / 360) * this.cam.aspect, depth = Math.max(0.6, this.distCur) * tanH;
-      const want = Math.max(lerp(cfg.frac[0], cfg.frac[1], this.ads) * depth, HERO_HALF + cfg.clear * depth);
+      const want = Math.max(cfg.frac * depth, HERO_HALF + cfg.clear * depth);
       const off = this.side * want * sh, sg = Math.sign(off) || 1, m = Math.abs(off);
       _v.set(Math.cos(this.yaw) * sg, 0, -Math.sin(this.yaw) * sg);
       const room = this.physics.spherecast(pivot, _v, m, LENS_R * 0.8, RAY_WORLD);
@@ -402,11 +425,28 @@ export class CameraRig {
     // first person, blended over the orbit while the view switches
     if (this.fpK > 0 && opts.fp) {
       this.firstPerson(dt, opts.fp);
+      if (this.lock && this.lockSet && this.steering) {
+        // the player turns during the blend: the held point goes with the aim
+        const cp = Math.cos(this.pitch);
+        _v.set(-Math.sin(this.yaw) * cp, -Math.sin(this.pitch), -Math.cos(this.yaw) * cp);
+        this.lockP.copy(this.lock === 'in' ? this.eye : cam.position).addScaledVector(_v, clamp(this.aimDist, 1.5, 200));
+      } else if (this.lock) {
+        // turn the aim so the lens the blend ends at looks at the held point (each frame: the shoulder lens moves with the aim)
+        _v.copy(this.lockP).sub(this.lock === 'in' ? this.eye : cam.position).normalize();
+        this.yaw = Math.atan2(-_v.x, -_v.z);
+        this.pitch = clamp(Math.asin(clamp(-_v.y, -1, 1)), this.lock === 'in' ? FP_UP : SH_UP, this.lock === 'in' ? FP_DOWN : SH_DOWN);
+        _fe.set(-(this.pitch + this.fpTilt), this.yaw, this.fpRoll, 'YXZ'); _fq.setFromEuler(_fe);
+        this.lockSet = true;
+      }
       const e = this.fpK * this.fpK * (3 - 2 * this.fpK);
       if (e >= 1) { cam.position.copy(this.eye); cam.quaternion.copy(_fq); }
-      else { cam.position.lerp(this.eye, e); cam.quaternion.slerp(_fq, e); }
+      else if (this.lock) {
+        // through the blend the lens keeps looking at the held point
+        cam.position.lerp(this.eye, e); cam.lookAt(this.lockP);
+      } else { cam.position.lerp(this.eye, e); cam.quaternion.slerp(_fq, e); }
       _v.set(0, 0, -8).applyQuaternion(cam.quaternion).add(cam.position);
     }
+    if (this.lock && (this.fpK >= 1 || this.fpK <= 0)) this.lock = null;
 
     // cinematic override (blended)
     this.cineBlend = damp(this.cineBlend, this.cine ? 1 : 0, this.cine ? 5 : 4, dt);
@@ -444,9 +484,9 @@ export class CameraRig {
     this.fovPunch = damp(this.fovPunch, 0, 7, dt);
     this.fovExtra = damp(this.fovExtra, opts.fovExtra ?? 0, 4, dt);
     if (!this.cine) {
-      // aiming down sights narrows the view: a few degrees over the shoulder, a factor at the eyes (a scope a lot)
+      // aiming down sights narrows the view at the eyes by a factor (a scope a lot); over the shoulder it never aims
       const a = this.stance === 'shooter' ? this.ads : 0;
-      fovTarget = lerp(this.baseFov - this.adsFov * a * sh, this.fpFovNow * lerp(1, this.adsZoom, a), this.fpK);
+      fovTarget = lerp(this.baseFov, this.fpFovNow * lerp(1, this.adsZoom, a), this.fpK);
     }
     const fov = fovTarget + this.fovExtra + this.fovPunch + (this.cine ? 0 : this.bigFov * this.bigK);
     // at the eyes the hero's own arms and blade are a hand's breadth from the lens

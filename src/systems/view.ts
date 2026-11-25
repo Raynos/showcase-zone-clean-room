@@ -82,8 +82,9 @@ export class ViewSystem {
     const k = g.cameraRig.eyeAmount;
     if (k <= 0) return 'full';
     if (k > 0.9) return this.treat;
-    // blending in or out of the eyes (a view switch, a cutscene taking over): the head goes only while the lens is inside it
-    return cam.position.distanceToSquared(this.eyeW) < 0.25 ? (this.treat === 'none' ? 'none' : this.treat === 'arms' ? 'arms' : 'body') : 'full';
+    // blending in or out of the eyes (a view switch, a cutscene taking over): the head goes only while the lens is inside it;
+    // an aim from the shoulder passes close over it, so there it goes as soon as the lens is within reach of it
+    return cam.position.distanceToSquared(this.eyeW) < (g.cameraRig.aimBlend ? 2.9 : 0.25) ? (this.treat === 'none' ? 'none' : this.treat === 'arms' ? 'arms' : 'body') : 'full';
   }
 
   /**
@@ -118,7 +119,9 @@ export class ViewSystem {
     const g = this.game, pl = g.player, rig = pl.rig, cr = g.cameraRig;
     cr.fpFovOffset = g.state.d.settings.fpFov ?? 0;
     if (rig !== this.rig) { this.rig = rig; if (cr.view === 'first') this.hook(); }
-    if (cr.view !== 'first' && cr.eyeAmount <= 0 && !cr.fp) return null;
+    // aiming down sights from third person goes to the eyes too (core/camera.ts `adsEye`)
+    if (cr.adsEye) this.hook();
+    if (cr.view !== 'first' && cr.eyeAmount <= 0 && !cr.fp && !cr.adsEye) return null;
     if (!rig?.eyes || !rig.eyeRest) return null;
     this.inside(dt);
     const f = this.feedOut, p = pl.pose, loc = p.locomotion, act = pl.action ?? '';

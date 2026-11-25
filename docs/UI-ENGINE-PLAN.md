@@ -50,8 +50,14 @@ Each is the plan's assumption until the owner says otherwise.
   or first person. *Stance* follows the weapon: melee or shooter. So there
   are four combinations, and all four must play well.
 - **Shooter stance in third person** is over the shoulder with a centred
-  crosshair, and aiming down sights pulls the camera in tight. **In first
-  person** it is a weapon view model with real sights or a scope.
+  crosshair for hip fire. **Aiming down sights always goes first person**
+  (owner's ruling): from the shoulder the lens moves quickly into the eyes
+  and the weapon's real sights (a scope for the rifle) and back on release,
+  holding the point under the crosshair still. **In first person** it is
+  a weapon view model with real sights or a scope.
+- **Aim is a toggle by default**, on touch (tap the aim button) and with a
+  mouse (right-click; a held right-click is awkward on a trackpad). Hold to
+  aim is a Settings choice.
 - **Melee in first person** is supported, with visible arms and weapon, but
   third person stays the default view on first launch.
 - **Aim assist is on by default on touch** (slow-down near a target and a

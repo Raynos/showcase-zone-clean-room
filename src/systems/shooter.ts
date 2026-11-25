@@ -86,7 +86,7 @@ export class Shooter {
     const pl = this.game.player;
     pl.pose.shoot = null;
     if (this.drawing) pl.weaponModel?.setDraw?.(0);
-    this.ads = false; this.adsT = 0; this.drawing = false; this.draw = 0; this.fullT = 0;
+    this.ads = false; this.game.cameraRig.adsEye = false; this.adsT = 0; this.drawing = false; this.draw = 0; this.fullT = 0;
     this.reloadT = 0; this.bloom = 0; this.kickPend = 0; this.kickYaw = 0; this.climb = 0; this.shotAnim = null;
     this.combat.drawing = false; this.combat.draw = 0;
   }
@@ -165,17 +165,23 @@ export class Shooter {
     this.bloom = Math.max(0, this.bloom - G.bloomDecay * dt * (this.firing ? 0.35 : 1));
 
     // ---- aim down sights: hold, or tap to toggle (Settings); the target button stands in for the aim button until the HUD has one
-    const tap = (s.adsMode ?? (inp.isTouch ? 'tap' : 'hold')) === 'tap';
+    // toggle by default on touch and with a mouse (a held right-click is awkward on a trackpad); hold is a Settings choice
+    const tap = (s.adsMode ?? 'tap') === 'tap';
     if (inp.pressed('aim')) { if (tap) this.ads = !this.ads; }
     if (!tap) this.ads = inp.down('aim');
     if (inp.pressed('target')) this.ads = !this.ads;
     if (pl.sprinting || pl.dead || pl.mode) this.ads = false;
+    // over the shoulder a dodge or a knockdown drops the aim (it would throw the lens out of the eyes and back)
+    if ((pl.rolling || pl.down) && g.cameraRig.view !== 'first') this.ads = false;
     const adsWant = this.ads && !pl.rolling && !this.reloading && !c.skillRunning ? 1 : 0;
     this.adsK = adsWant ? Math.min(1, this.adsK + rdt / G.adsTime) : Math.max(0, this.adsK - rdt / (G.adsTime * 0.8));
     this.adsT = this.adsK > 0.95 ? this.adsT + dt : 0;
     const cr = g.cameraRig;
     cr.ads = this.adsK * this.adsK * (3 - 2 * this.adsK);
     cr.adsFov = G.adsFov; cr.adsZoom = G.adsZoom;
+    // aimed from third person, the lens goes to the eyes and the sights; a reload stays there, lowered
+    cr.adsEye = this.ads && !c.skillRunning && !pl.dead && !pl.down;
+    cr.aimDist = g.camera.position.distanceTo(this.aimPt);
     cr.side = s.lefty ? -1 : 1;
     // ground warnings thin out near the low shoulder lens so they do not wash the frame (gfx/fx.ts)
     TELE_VIEW.wash.value = cr.shoulderAmount;
@@ -253,8 +259,6 @@ export class Shooter {
     const g = this.game, c = this.combat, pl = g.player, k = this.kind;
     if (c.skillRunning || !k) { pl.pose.shoot = null; return; }
     const cam = g.camera;
-    pl.pose.weapon = c.kind; pl.pose.drawn = true;
-    // the weapon points where the shot will go
     // the arms' named hold (entities/humanoid/shootpose.ts): hip, aimed, a reload or a draw, and the last shot's kick
     const pre = k === 'bow' ? 'bow' : k === 'crossbow' ? 'xbow' : 'rifle', P = pl.pose;
     const aimed = this.adsK > 0.5;
@@ -264,16 +268,18 @@ export class Shooter {
     else { P.shoot = aimed ? `${pre}Ads` as 'rifleAds' : `${pre}Hip` as 'rifleHip'; P.shootT = 0; }
     P.shootK = 1;
     P.shootKick = this.sinceShot < 0.03 ? this.sinceShot / 0.03 : Math.exp(-(this.sinceShot - 0.03) * 12);
+    pl.pose.weapon = c.kind; pl.pose.drawn = true;
+    // the weapon points where the shot will go
     pl.pose.aimPitch = clamp(Math.atan2(this.aimPt.y - (pl.pos.y + 1.4), Math.max(0.5, Math.hypot(this.aimPt.x - pl.pos.x, this.aimPt.z - pl.pos.z))), -0.9, 0.9);
     void cam;
-    if (this.reloading) { pl.action = 'xbowReload'; pl.actionT = clamp01(1 - this.reloadT / this.reloadDur); return; }
-    if (this.drawing) { pl.action = 'bowDraw'; pl.actionT = this.draw; return; }
     // first person: the weapon is on the view and the hands follow it (systems/viewmodel.ts); the
     // third-person archer's and rifleman's twist would swing a shoulder across the lens
     if (this.vm.k * g.cameraRig.eyeAmount > 0.5) {
       if (pl.action === 'rifleAim' || pl.action === 'xbowReload' || pl.action === 'bowDraw' || pl.action === 'rifleFire' || pl.action === 'bowRelease' || pl.action === 'xbowFire') pl.action = null;
       return;
     }
+    if (this.reloading) { pl.action = 'xbowReload'; pl.actionT = clamp01(1 - this.reloadT / this.reloadDur); return; }
+    if (this.drawing) { pl.action = 'bowDraw'; pl.actionT = this.draw; return; }
     if (this.shotAnim) {
       this.shotPose += dt / (this.shotAnim === 'rifleFire' ? 0.42 : this.shotAnim === 'bowRelease' ? 0.3 : 0.14);
       if (this.shotPose < 1) { pl.action = this.shotAnim; pl.actionT = this.shotPose; return; }

@@ -61,7 +61,7 @@ export interface SaveData {
   settings: { quality: string; sfx: number; music: number; sens: number; invertY: boolean; autoFollow: boolean; shake: number; dmgNumbers: boolean; haptics: boolean; lefty: boolean; /** the always-on frame-rate readout */ fps: boolean;
     /** third or first person (systems/view.ts); degrees added to the first-person field of view; head bob in first person */
     view: 'third' | 'first'; fpFov: number; headBob: boolean;
-    /** shooter stance (systems/shooter.ts): aim button hold or tap-toggle (unset: tap on touch, hold with a mouse); look speed aimed;
+    /** shooter stance (systems/shooter.ts): aim button hold or tap-toggle (unset: toggle, on touch and with a mouse); look speed aimed;
      *  touch aim assist on/off, its slow-down and pull 0..1; gyroscope aiming and its sensitivity */
     adsMode?: 'hold' | 'tap'; adsSens?: number; aimAssist?: boolean; assistSlow?: number; assistPull?: number; gyro?: boolean; gyroSens?: number };
 }
