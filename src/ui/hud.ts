@@ -32,6 +32,8 @@ export interface ActionSlot {
   /** level that opens a `locked` slot; defaults to skill 3 at 6 and Overdrive at 10 */
   unlock?: number;
 }
+/** Extras for the target frame: stagger under health, the broken state, status-effect icons. */
+export interface TargetState { stagger: number; broken: boolean; effects: string[] }
 export interface ActBtn {
   id: ActionId; root: HTMLElement; ico: HTMLElement; cd: HTMLElement; cdt: HTMLElement; cnt: HTMLElement; ring: SVGCircleElement; lk: HTMLElement; lbl: HTMLElement;
   btn: Btn; size: number; ring2: boolean;
@@ -74,6 +76,8 @@ const LEARNED = 4;
 const LEGACY_ID: Record<string, ActionId> = { potion: 'kit' };
 const ACT_IDS = Object.keys(ACT) as ActionId[];
 const IDX = Object.fromEntries(ACT_IDS.map((k, i) => [k, i])) as Record<ActionId, number>;
+/** status effect id -> icon id */
+const FX_ICON: Record<string, string> = { shock: 'shock', burn: 'burn', jam: 'jam' };
 
 /** Portrait-first MMO HUD built from DOM: frames, touch controls, toasts, nameplates, damage text. */
 export class Hud {
@@ -101,6 +105,8 @@ export class Hud {
   private actOver: Partial<Record<ActionId, { icon?: string; off?: boolean; hidden?: boolean; n: number }>> = {};
   private actFrame = 0;
   private actTmp: ActionSlot = { id: 'attack', icon: '', label: '', state: 'hidden' };
+  private tStg!: HTMLElement; private bStg!: HTMLElement; private tFx!: HTMLElement; private bFx!: HTMLElement;
+  private tStateSig = ''; private tBroken = false;
   menuBtns: Record<string, HTMLElement> = {};
   /** set by the panels module */
   onMenu: (id: string) => void = () => {};
@@ -151,12 +157,14 @@ export class Hud {
     this.scripEl = el('div', 'scrip', `${icon('coin', 15)}<span>0</span>`); h.appendChild(this.scripEl);
 
     // target + boss
-    this.tframe = el('div', 'tframe', `<div class="tname shadow-text"></div><div class="bar"><i class="lag"></i><i class="fill"></i></div><div class="tsub"></div>`);
+    this.tframe = el('div', 'tframe', `<div class="tname shadow-text"></div><div class="bar"><i class="lag"></i><i class="fill"></i></div><div class="stg"><i></i></div><div class="trow"><div class="tsub"></div><div class="tfx"></div></div>`);
     h.appendChild(this.tframe);
     this.tName = this.tframe.querySelector('.tname')!; this.tFill = this.tframe.querySelector('.fill')!; this.tLag = this.tframe.querySelector('.lag')!; this.tSub = this.tframe.querySelector('.tsub')!;
-    this.boss = el('div', 'bossbar', `<div class="bn"></div><div class="bar"><i class="lag"></i><i class="fill"></i><div class="ticks"></div></div><div class="bs"></div>`);
+    this.tStg = this.tframe.querySelector('.stg i')!; this.tFx = this.tframe.querySelector('.tfx')!;
+    this.boss = el('div', 'bossbar', `<div class="bn"></div><div class="bar"><i class="lag"></i><i class="fill"></i><div class="ticks"></div></div><div class="stg"><i></i></div><div class="bs"></div><div class="tfx"></div>`);
     h.appendChild(this.boss);
     this.bossName = this.boss.querySelector('.bn')!; this.bossFill = this.boss.querySelector('.fill')!; this.bossLag = this.boss.querySelector('.lag')!; this.bossSub = this.boss.querySelector('.bs')!;
+    this.bStg = this.boss.querySelector('.stg i')!; this.bFx = this.boss.querySelector('.tfx')!;
 
     // minimap
     const mm = el('div', 'mini', `<canvas width="208" height="208"></canvas><div class="north">N</div><div class="clock"></div><div class="zone shadow-text"></div>`);
@@ -429,6 +437,26 @@ export class Hud {
     return relayout;
   }
 
+  /**
+   * Target-frame extras from combat: a stagger bar under health, the broken state, effect icons.
+   * They show on the target frame, and on the boss bar when that is up. What was last given stays
+   * until the next call, so send it when the target changes as well as when its values do; pass
+   * null (or never call it) and none of it shows.
+   */
+  setTargetState(s: TargetState | null) {
+    const sig = s ? Math.round(clamp01(s.stagger) * 100) + (s.broken ? 'B' : '') + s.effects.join(',') : '';
+    if (sig === this.tStateSig) return;
+    this.tStateSig = sig; this.tBroken = !!s && s.broken;
+    for (const [root, bar, fx] of [[this.tframe, this.tStg, this.tFx], [this.boss, this.bStg, this.bFx]] as const) {
+      root.classList.toggle('has-stg', !!s);
+      root.classList.toggle('broken', !!s && s.broken);
+      if (!s) { fx.innerHTML = ''; continue; }
+      bar.style.transform = `scaleX(${s.broken ? 1 : clamp01(s.stagger)})`;
+      const html = (s.broken ? `<span class="fx brk">${icon('broken', 12, 2.2)}Broken</span>` : '') + s.effects.map((e) => `<span class="fx ${e}">${icon(FX_ICON[e] ?? e, 13, 2.2)}</span>`).join('');
+      if (fx.innerHTML !== html) fx.innerHTML = html;
+    }
+  }
+
   /** Course / event timer; call every frame while it should show. */
   setTimer(label: string, time: string, sub = '') {
     this.timerT = 0.3;
@@ -452,7 +480,7 @@ export class Hud {
     if (this.tName.dataset.sig !== sig) {
       this.tName.dataset.sig = sig;
       this.tName.innerHTML = `<span class="tl">${info.level}</span>${info.name}`;
-      this.tframe.className = 'tframe on ' + info.cls;
+      this.tframe.className = 'tframe on ' + info.cls + (this.tStateSig ? ' has-stg' : '') + (this.tBroken ? ' broken' : '');
     }
     if (this.tSub.textContent !== info.sub) this.tSub.textContent = info.sub;
     const q = Math.round(info.frac * 200);

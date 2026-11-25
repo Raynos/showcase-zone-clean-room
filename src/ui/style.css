@@ -62,7 +62,21 @@
 .tframe .bar { height: 11px; margin-top: 4px; }
 .tframe.boss .bar { height: 15px; }
 .tframe .bar .fill { background: linear-gradient(180deg, #ff8a6a, #e0342a 60%, #9c1a14); }
-.tframe .tsub { font-size: 10px; color: var(--dim); letter-spacing: .1em; text-transform: uppercase; margin-top: 3px; }
+.tframe .tsub { font-size: 10px; color: var(--dim); letter-spacing: .1em; text-transform: uppercase; }
+.tframe .trow { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 3px; min-height: 12px; }
+/* stagger under health, the broken state and status effects: only when combat supplies them (hud.setTargetState) */
+.stg { display: none; height: 5px; margin-top: 2px; border-radius: 3px; background: #05070bcc; border: 1px solid #000a; overflow: hidden; }
+.stg i { display: block; height: 100%; background: linear-gradient(180deg, #fff3c4, #ffd24a 60%, #c98a10); transform-origin: left; transform: scaleX(0); transition: transform .12s; }
+.has-stg .stg { display: block; }
+.broken .stg i { background: linear-gradient(180deg, #fff, #9ff6ff); animation: brk .5s steps(2) infinite; }
+.broken .bar .fill { filter: brightness(1.35) saturate(.7); }
+@keyframes brk { 50% { opacity: .45; } }
+.tfx { display: flex; gap: 4px; align-items: center; }
+.tfx .fx { display: grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; background: #0c0f13e6; border: 1.5px solid currentColor; box-shadow: 0 1px 4px #000a; }
+.tfx .fx.shock { color: var(--cyan); } .tfx .fx.burn { color: #ff8a3c; } .tfx .fx.jam { color: var(--purple); }
+.tfx .fx.brk { width: auto; display: flex; gap: 3px; padding: 0 7px 0 5px; border-radius: 10px; color: #0b0e12; background: linear-gradient(180deg, #fff, #9ff6ff); border-color: #fff; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.bossbar .tfx { justify-content: center; margin-top: 4px; }
+.bossbar .tfx:empty { display: none; }
 .bossbar { position: absolute; left: 50%; top: calc(64px + var(--sat)); transform: translateX(-50%); width: min(86vw, 520px); text-align: center; opacity: 0; transition: opacity .4s; }
 .bossbar.on { opacity: 1; }
 /* narrow portrait: the boss bar drops below the button row and minimap, and pushes the tracker and timer down */
