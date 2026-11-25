@@ -69,6 +69,7 @@ export class Combat {
   private crateMesh: THREE.InstancedMesh;
   // melee
   private swing: Swing | null = null; private swingT = 0; private swingHit = false; private combo = 0; private comboT = 0; private queued = false;
+  private trailOn = false;
   /** wind-up rate of the current swing: below 1 when a long lunge has to arrive before the blade does */
   private windK = 1;
   private trail: Trail | null = null;
@@ -457,10 +458,10 @@ export class Combat {
       if (tt && tt.alive) { tt.center(_c); pl.pose.aimPitch = clamp(Math.atan2(_c.y - (pl.pos.y + 1.4), Math.hypot(_c.x - pl.pos.x, _c.z - pl.pos.z)), -0.9, 0.9); }
       else pl.pose.aimPitch = clamp(-g.cameraRig.pitch + 0.12, -0.9, 0.9);
     } else pl.pose.aimPitch = damp(pl.pose.aimPitch, 0, 8, dt);
-    // weapon trail
+    // weapon trail: only the outer part of the blade draws, so the ribbon is an edge and not a sheet over the enemy
     if (this.trail?.active && pl.weaponModel) {
       pl.weaponModel.base.getWorldPosition(_v); pl.weaponModel.tip.getWorldPosition(_v2);
-      this.trail.feed(_v, _v2);
+      this.trail.feed(_v.lerp(_v2, this.kind === 'spear' ? 0.72 : 0.55), _v2);
     }
     this.updateShots(dt);
     this.updateStrikes(dt);
@@ -480,6 +481,9 @@ export class Combat {
       this.swingT += (dt / s.dur) * (this.swingHit ? 1 : this.windK);
       pl.action = s.anim; pl.actionT = Math.min(1, this.swingT);
       pl.actionSlow = 0.25;
+      // the trail marks the cut itself, not the wind-up or the recovery
+      if (!this.trailOn && this.swingT >= s.hitAt - 0.16 && this.swingT < s.hitAt + 0.1) { this.trailOn = true; this.startTrail(s.heavy ? 0.16 : 0.11); }
+      else if (this.trailOn && this.swingT > s.hitAt + 0.2) { this.trailOn = false; this.trail?.stop(); }
       // a press at any point of a swing chains the next one; it no longer has to land after the first 30%
       if (want) { this.queued = true; if (press) this.buf = null; }
       if (!this.swingHit && this.swingT >= s.hitAt) {
@@ -517,10 +521,15 @@ export class Combat {
       pl.startLunge(Math.sin(yaw), Math.cos(yaw), step, ld);
       if (step > 1.2) g.fx.dust(pl.pos, 3, 0.7);
     }
-    this.trail = g.fx.trail();
-    this.trail.life = s.heavy ? 0.26 : 0.18;
-    this.trail.start(g.state.weapon.color);
+    this.trailOn = false;
     g.sfx(s.heavy ? 'swing_heavy' : this.kind === 'spear' ? 'swing_spear' : 'swing_sword', { pitch: 0.95 + (this.combo % 3) * 0.06 });
+  }
+  /** A dim, short-lived ribbon in the weapon's colour. */
+  private startTrail(life: number, dim = 0.5) {
+    const tr = this.trail = this.game.fx.trail();
+    tr.life = life;
+    tr.start(this.game.state.weapon.color);
+    tr.color.multiplyScalar(dim);
   }
   private meleeHit(s: Swing) {
     const g = this.game, pl = g.player;
@@ -670,14 +679,14 @@ export class Combat {
     pl.yaw = face;
     const col = st.weapon.color;
     switch (sk.id) {
-      case 'whirlwind': this.skillDur = 0.75; pl.action = 'swordSkill'; this.trail = g.fx.trail(); this.trail.life = 0.3; this.trail.start(col); g.sfx('skill_whirl'); break;
+      case 'whirlwind': this.skillDur = 0.75; pl.action = 'swordSkill'; this.startTrail(0.22, 0.7); g.sfx('skill_whirl'); break;
       case 'dash_strike': {
         this.skillDur = 0.34; pl.action = 'sword3';
         const dist = t ? clamp(Math.hypot(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) + 3, 5, 11) : 9;
         pl.lunge.set(Math.sin(face) * dist / 0.16, 0, Math.cos(face) * dist / 0.16); pl.lungeT = 0.16;
         pl.invuln = Math.max(pl.invuln, 0.3);
         this.dashFrom.copy(pl.pos); this.dashYaw = face;
-        this.trail = g.fx.trail(); this.trail.life = 0.3; this.trail.start(col);
+        this.startTrail(0.22, 0.7);
         g.sfx('skill_dash'); g.cameraRig.punch(7);
         break;
       }
@@ -690,7 +699,7 @@ export class Combat {
         g.sfx('skill_leap');
         break;
       }
-      case 'sweep': this.skillDur = 0.6; pl.action = 'spear3'; this.trail = g.fx.trail(); this.trail.life = 0.3; this.trail.start(col); g.sfx('swing_heavy'); break;
+      case 'sweep': this.skillDur = 0.6; pl.action = 'spear3'; this.startTrail(0.22, 0.7); g.sfx('swing_heavy'); break;
       case 'volley': this.skillDur = 0.4; pl.action = 'bowRelease'; break;
       case 'piercer': this.skillDur = 0.75; pl.action = 'bowDraw'; g.sfx('bow_draw'); break;
       case 'cycle_ammo': {
