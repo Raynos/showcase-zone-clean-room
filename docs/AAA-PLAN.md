@@ -543,4 +543,7 @@ for the owner to accept or reject before any art is built.
 
 - **Haptics on iOS** need a check on the owner's phone.
 - **First `?perf` reading** on the owner's phone, once phase 0 ships it.
-- **Look-bible sign-off** after phase 1.
+- ~~Look-bible sign-off after phase 1.~~ Given 2026-11-25: the owner
+  reviewed all 25 pairs and said the remasters are the right direction.
+  The targets in `docs/golden/target/` and the rules in `docs/LOOK.md` are
+  now the standard that phases 5 to 7 are judged against.
