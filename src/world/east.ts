@@ -267,7 +267,11 @@ export class East implements System {
       if (this.beaconLit[i]) this.lightBeacon(i, true);
       g.interact.add({ id: 'beacon#' + i, pos: new THREE.Vector3(b.x, y + 1, b.z), radius: 3.6, icon: 'bolt', label: 'Light the beacon',
         enabled: () => !this.beaconLit[i] && g.quests.status('q_storm') === 'active',
-        onUse: () => { st.setFlag('beacon_' + i); this.lightBeacon(i, false); } });
+        onUse: () => {
+          st.setFlag('beacon_' + i); this.lightBeacon(i, false);
+          // the grid holds the moment the fourth beacon burns: the storm breaks here, not back in town at turn-in
+          if (this.beaconLit.length === BEACONS.length && this.beaconLit.every(Boolean)) st.setFlag('storm', 0);
+        } });
       g.pois.push({ id: 'beacon' + i, x: b.x, z: b.z, icon: 'bolt', label: b.name, color: '#ffb04a', show: () => g.quests.status('q_storm') === 'active' && !this.beaconLit[i] });
     });
     // ---- gauntlet doors: 0 entrance, 1 A|B, 2 B|C ----
@@ -306,9 +310,10 @@ export class East implements System {
       }
       return best;
     };
-    // storm state restored from the save
-    this.applyStorm();
-    st.events.on('flag', (f) => { if (f.key === 'storm') this.applyStorm(); });
+    // storm state restored from the save (a save from before the storm ended at the fourth beacon may still carry it)
+    if (st.flag('storm') === 1 && this.beaconLit.every(Boolean)) st.setFlag('storm', 0);
+    this.applyStorm(false);
+    st.events.on('flag', (f) => { if (f.key === 'storm') this.applyStorm(true); });
     g.addSystem(this);
   }
 
@@ -349,10 +354,27 @@ export class East implements System {
       g.hud.banner(`BEACON ${n} / 4`, n >= 4 ? 'The storm grid holds' : 'The storm weakens', '');
     }
   }
-  private applyStorm() {
-    const g = this.game, on = g.state.flag('storm') === 1;
-    g.env.forcedWeather = on ? 'storm' : null; g.env.forcedHour = on ? 19.4 : null;
-    if (on) g.hud.banner('STORM HOUR', 'Light the four beacons', 'danger');
+  /** > 0 while the storm is drawing the clock to dusk; > 0 while the sky is held clear after it breaks */
+  private duskT = 0; private clearT = 0;
+  private applyStorm(changed: boolean) {
+    const g = this.game, env = g.env, on = g.state.flag('storm') === 1;
+    if (this.duskT > 0) { this.duskT = 0; env.forcedHour = null; }
+    this.clearT = 0;
+    env.forcedWeather = on ? 'storm' : null;
+    if (on) {
+      // The storm rolls in at dusk and then the clock runs on. Pinning it at 19:24 held the yard short of
+      // nightfall (20:12) for as long as the quest was open, which stalled every night-only objective.
+      if (changed && !env.isNight() && !(env.hour >= 19.4)) { env.forcedHour = 19.4; this.duskT = 12; }
+      g.hud.banner('STORM HOUR', 'Light the four beacons', 'danger');
+    } else if (changed) { env.forcedWeather = 'clear'; this.clearT = 240; }   // the weather stays ours for a while
+  }
+  private updateStorm(rdt: number) {
+    const env = this.game.env;
+    if (this.duskT > 0) {
+      this.duskT -= rdt;
+      if (this.duskT <= 0 || Math.abs(env.hour - 19.4) < 0.02) { this.duskT = 0; env.forcedHour = null; }
+    }
+    if (this.clearT > 0 && (this.clearT -= rdt) <= 0 && env.forcedWeather === 'clear') env.forcedWeather = null;
   }
 
   // ---- gauntlet ----
@@ -488,6 +510,7 @@ export class East implements System {
       if (Math.abs(b.x - p.x) < 90 && Math.abs(b.z - p.z) < 90 && Math.random() < rdt * 14)
         g.fx.emit({ x: b.x, y: b.y, z: b.z }, { count: 1, speed: [0.4, 1.4], up: 3, life: [0.6, 1.3], size: [0.2, 0.5], grow: 0.2, color: 0xffb04a, color2: 0xffe6a0, glow: 3, gravity: -1.5, sprite: SP.EMBER, radius: 0.6 });
     }
+    this.updateStorm(rdt);
     this.updateGauntlet(dt);
     void damp;
   }
