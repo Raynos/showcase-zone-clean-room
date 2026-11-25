@@ -225,7 +225,7 @@ export class Trail {
       uniforms: { uColor: { value: this.color } },
       transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
       vertexShader: `attribute vec2 aA; varying vec2 vA; void main(){ vA = aA; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `uniform vec3 uColor; varying vec2 vA; void main(){ float e = vA.y; float a = vA.x * (0.25 + 0.75 * e * e); vec3 c = mix(uColor, vec3(1.0), e * e * e * 0.7) * (1.0 + 2.5 * e * e); gl_FragColor = vec4(c * a, 1.0); }`,
+      fragmentShader: `uniform vec3 uColor; varying vec2 vA; void main(){ float e = vA.y; float a = vA.x * (0.25 + 0.75 * e * e); vec3 c = mix(uColor, vec3(1.0), e * e * e * 0.55) * (0.7 + 1.3 * e * e); gl_FragColor = vec4(c * a, 1.0); }`,
     });
     this.mesh = new THREE.Mesh(g, mat);
     this.mesh.frustumCulled = false; this.mesh.renderOrder = 21; this.mesh.visible = false;
@@ -379,12 +379,12 @@ export class FX {
   /** Robot death: sparks, smoke puff, ring, and tumbling chunks. */
   robotDeath(pos: THREE.Vector3, size: number, colors: number[], glowColor = 0x3fe3ff) {
     _v.copy(pos); _v.y += size * 0.5;
-    this.emit(_v, { count: 1, speed: [0, 0], life: [0.16, 0.2], size: [size * 2.6, size * 3.2], grow: 1.8, color: glowColor, glow: 4, sprite: SP.STAR });
+    this.emit(_v, { count: 1, speed: [0, 0], life: [0.14, 0.18], size: [size * 1.9, size * 2.4], grow: 1.6, color: glowColor, glow: 2.2, sprite: SP.STAR });
     this.emit(_v, { count: Math.round(18 + size * 8), speed: [4, 13 + size * 3], life: [0.3, 0.75], size: [0.05, 0.12], color: glowColor, color2: 0xffffff, glow: 5, gravity: 18, drag: 1.2, sprite: SP.STREAK, stretch: 0.07 });
     this.smoke(_v, 5, size);
     this.ring(pos, size * 2.6, glowColor, 0.38, 2);
     this.chunks(_v, Math.round(7 + size * 5), colors, 4 + size * 2.5, 0.12 + size * 0.1);
-    this.flash(_v, glowColor, 30 * size, 9 * size, 0.2);
+    this.flash(_v, glowColor, 16 * size, 8 * size, 0.2);
   }
   levelUp(pos: THREE.Vector3) {
     for (let i = 0; i < 3; i++) this.emit({ x: pos.x, y: pos.y + 0.1 + i * 0.05, z: pos.z }, { count: 1, speed: [0, 0], life: [0.7 + i * 0.15, 0.7 + i * 0.15], size: [0.6, 0.6], grow: 9 + i * 3, color: i === 1 ? 0x7ff0ff : 0xffc24a, glow: 2.5, sprite: SP.RING, flat: true });
