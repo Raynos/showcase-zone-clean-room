@@ -1,3 +1,4 @@
+import { hammerhead, legLights } from '../vista/skyline';
 import { Rng, TAU, lerp } from '../../core/util';
 import { CAMPS, ELITES } from '../../data/enemies';
 import type { Geo } from '../../gfx/geo';
@@ -227,7 +228,7 @@ function docks(c: Ctx) {
     c.paintRect(x, z, 9, 9, 0, { grass: 0, color: GROUND[2], k: 0.7, gravel: 0.9 });
     c.plinth(x, z, yaw, 9, 9, (g, y) => {
       deck = y;
-      const tip = dockCrane(g, 22);
+      const tip = dockCrane(g, 42);
       const [lx, lz] = rel(x, z, yaw, tip[0], tip[2]);
       c.info.lamps.push({ x: lx, y: y + tip[1], z: lz, color: PAL.red });
       g.push().translate(0, 0.02, 4.0); g.box(5, 0.9, 0.12, { at: [0, 1.6, 0], color: PAL.slateDeep, col: 'none' }); g.translate(0, 1.6, 0.08); pixelText(g, 'DOCK CRANE 1', 0.07, { color: PAL.cyan, emit: 1.6 }); g.pop();
@@ -317,20 +318,22 @@ const L3 = (g: Geo, r: Rng) => {
 
 function greatPlumb(c: Ctx) {
   const p = c.spotRect(206, 172, 9.5, 9.5, 0, 18, 2.6, false); if (!p) return;
-  const { x, z } = p, H = 36;
+  const { x, z } = p, H = 68;
   c.paintRect(x, z, 11, 11, 0, { grass: 0, color: GROUND[3], k: 0.6, dirt: 0.8 });
   const base = c.plinth(x, z, 0.3, 12, 12, (g) => {
     for (let i = 0; i < 3; i++) {
       const a = (i / 3) * TAU + 0.5, fx = Math.cos(a) * 9, fz = Math.sin(a) * 9;
-      beam(g, [fx, 0, fz], [0, H, 0], 0.34, PAL.orange);
+      beam(g, [fx, 0, fz], [0, H, 0], 0.56, PAL.orange);
+      legLights(g, [fx, 0, fz], [0, H, 0], 6, PAL.cyan);
       g.box(2, 1.2, 2, { at: [fx, 0.6, fz], color: PAL.concrete, layer: T.CONCRETE, col: true, grad: 0.7 });
       const b2 = ((i + 1) / 3) * TAU + 0.5;
       for (const t of [0.3, 0.58]) beam(g, [fx * (1 - t), H * t, fz * (1 - t)], [Math.cos(b2) * 9 * (1 - t), H * t, Math.sin(b2) * 9 * (1 - t)], 0.14, PAL.slate);
       beam(g, [fx * 0.7, H * 0.3, fz * 0.7], [Math.cos(b2) * 9 * 0.42, H * 0.58, Math.sin(b2) * 9 * 0.42], 0.1, PAL.slate);
     }
     g.cyl(1.2, 1.4, 1.6, 8, { at: [0, H, 0], color: PAL.slateDark, layer: T.METAL, col: 'none' });
-    g.cyl(0.08, 0.08, 4, 5, { at: [0, H + 2.6, 0], color: PAL.slateDark, col: 'none' });
-    g.sphere(0.5, 8, 6, { at: [0, H + 4.8, 0], color: PAL.cyan, emit: 3, col: 'none' });
+    g.cyl(0.14, 0.3, 8, 5, { at: [0, H + 4.6, 0], color: PAL.slateDark, col: 'none' });
+    for (let i = 0; i < 3; i++) g.cyl(0.5 - i * 0.1, 0.5 - i * 0.1, 0.3, 8, { at: [0, H + 2.4 + i * 2, 0], color: PAL.cyan, emit: 2, col: 'none' });
+    g.sphere(0.8, 8, 6, { at: [0, H + 9, 0], color: PAL.cyan, emit: 3, col: 'none' });
     // the line and the great bob
     g.box(0.1, H - 8.4, 0.1, { at: [0, H - (H - 8.4) / 2, 0], color: 0xe8e2d2, col: 'none' });
     g.cyl(0.9, 2.0, 1.4, 12, { at: [0, 8.2, 0], color: 0xc9973a, layer: T.METAL, col: 'none' });
@@ -344,7 +347,7 @@ function greatPlumb(c: Ctx) {
     g.push().translate(0, 2.2, 6.2); g.box(5.6, 1, 0.12, { color: PAL.slateDeep, col: 'none' }); g.translate(0, 0, 0.08); pixelText(g, 'THE GREAT PLUMB', 0.075, { color: PAL.cyan, emit: 1.6 }); g.pop();
     for (const sx of [-2.6, 2.6]) g.box(0.14, 2.2, 0.14, { at: [sx, 1.1, 6.2], color: PAL.slateDark, col: 'none' });
   });
-  c.info.lamps.push({ x, y: base + H + 4.8, z, color: PAL.cyan });
+  c.info.lamps.push({ x, y: base + H + 9, z, color: PAL.cyan });
   masts.push([x, base + H, z]);
   c.anchor('L3', x, base, z);
   c.anchor('vista_plumb', x - 4.4, base + 0.05, z - 4.6, 0.3);
@@ -426,8 +429,12 @@ function smelter(c: Ctx) {
   let deck = 0;
   c.plinth(x, z, yaw, 25, 17, (g, y) => {
     deck = y;
-    const t1 = smelterStack(g.push().translate(-6.5, 0, -2.5), 34, 3.6); g.pop();
-    const t2 = smelterStack(g.push().translate(4.5, 0, -3.5), 25, 2.8); g.pop();
+    const t1 = smelterStack(g.push().translate(-6.5, 0, -2.5), 56, 3.6); g.pop();
+    const t2 = smelterStack(g.push().translate(4.5, 0, -3.5), 39, 2.8); g.pop();
+    // heat bands: after dark the chimneys are drawn in rings of furnace light
+    for (const [lx, lz, h, rb] of [[-6.5, -2.5, 56, 3.6], [4.5, -3.5, 39, 2.8]] as const) {
+      for (const t of [0.3, 0.5, 0.7, 0.88]) { const rr = rb + (rb * 0.62 - rb) * t; g.cyl(rr + 0.07, rr + 0.09, 0.42, 12, { at: [lx, 5.4 + (h - 5.4) * t + 0.5, lz], color: 0xff7a1a, emit: 1.7, col: 'none' }); }
+    }
     for (const [t, lx, lz] of [[t1, -6.5, -2.5], [t2, 4.5, -3.5]] as const) { const [wx, wz] = rel(x, z, yaw, lx, lz); c.info.stacks.push({ x: wx, y: y + t[1], z: wz }); c.info.lamps.push({ x: wx, y: y + t[1] - 2, z: wz, color: PAL.red }); }
     // furnace hall between the stacks with a sawtooth roof
     g.box(6.4, 6, 5.5, { at: [-1, 3, -4.6], color: 0x8a5040, layer: T.REDBRICK, uvScale: 0.3, col: true, grad: 0.6 });
@@ -544,17 +551,17 @@ function shipyard(c: Ctx) {
   if (p) {
     const { x, z, yaw } = p;
     c.paintRect(x, z, 19, 8, yaw, { grass: 0, color: GROUND[5], k: 0.7, gravel: 1 });
-    let deck = 0;
+    let deck = 0, head: Array<[number, number, number]> = [];
     c.plinth(x, z, yaw, 36, 11, (g, y) => {
       deck = y;
       hullFrame(g, r, 30, 10, 0.5);
-      g.push().translate(3, 0, 0).rotateY(Math.PI / 2 * 0); gantry(g, 13.5, 17, { load: 'plate', color: PAL.orange, depth: 7 }); g.pop();
+      // the hammerhead stands on the feet the slipway gantry had
+      g.push().translate(3, 0, 0); head = hammerhead(g, 13.5, 40, 7); g.pop();
       g.push().translate(-10, 0, 0); gantry(g, 13, 12, { load: 'hook', color: 0x8a939e, depth: 6 }); g.pop();
       g.push().translate(-4, 0, 5.2); scaffold(g, r, 6, 2); g.pop();
       g.push().translate(15.5, 0.5, 4.4).rotateY(-0.2); g.box(6, 1.1, 0.14, { at: [0, 2.2, 0], color: PAL.slateDeep, col: 'none' }); g.translate(0, 2.2, 0.09); pixelText(g, 'SLIPWAY ONE', 0.08, { color: PAL.amber, emit: 1.6 }); g.pop();
     }, { lift: 0.05 });
-    const [lx, lz] = rel(x, z, yaw, 3, 0);
-    c.info.lamps.push({ x: lx - Math.cos(yaw) * 7.7, y: deck + 18.2, z: lz + Math.sin(yaw) * 7.7, color: PAL.amber }, { x: lx + Math.cos(yaw) * 7.7, y: deck + 18.2, z: lz - Math.sin(yaw) * 7.7, color: PAL.amber });
+    for (const [hx, hy, hz] of head) { const [lx, lz] = rel(x, z, yaw, 3 + hx, hz); c.info.lamps.push({ x: lx, y: deck + hy, z: lz, color: PAL.amber }); }
     c.anchor('L5', x, deck, z, yaw);
     c.nook(5, x, z, yaw, -4, 5.2, { y: deck + 4.5, high: true });
     c.nook(5, x, z, yaw, 12, -5.4, { y: deck + 0.05 });
@@ -660,7 +667,7 @@ function greatCoil(c: Ctx) {
   let deck = 0;
   c.plinth(x, z, 0, 9, 9, (g, y) => {
     deck = y;
-    const t = teslaPylon(g, 27, 2.7);
+    const t = teslaPylon(g, 44, 2.7);
     c.info.pylons.push({ x, y: y + t[1], z });
     c.info.lamps.push({ x, y: y + t[1] + 0.6, z, color: PAL.cyan });
     for (let i = 0; i < 4; i++) { const a = (i / 4) * TAU + TAU / 8; beam(g, [Math.cos(a) * 4.2, 0, Math.sin(a) * 4.2], [Math.cos(a) * 1.2, 11, Math.sin(a) * 1.2], 0.16, PAL.slateDark); }
@@ -673,7 +680,7 @@ function greatCoil(c: Ctx) {
     const a = (i / 6) * TAU + 0.2, px = x + Math.cos(a) * 11.5, pz = z + Math.sin(a) * 11.5;
     if (!c.free(px, pz, 1.2, false)) continue;
     pylonAt(c, px, pz, 8.5, 0.9);
-    cable(c, [px, c.h(px, pz) + 8.4, pz], [x, deck + 17, z], 2.2, 0x2a3440, 0.06);
+    cable(c, [px, c.h(px, pz) + 8.4, pz], [x, deck + 24, z], 2.2, 0x2a3440, 0.06);
     c.put(x + Math.cos(a + 0.5) * 8, z + Math.sin(a + 0.5) * 8, 0, (g) => fulgurite(g, r, 5, 1.2));
   }
   c.anchor('L6', x, deck, z);

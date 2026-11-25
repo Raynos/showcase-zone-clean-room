@@ -164,6 +164,8 @@ export class Sky {
             float snow = fi * 0.5 * smoothstep(0.058, 0.085, rh) * smoothstep(rh - 0.02 - pk2 * 0.016, rh - 0.006, h);
             rc = mix(rc, mix(uHorizon, vec3(1.0), 0.6 * dayL) * (0.78 + 0.22 * lit) * (0.5 + 0.5 * dayL), snow);
             rc += uSunColor * uSunset * pow(sd, 3.0) * 0.2;
+            // after dark the ranges are shapes a little darker than the sky behind them
+            rc = mix(rc, mix(uZenith, uHorizon, 0.25) * 0.8, uNight * 0.75);
             // the foot of each range dissolves into the haze of the valley in front of it
             rc = mix(uHorizon, rc, 0.45 + 0.55 * smoothstep(0.0, rh * 0.7 + 0.01, h));
             col = mix(col, rc, m);

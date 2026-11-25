@@ -233,7 +233,7 @@ const _c2 = new THREE.Color();
 const DARK = 0x2a2d33;
 type V3 = [number, number, number];
 /** a square member between two points */
-function strut(g: Geo, a: V3, b: V3, t: number, color: number, layer: number = T.METAL) {
+export function strut(g: Geo, a: V3, b: V3, t: number, color: number, layer: number = T.METAL) {
   const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], len = Math.hypot(dx, dy, dz);
   g.box(t, len, t, { at: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2], rot: [Math.acos(clamp(dy / len, -1, 1)), Math.atan2(dx, dz), 0], color, layer, uvScale: 0.12, col: 'none', grad: 0.8 });
 }
@@ -364,9 +364,9 @@ function buildYard(): THREE.Mesh {
     put(x, z, r.range(-0.1, 0.1), () => { const n = r.int(2, 5); for (let k = 0; k < n; k++) g.box(12.2, 2.6, 2.44, { at: [r.range(-0.4, 0.4), 1.3 + k * 2.6, 0], color: r.pick([PAL.orange, PAL.teal, PAL.rust, 0xd9c8a2, PAL.cyanDeep, PAL.slate]), layer: T.METAL, uvScale: 0.3, col: 'none', grad: 0.85, jit: 0.05 }); });
   }
   // ---- north, behind the Arc Field: the line that carries its charge away over the pass
-  put(86, -HALF - 44, 0.5, () => gridPylon(g, 74));
-  put(52, -HALF - 104, 0.5, () => gridPylon(g, 82));
-  put(22, -HALF - 170, 0.5, () => gridPylon(g, 70));
+  put(-40, -HALF - 46, -0.35, () => gridPylon(g, 70));
+  put(-64, -HALF - 108, -0.35, () => gridPylon(g, 78));
+  put(-88, -HALF - 172, -0.35, () => gridPylon(g, 66));
   const m = g.mesh(farMat(), false);
   m.receiveShadow = false; m.matrixAutoUpdate = false; m.frustumCulled = false;
   m.name = 'beyond-yard';
