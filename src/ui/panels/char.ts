@@ -5,6 +5,7 @@ import type { WeaponId } from '../../entities/humanoid/types';
 import { icon } from '../icons';
 import { art, btn, cap, itemTile, playTime, weaponTile, type PanelSpec } from './common';
 import './loadout.css';
+import { perksAct, perksHtml, perksSig } from './perks';
 
 const COURSES: Record<string, string> = { range: 'Weapon Range · Target Rush', physics: 'Physics Yard · Lock-up', riding: 'Riding Course', movers: 'Movers Run', grapple: 'Grapple Course', climb: 'Climb Yard · Summit', hover_score: 'Hoverboard Park · Session' };
 /** point scores (higher is better) rather than times */
@@ -15,7 +16,7 @@ export const charPanel: PanelSpec = {
   make(host, arg) {
     const g = host.game, st = g.state;
     let tab: string = arg?.tab ?? 'stats', sig = '';
-    const signature = () => tab + st.d.level + st.d.xp + (st.d.title ?? '') + st.d.loadout.join() + st.d.active + st.d.weapons.length + JSON.stringify(st.d.skills) + JSON.stringify(st.d.upgrades) + st.d.trophies.length + Object.keys(st.d.pbs).length;
+    const signature = () => tab + st.d.level + st.d.xp + (st.d.title ?? '') + st.d.loadout.join() + st.d.active + st.d.weapons.length + JSON.stringify(st.d.skills) + JSON.stringify(st.d.upgrades) + st.d.trophies.length + Object.keys(st.d.pbs).length + (tab === 'perks' ? perksSig(g) : st.perksFree);
     const weaponCard = (slot: 0 | 1) => {
       const id = st.d.loadout[slot];
       if (!id) return `<div class="pn-slot empty"><div class="sl">Slot ${slot + 1}</div><div class="se">Empty: equip a second weapon to swap mid-fight</div></div>`;
@@ -38,7 +39,7 @@ export const charPanel: PanelSpec = {
     };
     const render = () => {
       sig = signature();
-      host.setTabs([{ id: 'stats', label: 'Overview' }, { id: 'gear', label: 'Loadout' }, { id: 'records', label: 'Records' }], tab);
+      host.setTabs([{ id: 'stats', label: 'Overview' }, { id: 'gear', label: 'Loadout' }, { id: 'perks', label: st.perksFree ? `Perks (${st.perksFree})` : 'Perks' }, { id: 'records', label: 'Records' }], tab);
       const d = st.d;
       let h = '';
       if (tab === 'stats') {
@@ -77,6 +78,8 @@ export const charPanel: PanelSpec = {
             ${btn('<small>Slot</small>1', 'equip0', id, 'sq' + (e0 ? ' on' : ''))}${btn('<small>Slot</small>2', 'equip1', id, 'sq' + (e1 ? ' on' : ''))}</div>`;
         }
         h += '<div class="pn-note">Armourer Voss sells new weapons as you level. Pim\'s forge tiers improve all of them at once.</div>';
+      } else if (tab === 'perks') {
+        h += perksHtml(g);
       } else {
         h += '<div class="pn-sec">Personal bests</div><div class="pn-pbs">';
         const keys = [...Object.keys(COURSES), ...Object.keys(d.pbs).filter((k) => !COURSES[k])];
@@ -99,6 +102,7 @@ export const charPanel: PanelSpec = {
       update() { if (signature() !== sig) render(); },
       act(a, v) {
         if (a === 'tab') { tab = v; host.body.scrollTop = 0; render(); }
+        else if (perksAct(g, a, v)) render();
         else if (a === 'kits') host.open('bag', null, true);
         else if (a === 'title') { st.d.title = v || null; st.touch(); g.sfx('ui_click'); render(); }
         else if (a === 'skill') {

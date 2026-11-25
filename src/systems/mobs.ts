@@ -14,6 +14,7 @@ import { BREAK, MECH_ATTACKS, TELE_RED, threatMul } from '../data/enemies';
 import { Mech } from './mechanics';
 import { WindupArrows } from './warn';
 import { Finishers } from './finisher';
+import { RARE_TUNE_CHANCE, ROLLED, TRAITS } from '../data/traits';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _d = new THREE.Vector3(), _c = new THREE.Color();
 type MState = 'spawn' | 'idle' | 'chase' | 'windup' | 'active' | 'recover' | 'stagger' | 'stun' | 'broken' | 'return' | 'dead';
@@ -911,6 +912,13 @@ export class Mobs {
       if (m.variant === 'elite' || m.variant === 'nightElite') { g.loot.item(_v, 'core', 1); if (Math.random() < 0.6) g.loot.item(_v, 'kit', 1); }
       else if (Math.random() < 0.06) g.loot.item(_v, 'kit', 1);
       else if (m.variant === 'rare') g.loot.item(_v, 'lens', 2);
+      // a rare robot's salvage can tune the weapon in hand with a rolled trait
+      if (m.variant === 'rare' && Math.random() < RARE_TUNE_CHANCE) {
+        const id = st.weaponId, cur = st.d.wtraits?.[id], pool = ROLLED.filter((t) => t !== cur), t = pool[Math.floor(Math.random() * pool.length)];
+        (st.d.wtraits ??= {})[id] = t; st.touch();
+        g.hud.toast(`${st.weapon.name} tuned: ${TRAITS[t].name}`, 'loot', TRAITS[t].desc.replace('Rolled. ', ''));
+        g.sfx('ui_equip');
+      }
     }
     const key = m.elite ? m.elite.id : m.kind;
     st.addKill(key);
