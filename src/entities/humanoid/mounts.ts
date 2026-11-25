@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { clamp, clamp01, damp, lerp, smooth } from '../../core/util';
 import { Geo } from '../../gfx/geo';
 import { WorldMaterial } from '../../gfx/material';
+import { rigidSkin, type RigidPart } from './rigid';
 import { T } from '../../gfx/textures';
 import { horseCycleHz } from './anim';
 import { solve2 } from './ik';
@@ -38,7 +39,9 @@ export function makeHorse(): HorseRig & { stats: { meshes: number; tris: number 
   const mat = new WorldMaterial({ rim: true });
   const root = new THREE.Group();
   let tris = 0, meshes = 0;
-  const add = (g: Geo, parent: THREE.Object3D) => { const m = g.mesh(mat, true); parent.add(m); tris += m.geometry.index!.count / 3; meshes++; return m; };
+  // every part is bound whole to the group it hangs from and the lot is drawn as one skinned mesh
+  const parts: RigidPart[] = [];
+  const add = (g: Geo, parent: THREE.Object3D) => { const m = g.mesh(mat, true); m.updateMatrix(); parts.push({ geo: m.geometry.applyMatrix4(m.matrix), node: parent }); tris += m.geometry.index!.count / 3; };
   const G = () => { const g = new Geo(); g.uvScale(1.6); return g; };
   const BY = 1.2;
 
@@ -159,6 +162,9 @@ export function makeHorse(): HorseRig & { stats: { meshes: number; tris: number 
   let phase = Math.random(), time = 0;
   let neckLag = 0, neckVel = 0, tailA = 0.4, tailV = 0, tail2A = 0, tail2V = 0, maneA = 0, maneV = 0, maneS = 0, maneSV = 0;
   let lastBob = 0, lastBobV = 0, airK = 0, yaw = 0, started = false, moveK = 0;
+
+  root.add(rigidSkin(parts, mat, new THREE.Sphere(new THREE.Vector3(0, 1.1, 0), 2.6)));
+  meshes = 1;
 
   const rig: HorseRig & { stats: { meshes: number; tris: number } } = {
     root, saddle, materials: [mat], stats: { meshes, tris },
