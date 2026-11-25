@@ -13,18 +13,38 @@ export const GU = {
   uCharFill: { value: new THREE.Vector3(0, 0, 0) },
 };
 
-/** Fog parameters shared (by element reference) with every fogged material. */
-export const FOGX = [
-  new THREE.Vector4(0.5, 0.5, 0.5, 0.045), // sunDir.xyz, height falloff
-  new THREE.Vector4(1, 0.7, 0.4, 8),        // sun-side fog colour, power
-  new THREE.Vector4(0, 0.96, 0.0, 0),       // base height, max opacity, linear density, unused
-];
+/**
+ * Vector4s that live in one Float32Array, for uniforms every material must see change.
+ * three deep-clones an array of vectors when it builds a material's uniforms, which froze such
+ * values at whatever they held when the program was compiled; a typed array is handed over by
+ * reference, so writes through these views reach every program.
+ */
+function sharedVec4s(init: number[][]): { vecs: THREE.Vector4[]; flat: Float32Array } {
+  const flat = new Float32Array(init.length * 4);
+  const vecs = init.map((v, i) => {
+    const vec = new THREE.Vector4();
+    (['x', 'y', 'z', 'w'] as const).forEach((k, j) => Object.defineProperty(vec, k, {
+      get: () => flat[i * 4 + j], set: (n: number) => { flat[i * 4 + j] = n; }, enumerable: true,
+    }));
+    return vec.set(v[0], v[1], v[2], v[3]);
+  });
+  return { vecs, flat };
+}
+
+const fogShared = sharedVec4s([
+  [0.5, 0.5, 0.5, 0.045], // sunDir.xyz, height falloff
+  [1, 0.7, 0.4, 8],       // sun-side fog colour, power
+  [0, 0.96, 0.0, 0],      // base height, max opacity, linear density, unused
+]);
+/** Fog parameters shared with every fogged material. */
+export const FOGX = fogShared.vecs;
 
 let fogInstalled = false;
 /** Replaces three's fog chunks with height + sun-scatter fog. Call before creating materials. */
 export function installFog() {
   if (fogInstalled) return;
   fogInstalled = true;
+  installFlashLights();
   const C = THREE.ShaderChunk as Record<string, string>;
   C.fog_pars_vertex = /* glsl */ `
 #ifdef USE_FOG
@@ -80,9 +100,43 @@ export function installFog() {
 #endif`;
   for (const k in THREE.ShaderLib) {
     const lib = (THREE.ShaderLib as any)[k];
-    if (lib.uniforms && lib.uniforms.fogColor) lib.uniforms.uFogX = { value: FOGX };
+    if (lib.uniforms && lib.uniforms.fogColor) lib.uniforms.uFogX = { value: fogShared.flat };
   }
-  (THREE.UniformsLib.fog as any).uFogX = { value: FOGX };
+  (THREE.UniformsLib.fog as any).uFogX = { value: fogShared.flat };
+}
+
+const flashShared = sharedVec4s([[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]);
+/**
+ * Flash lights for hits and explosions, shared with every lit material:
+ * [2i] = world position, cut-off radius; [2i + 1] = colour × intensity, w > 0 while lit.
+ * They stand in for scene PointLights, which cost every lit fragment a light loop even at zero
+ * intensity. Idle, this is one uniform compare per fragment; lit, it is the same light maths.
+ */
+export const FLASHL = flashShared.vecs;
+
+function installFlashLights() {
+  const C = THREE.ShaderChunk as Record<string, string>;
+  C.lights_pars_begin += /* glsl */ `
+uniform vec4 uFlashL[${FLASHL.length}];`;
+  C.lights_fragment_begin += /* glsl */ `
+#if defined( RE_Direct )
+  if (uFlashL[1].w + uFlashL[3].w > 0.0) {
+    for (int i = 0; i < ${FLASHL.length}; i += 2) {
+      if (uFlashL[i + 1].w <= 0.0) continue;
+      vec3 flashV = (viewMatrix * vec4(uFlashL[i].xyz, 1.0)).xyz - geometryPosition;
+      float flashD = length(flashV);
+      directLight.direction = flashV / max(flashD, 1e-4);
+      directLight.color = uFlashL[i + 1].rgb * getDistanceAttenuation(flashD, uFlashL[i].w, 1.6);
+      directLight.visible = true;
+      RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
+    }
+  }
+#endif`;
+  for (const k in THREE.ShaderLib) {
+    const lib = (THREE.ShaderLib as any)[k];
+    if (lib.uniforms && lib.uniforms.ambientLightColor) lib.uniforms.uFlashL = { value: flashShared.flat };
+  }
+  (THREE.UniformsLib.lights as any).uFlashL = { value: flashShared.flat };
 }
 
 export interface WorldMatOpts {

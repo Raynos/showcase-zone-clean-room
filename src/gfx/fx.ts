@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { TAU, clamp01, lerp, rand } from '../core/util';
-import { WorldMaterial } from './material';
+import { FLASHL, WorldMaterial } from './material';
 import { T } from './textures';
 
 /** Sprite cells in the particle atlas. */
@@ -279,7 +279,8 @@ export class FX {
   private telegraphs: Telegraph[] = [];
   private beams: Beam[] = [];
   private trails: Trail[] = [];
-  private lights: Array<{ light: THREE.PointLight; life: number; dur: number; peak: number }> = [];
+  /** flash lights: no scene lights, just the shared FLASHL uniforms every lit material reads */
+  private lights: Array<{ color: THREE.Color; life: number; dur: number; peak: number }> = [];
   /** ground height lookup for debris bounces */
   groundY: (x: number, z: number, y: number) => number = () => 0;
   private camPos = new THREE.Vector3();
@@ -299,11 +300,7 @@ export class FX {
     this.debrisMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.debrisMesh.setColorAt(0, _c1.set(1, 1, 1));
     this.group.add(this.debrisMesh);
-    for (let i = 0; i < 2; i++) {
-      const l = new THREE.PointLight(0xffffff, 0, 14, 1.6);
-      this.group.add(l);
-      this.lights.push({ light: l, life: 0, dur: 1, peak: 0 });
-    }
+    for (let i = 0; i < FLASHL.length / 2; i++) this.lights.push({ color: new THREE.Color(), life: 0, dur: 1, peak: 0 });
     for (let i = 0; i < 6; i++) { const t = new Trail(); this.trails.push(t); this.group.add(t.mesh); }
   }
 
@@ -425,10 +422,12 @@ export class FX {
   flash(pos: THREE.Vector3 | { x: number; y: number; z: number }, color: number, intensity: number, radius: number, dur: number) {
     let best = this.lights[0];
     for (const l of this.lights) if (l.life <= 0 || l.peak * (l.life / l.dur) < best.peak * (best.life / best.dur)) best = l;
-    best.light.position.set(pos.x, pos.y, pos.z);
-    best.light.color.setHex(color); best.light.distance = radius;
+    const i = this.lights.indexOf(best) * 2;
+    FLASHL[i].set(pos.x, pos.y, pos.z, radius);
+    best.color.setHex(color);
     intensity *= 0.3;
-    best.peak = intensity; best.life = best.dur = dur; best.light.intensity = intensity;
+    best.peak = intensity; best.life = best.dur = dur;
+    FLASHL[i + 1].set(best.color.r * intensity, best.color.g * intensity, best.color.b * intensity, intensity);
   }
 
   /** Ground AoE warning. shape: 0 circle, 1 cone (angle = half-angle), 2 rect (w along x, l along z from origin). */
@@ -605,9 +604,11 @@ export class FX {
       this.writeBeam(b, b.life / b.dur);
     }
     for (const t of this.trails) t.update(dt);
-    for (const l of this.lights) {
-      if (l.life > 0) { l.life -= dt; l.light.intensity = l.peak * Math.max(0, l.life / l.dur); }
-      else l.light.intensity = 0;
+    for (let i = 0; i < this.lights.length; i++) {
+      const l = this.lights[i];
+      let k = 0;
+      if (l.life > 0) { l.life -= dt; k = l.peak * Math.max(0, l.life / l.dur); }
+      FLASHL[i * 2 + 1].set(l.color.r * k, l.color.g * k, l.color.b * k, k);
     }
   }
 }
