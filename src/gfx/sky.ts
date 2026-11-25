@@ -141,15 +141,31 @@ export class Sky {
             float fade = smoothstep(0.0, 0.12, h);
             col = mix(col, cc, c0 * fade * 0.96);
           }
-          // --- painted far ridgelines (three layers of atmospheric perspective)
+          // --- painted far ranges: three layers of atmospheric perspective behind the built mountains.
+          // The furthest is the highest: jagged, snow on its tops, lit from the sun's side.
           float az = atan(d.z, d.x) / 6.28318;
+          float sunSide = sign(sin(atan(uSunDir.z, uSunDir.x) - az * 6.28318));
+          float dayL = 1.0 - uNight * 0.85;
           for (int i = 0; i < 3; i++) {
             float fi = float(2 - i);
-            float rh = 0.012 + fi * 0.02 + (texture2D(uNoise, vec2(az * (2.0 + fi * 1.5) + fi * 0.37, 0.2 + fi * 0.3)).r - 0.3) * (0.11 - fi * 0.02)
-                     + texture2D(uNoise, vec2(az * 14.0 + fi, 0.6)).g * 0.012;
-            float m = smoothstep(rh + 0.004, rh - 0.002, h);
+            float f1 = 3.0 + fi * 2.0;
+            vec2 pa = vec2(az * f1 + fi * 0.37, 0.2 + fi * 0.3);
+            float n1 = texture2D(uNoise, pa).r, n1b = texture2D(uNoise, pa + vec2(0.014, 0.0)).r;
+            float pk = 1.0 - abs(n1 * 2.0 - 1.0), pkb = 1.0 - abs(n1b * 2.0 - 1.0);
+            float pk2 = 1.0 - abs(texture2D(uNoise, vec2(az * f1 * 3.3 + fi * 0.11, 0.55 + fi * 0.1)).r * 2.0 - 1.0);
+            float rh = 0.006 + fi * 0.014 + (0.03 + fi * 0.036) * (pk * pk * 0.8 + pk2 * pk * 0.45)
+                     + texture2D(uNoise, vec2(az * 17.0 + fi, 0.6)).g * 0.008;
+            float m = smoothstep(rh + 0.0025, rh - 0.0015, h);
             vec3 rc = mix(uHorizon, uRidge, 0.74 - fi * 0.22);
+            // faces turned to the sun take its colour, the others the sky's
+            float lit = clamp(0.5 - sunSide * (pkb - pk) * 5.0, 0.0, 1.0);
+            rc = mix(rc * mix(vec3(0.84, 0.88, 1.0), vec3(1.0), 0.3), rc + uSunColor * 0.16 * dayL, lit);
+            // snow lies on the tops of the far range and thins out down its faces
+            float snow = fi * 0.5 * smoothstep(0.058, 0.085, rh) * smoothstep(rh - 0.02 - pk2 * 0.016, rh - 0.006, h);
+            rc = mix(rc, mix(uHorizon, vec3(1.0), 0.6 * dayL) * (0.78 + 0.22 * lit) * (0.5 + 0.5 * dayL), snow);
             rc += uSunColor * uSunset * pow(sd, 3.0) * 0.2;
+            // the foot of each range dissolves into the haze of the valley in front of it
+            rc = mix(uHorizon, rc, 0.45 + 0.55 * smoothstep(0.0, rh * 0.7 + 0.01, h));
             col = mix(col, rc, m);
           }
           // below-horizon haze

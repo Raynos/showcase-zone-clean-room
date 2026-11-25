@@ -3,7 +3,7 @@ import { Coach } from './systems/coach';
 import { Guide } from './systems/guide';
 
 // Optional modules are discovered with glob imports so the game still boots while a module is absent.
-const mods = import.meta.glob(['./world/town.ts', './world/roads.ts', './entities/robots/index.ts', './entities/humanoid/index.ts', './core/audio.ts', './ui/panels.ts', './systems/npcs.ts', './world/east.ts', './world/vault.ts', './world/arena.ts', './world/dressing.ts']);
+const mods = import.meta.glob(['./world/town.ts', './world/roads.ts', './entities/robots/index.ts', './entities/humanoid/index.ts', './core/audio.ts', './ui/panels.ts', './systems/npcs.ts', './world/east.ts', './world/vault.ts', './world/arena.ts', './world/dressing.ts', './world/vista.ts']);
 /** West-side activity modules: each may export build(game) (static geometry) and start(game) (systems). */
 const west = import.meta.glob('./world/west/*.ts');
 const westMods: any[] = [];
@@ -26,7 +26,7 @@ export async function buildWorld(game: Game, _progress: (p: number, label: strin
   const east = await opt('./world/east.ts');
   east?.buildEast?.(game);
   game.chunks.flush();
-  for (const p of ['./world/vault.ts', './world/arena.ts', './world/dressing.ts']) { const m = await opt(p); try { m?.build?.(game); } catch (e) { console.warn('build failed', p, e); } game.chunks.flush(); }
+  for (const p of ['./world/vault.ts', './world/arena.ts', './world/dressing.ts', './world/vista.ts']) { const m = await opt(p); try { m?.build?.(game); } catch (e) { console.warn('build failed', p, e); } game.chunks.flush(); }
   for (const p of Object.keys(west).sort()) {
     try { const m: any = await west[p](); westMods.push(m); m.build?.(game); } catch (e) { console.warn('west module failed', p, e); }
     game.chunks.flush();
@@ -56,7 +56,7 @@ export async function startSystems(game: Game) {
   if (audio?.audio) { game.audio = audio.audio; const set = game.state.d.settings; audio.audio.setVolumes?.({ sfx: set.sfx, music: set.music }); }
   const east = await opt('./world/east.ts');
   if (east?.East) game.east = new east.East(game);
-  for (const p of ['./world/vault.ts', './world/arena.ts', './world/dressing.ts']) { const m = await opt(p); try { m?.start?.(game); } catch (e) { console.warn('start failed', p, e); } }
+  for (const p of ['./world/vault.ts', './world/arena.ts', './world/dressing.ts', './world/vista.ts']) { const m = await opt(p); try { m?.start?.(game); } catch (e) { console.warn('start failed', p, e); } }
   for (const m of westMods) { try { m.start?.(game); } catch (e) { console.warn('west start failed', e); } }
   new Coach(game);
   new Guide(game);
