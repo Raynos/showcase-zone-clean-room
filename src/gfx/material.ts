@@ -128,10 +128,11 @@ export class WorldMaterial extends THREE.MeshStandardMaterial {
         .replace('#include <common>', /* glsl */ `#include <common>
 attribute float aLayer; attribute float aEmit;
 varying float vLayer; varying float vEmit; varying vec2 vWUv;
-${wind ? 'attribute float aSway; uniform float uTime; uniform vec4 uWind;' : ''}`)
+${wind ? 'attribute float aSway; uniform float uTime; uniform vec4 uWind; varying float vSway;' : ''}`)
         .replace('#include <begin_vertex>', /* glsl */ `#include <begin_vertex>
 vLayer = aLayer; vEmit = aEmit; vWUv = uv;
-${wind ? /* glsl */ `{
+${wind ? /* glsl */ `vSway = aSway;
+{
   vec4 wp = vec4(transformed, 1.0);
   #ifdef USE_INSTANCING
     wp = instanceMatrix * wp;
@@ -149,8 +150,17 @@ precision highp sampler2DArray;
 uniform sampler2DArray uTexA; uniform sampler2DArray uTexN;
 uniform vec4 uFlash; uniform vec4 uRim; uniform float uEmitBoost; uniform float uEmitMul; uniform float uWet;
 varying float vLayer; varying float vEmit; varying vec2 vWUv;
+${wind ? 'varying float vSway;' : ''}
 vec4 gTA; vec4 gTN;`)
-        .replace('#include <map_fragment>', /* glsl */ `{
+        .replace('#include <map_fragment>', /* glsl */ `${wind ? /* glsl */ `if (vSway > 0.02) {
+  // leaves between the camera and the hero dissolve instead of filling the screen
+  float nd = length(vViewPosition);
+  if (nd < 8.0) {
+    float dn = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    if (smoothstep(2.5, 8.0, nd) < dn) discard;
+  }
+}` : ''}
+{
   float lay = floor(vLayer + 0.5);
   gTA = texture(uTexA, vec3(vWUv, lay));
   gTN = texture(uTexN, vec3(vWUv, lay));

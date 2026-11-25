@@ -350,12 +350,12 @@ export class FX {
   /** Metal-on-metal impact: directional sparks + flash + a few embers. */
   hitSparks(pos: THREE.Vector3, normal: THREE.Vector3, color = 0xffc46a, power = 1) {
     this.emit(pos, { count: Math.round(14 * power), dir: normal, spread: 1.0, speed: [5, 15 * power], life: [0.18, 0.42], size: [0.045, 0.09], color, color2: 0xffffff, glow: 4, gravity: 22, drag: 1.5, sprite: SP.STREAK, stretch: 0.07 });
-    this.emit(pos, { count: 1, speed: [0, 0], life: [0.09, 0.12], size: [1.3 * power, 1.7 * power], grow: 1.6, color, glow: 3, sprite: SP.STAR });
+    this.emit(pos, { count: 1, speed: [0, 0], life: [0.08, 0.11], size: [0.75 * power, 1.0 * power], grow: 1.5, color, glow: 2.2, sprite: SP.STAR });
     this.emit(pos, { count: Math.round(5 * power), dir: normal, spread: 1.3, speed: [1, 4], life: [0.5, 0.9], size: [0.05, 0.09], color: 0xff8a2a, glow: 3, gravity: 9, drag: 1, sprite: SP.EMBER });
   }
   /** Slash arc hit: a bright crescent of energy in the weapon colour. */
   slashHit(pos: THREE.Vector3, color = 0x7ff0ff, power = 1) {
-    this.emit(pos, { count: 1, speed: [0, 0], life: [0.12, 0.16], size: [1.6 * power, 2.0 * power], grow: 1.9, color, glow: 2.4, sprite: SP.RING });
+    this.emit(pos, { count: 1, speed: [0, 0], life: [0.11, 0.15], size: [0.8 * power, 1.05 * power], grow: 1.5, color, glow: 1.3, sprite: SP.RING });
     this.emit(pos, { count: Math.round(8 * power), speed: [3, 9], life: [0.2, 0.4], size: [0.05, 0.1], color, color2: 0xffffff, glow: 4, drag: 3, sprite: SP.STREAK, stretch: 0.08 });
   }
   dust(pos: THREE.Vector3, count = 6, scale = 1, color = 0xcbb68e) {
@@ -389,8 +389,8 @@ export class FX {
   levelUp(pos: THREE.Vector3) {
     for (let i = 0; i < 3; i++) this.emit({ x: pos.x, y: pos.y + 0.1 + i * 0.05, z: pos.z }, { count: 1, speed: [0, 0], life: [0.7 + i * 0.15, 0.7 + i * 0.15], size: [0.6, 0.6], grow: 9 + i * 3, color: i === 1 ? 0x7ff0ff : 0xffc24a, glow: 2.5, sprite: SP.RING, flat: true });
     this.emit({ x: pos.x, y: pos.y + 0.2, z: pos.z }, { count: 60, speed: [0.5, 3], up: 5.5, spread: Math.PI, life: [0.7, 1.5], size: [0.07, 0.16], color: 0xffd27a, color2: 0x7ff0ff, glow: 4, gravity: -1.5, drag: 1.5, sprite: SP.STAR, radius: 0.8 });
-    this.emit({ x: pos.x, y: pos.y + 1.0, z: pos.z }, { count: 1, speed: [0, 0], life: [0.5, 0.5], size: [3, 3], grow: 2.5, color: 0xffe0a0, glow: 2.5, sprite: SP.DOT });
-    this.flash({ x: pos.x, y: pos.y + 1.2, z: pos.z } as THREE.Vector3, 0xffc24a, 60, 14, 0.6);
+    this.emit({ x: pos.x, y: pos.y + 1.0, z: pos.z }, { count: 1, speed: [0, 0], life: [0.5, 0.5], size: [2.2, 2.2], grow: 1.6, color: 0xffe0a0, glow: 1.3, sprite: SP.DOT });
+    this.flash({ x: pos.x, y: pos.y + 1.2, z: pos.z } as THREE.Vector3, 0xffc24a, 36, 12, 0.5);
   }
   pickup(pos: THREE.Vector3, color = 0xffc24a) {
     this.emit(pos, { count: 10, speed: [1, 3.5], up: 2.2, life: [0.3, 0.6], size: [0.06, 0.12], color, color2: 0xffffff, glow: 3.5, drag: 2, sprite: SP.STAR });

@@ -23,7 +23,7 @@ export class Coach implements System {
   constructor(private game: Game) {
     const css = document.createElement('style');
     css.textContent = `
-    .coach { position: absolute; left: 50%; top: 33%; transform: translate(-50%, 8px); width: min(86vw, 380px); padding: 10px 14px 11px; border-radius: 12px; background: #10151bdd; border: 1px solid #7ff0ff55;
+    .coach { position: absolute; left: 50%; top: 38%; transform: translate(-50%, 8px); width: min(86vw, 380px); padding: 10px 14px 11px; border-radius: 12px; background: #10151bdd; border: 1px solid #7ff0ff55;
       box-shadow: 0 6px 24px #0008; opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none; }
     .coach.on { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
     .coach b { display: block; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--cyan); margin-bottom: 3px; }
