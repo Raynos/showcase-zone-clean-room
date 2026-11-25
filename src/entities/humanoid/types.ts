@@ -97,10 +97,52 @@ export interface HumanPose {
   fp?: number;
   /** the view's pitch while it is (radians, + looks down): first-person hands and weapon follow it (fpview.ts) */
   fpPitch?: number;
+  /**
+   * shooter stance, orbit camera: the named hold laid over the arms (shootpose.ts), how far it has blended in
+   * (0..1, default 1), its progress (a reload 0..1; the draw for bowDraw and bowAds) and the last shot's kick (0..1)
+   */
+  shoot?: ShootPose | null; shootK?: number; shootT?: number; shootKick?: number;
+  /** the lens and the way it looks, in the hero's own frame (metres), while fp > 0: first-person arms are posed to it (fpview.ts `fpMove`) */
+  fpEye?: THREE.Vector3; fpDir?: THREE.Vector3;
+  /** first person with a ranged weapon: the weapon is on the view and the hands go to it (systems/viewmodel.ts, fpview.ts `fpHold`) */
+  fpHold?: FpHold | null;
+}
+
+/** The shooter stance's named holds for the orbit camera (shootpose.ts). */
+export type ShootPose = 'bowHip' | 'bowDraw' | 'bowAds' | 'bowReload' | 'xbowHip' | 'xbowAds' | 'xbowReload' | 'rifleHip' | 'rifleAds' | 'rifleReload';
+
+/**
+ * First-person hold of a ranged weapon. systems/viewmodel.ts places the weapon on the view from its
+ * sight, muzzle and foregrip nodes and reads these hand targets off it; fpview.ts `fpHold` solves the
+ * arms to them. Index 0 is the left hand, 1 the right, like Pose.handPos.
+ */
+export interface FpHold {
+  kind: 'bow' | 'crossbow' | 'rifle';
+  /** what the hands are doing: holding at the hip, aimed, reloading, drawing the bow, carried low at a sprint */
+  phase: 'hip' | 'ads' | 'reload' | 'draw' | 'sprint';
+  /** 0..1 through the phase (reload progress, draw, aim blend), and 0..1 how much this overrides the third-person arms */
+  t: number; k: number;
+  /** chest-space hand targets (body units) and hand orientations, read off the placed weapon */
+  handPos: [THREE.Vector3, THREE.Vector3]; handQ: [THREE.Quaternion, THREE.Quaternion];
 }
 
 /** Knockdown timeline in seconds: thrown back until `fall`, lying until `lie`, on the feet again at `end`. A roll can start from `rollAt`. */
 export const DOWN = { fall: 0.3, rollAt: 0.42, lie: 0.8, end: 1.2 } as const;
+
+export type FaceShape = 'oval' | 'round' | 'square' | 'long' | 'heart';
+/** Face proportions, each number around 1 unless noted. */
+export interface Face {
+  /** jaw width, jaw length (chin drop), chin projection; cheek fullness */
+  jawW: number; jawL: number; chin: number; cheek: number;
+  /** nose size and length; ear size and how far the ears stand out (radians, 0 = as modelled) */
+  nose: number; noseL: number; ear: number; earOut: number;
+  /** eye size; tilt of the opening (radians, + lifts the outer corner); how far the upper lid hangs (radians) */
+  eye: number; eyeTilt: number; lidDrop: number;
+  /** brow tilt (radians, + frowns), thickness, height offset (m) */
+  browTilt: number; browThick: number; browY: number;
+  /** mouth width; smile -1..1 (negative turns the corners down) */
+  mouthW: number; smile: number;
+}
 
 export interface HumanLook {
   /** preset body: the hero or a townsperson archetype */
@@ -112,12 +154,16 @@ export interface HumanLook {
   /** what is worn over the shirt, and whether its sleeves are rolled (default) or down */
   outfit?: 'shirt' | 'vest' | 'overalls';
   sleeves?: 'rolled' | 'long';
-  /** face proportions, each around 1 (tilt and smile are signed); anything left out is picked from a hash of the look */
-  face?: { nose?: number; browTilt?: number; browThick?: number; mouthW?: number; smile?: number; eye?: number };
+  /**
+   * The face. `shape` is the skull's archetype and `age` moves the features the way years do; any
+   * number given in `face` overrides what those and a hash of the look would pick (fit.ts).
+   */
+  shape?: FaceShape; age?: 'young' | 'adult' | 'elder';
+  face?: Partial<Face>;
   /** head size multiplier */
   head?: number;
   hat?: 'none' | 'goggles' | 'hardhat' | 'cap' | 'hood' | 'weldmask' | 'strawhat' | 'bandana';
-  extra?: Array<'scarf' | 'apron' | 'backpack' | 'toolbelt' | 'cape' | 'pauldron' | 'beard' | 'glasses'>;
+  extra?: Array<'scarf' | 'apron' | 'backpack' | 'toolbelt' | 'cape' | 'pauldron' | 'beard' | 'moustache' | 'goatee' | 'stubble' | 'glasses'>;
   /** overall height multiplier (1 = 1.75 m) and build (0.8 slim .. 1.25 stocky) */
   height?: number; build?: number;
 }
@@ -142,8 +188,8 @@ export interface HumanoidRig {
   setFirstPerson?(fn: ((cam: THREE.Camera) => FpDraw) | null): void;
 }
 
-/** What the eye camera draws of the hero: everything, all but the head (face, hair, scarf), or nothing but the shadow. */
-export type FpDraw = 'full' | 'body' | 'none';
+/** What the eye camera draws of the hero: everything, all but the head (face, hair, scarf), the arms alone (posed to the lens by fpview.ts `fpMove`), or nothing but the shadow. */
+export type FpDraw = 'full' | 'body' | 'arms' | 'none';
 
 export interface WeaponModel {
   id: WeaponId; kind: WeaponKind;

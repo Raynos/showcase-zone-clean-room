@@ -100,9 +100,12 @@ def build(model: kit.Model, tex=512, ao_dist=0.3, edge_dist=0.03, samples=48, ma
     apart = np.zeros((len(model.V), 3), dtype=np.float32)
     opt = {i: k for k, i in enumerate(i for i, b in enumerate(model.bones) if b['name'].startswith('opt_'))}
     far = False
+    # model.apart names bones whose own surface must not shade its neighbours either (eyelids over the face)
+    lone = {model.bone_ix[n]: k for k, n in enumerate(getattr(model, 'apart', ()))}
     for f, bi, lod in zip(model.F, model.f_bone, model.f_lod):
         off = np.zeros(3, dtype=np.float32)
         if bi in opt: off[2] = 40.0 * (opt[bi] + 1)
+        if bi in lone: off[1] = 30.0 * (lone[bi] + 1); far = True
         if lod == 2: off[0] = 60.0; far = True
         if off.any():
             for i in f: apart[i] = off

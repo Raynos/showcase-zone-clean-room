@@ -19,6 +19,7 @@ import numpy as np
 
 from lib.kit import Model, PI
 from people import base as B
+from people import head as H
 from people import rook as K
 from people.base import At, HC, HR, SK, SIDES, Y_CHEST, Y_SHOULDER
 
@@ -41,6 +42,22 @@ def opt(m, tag, parent, suffix=''):
     return name
 
 
+def face_layer(m, tag, keep, grow, brush):
+    """A patch of the face's own surface as an optional piece, weighted like the skin it lies on (people/head.py patch)."""
+    names = {'head': opt(m, tag, 'head')}
+    for b in ('jaw', 'cheek', 'nose'): names[b] = opt(m, tag, b, '_' + b)
+    m.on(names['head']); brush()
+    V, F, W = H.patch(keep, grow)
+    rng = m.mesh(B.lift(V), F, recalc=False)
+    if m.weights is None: m.weights = {}
+    for v, w in zip(rng, W):
+        acc = {}
+        for b, x in w:
+            n = names.get(b, names['head'])
+            acc[n] = acc.get(n, 0.0) + x
+        m.weights[v] = sorted(acc.items(), key=lambda t: -t[1])
+
+
 # ---- hair ------------------------------------------------------------------------------------
 def tufts(m, L):
     for d, off, r, bend in L:
@@ -53,8 +70,8 @@ def hair(m):
     B.scalp(m, grow=0.009, fringe=0.4)
     # a tuft in front of each ear and at the nape: what shows of the hair under a hat
     for k in (1, -1):
-        b = B.on_skull(k * 0.86, 0.22, 0.34, -0.008)
-        B.spike(m, b, b + np.asarray((k * 0.008, -0.1, 0.012)), 0.034, (k * 0.01, 0, 0.008))
+        b = B.on_skull(k * 0.9, 0.2, 0.3, -0.012)
+        B.spike(m, b, b + np.asarray((k * 0.002, -0.07, 0.008)), 0.022, (k * 0.006, 0, 0.004))
         b = B.on_skull(k * 0.55, -0.3, -0.8, -0.01)
         B.spike(m, b, b + np.asarray((k * 0.02, -0.07, -0.03)), 0.045, (0, 0, -0.01))
     opt(m, 'hairTop', 'head'); B.hair(m)
@@ -114,11 +131,11 @@ def hats(m):
 
     opt(m, 'hatHardhat', 'head')
     m.mat(slot='accent', surf='paint', metal=0.1, rough=0.5, emit=0, texel=1.2)
-    m.lathe([(0.19, 0.0), (0.188, 0.05), (0.156, 0.122), (0.085, 0.168), (0.0, 0.178)], 14, at=(0, HC + 0.04, -0.004))
-    m.cyl(0.215, 0.215, 0.016, 14, at=(0, HC + 0.046, 0.03), scale=(0.95, 1, 1.14), bevel=0.005)
-    m.box(0.04, 0.024, 0.3, at=(0, HC + 0.208, -0.004), bevel=0.01)
+    m.lathe([(0.19, 0.0), (0.188, 0.05), (0.156, 0.122), (0.085, 0.168), (0.0, 0.178)], 14, at=(0, HC + 0.066, -0.01), rot=(-0.1, 0, 0))
+    m.cyl(0.215, 0.215, 0.016, 14, at=(0, HC + 0.072, 0.024), rot=(-0.1, 0, 0), scale=(0.95, 1, 1.14), bevel=0.005)
+    m.box(0.04, 0.024, 0.3, at=(0, HC + 0.234, -0.027), rot=(-0.1, 0, 0), bevel=0.01)
     m.fixed(CREAM, surf='flat', rough=0.7, texel=0.8, **FINE)
-    m.box(0.05, 0.04, 0.01, at=(0, HC + 0.105, 0.176), rot=(-0.35, 0, 0), bevel=0.003)
+    m.box(0.05, 0.04, 0.01, at=(0, HC + 0.137, 0.166), rot=(-0.45, 0, 0), bevel=0.003)
     m.mat(lod=0)
 
     opt(m, 'hatCap', 'head')
@@ -169,9 +186,9 @@ def kit(m):
 
     opt(m, 'apron', 'chest')
     m.fixed(APRON, surf='leather', rough=0.75, texel=1.0)
-    m.box(0.25, 0.27, 0.016, at=(0, -0.06, 0.142), rot=(-0.05, 0, 0), bevel=0.006)
+    m.box(0.25, 0.27, 0.016, at=(0, -0.06, 0.143), rot=(0.17, 0, 0), bevel=0.006)
     for k in (1, -1):
-        m.box(0.024, 0.24, 0.014, at=(k * 0.085, 0.15, 0.118), rot=(0.42, 0, k * 0.24), bevel=0.004)
+        B.strap(m, [(k * (0.108 - 0.14 * max(0.0, y - 0.06)), y) for y in (0.05, 0.1, 0.15, 0.19, 0.22, 0.245, 0.262)], 0.026)
     opt(m, 'apron', 'hips', '_skirt')
     m.fixed(APRON, surf='leather', rough=0.75, texel=1.0)
     rows = []
@@ -199,8 +216,7 @@ def kit(m):
     m.cyl(0.037, 0.037, 0.12, 8, at=(-0.157, -0.04, z + 0.005), bevel=0.012)
     B.leather(m, 'leather', 0.8)
     for k in (1, -1):
-        m.box(0.04, 0.3, 0.018, at=(k * 0.118, 0.045, 0.118), rot=(-0.07, k * 0.55, k * 0.1), bevel=0.005)
-        m.box(0.04, 0.03, 0.2, at=(k * 0.118, 0.238, 0.0), rot=(0.0, 0, k * 0.2), bevel=0.005)
+        B.strap(m, [(k * (0.13 - 0.09 * max(0.0, y - 0.02)), y) for y in (-0.12, -0.05, 0.02, 0.09, 0.15, 0.2, 0.235, 0.257, 0.268)], 0.04, over=[(k * 0.108, y) for y in (0.268, 0.255, 0.225, 0.18)])
 
     b = opt(m, 'toolbelt', 'hips')
     K.toolbelt(m, b)
@@ -229,15 +245,26 @@ def kit(m):
     m.sphere(0.022, 6, 4, at=(-0.11, 0.034, 0))
     m.mat(lod=0)
 
-    opt(m, 'beard', 'head')
-    B.hair(m)
-    B.shell(m, 20, 12, lambda d: d[2] > -0.25 and d[1] < (-0.5 if d[2] > 0.5 else -0.1), lambda d: 0.012 + 0.016 * max(0.0, -d[1] - 0.3))
-    for k in (1, -1):
-        m.box(0.05, 0.02, 0.02, at=(k * 0.026, HC - 0.072, 0.158), rot=(0, k * 0.3, -k * 0.25), bevel=0.007)
+    # facial hair and the marks of age: layers over the face that move with the skin under them
+    full = lambda y, a, x: abs(a) < 1.5 and y < H.beard_top(abs(a))
+    tache = lambda y, a, x: abs(a) < 0.36 and -0.0925 < y < -0.066
+    goat = lambda y, a, x: abs(a) < 0.42 and y < -0.098
+    edge = lambda y, a: B.sm(0.0, 0.022, H.beard_top(abs(a)) - y) * B.sm(1.5, 1.2, abs(a))
+    thick = lambda y, a, x: 0.0012 + (0.006 + 0.013 * B.sm(-0.07, -0.14, y)) * edge(y, a)
+    tache_g = lambda y, a, x: 0.0008 + 0.0085 * B.sm(-0.0935, -0.08, y) * B.sm(-0.066, -0.074, y) * (0.55 + 0.45 * B.sm(0.0, 0.2, abs(a))) * B.sm(0.36, 0.26, abs(a))
+    face_layer(m, 'beard', lambda y, a, x: full(y, a, x) or tache(y, a, x), lambda y, a, x: max(thick(y, a, x) if full(y + 0.004, a, x) else 0.0, tache_g(y, a, x)), lambda: B.hair(m, 1.2))
+    face_layer(m, 'moustache', tache, tache_g, lambda: B.hair(m, 1.2))
+    face_layer(m, 'goatee', lambda y, a, x: goat(y, a, x) or tache(y, a, x),
+               lambda y, a, x: max((0.0012 + 0.012 * B.sm(0.42, 0.25, abs(a)) * B.sm(-0.098, -0.115, y)) if y < -0.097 else 0.0, tache_g(y, a, x)), lambda: B.hair(m, 1.2))
+    face_layer(m, 'stubble', lambda y, a, x: abs(a) < 1.5 and y < H.beard_top(abs(a)) + 0.012 or tache(y, a, x), 0.0007,
+               lambda: m.mat(slot='skin', surf='skin', color=B.MARK_STUBBLE, metal=0.0, rough=0.8, emit=0.0, texel=1.6, lod=1))
+    face_layer(m, 'lines', lambda y, a, x: abs(a) < 1.25 and ((0.058 < y < 0.14 and abs(x) < 0.095) or (-0.112 < y < -0.024 and 0.008 < abs(x) < 0.1) or (-0.03 <= y < 0.014 and abs(x) > 0.086)), 0.0006,
+               lambda: m.mat(slot='skin', surf='skin', color=B.MARK_LINES, metal=0.0, rough=0.74, emit=0.0, texel=2.0, lod=1))
+    m.mat(lod=0)
 
     opt(m, 'glasses', 'head')
     m.fixed(0x22262c, surf='dark', metal=0.3, rough=0.4, texel=0.8)
-    ez = B.EYE[2] + B.EYE_R + 0.008
+    ez = 0.16
     for k in (1, -1):
         m.torus(0.042, 0.0055, 10, 4, at=(k * B.EYE[0], B.EYE[1], ez), rot=(PI / 2, 0, 0))
         m.box(0.008, 0.008, 0.13, at=(k * 0.118, B.EYE[1] + 0.004, ez - 0.07), rot=(0, k * 0.28, 0), bevel=0)
@@ -249,27 +276,26 @@ def outfits(m):
     opt(m, 'vest', 'chest')
     B.cloth(m, 'cloth2', 1.0)
     rows = []
-    for y, rx, rz in ((-0.17, 0.178, 0.132), (-0.04, 0.186, 0.138), (0.045, 0.206, 0.15), (0.12, 0.217, 0.155), (0.17, 0.214, 0.148), (0.215, 0.196, 0.132)):
-        ring = B.ell(y, rx, rz, cz=0.006, seg=18, p=2.25)
+    for y, rx, rz in ((-0.17, 0.174, 0.13), (-0.04, 0.188, 0.138), (0.045, 0.215, 0.152), (0.12, 0.226, 0.158), (0.17, 0.224, 0.153), (0.215, 0.2, 0.134), (0.24, 0.158, 0.112)):
+        ring = B.ell(y, rx, rz, cz=0.006, seg=18, p=2.3, rzb=rz * 0.93)
         rows.append(ring[1:18])   # open at the front
     B.grid(m, rows, (0, 0.05, 0))
     # lapel edges and two pocket flaps
     B.cloth(m, 'top2', 0.8)
     for k in (1, -1):
-        m.box(0.026, 0.36, 0.014, at=(k * 0.064, 0.02, 0.146), rot=(-0.05, k * 0.3, 0), bevel=0.004)
-        m.box(0.07, 0.022, 0.014, at=(k * 0.125, -0.07, 0.127), rot=(-0.05, k * 0.62, 0), bevel=0.004, **FINE)
+        B.strap(m, [(k * (0.06 + 0.1 * max(0.0, y - 0.12)), y) for y in (-0.17, -0.1, -0.03, 0.04, 0.1, 0.15, 0.19, 0.22, 0.24)], 0.03, out=0.013)
+        m.box(0.07, 0.022, 0.014, at=(k * 0.125, -0.07, B.chest_z(Y_CHEST - 0.07, 0.125) + 0.014), rot=(0.12, k * 0.62, 0), bevel=0.004, **FINE)
 
     opt(m, 'overalls', 'chest')
     B.cloth(m, 'bottom', 1.0)
-    m.box(0.22, 0.2, 0.016, at=(0, -0.02, 0.145), rot=(-0.06, 0, 0), bevel=0.006)
-    m.box(0.12, 0.07, 0.02, at=(0, -0.01, 0.152), rot=(-0.06, 0, 0), bevel=0.006)
+    m.box(0.22, 0.2, 0.016, at=(0, -0.02, 0.15), rot=(0.19, 0, 0), bevel=0.006)
+    m.box(0.12, 0.07, 0.02, at=(0, -0.01, 0.158), rot=(0.19, 0, 0), bevel=0.006)
     for k in (1, -1):
-        m.box(0.036, 0.25, 0.016, at=(k * 0.1, 0.165, 0.118), rot=(0.42, 0, k * 0.1), bevel=0.005)
-        m.box(0.036, 0.03, 0.22, at=(k * 0.105, 0.245, -0.01), bevel=0.005)
-        m.box(0.036, 0.3, 0.016, at=(k * 0.09, 0.09, -0.142), rot=(0.12, 0, -k * 0.25), bevel=0.005)
+        B.strap(m, [(k * (0.095 - 0.1 * max(0.0, y - 0.1)), y) for y in (0.06, 0.11, 0.16, 0.2, 0.23, 0.25, 0.264)], 0.038)
+        B.strap(m, [(k * (0.085 - 0.12 * max(0.0, 0.12 - y)), y) for y in (-0.16, -0.08, 0.0, 0.08, 0.15, 0.2, 0.235, 0.255, 0.264)][::-1], 0.038, back=True)
     m.steel(texel=0.7, **FINE)
     for k in (1, -1):
-        m.cyl(0.014, 0.014, 0.01, 7, at=(k * 0.092, 0.066, 0.152), rot=(PI / 2 - 0.06, 0, 0))
+        m.cyl(0.014, 0.014, 0.01, 7, at=(k * 0.095, 0.066, B.chest_z(Y_CHEST + 0.066, 0.095) + 0.012), rot=(PI / 2 + 0.19, 0, 0))
     m.mat(lod=0)
 
     for s, k in SIDES:
@@ -286,9 +312,7 @@ def outfits(m):
 def collar(m):
     m.on('chest')
     B.cloth(m, 'top2', 0.9)
-    R = [(0.235, 0.082, 0.078), (0.262, 0.078, 0.074), (0.29, 0.086, 0.08), (0.262, 0.07, 0.066)]
-    m.loft([B.ell(y, rx, rz, cz=0.004, seg=12, tilt=-0.012) for y, rx, rz in R], close_start=False, close_end=False)
-    # placket and two buttons
+    # placket and buttons (the standing collar is part of the shirt: base.torso)
     m.box(0.03, 0.26, 0.012, at=(0, 0.06, 0.143), rot=(-0.06, 0, 0), bevel=0.004)
     m.fixed(CREAM, surf='flat', rough=0.5, texel=0.6, **FINE)
     for y in (0.14, 0.05, -0.04):
@@ -303,16 +327,16 @@ def make():
     # that far instances and the baked crowd copies use instead (kit brush `lod`)
     B.pelvis(m, 'bottom', lod=1); B.pelvis(m, 'bottom', seg=8, texel=0.5, lod=2)
     B.legs(m, 'bottom', lod=1); B.legs(m, 'bottom', seg=6, texel=0.5, lod=2)
-    B.torso(m, 'top', 'top2', lod=1); B.torso(m, 'top', 'top2', seg=8, texel=0.5, lod=2)
+    B.torso(m, 'top', 'top2', lod=1, collar='top2'); B.torso(m, 'top', 'top2', seg=8, texel=0.5, lod=2)
     B.belt(m, lod=1); B.belt(m, seg=8, lod=2)
     B.neck(m, lod=1); B.neck(m, seg=6, lod=2)
-    B.arms(m, sleeve='top', fore='skin', cuff=True, lod=1); B.arms(m, sleeve='top', fore='skin', seg=6, texel=0.5, lod=2)
-    B.hands(m, 'skin')
+    B.arms(m, sleeve='top', fore='skin', cuff=True, lod=1, cap='top2'); B.arms(m, sleeve='top', fore='skin', seg=6, texel=0.5, lod=2, cap='top2')
+    B.hands(m, 'skin', seg=5)
     B.boots(m, 'boots', cuff=('leather',), toe=None, welt=None, lod=1); B.boots(m, 'boots', cuff=('leather',), seg=6, texel=0.5, lod=2)
     m.mat(lod=1); collar(m); m.mat(lod=0)
-    B.head(m, lod=1); B.head(m, seg=12, rings=8, texel=0.7, lod=2)
+    B.head(m, lod=1); B.head(m, texel=0.7, lod=2)
     B.eyes(m, lod=1); B.eyes(m, lod=2)
-    m.mat(lod=1); B.brows(m); B.mouth(m); m.mat(lod=0)
+    m.mat(lod=1); B.brows(m); m.mat(lod=0)
     hair(m)
     hats(m)
     kit(m)

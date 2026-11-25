@@ -19,7 +19,8 @@ import { GU, WorldMaterial } from '../../gfx/material';
 import { instantiate } from '../../gfx/models';
 import { AnimState, evaluate, L, R, SK } from './anim';
 import { applyFit, fitLook } from './fit';
-import { FpArms, fpPresent } from './fpview';
+import { FpArms, fpHold, fpMove, fpPresent, fpSteady } from './fpview';
+import { GunNodes, readNodes, shootPose } from './shootpose';
 import { basisYZ, solve2 as solve } from './ik';
 import { Ribbon } from './ribbon';
 import type { FpDraw, HumanLook, HumanPose, HumanoidRig, WeaponKind, WeaponModel } from './types';
@@ -76,6 +77,8 @@ const BACK_MOUNT: Record<Exclude<WeaponKind, 'none'>, { pos: [number, number, nu
 const EFFORT = /^(sword|spear|xbow|rifle|bow|hit|stagger|hammer)/;
 /** Locomotion that hangs the body from the hands. */
 const HANGING = new Set(['zipline', 'ladder', 'climb', 'grapple']);
+/** Moves that turn the whole torso through the lens: in first person the torso holds still for them (fpview.ts `fpSteady`). */
+const FP_STEADY = /^(swordSkill|spearSpin|spearSkill)/;
 
 /** The rig plus a couple of look-dev extras (triangle stats, animation state). */
 export type HumanoidDevRig = HumanoidRig & {
@@ -105,12 +108,17 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
   const side = <T>(f: (s: 'L' | 'R') => T): [T, T] => [f('L'), f('R')];
   const armU = side((s) => B[`armU_${s}`]), armF = side((s) => B[`armF_${s}`]), hand = side((s) => B[`hand_${s}`]);
   const thigh = side((s) => B[`thigh_${s}`]), shin = side((s) => B[`shin_${s}`]), foot = side((s) => B[`foot_${s}`]);
-  const fingA = side((s) => B[`fingA_${s}`]), fingB = side((s) => B[`fingB_${s}`]), thumb = side((s) => B[`thumb_${s}`]);
-  const eye = side((s) => B[`eye_${s}`]), lid = side((s) => B[`lid_${s}`]), brow = side((s) => B[`brow_${s}`]);
-  const mouth = B.mouth;
-  const browY = brow[0].position.y;
-  for (let s = 0; s < 2; s++) { brow[s].scale.set(1, fit.face.browThick, 1); eye[s].scale.setScalar(fit.face.eye); lid[s].scale.setScalar(fit.face.eye); }
-  if (B.nose) B.nose.scale.setScalar(fit.face.nose);
+  const fingA = side((s) => B[`fingA_${s}`]), fingB = side((s) => B[`fingB_${s}`]), fingC = side((s) => B[`fingC_${s}`]), thumb = side((s) => B[`thumb_${s}`]);
+  const eye = side((s) => B[`eye_${s}`]), lid = side((s) => B[`lid_${s}`]), lidLo = side((s) => B[`lidLo_${s}`]), brow = side((s) => B[`brow_${s}`]);
+  const jaw = B.jaw, corner = side((s) => B[`corner_${s}`]);
+  const browY = brow[0].position.y + fit.face.browY, cornerAt = corner[0].position.clone();
+  for (let s = 0; s < 2; s++) {
+    const k = s === L ? 1 : -1;
+    brow[s].scale.set(1, fit.face.browThick, 1);
+    for (const b of [eye[s], lid[s], lidLo[s]]) b.scale.setScalar(fit.face.eye);
+    // the tilt of the eye's opening is the lids', turned about the line of sight
+    lid[s].rotation.z = lidLo[s].rotation.z = k * fit.face.eyeTilt;
+  }
   const grip = side((s) => { const g = new THREE.Object3D(); g.position.set(0, 0, 0.06); B[`hand_${s}`].add(g); return g; });
   const shX = fit.shoulderX, hipX = fit.hipX;
 
@@ -124,23 +132,26 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
 
   // ---- first person: the eye camera skips the head's triangles (moved to the end of a private index) and the cloth
   let fpFn: ((cam: THREE.Camera) => FpDraw) | null = null;
-  let fpGeo: THREE.BufferGeometry | null = null, fpBody = 0;
+  let fpGeo: THREE.BufferGeometry | null = null, fpBody = 0, fpArmsN = 0;
   const buildFp = () => {
     const src = inst.mesh.geometry, ix = src.index!, si = src.getAttribute('skinIndex'), sw = src.getAttribute('skinWeight');
     const hidden = inst.mesh.skeleton.bones.map((b) => FP_HIDE(b, head));
     const onHead = (v: number) => { let w = 0; for (let j = 0; j < 4; j++) if (hidden[si.getComponent(v, j)]) w += sw.getComponent(v, j); return w >= 0.5; };
-    const front: number[] = [], back: number[] = [];
+    // the arms come first, so a move that hides the body can still draw them alone
+    const armBone = inst.mesh.skeleton.bones.map((b) => FP_HIDE(b, armU[L]) || FP_HIDE(b, armU[R]));
+    const onArm = (v: number) => { let w = 0; for (let j = 0; j < 4; j++) if (armBone[si.getComponent(v, j)]) w += sw.getComponent(v, j); return w >= 0.5; };
+    const limbs: number[] = [], front: number[] = [], back: number[] = [];
     for (let i = 0; i < ix.count; i += 3) {
       const a = ix.getX(i), b = ix.getX(i + 1), c = ix.getX(i + 2);
-      (onHead(a) || onHead(b) || onHead(c) ? back : front).push(a, b, c);
+      (onHead(a) || onHead(b) || onHead(c) ? back : onArm(a) && onArm(b) && onArm(c) ? limbs : front).push(a, b, c);
     }
     const geo = new THREE.BufferGeometry();
     for (const k in src.attributes) geo.setAttribute(k, src.attributes[k]);
-    const n = src.getAttribute('position').count, all = front.concat(back);
+    const n = src.getAttribute('position').count, all = limbs.concat(front, back);
     geo.setIndex(new THREE.BufferAttribute(n > 65535 ? new Uint32Array(all) : new Uint16Array(all), 1));
     geo.boundingSphere = src.boundingSphere ? src.boundingSphere.clone() : null;
     geo.boundingBox = src.boundingBox ? src.boundingBox.clone() : null;
-    fpGeo = geo; fpBody = front.length;
+    fpGeo = geo; fpArmsN = limbs.length; fpBody = limbs.length + front.length;
   };
   const fpAsk = (cam: THREE.Camera): FpDraw => (fpFn ? fpFn(cam) : 'full');
   eyeCull(inst.mesh, (cam, geo) => {
@@ -148,13 +159,13 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
     // the private index takes over from the next frame (the draw list for this one is already made)
     if (inst.mesh.geometry !== fpGeo) inst.mesh.geometry = fpGeo;
     const d = fpFn(cam);
-    return d === 'full' ? Infinity : d === 'body' && geo === fpGeo ? fpBody : 0;
+    return d === 'full' ? Infinity : geo !== fpGeo ? 0 : d === 'body' ? fpBody : d === 'arms' ? fpArmsN : 0;
   }, (cam) => fpAsk(cam) !== 'full');
   const cullWeapon = (o: THREE.Object3D) => o.traverse((m) => {
     if (!(m as THREE.Mesh).isMesh || m.userData.fpCull) return;
     m.userData.fpCull = true;
     // in the hand it is drawn; slung on the back it would lie across the bottom of the view
-    eyeCull(m as THREE.Mesh, (cam) => { const d = fpAsk(cam); return d === 'none' || (d === 'body' && weapon?.object.parent === backMount) ? 0 : Infinity; }, (cam) => fpAsk(cam) !== 'full');
+    eyeCull(m as THREE.Mesh, (cam) => { const d = fpAsk(cam); return d === 'none' || d === 'arms' || (d === 'body' && weapon?.object.parent === backMount) ? 0 : Infinity; }, (cam) => fpAsk(cam) !== 'full');
   });
   for (const r of ribbons) eyeCull(r.mesh, (cam) => (fpAsk(cam) === 'full' ? Infinity : 0));
   const eyeRest = (() => {
@@ -169,9 +180,15 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
   let weapon: WeaponModel | null = null;
   let time = 0;
   const shoulder = [new THREE.Vector3(shX, SK.shY, 0), new THREE.Vector3(-shX, SK.shY, 0)];
+  const shRest = [armU[L].position.clone(), armU[R].position.clone()], _sh = new THREE.Vector3(), _eye = new THREE.Vector3();
+  const nodes = new GunNodes();
+  let steadyK = 0;
   // face and hands
   let blinkIn = 1.5 + Math.random() * 3, blink = 0;
   const curl = [0, 0];
+  const _q0 = new THREE.Quaternion();
+  const thumbFist = [1, -1].map((k) => new THREE.Quaternion().setFromUnitVectors(_a.set(-k * 0.523, 0.409, 0.748).normalize(), _b.set(-k * 0.72, -0.3, 0.62).normalize()));
+  const thumbGrip = [1, -1].map((k) => new THREE.Quaternion().setFromUnitVectors(_a.set(-k * 0.523, 0.409, 0.748).normalize(), _b.set(-k * 0.9, 0.02, 0.44).normalize()));
   let effort = 0, talk = 0, glance = 0, glanceIn = 2 + Math.random() * 4;
   const phase = Math.random() * 10;
 
@@ -196,6 +213,7 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
       if (weapon && weapon !== model) weapon.object.removeFromParent();
       weapon = model;
       if (model && fpFn) cullWeapon(model.object);
+      readNodes(model, nodes);
       if (model && model.kind !== 'none') {
         const bm = BACK_MOUNT[model.kind];
         backMount.position.set(bm.pos[0], bm.pos[1], bm.pos[2]);
@@ -210,16 +228,28 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
       st.rideSync = pose.locomotion === 'ride' && ud && typeof ud.gaitPhase === 'number' ? ud.gaitPhase : -1;
       st.ridePitch = pose.locomotion === 'ride' && ud && typeof ud.pitch === 'number' ? ud.pitch : 0;
       const P = evaluate(pose, st, dt);
+      const fp = pose.fp ?? 0;
+      // the shooter stance's named hold over the arms (shootpose.ts); the eyes have their own (fpHold)
+      if (pose.shoot && fp < 1) shootPose(P, pose, nodes, pose.shootK ?? 1);
+      // first person: a spin or the leap keeps the torso square to the lens
+      steadyK = damp1(steadyK, fp > 0 && FP_STEADY.test(pose.action ?? '') ? 0.85 * fp : 0, dt * 10);
+      if (steadyK > 0.002) fpSteady(P, steadyK);
       // first person: the eyes sit above a blade swung at chest height, so a drawn melee weapon and the
       // hands on it are re-framed for the eye (fpview.ts)
       fpLift = damp1(fpLift, (pose.fp ?? 0) * (pose.drawn && (pose.weapon === 'sword' || pose.weapon === 'spear') && pose.locomotion !== 'dead' ? 1 : 0), dt * 8);
       const sc = body.scale.y || 1;
       fpPresent(P, pose, fpLift < 0.002 ? 0 : fpLift, eyeRest.y / sc, eyeRest.z / sc, arms);
+      // first person with a ranged weapon: the weapon is on the view (systems/viewmodel.ts) and the hands go to it
+      if (pose.fpHold) fpHold(arms, pose.fpHold);
+      // first person: the arms of a roll, a knockdown, a death and a ride are posed to the lens
+      fpMove(P, pose, dt, pose.fpEye ? _eye.copy(pose.fpEye).divideScalar(sc) : null, pose.fpDir ?? null, arms);
       hips.position.copy(P.hipsPos); hips.quaternion.copy(P.hipsQ);
       spine.quaternion.copy(P.spineQ); chest.quaternion.copy(P.chestQ); head.quaternion.copy(P.headQ);
       for (let s = 0; s < 2; s++) {
         // arm, in chest space
-        solve(shoulder[s], arms.handPos[s], arms.elbow[s], SK.upper, SK.fore, _q1, _q2);
+        _sh.copy(shoulder[s]); if (arms.free > 0) _sh.lerp(arms.shoulder[s], arms.free);
+        armU[s].position.copy(shRest[s]).add(_sh).sub(shoulder[s]);
+        solve(_sh, arms.handPos[s], arms.elbow[s], SK.upper, SK.fore, _q1, _q2);
         armU[s].quaternion.copy(_q1);
         armF[s].quaternion.copy(_q3.copy(_q1).invert()).multiply(_q2);
         hand[s].quaternion.copy(_q3.copy(_q2).invert()).multiply(arms.handQ[s]);
@@ -248,19 +278,22 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
       const two = inHand && weapon!.kind !== 'sword';
       for (let s = 0; s < 2; s++) {
         const holding = grip[s].children.length > 0;
-        let want = holding ? 1 : hang ? 1 : 0.5 + 0.1 * Math.sin(time * 0.7 + s * 2 + phase);
+        let want = holding ? 1 : hang ? 1 : 0.48 + 0.06 * Math.sin(time * 0.7 + s * 2 + phase);
         if (two) want = Math.max(want, 0.85);
-        if (pose.locomotion === 'ground' && pose.speed > 4 && !holding) want = 0.75;      // running fists
+        if (pose.locomotion === 'ground' && pose.speed > 4 && !holding) want = 0.85;      // running fists
         if (act === 'cheer' || act === 'carry' || act === 'sweep') want = Math.max(want, 0.9);
-        if (act === 'wave' || act === 'point') want = holding ? 1 : 0.05;
-        if (act === 'talk' && !holding) want = 0.72 + 0.14 * Math.sin(time * 1.3 + s * 2.4 + phase);   // loose fists, not splayed fingers
-        if (dead) want = 0.3;
+        if (act === 'wave' || act === 'point') want = holding ? 1 : 0;
+        if (act === 'talk' && !holding) want = 0.62 + 0.14 * Math.sin(time * 1.3 + s * 2.4 + phase);   // loose fists, not splayed fingers
+        if (dead) want = 0.25;
         curl[s] += (want - curl[s]) * Math.min(1, dt * 14);
         const k = s === L ? 1 : -1, c = curl[s];
-        fingA[s].rotation.y = -k * c * 0.92;
-        fingB[s].rotation.y = -k * c * 0.8;
-        thumb[s].rotation.set(c * 0.25, -k * c * 0.6, 0);
-        if (act === 'point' && s === R && !holding) { fingA[s].rotation.y = -k * 0.2; fingB[s].rotation.y = k * 0.5; }
+        // each knuckle from nearly straight (0) to a closed fist (1), less the curl the fingers were modelled with
+        fingA[s].rotation.y = -k * (0.1 + 1.4 * c - 0.5);
+        fingB[s].rotation.y = -k * (0.15 + 1.55 * c - 0.75);
+        fingC[s].rotation.y = -k * (0.1 + 0.9 * c - 0.45);
+        // the thumb folds from beside the palm to round a grip, or down across the fingers of an empty fist
+        thumb[s].quaternion.slerpQuaternions(_q0, (holding ? thumbGrip : thumbFist)[s], c);
+        if (act === 'point' && s === R && !holding) { fingA[s].rotation.y = -k * 0.2; fingB[s].rotation.y = k * 0.5; fingC[s].rotation.y = k * 0.35; }
       }
 
       // ---- face
@@ -274,21 +307,29 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
       // the eyes lead the head, and wander a little when nothing holds them
       glanceIn -= dt;
       if (glanceIn <= 0) { glance = (Math.random() - 0.5) * 0.5; glanceIn = 1.5 + Math.random() * 3.5; }
-      const ey = THREE.MathUtils.clamp(pose.lookYaw * 0.55 + (Math.abs(pose.lookYaw) < 0.08 ? glance * (1 - effort) * (1 - talk) : 0), -0.5, 0.5);
-      const ep = THREE.MathUtils.clamp(pose.lookPitch * 0.5, -0.35, 0.35);
+      // (the eyeball is large and shallow, so a small turn carries the iris a long way)
+      const ey = THREE.MathUtils.clamp(pose.lookYaw * 0.42 + (Math.abs(pose.lookYaw) < 0.08 ? glance * 0.7 * (1 - effort) * (1 - talk) : 0), -0.36, 0.36);
+      const ep = THREE.MathUtils.clamp(pose.lookPitch * 0.4, -0.25, 0.25);
       const surprise = act === 'cheer' || act === 'wave' ? 1 : 0;
+      const F = fit.face;
       for (let s = 0; s < 2; s++) {
         const k = s === L ? 1 : -1;
         eye[s].rotation.set(-ep, ey, 0);
-        lid[s].rotation.x = shut * 1.7 + effort * 0.22 - ep * 0.5 - surprise * 0.12;
-        brow[s].rotation.z = k * (effort * 0.34 + fit.face.browTilt - surprise * 0.1);
-        brow[s].position.y = browY - effort * 0.007 + surprise * 0.008 + talk * 0.003 * Math.sin(time * 3.1 + phase) - shut * 0.002;
+        // the upper lid rolls shut over the eye, follows the gaze, droops with age and narrows with effort
+        lid[s].rotation.x = shut * 0.86 + (1 - shut) * (F.lidDrop + effort * 0.1 - ep * 0.6 - surprise * 0.08);
+        lidLo[s].rotation.x = -(effort * 0.12 + Math.max(0, F.smile) * talk * 0.04) - ep * 0.3;
+        brow[s].rotation.z = k * (effort * 0.34 + F.browTilt - surprise * 0.1);
+        brow[s].position.y = browY - effort * 0.006 + surprise * 0.007 + talk * 0.0025 * Math.sin(time * 3.1 + phase) - shut * 0.0015;
       }
-      const open = talk * Math.max(0, 0.5 + 0.5 * Math.sin(time * 12.5 + phase) * Math.sin(time * 4.3 + phase * 2)) + (act === 'cheer' ? 0.5 : 0) + (act === 'drink' ? 0.4 : 0);
-      mouth.scale.set(fit.face.mouthW * (1 - open * 0.22 + effort * 0.12), (1 + open * 2.6) * (1 - effort * 0.3), 1);
-      // the mouth's arc is a smile; turning it over is a frown, and effort flattens it
-      mouth.rotation.z = fit.face.smile < 0 ? Math.PI : 0;
-      mouth.scale.y *= Math.max(0.25, Math.abs(fit.face.smile)) * (1 - effort * 0.35);
+      // the jaw drops to talk; the corners of the mouth carry its width and its mood
+      const open = talk * Math.max(0, 0.5 + 0.5 * Math.sin(time * 12.5 + phase) * Math.sin(time * 4.3 + phase * 2)) + (act === 'cheer' ? 0.6 : 0) + (act === 'drink' ? 0.5 : 0) + (dead ? 0.25 : 0);
+      jaw.rotation.x = open * 0.14 + effort * 0.03;
+      for (let s = 0; s < 2; s++) {
+        const k = s === L ? 1 : -1;
+        const wide = (F.mouthW - 1) * 0.02 + Math.max(0, F.smile) * 0.003 + effort * 0.004 - open * 0.004 + talk * 0.0015 * Math.sin(time * 5.7 + phase);
+        const up = F.smile * 0.0055 - effort * 0.0025 - open * 0.003;
+        corner[s].position.set(k * (cornerAt.x + wide), cornerAt.y + up, cornerAt.z - Math.abs(wide) * 0.4 + Math.max(0, up) * 0.3);
+      }
 
       // cloth
       if (ribbons.length) {

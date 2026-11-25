@@ -50,9 +50,10 @@ def gauntlets(m):
         # the back of the hand toward +k X)
         m.on('hand_' + s)
         m.steel(texel=2.6)
-        m.box(0.014, 0.092, 0.03, at=(k * 0.05, 0, 0.09), bevel=0.005)
+        for y in (0.041, 0.0137, -0.0137, -0.04):
+            m.box(0.012, 0.021, 0.026, at=(k * 0.0425, y, 0.099), rot=(0, k * 0.12, 0), bevel=0.005)
         B.leather(m, 'accent', 2.6)
-        m.box(0.008, 0.066, 0.05, at=(k * 0.047, 0, 0.046), bevel=0.003)
+        m.box(0.008, 0.068, 0.05, at=(k * 0.0445, 0, 0.052), bevel=0.003)
         m.on(F)
 
 
@@ -226,7 +227,7 @@ def make():
     B.neck(m)
     B.arms(m, sleeve='cloth2', fore='cloth2', cuff=False, texel=1.5)
     gauntlets(m)
-    B.hands(m, 'glove', texel=2.6)
+    B.hands(m, 'glove', texel=2.6, seg=8)
     B.boots(m, 'boots', cuff=('fixed', GREY), toe=('fixed', 0x7b838d), welt='accent')
     jacket_extras(m)
     backpack(m)
@@ -234,8 +235,7 @@ def make():
     leg_gear(m)
     B.head(m)
     B.eyes(m)
-    B.brows(m, tilt=0.16)
-    B.mouth(m)
+    B.brows(m)
     hairdo(m)
     goggles(m)
     scarf(m)
