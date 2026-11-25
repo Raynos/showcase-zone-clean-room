@@ -64,7 +64,7 @@ Several agents may be editing this tree at once.
   If the index is locked, wait and retry.
 - Every commit message ends with these two trailer lines:
 
-      Assisted-by: Claude:claude-fable-5-2
+      Assisted-by: Claude:<your own model ID, e.g. claude-opus-5-5>
       Claude-Session: https://claude.ai/code/session_015pj4RxnggAB11XCHX4C2b5
 
 ## Standards
