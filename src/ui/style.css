@@ -52,6 +52,8 @@
 /* ---------- target frame ---------- */
 .tframe { position: absolute; left: 50%; top: calc(124px + var(--sat)); transform: translateX(-50%); width: min(62vw, 300px); text-align: center; opacity: 0; transition: opacity .15s; }
 .tframe.on { opacity: 1; }
+/* narrow portrait: the target frame sits left, under the player frame, so it never collides with the quest tracker */
+@media (max-width: 520px) { .tframe { left: calc(10px + var(--sal)); transform: none; width: min(56vw, 228px); text-align: left; } .tframe .tname { justify-content: flex-start; } }
 .tframe .tname { font-size: 13px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; display: flex; justify-content: center; gap: 6px; align-items: center; }
 .tframe .tname .tl { color: var(--amber); }
 .tframe.elite .tname { color: var(--gold); }

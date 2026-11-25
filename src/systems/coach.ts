@@ -33,7 +33,7 @@ export class Coach implements System {
     game.hud.hud.appendChild(this.card);
     this.card.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.showT = Math.min(this.showT, 0.01); });
     const ev = game.state.events, st = game.state;
-    ev.on('reach', (r) => { if (r.place === 'b1') { this.tip('gate'); this.tip('fight'); } });
+    ev.on('reach', (r) => { if (r.place === 'b1') { this.tip('fight'); this.tip('gate'); } });
     ev.on('kill', (k) => { if (++this.killN >= 3) this.tip('skills'); if (k.variant === 'elite') this.done('elite'); });
     ev.on('levelUp', (l) => { if (l.level === 2) this.tip('level'); });
     ev.on('equip', () => { if (st.d.loadout[1]) this.tip('swap'); const k = st.weapon.kind; if (k === 'bow' || k === 'rifle' || k === 'crossbow') this.tip('ranged'); });
@@ -61,7 +61,7 @@ export class Coach implements System {
     // card lifecycle
     if (this.showT > 0) {
       this.showT -= rdt;
-      if (this.showT <= 0) { this.card.classList.remove('on'); this.gap = 3.5; }
+      if (this.showT <= 0) { this.card.classList.remove('on'); this.gap = 2; }
       return;
     }
     this.gap -= rdt;
@@ -70,7 +70,7 @@ export class Coach implements System {
     this.done(t.id);
     this.card.innerHTML = `<b>${t.title}</b><span>${g.input.isTouch ? t.touch : t.desk}</span>`;
     this.card.classList.add('on');
-    this.showT = 7;
+    this.showT = 6;
     g.sfx('ui_tab', { vol: 0.6 });
   }
 }

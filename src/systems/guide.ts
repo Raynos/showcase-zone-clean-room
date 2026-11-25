@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CAMPS, ELITES } from '../data/enemies';
+import { CAMPS, ELITES, ENEMIES } from '../data/enemies';
 import { QUESTS, type QuestDef } from '../data/quests';
 import type { Game, System } from '../game';
 import { el } from '../ui/hud';
@@ -59,6 +59,11 @@ export class Guide implements System {
       const e = ELITES.find((x) => x.id === a);
       if (e) return { x: e.x, z: e.z, label: e.name };
       return this.nearestCamp(a === 'any' ? null : a);
+    }
+    if (type === 'collect') {
+      // head for the nearest camp of the first robot kind that drops it
+      const kind = (Object.keys(ENEMIES) as Array<keyof typeof ENEMIES>).find((k) => !ENEMIES[k].boss && ENEMIES[k].salvage.some((sv) => sv[0] === a));
+      return kind ? this.nearestCamp(kind) : null;
     }
     if (type === 'reach') {
       if (a === 'town') return { x: TOWN.plazaX, z: TOWN.plazaZ, label: 'Brasswick' };
