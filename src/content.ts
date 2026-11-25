@@ -1,4 +1,5 @@
 import type { Game } from './game';
+import { Coach } from './systems/coach';
 
 // Optional modules are discovered with glob imports so the game still boots while a module is absent.
 const mods = import.meta.glob(['./world/town.ts', './world/roads.ts', './entities/robots/index.ts', './entities/humanoid/index.ts', './core/audio.ts', './ui/panels.ts', './systems/npcs.ts', './world/east.ts', './world/vault.ts', './world/arena.ts', './world/dressing.ts']);
@@ -50,6 +51,7 @@ export async function startSystems(game: Game) {
   if (east?.East) game.east = new east.East(game);
   for (const p of ['./world/vault.ts', './world/arena.ts', './world/dressing.ts']) { const m = await opt(p); try { m?.start?.(game); } catch (e) { console.warn('start failed', p, e); } }
   for (const m of westMods) { try { m.start?.(game); } catch (e) { console.warn('west start failed', e); } }
+  new Coach(game);
   const npcs = await opt('./systems/npcs.ts');
   if (npcs?.Npcs) game.npcs = new npcs.Npcs(game);
   const panels = await opt('./ui/panels.ts');
