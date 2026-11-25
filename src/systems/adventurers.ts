@@ -25,7 +25,7 @@ import type { ZoneEvents } from './events';
 
 type Act = 'move' | 'hunt' | 'idle' | 'sit' | 'talk' | 'shop' | 'crate' | 'cheer';
 interface Goal { act: Exclude<Act, 'move'>; x: number; z: number; yaw: number | null; dur: number; label: string; camp?: CampDef; face?: { x: number; z: number } }
-interface Foe { kind: RobotKind; name: string; level: number; x: number; z: number; y: number; yaw: number; hp: number; st: 'spawn' | 'fight' | 'dead' | 'gone'; t: number; atkT: number; atk: number; rig: RobotRig | null; pose: RobotPose; hitT: number }
+interface Foe { kind: RobotKind; name: string; level: number; x: number; z: number; y: number; yaw: number; hp: number; st: 'spawn' | 'fight' | 'dead' | 'gone'; t: number; atkT: number; atk: number; rig: RobotRig | null; pose: RobotPose; hitT: number; noShadow?: boolean }
 export interface Adv {
   def: AdvDef; n: number;
   x: number; y: number; z: number; yaw: number; speed: number;
@@ -43,10 +43,12 @@ export interface Adv {
   doing: string; band: number; lastSaid: number; partner: Adv | null;
 }
 
-const MODEL_MAX = 6, FULL_MAX = 2, FULL_IN = 17, FULL_OUT = 21, SHOW = 92, FOE_MAX = 2, FOE_SHOW = 58, PLATE = 26;
+const MODEL_MAX = 6, FULL_MAX = 1, FULL_IN = 17, FULL_OUT = 21, SHOW = 92, FOE_MAX = 2, FOE_SHOW = 58, PLATE = 26;
 const WALK = 1.7, RUN = 6.0, RIDE = 10.5;
 const WALK_F = 6, RUN_F = 6, FIGHT_F = 4;
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), DOWN = new THREE.Vector3(0, -1, 0), UP = new THREE.Vector3(0, 1, 0);
+
+const plural = (n: string) => (/[^aeiou]y$/i.test(n) ? n.slice(0, -1) + 'ies' : n + 's');
 
 function makePose(): HumanPose {
   return { time: 0, locomotion: 'ground', speed: 0, moveX: 0, moveZ: 0, vy: 0, landT: 9, weapon: 'none', drawn: false, action: null, actionT: 0, aimPitch: 0, lean: 0, rollT: 0, lookYaw: 0, lookPitch: 0, climbPhase: 0 };
@@ -254,7 +256,7 @@ export class Adventurers implements System {
         const here = cs.filter((c) => c.band === (bandAt(a.x, a.z)?.id ?? -1));
         const c = here.length && Math.random() < 0.7 ? pick(here) : pick(cs);
         const [x, z] = this.huntSpot(c);
-        goal = { act: 'hunt', x, z, yaw: null, dur: rand(110, 260), label: `hunting ${ENEMIES[c.kind].name}s`, camp: c, face: { x: c.x, z: c.z } };
+        goal = { act: 'hunt', x, z, yaw: null, dur: rand(110, 260), label: `hunting ${plural(ENEMIES[c.kind].name)}`, camp: c, face: { x: c.x, z: c.z } };
       }
     }
     a.goal = goal;
@@ -380,6 +382,8 @@ export class Adventurers implements System {
     a.rig = rig;
     a.weapon = g.human.makeWeaponModel(a.def.weapon) as WeaponModel;
     rig.setWeapon(a.weapon);
+    // the body throws the shadow; the weapon's is not worth its draw calls
+    a.weapon.object.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = false; });
     rig.root.visible = false;
     this.group.add(rig.root);
     // the far stand-in: a handful of baked poses
@@ -694,6 +698,8 @@ export class Adventurers implements System {
     for (const m of rig.materials) m.flash.value.w = Math.max(0, m.flash.value.w - dt * 5);
     rig.root.position.set(f.x, f.y, f.z); rig.root.rotation.y = f.yaw;
     rig.update(dt, p);
+    // their robots cast no shadow (a rig may switch its own back on when it is rebuilt)
+    if (!f.noShadow) { rig.root.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = false; }); f.noShadow = true; }
   }
 
   private plates() {
