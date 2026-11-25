@@ -96,8 +96,10 @@ export class Mob implements Hittable {
     // poise
     this.poiseDmg += dmg; this.poiseT = 1.4;
     const interruptible = this.state === 'chase' || this.state === 'windup' || this.state === 'recover' || this.state === 'idle';
+    // elites shrug off heavy hits and commit to a wind-up once it has started: they have to be dodged, not stun-locked
+    const tough = this.isBoss || this.variant === 'elite' || this.variant === 'nightElite';
     if (h.stun && !this.isBoss) { this.endTele(); this.locked = false; this.setState('stun'); this.stT = -h.stun + 0.6; }
-    else if ((this.poiseDmg > this.maxHp * this.def.poise || h.heavy && !this.isBoss) && interruptible && !(this.isBoss && this.state === 'windup')) {
+    else if ((this.poiseDmg > this.maxHp * this.def.poise * (tough && !this.isBoss ? 0.55 : 1) || h.heavy && !tough) && interruptible && !(tough && this.state === 'windup')) {
       this.poiseDmg = 0; this.endTele(); this.locked = false; this.setState('stagger');
     }
     if (this.hp <= 0) { this.hp = 0; this.die(); }
