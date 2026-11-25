@@ -7,6 +7,7 @@ import type { Game } from '../game';
 export type { View };
 
 /** Locomotion where the body is carried by something else: the lens rides the head as it is. */
+const UP = new THREE.Vector3(0, 1, 0);
 const CARRIED = new Set(['ride', 'board', 'zipline', 'ladder', 'climb', 'grapple', 'sit']);
 /** ...and of those, the ones the view drifts round to follow when the player stops steering. */
 const STEERED = new Set(['ride', 'board', 'zipline', 'grapple']);
@@ -82,7 +83,7 @@ export class ViewSystem {
     if (k <= 0) return 'full';
     if (k > 0.9) return this.treat;
     // blending in or out of the eyes (a view switch, a cutscene taking over): the head goes only while the lens is inside it
-    return cam.position.distanceToSquared(this.eyeW) < 0.25 ? (this.treat === 'none' ? 'none' : 'body') : 'full';
+    return cam.position.distanceToSquared(this.eyeW) < 0.25 ? (this.treat === 'none' ? 'none' : this.treat === 'arms' ? 'arms' : 'body') : 'full';
   }
 
   /**
@@ -121,6 +122,9 @@ export class ViewSystem {
     if (!rig?.eyes || !rig.eyeRest) return null;
     this.inside(dt);
     const f = this.feedOut, p = pl.pose, loc = p.locomotion, act = pl.action ?? '';
+    // the lens as last drawn, in the hero's own frame: first-person arms are posed to it (humanoid/fpview.ts `fpMove`)
+    (p.fpEye ??= new THREE.Vector3()).copy(g.camera.position).sub(pl.pos).applyAxisAngle(UP, -pl.yaw);
+    g.camera.getWorldDirection(p.fpDir ??= new THREE.Vector3()).applyAxisAngle(UP, -pl.yaw);
     rig.eyes(this.eyeW);
     f.base.copy(pl.pos);
     const head = this._o.copy(this.eyeW).sub(pl.pos);
@@ -156,18 +160,18 @@ export class ViewSystem {
       if (loc === 'roll') {
         const s = Math.sin(Math.PI * clamp01(p.rollT));
         f.dip = 0.5 * s; f.tilt = 0.2 * s; f.roll = -0.12 * side * s;
-        if (p.rollT > 0.05) this.treat = 'none';
+        if (p.rollT > 0.05) this.treat = 'arms';
       } else if (this.sinceRoll < 0.16) {
         // the limbs are still uncurling out of the roll for a moment
-        this.treat = 'none';
+        this.treat = 'arms';
       } else if (loc === 'down') {
         const t = p.downT ?? 0, k = t < DOWN.fall ? ease(t / DOWN.fall) : t < DOWN.lie ? 1 : 1 - ease((t - DOWN.lie) / (DOWN.end - DOWN.lie));
         f.dip = 0.95 * k; f.tilt = -0.4 * k; f.roll = 0.22 * k;
-        this.treat = 'none';
+        this.treat = 'arms';
       } else if (pl.dead) {
         const k = ease(this.deadT / 0.9);
         f.dip = 1.15 * k; f.tilt = -0.2 * k; f.roll = 0.42 * k;
-        this.treat = 'none';
+        this.treat = 'arms';
       }
     }
     // a blow lands: the head gives a little, the way the body does
