@@ -551,7 +551,7 @@ owner's approval of the direction.
 
 | Budget | Before | After | Target |
 |---|---|---|---|
-| Triangles, worst view | 1.75M | 624k | 900k |
+| Triangles, worst view | 1.75M | 650k | 900k |
 | Draw calls, worst view | 442 | 266 | 280 |
 | Grass triangles in view | 570k | 5k–91k | 150k |
 | Shadow share, town | 44% | 38% | 25% |
