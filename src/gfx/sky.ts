@@ -43,9 +43,9 @@ export class Sky {
         uniform float uSunGlow, uSunset, uNight, uCover, uTime, uFlash, uAurora;
         uniform sampler2D uNoise;
         float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        // broad shapes from the fbm channel, cauliflower edges from the cell-noise channel
         float cloudDensity(vec2 uv) {
-          float n = texture2D(uNoise, uv).r * 0.66 + texture2D(uNoise, uv * 2.3 + 0.31).r * 0.24 + texture2D(uNoise, uv * 5.1 + 0.7).g * 0.1;
-          return n;
+          return texture2D(uNoise, uv).r * 0.74 + (1.0 - texture2D(uNoise, uv * 2.7 + 0.13).b) * 0.26;
         }
         void main() {
           vec3 d = normalize(vDir);
@@ -61,7 +61,9 @@ export class Sky {
           // sun halo
           col += uSunColor * uSunGlow * (pow(sd, 6.0) * 0.07 + pow(sd, 48.0) * 0.28 + pow(sd, 500.0) * 1.6);
           // sun disc (HDR for bloom)
-          col += uSunColor * smoothstep(0.99955, 0.99975, sd) * 26.0 * uSunGlow;
+          col += uSunColor * smoothstep(0.99945, 0.99972, sd) * (20.0 + 8.0 * smoothstep(0.9997, 1.0, sd)) * uSunGlow;
+          // low suns swell and redden into the haze
+          col += uSunColor * vec3(1.0, 0.72, 0.5) * uSunset * uSunGlow * pow(sd, 90.0) * 0.5;
           // --- stars
           if (uNight > 0.01 && h > -0.05) {
             vec3 sdr = d;
@@ -84,7 +86,13 @@ export class Sky {
             vec3 mt = cross(uMoonDir, vec3(0.0, 1.0, 0.0));
             vec2 muv = vec2(dot(d, normalize(mt)), dot(d, cross(normalize(mt), uMoonDir))) * 18.0;
             float crater = texture2D(uNoise, muv * 0.5 + 0.5).g;
-            col += vec3(0.82, 0.92, 1.0) * disc * (2.2 + crater * 2.6) * uNight;
+            // a ball, not a sticker: lit from one side, the far limb falling into earthshine
+            vec2 mp = muv / (18.0 * 0.0469);
+            vec3 mn = vec3(mp, sqrt(max(0.0, 1.0 - dot(mp, mp))));
+            float lit = smoothstep(-0.12, 0.3, dot(mn, normalize(vec3(0.55, 0.3, 0.62))));
+            float seas = smoothstep(0.35, 0.6, texture2D(uNoise, muv * 0.16 + 0.37).r);
+            col = mix(col, vec3(0.03, 0.045, 0.09) * uNight, disc * 0.85);
+            col += vec3(0.86, 0.93, 1.0) * disc * (0.07 + lit * (1.9 + crater * 1.5) * (1.0 - 0.38 * seas)) * uNight * (0.75 + 0.25 * mn.z);
           }
           col += vec3(0.35, 0.55, 0.8) * pow(max(md, 0.0), 60.0) * 0.5 * uNight;
           // --- aurora (cyan ribbons, deep night only)
@@ -96,22 +104,42 @@ export class Sky {
             float ray = 0.6 + 0.4 * texture2D(uNoise, vec2(auv.x * 1.3, uTime * 0.02)).a;
             col += mix(vec3(0.1, 0.9, 0.8), vec3(0.3, 0.5, 1.0), h) * cur * fall * ray * uAurora * 0.9;
           }
-          // --- clouds
+          // --- clouds: cumulus built from three slices of one drifting field. Each higher slice is
+          // the same field seen a little further up, so it sits nearer the zenith and covers less:
+          // near the horizon the slices fan out into a flat shaded base, a body and a lit top.
           if (h > -0.02) {
-            float cy = max(h, 0.0) + 0.1;
-            vec2 cuv = d.xz / cy * 0.26 + vec2(uTime * 0.0032, uTime * 0.0018);
-            float dn = cloudDensity(cuv);
-            float edge0 = 1.0 - uCover;
-            float cov = smoothstep(edge0, edge0 + 0.13, dn);
-            // light from the sun side: density gradient toward the sun
-            vec2 sdir = normalize(uSunDir.xz + 1e-4) * 0.035;
-            float dn2 = cloudDensity(cuv + sdir);
-            float lit = clamp((dn - dn2) * 7.0 + 0.5 + (1.0 - smoothstep(edge0, edge0 + 0.3, dn)) * 0.35, 0.0, 1.0);
-            vec3 cc = mix(uCloudDark, uCloudLit, lit * (0.55 + 0.45 * (1.0 - cov)));
-            cc += uSunColor * pow(sd, 10.0) * (1.0 - cov * 0.7) * 0.9 * uSunGlow;   // silver lining
+            // a curved deck, not a flat one: clouds keep their size toward the horizon instead of crushing into a stripe
+            float cy = max(h, 0.0) + 0.3;
+            vec2 base = d.xz / cy * 0.42;
+            vec2 scroll = vec2(uTime * 0.0032, uTime * 0.0018);
+            float th = 1.0 - uCover;
+            float n0 = cloudDensity(base + scroll);
+            float n1 = cloudDensity(base * 1.07 + scroll);
+            float n2 = cloudDensity(base * 1.15 + scroll);
+            float c0 = smoothstep(th, th + 0.05, n0);
+            float c1 = smoothstep(th + 0.05, th + 0.11, n1) * c0;
+            float c2 = smoothstep(th + 0.1, th + 0.19, n2) * c1;
+            // clouds across the sky from the sun are lit full on; toward it they are seen from behind
+            float front = 0.5 - 0.5 * dot(normalize(d.xz + 1e-4), normalize(uSunDir.xz + 1e-4));
+            vec3 cBase = mix(uCloudDark, uCloudLit, 0.1 + 0.12 * front);
+            vec3 cBody = mix(uCloudDark, uCloudLit, 0.5 + 0.2 * front);
+            vec3 cTop = uCloudLit * (0.94 + 0.12 * front);
+            vec3 cc = mix(mix(cBase, cBody, c1), cTop, c2);
+            // thin edges let the sky through and catch the sun
+            float thin = 1.0 - smoothstep(th, th + 0.12, n0);
+            cc = mix(cc, mix(cBody, uCloudLit, 0.5), thin * 0.5);
+            cc += uSunColor * pow(sd, 10.0) * (thin * 0.8 + 0.15) * 0.9 * uSunGlow;   // silver lining
+            // a closed deck has no tops to see: it is dark where it is thick and pale where it thins
+            float deck = smoothstep(0.62, 0.9, uCover);
+            if (deck > 0.0) {
+              float thick = smoothstep(0.3, 0.72, cloudDensity(base * 1.6 + scroll * 1.7));
+              cc = mix(cc, mix(uCloudLit * 0.8, uCloudDark, thick), deck);
+            }
             cc += vec3(0.8, 0.9, 1.0) * uFlash * 2.5;
-            float fade = smoothstep(0.0, 0.16, h);
-            col = mix(col, cc, cov * fade * 0.94);
+            // far clouds sink into the horizon haze
+            cc = mix(hz, cc, 0.35 + 0.65 * smoothstep(0.0, 0.3, h));
+            float fade = smoothstep(0.0, 0.12, h);
+            col = mix(col, cc, c0 * fade * 0.96);
           }
           // --- painted far ridgelines (three layers of atmospheric perspective)
           float az = atan(d.z, d.x) / 6.28318;
