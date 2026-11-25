@@ -175,16 +175,19 @@ export function pixelText(g: Geo, text: string, cell: number, o: { color: number
   for (const gl of glyphs) total += (gl[0].length + 1) * cell;
   total -= cell;
   let x = -total / 2;
-  for (const gl of glyphs) {
-    pixelRows(g, gl, cell, x, 2.5 * cell, o.depth ?? cell * 0.5, o);
-    x += (gl[0].length + 1) * cell;
-  }
+  // one primitive per word, so the distance LOD keeps or drops the word, never single strokes
+  g.group(() => {
+    for (const gl of glyphs) {
+      pixelRows(g, gl, cell, x, 2.5 * cell, o.depth ?? cell * 0.5, o);
+      x += (gl[0].length + 1) * cell;
+    }
+  });
   return total;
 }
 /** 7x7 pixel icon (see ICONS) in the XY plane facing +Z, centred. */
 export function pixelIcon(g: Geo, name: string, cell: number, o: { color: number; emit?: number; layer?: number; depth?: number }) {
   const rows = ICONS[name] ?? ICONS.gear;
-  pixelRows(g, rows, cell, -rows[0].length * cell / 2, rows.length * cell / 2, o.depth ?? cell * 0.5, o);
+  g.group(() => pixelRows(g, rows, cell, -rows[0].length * cell / 2, rows.length * cell / 2, o.depth ?? cell * 0.5, o));
 }
 
 // ---------------------------------------------------------------------------------------------

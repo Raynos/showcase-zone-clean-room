@@ -164,7 +164,7 @@ export class Chunks {
   private interior: string | null = null;
   group = new THREE.Group();
   /** A primitive stops drawing when it would cover fewer than about this many rendered pixels across. */
-  lodPx = 0;
+  lodPx = 2.5;
   /** `ground(x, z)` is the terrain height; with it, slabs lying on the ground are kept out of the shadow pass. */
   constructor(private ground: ((x: number, z: number) => number) | null = null) {
     for (let i = 0; i < N * N; i++) { this.solidG.push(this.staging()); this.leafG.push(this.staging()); }

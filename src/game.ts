@@ -36,7 +36,8 @@ const _v = new THREE.Vector3();
 export class Game {
   renderer!: Renderer;
   scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(60, 1, 0.3, 1400);
+  /** far plane: the zone is 500 m square, so nothing in it is ever further than its 735 m diagonal; the sky dome sits at 0.9 of this */
+  camera = new THREE.PerspectiveCamera(60, 1, 0.3, 840);
   env!: Environment;
   terrain!: Terrain;
   grass!: Grass;
