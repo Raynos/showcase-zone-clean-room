@@ -18,16 +18,20 @@ const RAY_EYE = groups(0xffff, CG.WORLD | CG.PROP | CG.NOCAM);
 /** Vertical field of view in first person, before the player's offset. Chosen by looking (docs/UI-ENGINE-PLAN.md U4). */
 export const FP_FOV = { portrait: 72, landscape: 50 };
 /**
- * Shooter stance in third person (docs/UI-ENGINE-PLAN.md U5): the pivot sits at eye height and
- * `side` metres over the right shoulder, `dist` behind it, looking straight down the aim, so the
- * crosshair at screen centre is the aim and the hero stands off to the left. Hip fire, then fully
- * aimed down sights. Portrait is narrow: the lens sits farther back, higher and wider of the
- * shoulder, so the hero stays low and left of the crosshair at every pitch and never covers the aim.
+ * Shooter stance in third person (docs/UI-ENGINE-PLAN.md U5): the pivot sits at head height and out
+ * over the right shoulder, `dist` behind it, looking straight down the aim, so the crosshair at screen
+ * centre is the aim and the hero stands to one side with the head level with it. Hip fire, then fully
+ * aimed down sights. How far out the pivot goes is worked out each frame from the lens's distance and
+ * field of view, so the hero's head sits `frac` of the half-width from the centre whatever the pitch,
+ * the zoom or a wall pulling the lens in, and the near shoulder and weapon arm stay `clear` of it.
+ * Portrait is narrow: the hero sits farther out, back, head and weapon arm from the waist up.
  */
 export const SHOULDER = {
-  portrait: { side: [0.76, 0.58], dist: [3.5, 2.1], lift: 0.95 },
-  landscape: { side: [1.05, 0.8], dist: [2.9, 2.0], lift: 0.8 },
+  portrait: { frac: [0.6, 0.62], dist: [2.6, 3.0], lift: 0.72, clear: 0.12 },
+  landscape: { frac: [0.34, 0.5], dist: [2.9, 2.0], lift: 0.8, clear: 0.12 },
 };
+/** half the width of the hero's shoulders and weapon arm, seen from behind, metres */
+const HERO_HALF = 0.32;
 /** Shooter pitch limits (up, down): flyers are shot from below. */
 const SH_UP = -1.0, SH_DOWN = 1.15;
 
@@ -352,7 +356,10 @@ export class CameraRig {
     if (sh > 0.001) {
       // over the shoulder: the pivot moves out to the side (swept, so it never enters a wall) and the
       // lens looks straight down the aim from behind it, so the hero stands off the crosshair
-      const off = this.side * lerp(cfg.side[0], cfg.side[1], this.ads) * sh, sg = Math.sign(off) || 1, m = Math.abs(off);
+      // the hero's head at `frac` of the half-width out from the crosshair, the near shoulder `clear` of it
+      const tanH = Math.tan((this.cam.fov * Math.PI) / 360) * this.cam.aspect, depth = Math.max(0.6, this.distCur) * tanH;
+      const want = Math.max(lerp(cfg.frac[0], cfg.frac[1], this.ads) * depth, HERO_HALF + cfg.clear * depth);
+      const off = this.side * want * sh, sg = Math.sign(off) || 1, m = Math.abs(off);
       _v.set(Math.cos(this.yaw) * sg, 0, -Math.sin(this.yaw) * sg);
       const room = this.physics.spherecast(pivot, _v, m, LENS_R * 0.8, RAY_WORLD);
       pivot.addScaledVector(_v, room === null ? m : Math.max(0, room - 0.02));

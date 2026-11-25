@@ -166,7 +166,13 @@ export class Hud {
     this.applyLayout(true);
   }
   /** The stance picks the action layout (melee today; the shooter stance brings its own tables). */
-  setStance(s: Stance) { if (s !== this.stance) { this.stance = s; this.applyLayout(true); } }
+  setStance(s: Stance) { if (s !== this.stance) { this.stance = s; this.keycaps(); this.applyLayout(true); } }
+  /** In the shooter stance R reloads (core/input.ts), so skill 2 shows its other key. */
+  private keycaps() {
+    const sh = this.stance === 'shooter', k2 = this.acts.skill2?.root.querySelector('.key'), kr = this.acts.reload?.root.querySelector('.key');
+    if (k2) k2.textContent = sh ? '2' : ACT.skill2.key;
+    if (kr) kr.textContent = sh ? 'R' : ACT.reload.key;
+  }
   /** Put an element into a slot (modules that own their own DOM: tip cards, the frame-rate chip, the view toggle). */
   mount(id: SlotId, e: HTMLElement) { if (e.parentElement !== this.slots[id]) this.slots[id].appendChild(e); }
 

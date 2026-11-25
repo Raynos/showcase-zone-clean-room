@@ -552,8 +552,9 @@ export class Combat {
   }
   muzzlePos(out: THREE.Vector3) {
     const pl = this.game.player, w = pl.weaponModel;
-    // out of a roll or off the ground the weapon can be at the hero's feet: shoot from the chest instead
-    if (w && w.tip.getWorldPosition(out).y > pl.pos.y + 0.6) return out;
+    // shots leave the weapon's muzzle (a bow's arrow rest); out of a roll or off the ground the weapon
+    // can be at the hero's feet: shoot from the chest instead
+    if (w && (w.muzzle ?? w.tip).getWorldPosition(out).y > pl.pos.y + 0.6) return out;
     return out.set(pl.pos.x + Math.sin(pl.yaw) * 0.6, pl.pos.y + 1.35, pl.pos.z + Math.cos(pl.yaw) * 0.6);
   }
 

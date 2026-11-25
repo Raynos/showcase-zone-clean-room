@@ -464,6 +464,8 @@ export class Game {
 
     // world + fx
     this.env.update(rdt, this.camera, pl.pos, this.renderer);
+    // first person: a ranged weapon is placed on the final view (systems/viewmodel.ts)
+    this.combat.shooter.vm.update(rdt);
     this.grass.begin(this.camera.position, pl.pos, this.env.sunDir, this.env.sky.u.uSunColor.value, this.env.sky.u.uSunGlow.value);
     // robots near the player press the grass down so they stay readable
     let np = 0;

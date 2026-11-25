@@ -10,6 +10,7 @@ import { cast, launchDir, type RayHit } from './ballistics';
 import type { ActionSlot, Combat, Hittable } from './combat';
 import type { Stance } from './stance';
 import { Gyro } from '../core/input-gyro';
+import { ViewModel } from './viewmodel';
 
 type GunKind = keyof typeof GUNS;
 const _f = new THREE.Vector3(), _r = new THREE.Vector3(), _u = new THREE.Vector3(), _d = new THREE.Vector3(), _m = new THREE.Vector3(), _p = new THREE.Vector3(), _c = new THREE.Vector3();
@@ -29,6 +30,8 @@ export class Shooter {
   readonly overlay: Crosshair;
   readonly assist: AimAssist;
   readonly gyro: Gyro;
+  /** first person: the weapon on the view, the sights on the axis (systems/viewmodel.ts) */
+  readonly vm: ViewModel;
   /** aimed down sights: wanted (the button), and the 0..1 blend toward it */
   ads = false; adsK = 0;
   /** seconds fully aimed (the rifle steadies) */
@@ -54,7 +57,8 @@ export class Shooter {
   private shotPose = 0; private shotAnim: 'rifleFire' | 'bowRelease' | 'xbowFire' | null = null;
   private cockT = 0;
   private hoverT = 0;
-  private aimN = 0;
+  /** how robots' bodies are tested: rigid per-bone triangle pieces (true) or the skinned mesh raycast ('mesh', tests only) */
+  bodyTest: true | 'mesh' = true;
   /** a free burst in flight (a crossbow counter or swap strike): bolts left, time to the next, damage, critical first bolt */
   private burstN = 0; private burstT = 0; private burstMul = 0; private burstCrit = false; private burstFirst = false;
   /** Three bolts in quick succession at the crosshair, from no magazine. */
@@ -64,6 +68,7 @@ export class Shooter {
     this.overlay = new Crosshair(game);
     this.assist = new AimAssist(game, this);
     this.gyro = new Gyro();
+    this.vm = new ViewModel(game, this);
   }
 
   get kind(): GunKind | null { const k = this.combat.kind; return k === 'bow' || k === 'crossbow' || k === 'rifle' ? k : null; }
@@ -79,6 +84,7 @@ export class Shooter {
   /** Drop aim, draw and reload (stance change, weapon change, a cutscene). Magazines keep their rounds. */
   reset() {
     const pl = this.game.player;
+    pl.pose.shoot = null;
     if (this.drawing) pl.weaponModel?.setDraw?.(0);
     this.ads = false; this.adsT = 0; this.drawing = false; this.draw = 0; this.fullT = 0;
     this.reloadT = 0; this.bloom = 0; this.kickPend = 0; this.kickYaw = 0; this.climb = 0; this.shotAnim = null;
@@ -121,7 +127,7 @@ export class Shooter {
    * Solve the crosshair (with `spread`): the first thing on the camera's ray. Writes the point to `out`
    * and returns the hit. `pierce` lets a rifle round go on through.
    */
-  solve(out: THREE.Vector3, spread = 0, pierce = 1, precise = true): RayHit[] {
+  solve(out: THREE.Vector3, spread = 0, pierce = 1, precise: boolean | 'mesh' = this.bodyTest): RayHit[] {
     const cam = this.game.camera;
     this.basis();
     const skip = this.skip();
@@ -196,14 +202,9 @@ export class Shooter {
 
     // ---- what the crosshair is on (no spread): the overlay, assist and the target frame read it
     this.hoverT -= rdt;
-    // the animated-mesh test costs about a millisecond: every third frame, and in between the cheap
-    // body-and-weak-point test, keeping the last mesh verdict while that test agrees on the robot
-    const precise = this.aimN++ % 3 === 0 || !this.aim;
-    const hits = this.solve(this.aimPt, 0, 1, precise);
-    const prev = this.aim;
+    // every frame, against the per-bone body pieces (systems/ballistics.ts `bodyCast`): the same test a shot makes
+    const hits = this.solve(this.aimPt, 0, 1);
     this.aim = hits[0];
-    if (!precise && prev && prev.h && this.aim.h === prev.h && !this.aim.zone) this.aim = { ...this.aim, zone: prev.zone };
-    else if (!precise && prev && !prev.h && this.aim.h && !this.aim.zone) this.aim = prev;
     if (this.aim.h) { c.target = this.aim.h; this.hoverT = 2.5; }
     else if (this.hoverT <= 0 || (c.target && !c.target.alive)) c.target = null;
 
@@ -248,14 +249,29 @@ export class Shooter {
   /** What the hero's body does: a reload, a draw, the last shot's kick, or the weapon up to the eye. */
   private pose(dt: number) {
     const g = this.game, c = this.combat, pl = g.player, k = this.kind;
-    if (c.skillRunning) return;
+    if (c.skillRunning || !k) { pl.pose.shoot = null; return; }
     const cam = g.camera;
     pl.pose.weapon = c.kind; pl.pose.drawn = true;
     // the weapon points where the shot will go
+    // the arms' named hold (entities/humanoid/shootpose.ts): hip, aimed, a reload or a draw, and the last shot's kick
+    const pre = k === 'bow' ? 'bow' : k === 'crossbow' ? 'xbow' : 'rifle', P = pl.pose;
+    const aimed = this.adsK > 0.5;
+    if (this.reloading) { P.shoot = k === 'crossbow' ? 'xbowReload' : 'rifleReload'; P.shootT = clamp01(1 - this.reloadT / this.reloadDur); }
+    else if (k === 'bow' && this.drawing) { P.shoot = aimed ? 'bowAds' : 'bowDraw'; P.shootT = this.draw; }
+    else if (k === 'bow' && this.sinceShot < 0.5) { P.shoot = 'bowReload'; P.shootT = this.sinceShot / 0.5; }
+    else { P.shoot = aimed ? `${pre}Ads` as 'rifleAds' : `${pre}Hip` as 'rifleHip'; P.shootT = 0; }
+    P.shootK = 1;
+    P.shootKick = this.sinceShot < 0.03 ? this.sinceShot / 0.03 : Math.exp(-(this.sinceShot - 0.03) * 12);
     pl.pose.aimPitch = clamp(Math.atan2(this.aimPt.y - (pl.pos.y + 1.4), Math.max(0.5, Math.hypot(this.aimPt.x - pl.pos.x, this.aimPt.z - pl.pos.z))), -0.9, 0.9);
     void cam;
     if (this.reloading) { pl.action = 'xbowReload'; pl.actionT = clamp01(1 - this.reloadT / this.reloadDur); return; }
     if (this.drawing) { pl.action = 'bowDraw'; pl.actionT = this.draw; return; }
+    // first person: the weapon is on the view and the hands follow it (systems/viewmodel.ts); the
+    // third-person archer's and rifleman's twist would swing a shoulder across the lens
+    if (this.vm.k * g.cameraRig.eyeAmount > 0.5) {
+      if (pl.action === 'rifleAim' || pl.action === 'xbowReload' || pl.action === 'bowDraw' || pl.action === 'rifleFire' || pl.action === 'bowRelease' || pl.action === 'xbowFire') pl.action = null;
+      return;
+    }
     if (this.shotAnim) {
       this.shotPose += dt / (this.shotAnim === 'rifleFire' ? 0.42 : this.shotAnim === 'bowRelease' ? 0.3 : 0.14);
       if (this.shotPose < 1) { pl.action = this.shotAnim; pl.actionT = this.shotPose; return; }
@@ -378,7 +394,7 @@ export class Shooter {
     const len = _d.length(); _d.multiplyScalar(1 / Math.max(1e-3, len));
     let list = hits;
     if (len > 1.2) {
-      const block = cast(g, _m, _d, len - 0.4, { pierce: 1, precise: true });
+      const block = cast(g, _m, _d, len - 0.4, { pierce: 1, precise: this.bodyTest });
       const b = block[0];
       if ((b.h && b.h !== hits[0].h) || (!b.h && !b.miss && b.t > 0.4)) list = [b];
     }
