@@ -197,6 +197,122 @@ and `null` goes out when there is no target.
   ×1.15 damage, and it adds a sweeping beam, triple rings and a chasing
   stamp.
 
+## Shooter stance
+
+A bow, crossbow or rifle in hand puts the hero in the shooter stance; a
+sword or spear puts it back in the melee stance. One state,
+`game.combat.stance`, changed only by `setStance` (`src/systems/stance.ts`)
+when the weapon changes, read by the camera, input, HUD, crosshair and
+robots. It works in both views. Code: `src/systems/shooter.ts` (aim, guns,
+recoil, reload), `ballistics.ts` (hit solving), `weakpoints.ts`,
+`aimassist.ts`, `src/core/input-gyro.ts`, `src/ui/crosshair.ts` and
+`crosshair.css` (overlay), numbers in `src/data/moves.ts` (`GUNS`),
+`weakpoints.ts` and `shooter-roles.ts`.
+
+### Aim and fire
+
+- Nothing targets or turns for the player. The crosshair is at the centre of
+  the view; the body faces the camera's aim and the stick strafes.
+- Third person is over the right shoulder (left with left-handed controls):
+  the lens looks straight down the aim from beside the head, so the hero
+  stands low and left of the crosshair. First person uses the eye camera.
+- Every shot is solved from the camera through the crosshair (plus spread)
+  to the first thing on that ray: the animated robot mesh, its weak-point
+  spheres, or the world. The stretch of ray behind the hero is skipped. The
+  shot then leaves the muzzle for that point. If something else stands
+  between the muzzle and the point, it takes the shot. A weak point counts
+  when the ray reaches its sphere no later than the surface around it.
+- Rifle rounds are hitscan through up to three robots (×1, ×0.6, ×0.35).
+  Arrows and bolts are projectiles with travel time and drop, zeroed so they
+  land on the crosshair out to the zero range and fall short beyond it. A
+  projectile that strikes the robot the crosshair was on within 0.7 m of
+  the aimed point takes the aimed weak point.
+- Aim down sights (hold or tap-to-toggle, Settings; tap on touch, hold
+  with a mouse by default): the shoulder lens pulls in and the view
+  narrows; at the eyes the view narrows, and the rifle shows a scope. Look
+  speed while aimed is the setting (×0.8) times the zoom.
+- Recoil kicks the view up and sideways; it is real aim the player pulls
+  back down. When firing stops the climb the player did not pull down
+  recovers. A small camera punch per shot is visual only.
+- Spread is a cone round the crosshair: hip, plus movement, plus air, plus
+  bloom from sustained fire, times the aimed factor. The crosshair's ticks
+  open and close with it.
+- Magazines reload with time, sound and the reload pose. An empty magazine
+  reloads by itself; the trigger on an empty one, the reload button or R
+  starts it. A stagger cuts a reload or a draw.
+- Feedback: a white X on a body hit, a larger gold X and a bright tick on a
+  weak point, a red X on a kill, a grey X off a shield. Damage numbers
+  appear where the shot struck: white, gold and larger for weak points, red
+  for kills. Kills alone get a short hit-stop.
+
+| Gun      | Mag | Reload | Rate  | Dmg  | Weak | Hip    | Aimed | Kick   |
+|----------|-----|--------|-------|------|------|--------|-------|--------|
+| Bow      | -   | -      | draw  | 1.3  | ×1.0 | 0.012  | ×0.35 | 0.018  |
+| Crossbow | 18  | 1.7 s  | 0.13s | 0.34 | ×1.0 | 0.02   | ×0.45 | 0.0095 |
+| Rifle    | 5   | 2.3 s  | 0.85s | 1.55 | ×1.3 | 0.04   | ×0.06 | 0.065  |
+
+Dmg is the multiple of attack power per shot; Weak multiplies the weak
+point's own multiple (below); Hip is the spread half-angle in radians
+standing still; Aimed scales it. Movement adds 0.004 (rifle 0.009) per m/s
+and the air 0.03 to 0.06. The bow draws in 0.62 s; a full draw loosed
+within 0.3 s is a perfect shot (critical). The crossbow fires while held,
+blooms 0.0045 a bolt to 0.035, and every third bolt carries the selected
+special ammunition. The rifle held aimed and still for 0.5 s is steady
+(×1.3). Projectiles: bow 74 m/s, gravity 9, zeroed at 32 m; crossbow 96 m/s,
+gravity 3.5, zeroed at 45 m. Aimed, movement is ×0.45 to ×0.62.
+
+### Weak points
+
+Every robot has one or two, attached to a bone, lit in the robot's warning
+colours while the shooter stance is up (gold for sensors, orange for vents
+and tanks), with a slow pulsing ring. Body shots work but are slow; weak
+points are the skill.
+
+| Robot        | Weak points (×damage)                |
+|--------------|--------------------------------------|
+| Crate Mite   | maw ×2.2 (front), vent ×2.6 (back)   |
+| Pallet Jack  | eye ×2.2 (front), engine ×2.6 (back) |
+| Plumb Drone  | lens ×2.4, bubble ×2.0               |
+| Welder Unit  | mask ×2.2, tank ×2.6 (back)          |
+| Riveter      | eye ×2.4, drum ×2.0                  |
+| Arc Sentry   | lens ×2.4, coil ×2.0                 |
+| Vault Warden | dial ×1.8                            |
+| Foreman      | visor ×1.8, whistle ×2.0             |
+| Crate Titan  | heart ×1.6                           |
+
+### Robots worth shooting
+
+Only while the player is in the shooter stance (`src/data/shooter-roles.ts`);
+the melee stance meets the same camps exactly as before, and bosses keep
+their scripts.
+
+- **Gunners** (Riveter, Arc Sentry, every other Crate Mite): keep a distance
+  band, strafe hard and often, and fire slow shots whose lane is marked red
+  on the ground and locks before the shot, so stepping out of the lane or a
+  roll dodges it. Mite gunners gain a slow spit (0.95 s wind-up, 15 m/s).
+- **Flyers** (Plumb Drone): climb 2.6 m while they fight and hold it, keep
+  9 to 16 m off, and come down to dive.
+- **Shields** (Pallet Jack, Welder Unit): the front (±60°) lets through a
+  quarter of a shot's damage unless it hits a weak point; they turn slowly,
+  so a flank or the eye on the front is the answer.
+
+### Touch aim assist and gyro
+
+Touch only, in Settings, never a snap. Slow-down: near or on a robot the
+look speed drops up to 33 % (setting 0..1, default 0.6). Pull: aimed, the
+crosshair drifts toward the nearest weak point within 3.2° plus its size,
+capped in rate and only while the player is moving the view, moving or
+firing, and only toward a weak point in plain sight. Gyro aiming is off by
+default; turning it on asks iOS for motion access from that tap.
+
+### Skills and Overdrive
+
+Every ranged skill and Overdrive fires where the crosshair points: volleys
+and bursts spread round it, Piercer and the rail shot run down it (weak
+points counted), Arrow Rain lands where it meets the ground (34 m at most),
+the bow's storm falls round it. Counters and swap strikes fire at it at
+once. Skills do not spend the magazine.
+
 ## Build
 
 - **Perks.** One point per level from level 2, 19 in all. Three short trees:
@@ -212,17 +328,20 @@ The HUD owns layout and drawing. Combat owns state. Combat calls, once per
 change and at most once per frame:
 
 ```ts
-hud.setActionBar(slots: ActionSlot[])
+hud.setActionBar(slots: ActionSlot[], bar?: { stance: 'melee' | 'shooter' })
+hud.setStance?(stance)   // also called by setStance on every change
 
 interface ActionSlot {
   id: 'attack' | 'dodge' | 'jump' | 'skill1' | 'skill2' | 'skill3'
-    | 'overdrive' | 'swap' | 'kit' | 'target' | 'mount';
+    | 'overdrive' | 'swap' | 'kit' | 'target' | 'mount'
+    | 'fire' | 'fire2' | 'aim' | 'reload';     // shooter stance
   icon: string;          // icon id; weapon-specific for attack and skills
   label: string;         // two words at most, shown until learned
   state: 'ready' | 'cooldown' | 'noenergy' | 'locked' | 'hidden' | 'active';
   cd?: number;           // 0..1 remaining, for the sweep
   charge?: number;       // 0..1, attack hold or Overdrive meter
-  count?: number;        // kits left, ammo
+  count?: number;        // kits left; rounds in the magazine
+  mag?: number;          // shooter stance: magazine size, beside count
   cdSec?: number;        // seconds of cooldown left, printed over the sweep
   unlock?: number;       // level that opens a locked slot (skill 3: 6,
                          // Overdrive: 10 when left out)
@@ -252,6 +371,20 @@ How the HUD (`src/ui/hud.ts`) reads a slot:
   the target button presses `target`; holding it calls
   `game.engage.clearTarget()`. A drag that starts on the held attack button
   turns the camera after 8 px, like a look-drag.
+
+In the shooter stance combat sends `fire` (the trigger: label Fire, Draw,
+Full, Steady or Reload; `charge` is the bow's draw; `count`/`mag` the
+magazine, state `cooldown` with `cd`/`cdSec` while reloading), `fire2` (the
+same, for the left thumb), `aim` (`active` while aimed, `charge` the blend)
+and `reload` (`cooldown` when the magazine is full). `attack` mirrors `fire`
+and `target` mirrors `aim` for layouts without shooter slots; the shooter
+layout hides them. `fire` and `fire2` press `attack`, `aim` presses `aim`,
+`reload` presses `reload`. There is no `target` slot in this stance:
+nothing is targeted, and robots show no floating nameplates.
+
+The crosshair, hit markers, the magazine under the crosshair and the scope
+are not HUD slots: `src/ui/crosshair.ts` draws them in its own layer under
+the buttons.
 
 Target-frame extras come through `hud.setTargetState({ stagger: 0..1,
 broken: boolean, effects: string[] })`. `stagger` fills a bar under the

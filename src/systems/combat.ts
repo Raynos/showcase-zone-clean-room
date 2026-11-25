@@ -1463,8 +1463,9 @@ export class Combat {
           _v2.set(s.x + _d.x * hitT, s.y + _d.y * hitT, s.z + _d.z * hitT);
           // the strike and what follows it reuse the scratch vectors: keep the direction and the impact point
           const ix = _v2.x, iy = _v2.y, iz = _v2.z, ax = _d.x, ay = _d.y, az = _d.z;
-          // the crosshair was on a weak point of this robot and the shot came down where it was aimed: that weak point
-          if (!zone && s.aimZone && s.aimH === best && s.aimPt && s.aimPt.distanceTo(_v2) < 0.7) zone = s.aimZone;
+          // the shot came down on the robot the crosshair was on, where it was aimed: what the crosshair said
+          // (that weak point, or the body) is what it hit, whatever the muzzle's slightly different line grazed
+          if (s.aimH === best && s.aimPt && s.aimPt.distanceTo(_v2) < 0.7) zone = s.aimZone ?? null;
           const src = s.src ?? (s.kind === 'arrow' ? 'arrow' : 'bolt');
           if (s.precise) this.strikeTarget(best, s.dmg * (zone ? zone.def.mult * (s.weakK ?? 1) : 1), { source: src, knock: s.knock, crit: s.crit || undefined, stun: s.stun || undefined, heavy: s.heavy, poise: zone ? s.weakPoise ?? s.poise * 2 : s.poise, fromX: s.x - ax * 2, fromZ: s.z - az * 2, status: s.status, at: _v2.clone(), weak: zone?.def.name, shot: true });
           else this.strikeTarget(best, s.dmg, { source: src, knock: s.knock, crit: s.crit || undefined, stun: s.stun || undefined, heavy: s.heavy, poise: s.poise, fromX: s.x - ax * 2, fromZ: s.z - az * 2, status: s.status });
