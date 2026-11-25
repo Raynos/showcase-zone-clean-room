@@ -13,7 +13,7 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries([
   I('bolt_shock', 'Shock Bolts', 'uncommon', 'ammo', 6, 'bolt_shock', 'Crossbow ammo: chains lightning.', 200),
   I('bolt_blast', 'Blast Bolts', 'uncommon', 'ammo', 9, 'bolt_blast', 'Crossbow ammo: explodes.', 200),
   I('bolt_pierce', 'Piercing Bolts', 'uncommon', 'ammo', 7, 'bolt_pierce', 'Crossbow ammo: goes through everything.', 200),
-  I('cog', 'Brass Cog', 'uncommon', 'quest', 0, 'cog', 'A collectible cog stamped with the yard crest. There are 40 hidden across the zone.', 99),
+  I('cog', 'Brass Cog', 'uncommon', 'quest', 0, 'cog', 'A collectible cog stamped with the yard crest. Dozens are hidden across the zone, on rooftops, under decks and off the beaten track.', 99),
   I('beacon_fuse', 'Beacon Fuse', 'uncommon', 'quest', 0, 'fuse', 'Lights one storm beacon.', 4),
   I('vault_key', 'Vault Keycard', 'rare', 'key', 0, 'key', 'Opens the Training Vault portal.', 1),
 ].map((d) => [d.id, d]));
