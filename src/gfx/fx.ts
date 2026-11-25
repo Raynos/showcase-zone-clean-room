@@ -4,6 +4,7 @@ import { FLASHL, WorldMaterial } from './material';
 import { T } from './textures';
 import { RB, SP, SP_COLS, SP_ROWS, buildSpriteAtlas } from './vfx/atlas';
 import { GroundMarks, TELE_VIEW, type Telegraph } from './vfx/ground';
+import { Glints } from './vfx/glints';
 import { Ribbons, TRAIL_LOOKS, Trail, type FollowLook, type TrailLook } from './vfx/ribbons';
 import { RECIPES, SHOT_LOOKS, type Ctx, type Surf } from './vfx/recipes';
 
@@ -248,11 +249,16 @@ export class FX {
   calm = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   time = 0;
   private camPos = new THREE.Vector3();
+  /** metres from the lens inside which an effect is born 'in the sights': it is sized to its distance and leaves no smoke (longer through a scope) */
+  private reach = 1.7;
+  /** weak points as light (vfx/glints.ts), and where and when one was last struck */
+  private glints = new Glints();
+  private weakHit = { x: 0, y: 0, z: 0, t: 0 };
 
   constructor() {
     const tex = buildSpriteAtlas();
     this.add = new Pool(tex, true); this.alpha = new Pool(tex, false);
-    this.group.add(this.marks.mesh, this.alpha.mesh, this.add.mesh, this.ribbons.mesh);
+    this.group.add(this.marks.mesh, this.alpha.mesh, this.add.mesh, this.ribbons.mesh, this.glints.mesh);
     // debris: one irregular block; planks, plates and struts are the same block scaled
     const dg = new THREE.BoxGeometry(1, 1, 1);
     const n = dg.attributes.position.count;
@@ -283,6 +289,10 @@ export class FX {
 
   emit(pos: THREE.Vector3 | { x: number; y: number; z: number }, o: EmitOpts) {
     const pool = o.additive === false ? this.alpha : this.add;
+    // born within reach of the lens (first person, the sights, a scope): the same size on screen as it
+    // would be from the shoulder, and no smoke left hanging in the sight picture
+    const cp = this.camPos, nd = Math.hypot(pos.x - cp.x, pos.y - cp.y, pos.z - cp.z), near = nd < this.reach ? Math.max(0.3, nd / this.reach) : 1;
+    if (near < 0.8 && pool === this.alpha && (o.sprite === SP.PUFF || o.sprite === SP.SMOKE)) return;
     let count = o.count ?? 1;
     if (this.calm && count > 2) count = Math.ceil(count * 0.6);
     const sp = o.speed ?? [1, 2], life = o.life ?? [0.4, 0.8], size = o.size ?? [0.1, 0.2];
@@ -312,12 +322,12 @@ export class FX {
         const u = Math.random() * 2 - 1, ph = Math.random() * TAU, s = Math.sqrt(1 - u * u);
         dx = Math.cos(ph) * s; dy = u; dz = Math.sin(ph) * s;
       }
-      let v = rand(sp[0], sp[1]);
+      let v = rand(sp[0], sp[1]) * near;
       if (mode === 2 && Math.abs(v) < 0.004) v = 0.004;
       pool.px[i] = pos.x + ox + (rr ? (Math.random() - 0.5) * 2 * rr : 0); pool.py[i] = pos.y + (rr ? (Math.random() - 0.5) * rr : 0); pool.pz[i] = pos.z + oz + (rr ? (Math.random() - 0.5) * 2 * rr : 0);
       pool.vx[i] = dx * v; pool.vy[i] = dy * v + (o.up ?? 0); pool.vz[i] = dz * v;
       pool.life[i] = pool.max[i] = rand(life[0], life[1]);
-      const s0 = rand(size[0], size[1]);
+      const s0 = rand(size[0], size[1]) * near;
       pool.s0[i] = s0; pool.s1[i] = s0 * grow;
       if (cols && cols.length) { _c2.setHex(cols[(Math.random() * cols.length) | 0]); pool.r[i] = _c2.r * glow; pool.g[i] = _c2.g * glow; pool.b[i] = _c2.b * glow; }
       else {
@@ -365,7 +375,21 @@ export class FX {
   }
   /** A shot landing on a robot: `kind` is 'body', 'weak' (a weak point), 'deflect' (armour) or 'kill'. */
   shotImpact(pos: THREE.Vector3, normal: THREE.Vector3, kind: 'body' | 'weak' | 'deflect' | 'kill', tint: number, paint: number[] | null = null) {
-    this.play('shot.' + kind, pos, normal, tint, 1, 0, paint);
+    this.play(kind === 'weak' ? 'shot.weak' : kind === 'kill' ? 'shot.kill' : kind === 'deflect' ? 'shot.deflect' : 'shot.body', pos, normal, tint, 1, 0, paint);
+    if (kind === 'weak') { const w = this.weakHit; w.x = pos.x; w.y = pos.y; w.z = pos.z; w.t = 0.3; }
+  }
+  /**
+   * A weak point, shown as light for this frame (call every frame it should show: shooter stance only).
+   * `body` and `bodyR` are the robot it belongs to: from the robot's far side the mark is drawn through
+   * the body, dimmer. It brightens by itself as the crosshair nears it and flares when it is struck.
+   */
+  weakMark(pos: { x: number; y: number; z: number }, r: number, color: number, body: { x: number; z: number }, bodyR: number) {
+    const c = this.camPos, ox = pos.x - body.x, oz = pos.z - body.z, cx = c.x - pos.x, cz = c.z - pos.z;
+    // facing the lens when the way out of the body and the way to the camera agree
+    const facing = ox * cx + oz * cz > -0.15 * Math.hypot(ox, oz) * Math.hypot(cx, cz);
+    const w = this.weakHit, dx = pos.x - w.x, dy = pos.y - w.y, dz = pos.z - w.z, lim = r * 2.5 + 0.25;
+    const flash = w.t > 0 && dx * dx + dy * dy + dz * dz < lim * lim ? w.t / 0.3 : 0;
+    this.glints.add(pos.x, pos.y, pos.z, r * 2.6, color, facing ? 1 : 0.5, flash, facing ? Math.min(0.5, bodyR * 0.5) : bodyR * 2 + 0.4);
   }
   /** A shot landing on the world: sparks off metal, dust and grit off the ground, splinters off wood. */
   surfaceHit(pos: THREE.Vector3, normal: THREE.Vector3, tint = 0xffc46a) {
@@ -424,6 +448,8 @@ export class FX {
     FLASHL[i].set(pos.x, pos.y, pos.z, radius);
     best.color.setHex(color);
     intensity *= this.calm ? 0.15 : 0.3;
+    // a light beside the lens whites out the weapon in hand
+    { const cp = this.camPos; if (Math.hypot(pos.x - cp.x, pos.y - cp.y, pos.z - cp.z) < this.reach) intensity *= 0.3; }
     best.peak = intensity; best.life = best.dur = dur;
     FLASHL[i + 1].set(best.color.r * intensity, best.color.g * intensity, best.color.b * intensity, intensity);
   }
@@ -453,6 +479,7 @@ export class FX {
   update(dt: number, camera: THREE.Camera, fogColor: THREE.Color, fogDensity: number) {
     this.time += dt;
     this.camPos.copy(camera.position);
+    this.reach = 1.7 * Math.max(1, camera.projectionMatrix.elements[5] / 1.6);
     // timeline: beats that were set to follow
     for (let i = 0; i < this.cueN; i++) {
       const c = this.cues[i];
@@ -514,6 +541,8 @@ export class FX {
       if (this.debrisMesh.instanceColor) this.debrisMesh.instanceColor.needsUpdate = true;
     }
     this.marks.update(dt);
+    if (this.weakHit.t > 0) this.weakHit.t -= dt;
+    this.glints.update(dt, (camera as THREE.PerspectiveCamera).aspect ?? 1);
     this.ribbons.update(dt, this.camPos, fogColor, fogDensity * 0.9);
     for (let i = 0; i < this.lights.length; i++) {
       const l = this.lights[i];

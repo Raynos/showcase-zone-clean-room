@@ -1,7 +1,7 @@
 // Effects strips and draw-call measurements. Run in the page by tools/vfx/strip.sh after
 // tools/golden/lib.js, on the same fixed 60 Hz clock and seeded RNG as the golden frames.
 //
-// A strip scene is { name, hour?, weather?, every, cells, crop?, setup(G, g), act(G, g) }:
+// A strip scene is { name, hour?, weather?, every, cells, crop?, cols?, cw?, setup(G, g), act(G, g) }:
 // `setup` stages the fight, `act` starts the move, and from that frame on every `every`-th
 // rendered frame is copied from the game canvas into one cell of a contact sheet (4 across).
 // A measure scene is { name, measure: seconds, setup, act }: it records the worst draw calls
@@ -75,6 +75,32 @@
     { name: 'titan-p2', every: 14, cells: 16, crop: [0, 0.12, 1, 0.76],
       async setup(G, g) { await titanP2(G, g); },
       async act() {} },
+    // weak points in the shooter stance: a robot seen from the front, the side and behind, then the
+    // crosshair brought onto its eye, then a hit on it. --q "melee=1" is the same walk with a sword (no marks).
+    { name: 'weak-points', every: 12, cells: 15, cols: 3, cw: 426, crop: [0.15, 0.3, 0.8, 0.36],
+      async setup(G, g) {
+        const melee = new URLSearchParams(location.search).has('melee');
+        arm(G, g, 10, melee ? 'shop_blade' : 'rivet_rifle'); g.mobs.playerHostile = false;
+        G.place(52, -16, 1.2);
+        const at = (a, d) => [52 + Math.sin(a) * d, -16 + Math.cos(a) * d];
+        this.ms = [['pallet', 1.2, 7], ['welder', 0.85, 8], ['drone', 1.55, 8], ['mite', 1.38, 4.5]].map(([k, a, d]) => { const p = at(a, d); return G.spawn(k, p[0], p[1], { level: 3, hpMul: 30 }); });
+        await G.settleMobs(); await G.secs(0.5);
+        // statues: the marks are what is being looked at
+        for (const m of this.ms) m.update = () => {};
+        G.quiet();
+      },
+      async act(G, g) {
+        const m = this.ms[0], y = g.player.pos.y;
+        const stand = async (a, d, pitch, secs) => { g.player.teleport(m.pos.x - Math.sin(a) * d, y, m.pos.z - Math.cos(a) * d, a); await G.frames(2); G.camBehind(m.pos.x, m.pos.z, pitch, 1); await G.secs(secs); };
+        const face = m.yaw + PI;                       // standing here the robot faces the hero
+        await stand(face, 7, 0.1, 0.5); await stand(face + PI / 2, 7, 0.1, 0.5); await stand(face + PI, 7, 0.1, 0.5);
+        await stand(face, 6, 0.1, 0.17);
+        const pt = g.combat.shooter.weakCentre(m, 0);
+        if (pt) {
+          await aimAt(G, g, pt); await G.secs(0.3);
+          g.fx.shotImpact(pt, g.player.pos.clone().sub(pt).normalize(), 'weak', g.state.weapon.color, m.def.colors);
+        }
+      } },
     { name: 'world-levelup', every: 6, cells: 12,
       async setup(G, g) { arm(G, g, 5, 'shop_blade'); G.place(52, -16, 1.2); G.cam(1.2 + PI, 0.2, 1.0); await G.secs(0.5); G.quiet(); },
       async act(G, g) { g.fx.levelUp(g.player.pos); await G.secs(0.6); g.fx.heal(g.player.pos); await G.secs(0.35); g.fx.pickup(g.player.pos); } },
@@ -105,6 +131,20 @@
       async act(G, g) { await brawl(G, g, 10); } },
   ];
 
+  /** turn the held camera until a world point sits under the crosshair (screen centre) */
+  async function aimAt(G, g, pt) {
+    const err = () => { const v = pt.clone().applyMatrix4(g.camera.matrixWorldInverse); return [Math.atan2(v.x, -v.z), Math.atan2(v.y, -v.z)]; };
+    let sx = -1, sy = -1;
+    for (let i = 0; i < 12; i++) {
+      const e = err(), h = G._hold;
+      if (!h || Math.hypot(e[0], e[1]) < 0.006) break;
+      G.cam(h.yaw + sx * e[0] * 0.8, h.pitch + sy * e[1] * 0.8, h.zoom);
+      await G.frames(5);
+      const n = err();
+      if (Math.abs(n[0]) > Math.abs(e[0]) + 1e-4) sx = -sx;
+      if (Math.abs(n[1]) > Math.abs(e[1]) + 1e-4) sy = -sy;
+    }
+  }
   async function titanP2(G, g) {
     G.level(20);
     g.hooks.enterArena();
@@ -180,7 +220,7 @@
       }
       const src = g.renderer.gl.domElement, crop = sc.crop ?? [0.06, 0.24, 0.88, 0.56];
       const sx = crop[0] * src.width, sy = crop[1] * src.height, sw = crop[2] * src.width, sh = crop[3] * src.height;
-      const cols = 4, rows = Math.ceil(sc.cells / cols), cw = 320, ch = Math.round(cw * sh / sw);
+      const cols = sc.cols ?? 4, rows = Math.ceil(sc.cells / cols), cw = sc.cw ?? 320, ch = Math.round(cw * sh / sw);
       const cv = document.createElement('canvas'); cv.width = cols * cw; cv.height = rows * ch;
       const c2 = cv.getContext('2d');
       let n = 0, f0 = H.frame + 1;

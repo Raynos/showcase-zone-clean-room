@@ -73,7 +73,7 @@ export class WeakPoints {
     if (_p.lengthSq() < 1e-4) _p.set(0, 0, 1);
     ring.lookAt(_p.normalize());
     // markers are not the body: shots test the zone's sphere, never the marker mesh (systems/ballistics.ts)
-    for (const o of [marker, ring]) { o.castShadow = false; o.receiveShadow = false; o.visible = this.shown; o.userData.noHit = true; anchor.add(o); }
+    for (const o of [marker, ring]) { o.castShadow = false; o.receiveShadow = false; o.visible = false; o.userData.noHit = true; anchor.add(o); }
     return { def: d, mob: m, anchor, marker, ring };
   }
 
@@ -85,15 +85,11 @@ export class WeakPoints {
   update(dt: number) {
     const g = this.game, on = g.combat.stance === 'shooter';
     this.t += dt;
-    const pulse = 1 + 0.12 * Math.sin(this.t * 5.5);
     for (const m of g.mobs.list) {
       if (!m.rig.root.visible) continue;
       const zs = on || this.map.has(m) ? this.zones(m) : NONE;
-      const vis = on && m.alive;
-      for (const z of zs) {
-        if (z.marker.visible !== vis) { z.marker.visible = vis; z.ring.visible = vis; }
-        if (vis) z.ring.scale.setScalar(z.def.r * 0.92 * pulse);
-      }
+      // shown as light, every weak point in one draw call (gfx/vfx/glints.ts); the marker meshes stay hidden
+      if (on && m.alive) for (const z of zs) g.fx.weakMark(_p.setFromMatrixPosition(z.anchor.matrixWorld), this.radius(z), z.def.color, m.pos, m.radius);
     }
     this.shown = on;
   }

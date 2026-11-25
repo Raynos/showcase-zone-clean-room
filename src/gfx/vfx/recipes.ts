@@ -258,6 +258,11 @@ export const RECIPES: Record<string, Recipe> = {
     fx.emit(p, { count: 1, speed: [0, 0], life: [0.1, 0.13], size: [1.3 * s, 1.5 * s], grow: 1.1, color: c.tint, color2: WHITE, glow: 2.4, sprite: SP.SPARKLE, rot: Math.PI / 2, core: 1 });
     fx.emit(p, { count: 1, speed: [0, 0], life: [0.15, 0.18], size: [0.25 * s, 0.25 * s], grow: 3, color: c.tint, glow: 1.1, sprite: SP.RING2, erode: 0.9 });
     fx.emit(p, { count: 2, dir: c.d, align: true, speed: [3, 6], life: [0.1, 0.15], size: [0.5 * s, 0.7 * s], aspect: 0.3, color: c.tint, glow: 1.8, sprite: SP.LINE, drag: 4, radius: 0.12 });
+    // the string itself: it snaps to rest behind the grip and shivers there, three beats of a thin upright line
+    for (let i = 0; i < 3; i++) fx.after(i * 0.035, 'bow.string', _a.copy(p).addScaledVector(c.d, -0.3 - (i === 1 ? 0.05 : 0)), UP, c.tint, 1 - i * 0.25);
+  },
+  'bow.string': (fx, c) => {
+    fx.emit(c.p, { count: 1, dir: UP, align: true, speed: [0, 0], life: [0.045, 0.055], size: [1.25, 1.3], aspect: 0.045, grow: 1, color: c.tint, color2: WHITE, glow: 1.4 + 1.4 * c.s, sprite: SP.LINE, core: 1 });
   },
   /** reload begins: the spent magazine drops (k: 0 crossbow clip, 1 rifle box) */
   'gun.reload': (fx, c) => {
