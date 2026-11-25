@@ -26,8 +26,17 @@ export function startAmbient(game: Game, info: DressInfo) {
   const group = new THREE.Group(); scene.add(group);
 
   // ---- lake
-  const water = liquidMat(0, 0x3d9aa6, 0x1c5670);
-  const lake = new THREE.Mesh(new THREE.CircleGeometry(LAKE.r + 30, 56).rotateX(-Math.PI / 2), water);
+  // water depth over the lake bed, for the shader's shore fade, shallows and foam
+  const LR = LAKE.r + 30, DN = 256;
+  const dh = new Uint16Array(DN * DN);
+  for (let j = 0; j < DN; j++) for (let i = 0; i < DN; i++) {
+    const x = LAKE.x - LR + ((i + 0.5) / DN) * LR * 2, z = LAKE.z - LR + ((j + 0.5) / DN) * LR * 2;
+    dh[j * DN + i] = THREE.DataUtils.toHalfFloat(LAKE.level - game.terrain.h(x, z));
+  }
+  const depthTex = new THREE.DataTexture(dh, DN, DN, THREE.RedFormat, THREE.HalfFloatType);
+  depthTex.minFilter = depthTex.magFilter = THREE.LinearFilter; depthTex.needsUpdate = true;
+  const water = liquidMat(0, 0x3d9aa6, 0x1c5670, { depth: depthTex, x0: LAKE.x - LR, z0: LAKE.z - LR, size: LR * 2 });
+  const lake = new THREE.Mesh(new THREE.CircleGeometry(LR, 56).rotateX(-Math.PI / 2), water);
   lake.position.set(LAKE.x, LAKE.level, LAKE.z); lake.renderOrder = 2;
   group.add(lake);
 
