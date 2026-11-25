@@ -604,6 +604,58 @@ owner's approval of the direction.
 - The bot holds attack for melee combos and reads combat's draw and aim
   fields, so it needs updating after the phase 4 rewrite.
 
+### Run 2 (2026-11-25, in progress): the big levers at once
+
+Nothing from run 2 is pushed. The live URL still shows run 1.
+
+**Rules from the owner after run 2 used the whole Fable allowance:** five
+agents at most, at most two of them on Fable and only for graphics, shaders
+and Blender; everything else on Opus. Agents do not spawn agents.
+
+**Finished and committed.**
+- Light, first pass: contact shadows, baked occlusion, a baked lamp map,
+  live fog, cumulus sky, colour script (`77e85b0` to `d5d06d6`).
+- Surfaces, first pass: 25 painted tiles in `public/tex`, ground blending,
+  grass tufts, branching trees, layered rock, water shore, decals
+  (`11c6862` to `0bece7b`).
+- Camera and controls: engage-only framing (`src/systems/engage.ts`),
+  large-target framing, sphere-cast collision and near-lens dissolve, the
+  action bar on `hud.setActionBar`, target button, aim-drag, haptics,
+  left-handed setting (`45721c3`, `e5377b0`, `7ab2509`, `8c4715a`,
+  `52e79c4`, `6d4759a`).
+- Player combat: input buffer, lunge cap, flinch, stagger and knockdown,
+  heavies, sweep and breaker, counter, swap strike, four skills per weapon,
+  Overdrive (`f3a0acb` to `e364098`). `docs/COMBAT.md` has the numbers.
+- Robots as Blender models, so far: mite, pallet jack, welder, riveter,
+  drone, sentry, foreman, warden. Pipeline is `art/build.py`, output in
+  `public/models`.
+- Beyond the wall and skyline landmarks (`7d29d02`, `c298abf`).
+
+**In flight** (five agents): Rook, townsfolk and Titan models (Fable); a
+second graphics pass on colour grade, remaining light and surface gaps,
+shadow cost and texture memory (Fable); sky traffic, weather, authored
+camera moments and gate walk-arounds (Opus); panels, title and loading
+screen (Opus); enemy stagger and Broken, status effects, telegraphs, threat
+retune, elite mechanics, perks, and the bot update (Opus). Their briefs are
+recoverable from the session transcript.
+
+**Known problems to clear before pushing.**
+- Phone tier is over budget in places; the sun-shadow pass grew to about
+  586k triangles at spawn. Texture memory is about 81 MB.
+- Thrown crates in the Titan arena render as plain yellow blocks.
+- Combat is still no threat until the enemy work lands; the full kit is
+  both fastest and safest.
+- Art below standard in four skills (javelin, Backstep Volley, Arc Wave,
+  Meteor Drive debris).
+- Haptics and thumb reach are untested on a phone.
+- The physics wasm split is still not applied (needs a test-server
+  restart, so it waits for a quiet moment).
+
+**Review pages for the owner.** Targets:
+https://claude.ai/artifact/RFxoYGFJqrCfXdwRG3ptq2. Progress (start, now,
+target): https://claude.ai/artifact/Pk5HQvGonCtTGq9VWkPJSq, republished
+after each batch by re-shooting with `tools/golden.sh all --out <scratch>`.
+
 ## 7. Risks
 
 - **Phone reality.** Every performance number is from desktop Chrome. The
