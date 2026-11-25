@@ -19,6 +19,7 @@ MODELS = {
     'riveter': 'robots.riveter', 'welder': 'robots.welder', 'foreman': 'robots.foreman',
     'warden': 'robots.warden', 'titan': 'robots.titan',
     'rook': 'people.rook', 'folk': 'people.folk',
+    'swords': 'weapons.swords', 'spears': 'weapons.spears', 'bows': 'weapons.bows', 'guns': 'weapons.guns',
 }
 
 

@@ -33,6 +33,7 @@ const HEADROOM = 0.8;
 export const MODEL_NAMES = [
   'mite', 'pallet', 'drone', 'sentry', 'riveter', 'welder', 'foreman', 'warden', 'titan',
   'rook', 'folk',
+  'swords', 'spears', 'bows', 'guns',
 ] as const;
 export type ModelName = (typeof MODEL_NAMES)[number];
 

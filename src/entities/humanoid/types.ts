@@ -95,6 +95,8 @@ export interface HumanPose {
   charge?: number;
   /** 0..1 while the picture is taken from these eyes: a drawn melee weapon is carried higher, into view (rig.ts) */
   fp?: number;
+  /** the view's pitch while it is (radians, + looks down): first-person hands and weapon follow it (fpview.ts) */
+  fpPitch?: number;
 }
 
 /** Knockdown timeline in seconds: thrown back until `fall`, lying until `lie`, on the feet again at `end`. A roll can start from `rollAt`. */
@@ -152,6 +154,13 @@ export interface WeaponModel {
   base: THREE.Object3D;
   /** bows only: call with draw 0..1 to bend limbs and pull the string */
   setDraw?(draw: number): void;
+  /**
+   * Ranged weapons only, each also findable as `object.getObjectByName(...)`. All face +Z down the line of fire.
+   *   muzzle    where the shot leaves (bows: the arrow rest)
+   *   sight     where the eye sits to look down the sights (rear notch, optic's rear lens, bow sight pin)
+   *   foregrip  where the support hand holds (bows: none)
+   */
+  muzzle?: THREE.Object3D; sight?: THREE.Object3D; foregrip?: THREE.Object3D;
 }
 
 export interface HorsePose { time: number; speed: number; vy: number; grounded: boolean; turn: number; /** 0..1 rear-up/whinny */ rear: number }
