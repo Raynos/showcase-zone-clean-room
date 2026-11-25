@@ -15,12 +15,12 @@ type Key = {
 const NIGHT: Omit<Key, 't'> = {
   zenith: 0x050b20, horizon: 0x1a2f55, haze: 0x121f36, light: 0x93b6ff, lightI: 1.15,
   hemiSky: 0x2f4c8c, hemiGround: 0x181c26, hemiI: 0.95, fog: 0x15233f, fogSun: 0x2f4c7a, fogD: 0.00193,
-  exposure: 1.32, sunset: 0, night: 1, cloudLit: 0x6a88b8, cloudDark: 0x0d1526,
+  exposure: 1.32, sunset: 0, night: 1, cloudLit: 0x4c6699, cloudDark: 0x111d3c,
 };
 const DAY: Omit<Key, 't'> = {
   zenith: 0x1f62d2, horizon: 0x9ccaf2, haze: 0xb8d2ea, light: 0xfff0d6, lightI: 3.5,
   hemiSky: 0xa8ccf8, hemiGround: 0x8f7658, hemiI: 0.95, fog: 0xa4c4e8, fogSun: 0xf4e4c8, fogD: 0.00112,
-  exposure: 1.0, sunset: 0, night: 0, cloudLit: 0xffffff, cloudDark: 0x8c9ec2,
+  exposure: 1.0, sunset: 0, night: 0, cloudLit: 0xffffff, cloudDark: 0x7088b8,
 };
 const KEYS: Key[] = [
   { t: 0, ...NIGHT },
@@ -31,7 +31,7 @@ const KEYS: Key[] = [
   { t: 10.5, ...DAY },
   { t: 15.2, ...DAY },
   { t: 17.0, zenith: 0x3070cc, horizon: 0xffd2a2, haze: 0xeac292, light: 0xffbe72, lightI: 3.2, hemiSky: 0x9fb8e8, hemiGround: 0x82664c, hemiI: 0.86, fog: 0xeecaa2, fogSun: 0xffc282, fogD: 0.00193, exposure: 1.0, sunset: 0.5, night: 0, cloudLit: 0xffeaca, cloudDark: 0x8c86a2 },
-  { t: 18.15, zenith: 0x2c4a9c, horizon: 0xff965a, haze: 0xca8a6a, light: 0xff7e3e, lightI: 2.1, hemiSky: 0x7c8aca, hemiGround: 0x5c423a, hemiI: 0.82, fog: 0xb07c7e, fogSun: 0xff9252, fogD: 0.00200, exposure: 1.1, sunset: 1, night: 0.05, cloudLit: 0xffb282, cloudDark: 0x5c4c6a },
+  { t: 18.15, zenith: 0x34409c, horizon: 0xff8e58, haze: 0xca8a6a, light: 0xff8742, lightI: 4.2, hemiSky: 0x7478d0, hemiGround: 0x5c423a, hemiI: 0.74, fog: 0x9a70a0, fogSun: 0xff9252, fogD: 0.00200, exposure: 1.1, sunset: 1, night: 0.05, cloudLit: 0xffb282, cloudDark: 0x5c4c6a },
   { t: 19.1, zenith: 0x121c48, horizon: 0x8c526a, haze: 0x423a4e, light: 0xa2aaff, lightI: 0.75, hemiSky: 0x42528c, hemiGround: 0x241e26, hemiI: 0.85, fog: 0x423a5c, fogSun: 0xa26272, fogD: 0.00244, exposure: 1.25, sunset: 0.6, night: 0.6, cloudLit: 0xa27292, cloudDark: 0x1e1e36 },
   { t: 20.2, ...NIGHT },
   { t: 24, ...NIGHT },
@@ -45,13 +45,16 @@ export const GRADE = {
   liftDay: [0.6, 0.58, 1.0, 0.06], liftNight: [0.3, 0.55, 1.0, 0.1], liftIn: [0.42, 0.6, 1.0, 0.09],
   expDay: 1.1, expNight: 0.9, vibDay: 0.38, vibNight: 0.3, satDay: 1.12, satNight: 1.05, conDay: 1.06, conNight: 1.04,
   /** baked lamp light: gain by day, after dark and indoors */
-  lampDay: 0.3, lampNight: 1.1, lampIn: 1.2,
+  lampDay: 0.3, lampNight: 0.85, lampIn: 1.2,
   /** glossy answer of floors to lamp light */
   sheenNight: 0.85, sheenIn: 1, streak: 1.0,
   /** key-light rim on characters */
   rimDay: 0.55, rimNight: 0.7, rimIn: 0.6,
   farShade: 0.8,
 };
+
+/** Knobs of the sky's look that are not colours of the hour. */
+export const SKYLOOK = { nightCards: 0.92, cirrusDay: 0.55, cirrusNight: 0.5, under: 0.5, airHorizon: 0.42, airRate: 0.0028, airLin: 0.0003 };
 
 export type WeatherKind = 'clear' | 'cloudy' | 'rain' | 'storm';
 interface WeatherParams { cover: number; fogMul: number; sunMul: number; rain: number; wind: number; wet: number; dim: number }
@@ -129,6 +132,7 @@ export class Environment {
 
   constructor(private scene: THREE.Scene) {
     scene.add(this.sky.mesh);
+    scene.add(this.sky.cards);
     scene.add(this.sun);
     scene.add(this.hemi);
     scene.fog = this.fog;
@@ -276,7 +280,8 @@ export class Environment {
     const { a, b, t } = this.sample(hour);
     const k = this.k;
     // sun + moon paths
-    const th = ((hour - 6) / 12) * Math.PI;
+    // the sun is up from 05:36 to 18:36, so the dawn and dusk keys have a low sun to throw their long light
+    const th = ((hour - 5.6) / 13) * Math.PI;
     this.sunDir.set(Math.cos(th), Math.sin(th) * 0.9, 0.38 * Math.sin(th) + 0.16).normalize();
     const mh = hour < 12 ? hour + 24 : hour;
     const tm = ((mh - 16.5) / 14) * Math.PI;
@@ -311,7 +316,8 @@ export class Environment {
 
     mixHex(this.hemi.color, a.hemiSky, b.hemiSky, t);
     mixHex(this.hemi.groundColor, a.hemiGround, b.hemiGround, t);
-    { const l = (this.hemi.color.r + this.hemi.color.g + this.hemi.color.b) / 3; this.hemi.color.lerp(cA.setRGB(l, l, l), 0.3); }
+    // (less greyed after dark: moonlit shade is blue, and warm wood under it goes slate, not brown)
+    { const l = (this.hemi.color.r + this.hemi.color.g + this.hemi.color.b) / 3; this.hemi.color.lerp(cA.setRGB(l, l, l), 0.3 - 0.2 * k.night); }
     {
       // shade is the sky's blue leaning violet, and sunlit ground throws its warmth back up at what stands on it
       const day = sunUp * (1 - k.night) * (1 - Math.min(1, this.w.dim * 2.4));
@@ -326,7 +332,7 @@ export class Environment {
     }
     // keep the playfield readable in the dark: a cool ambient floor under night and heavy overcast
     const lift = Math.max(k.night, this.w.dim * 2.2) * (1 - im);
-    if (lift > 0) { const l = Math.min(1, lift); hemiI += 0.8 * l; this.hemi.color.lerp(cA.setHex(0x8494c8), 0.35 * l); this.hemi.groundColor.lerp(cA.setHex(0x3a4466), 0.5 * l); }
+    if (lift > 0) { const l = Math.min(1, lift); hemiI += 0.8 * l; this.hemi.color.lerp(cA.setHex(0x7090d0), 0.35 * l); this.hemi.groundColor.lerp(cA.setHex(0x3a4466), 0.5 * l); }
     this.hemi.intensity = hemiI;
     // lamps and signs burn brighter after dark and indoors; by day they sit just above the bloom knee
     GU.uEmitBoost.value = lerp(lerp(1.7, 4.4, Math.min(1, Math.max(k.night, this.w.dim * 1.5))), 3.6, im);
@@ -344,7 +350,7 @@ export class Environment {
     // overcast greys everything toward a flat slate
     const dim = this.w.dim;
     // (a storm goes past slate to navy: the deck is thick enough to shut the daylight out)
-    const grey = cB.setRGB(0.36, 0.4, 0.46).lerp(cA.setRGB(0.15, 0.19, 0.31), smooth(0.3, 0.42, dim)).multiplyScalar(lerp(1, 0.16, k.night));
+    const grey = cB.setRGB(0.36, 0.4, 0.46).lerp(cA.setRGB(0.064, 0.088, 0.145), smooth(0.3, 0.42, dim)).multiplyScalar(lerp(1, 0.16, k.night));
     su.uZenith.value.lerp(grey, dim * 1.5 > 1 ? 1 : dim * 1.5);
     su.uHorizon.value.lerp(cA.copy(grey).multiplyScalar(1.5), Math.min(1, dim * 1.6));
     su.uCloudLit.value.lerp(cA.copy(grey).multiplyScalar(1.7), Math.min(1, dim * 1.9));
@@ -356,7 +362,18 @@ export class Environment {
     su.uFlash.value = this.flash;
     su.uAurora.value = smooth(0.85, 1, k.night) * (1 - Math.min(1, dim * 3));
     su.uRidge.value.copy(su.uHorizon.value).multiplyScalar(0.42).lerp(su.uZenith.value, 0.35);
-    this.sky.mesh.visible = im < 0.98;
+    {
+      // clouds (gfx/sky.ts): lit by whichever of sun and moon is the key; the cards fade as a deck closes over them
+      const storm = smooth(0.74, 0.95, this.w.cover);
+      su.uStorm.value = storm;
+      su.uDeck.value = smooth(0.55, 0.7, this.w.cover);
+      su.uKey.value.copy(useSun ? this.sunDir : this.moonDir);
+      this.sky.cardFade.value = (1 - smooth(0.7, 0.86, this.w.cover)) * (1 - im) * lerp(1, SKYLOOK.nightCards, k.night);
+      su.uCirrus.value = lerp(SKYLOOK.cirrusDay, SKYLOOK.cirrusNight, k.night) * (1 - Math.min(1, dim * 2.5));
+      su.uUnder.value.copy(su.uSunColor.value).multiplyScalar(SKYLOOK.under * k.sunset * (1 - k.night) * (1 - Math.min(1, dim * 2)));
+      this.sky.prepare(renderer.gl);
+    }
+    this.sky.mesh.visible = this.sky.cards.visible = im < 0.98;
 
     // fog
     mixHex(this.fog.color, a.fog, b.fog, t);
@@ -365,7 +382,7 @@ export class Environment {
     const fogSun = FOGX[1];
     mixHex(cB, a.fogSun, b.fogSun, t);
     cB.lerp(this.fog.color, 1 - su.uSunGlow.value * 0.9);
-    let hf = 0.05, linD = 0.00022 * this.w.fogMul;
+    let hf = 0.05, linD = SKYLOOK.airLin * this.w.fogMul;
     if (im > 0.001 && il) {
       this.fog.color.lerp(cA.setHex(il.fog), im); cB.lerp(cA, im);
       // the rooms were tuned when this term was stuck at the dense air of a camera 40 m underground: keep that weight
@@ -375,6 +392,12 @@ export class Environment {
     FOGX[0].set(this.sunDir.x, this.sunDir.y, this.sunDir.z, hf);
     fogSun.set(cB.r, cB.g, cB.b, 10);
     FOGX[2].set(-2, 0.97, linD, 0);
+    {
+      // deep air: the sky's own blue, a little of the horizon in it, taken over 400 m or so; indoors there is none
+      cA.copy(su.uZenith.value).lerp(su.uHorizon.value, SKYLOOK.airHorizon);
+      { const l = cA.r * 0.3 + cA.g * 0.5 + cA.b * 0.2; cA.lerp(cB.setRGB(l, l, l), 0.38).lerp(this.fog.color, im); }
+      FOGX[3].set(cA.r, cA.g, cA.b, SKYLOOK.airRate * (1 - im));
+    }
 
     // baked lamp light (gfx/lighting.ts): pools at night, in storms and indoors; by day it only shows in shade
     const dark = Math.min(1, Math.max(k.night, this.w.dim * 1.6));

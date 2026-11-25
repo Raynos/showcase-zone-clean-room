@@ -148,13 +148,19 @@ varying float vSnow;`)
   col = mix(col, vec3(0.86, 0.9, 0.97), snow * 0.94);
   diffuseColor.rgb = col * mix(1.0, 0.8, uWet);
 }`)
-      // mountains stand above the ground haze: thin air takes less of them than it does of the yard,
-      // thick air (rain, storm) still swallows them whole
+      // The ranges stand in clear air, not in the mist of the yard: most of what dims them is distance
+      // alone (the fog's linear term, doubled out here), its colour deepening toward the sky's blue
+      // (gfx/material.ts). As a painter would have it, the air settles in the shade: faces the sun is on
+      // keep their own warmth, so a far range reads as warm lights over blue shadows. Rain and storm
+      // thicken both terms and still take the ranges away.
       .replace('#include <fog_fragment>', /* glsl */ `{
   vec4 yf = yardFog(vFogWorld);
-  float thin = smoothstep(120.0, 420.0, vFogDepth) * smoothstep(-10.0, 90.0, vFogWorld.y);
-  float fa = mix(yf.a, pow(yf.a, 2.6), thin);
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, yf.rgb, fa);
+  float air = 1.0 - exp(-uFogX[2].z * 1.6 * vFogDepth);
+  float fa = mix(air, max(air, yf.a), 0.2);
+  vec3 fn = normalize(cross(dFdx(vFogWorld), dFdy(vFogWorld)));
+  if (fn.y < 0.0) fn = -fn;
+  float sunlit = smoothstep(0.0, 0.45, dot(fn, uFogX[0].xyz)) * smoothstep(0.0, 0.15, uFogX[0].y);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, yf.rgb, fa * mix(1.0, 0.3, sunlit * smoothstep(0.8, 0.45, fa)));
 }`);
   };
   mat.customProgramCacheKey = () => 'beyond-land';

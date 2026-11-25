@@ -44,6 +44,7 @@ const fogShared = sharedVec4s([
   [0.5, 0.5, 0.5, 0.045], // sunDir.xyz, height falloff
   [1, 0.7, 0.4, 8],       // sun-side fog colour, power
   [0, 0.96, 0.0, 0],      // base height, max opacity, linear density, unused
+  [0.5, 0.65, 0.9, 0.002], // the colour of deep air (what far things fade toward), how fast it takes over with distance
 ]);
 /**
  * Fog parameters, written every frame by the environment. They live in one shared typed array
@@ -81,7 +82,7 @@ export function installFog() {
     uniform float fogNear;
     uniform float fogFar;
   #endif
-  uniform vec4 uFogX[3];
+  uniform vec4 uFogX[4];
   vec4 yardFog(vec3 wpos) {
     vec3 fv = wpos - cameraPosition;
     float fd = length(fv);
@@ -98,7 +99,10 @@ export function installFog() {
     float od = dens * exp(-hf * camH) * integ + uFogX[2].z * fd;
     float f = min(1.0 - exp(-od), uFogX[2].y);
     float s = pow(max(dot(fdir, uFogX[0].xyz), 0.0), uFogX[1].w);
-    return vec4(mix(fogColor, uFogX[1].rgb, s), f);
+    // aerial perspective: near haze is the pale air of the yard, but the further off a thing is the
+    // more of the sky's own blue lies in front of it, so each ridge sits bluer than the one before
+    vec3 air = mix(fogColor, uFogX[3].rgb, 1.0 - exp(-fd * uFogX[3].w));
+    return vec4(mix(air, uFogX[1].rgb, s), f);
   }
 #endif`;
   C.fog_fragment = /* glsl */ `
