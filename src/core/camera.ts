@@ -26,7 +26,7 @@ export const FP_FOV = { portrait: 72, landscape: 50 };
  */
 export const SHOULDER = {
   portrait: { side: [0.76, 0.58], dist: [3.5, 2.1], lift: 0.95 },
-  landscape: { side: [0.75, 0.55], dist: [2.7, 1.5], lift: 0.75 },
+  landscape: { side: [1.05, 0.8], dist: [2.9, 2.0], lift: 0.8 },
 };
 /** Shooter pitch limits (up, down): flyers are shot from below. */
 const SH_UP = -1.0, SH_DOWN = 1.15;
