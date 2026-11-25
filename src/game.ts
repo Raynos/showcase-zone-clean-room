@@ -23,7 +23,6 @@ import { NPC_NAMES } from './data/quests';
 import { State } from './systems/state';
 import { Movers, Triggers, type Course } from './systems/world';
 import { Hud } from './ui/hud';
-import { actionSlots } from './ui/actionbar';
 import { Chunks } from './world/chunks';
 import { Environment } from './world/environment';
 import { FLORA_KEEPOUT, scatterFlora } from './world/flora';
@@ -369,8 +368,6 @@ export class Game {
 
   private updateHudButtons() {
     const c = this.combat, hud = this.hud;
-    // combat feeds the action bar itself once it can; until then the bar is derived from its state here
-    if (typeof (c as { actionBar?: unknown }).actionBar !== 'function') hud.setActionBar(actionSlots(this));
     const t = c.target;
     hud.setTarget(t && t.alive && t.cls !== 'boss' ? { name: t.name, level: t.level, frac: t.hpFrac, cls: t.cls, sub: t.cls === 'elite' ? 'Elite' : t.cls === 'rare' ? 'Rare' : t.cls === 'night' ? 'Night shift' : '' } : null);
     if (t && t.alive) { t.center(_v); hud.setReticle(_v, clamp(t.radius * 1.4, 0.7, 4)); } else hud.setReticle(null);
