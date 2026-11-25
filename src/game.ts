@@ -425,6 +425,7 @@ export class Game {
   /** Title screen over a slow aerial drift across Brasswick; resolves when the player starts. */
   async intro() {
     if (this.dev) void import('./ui/dev').then((m) => m.installDev(this));
+    if (new URLSearchParams(location.search).has('perf')) void import('./ui/perf').then((m) => m.installPerf(this));
     if (this.dev || !this.panels?.title) { this.started = true; return; }
     this.started = false;
     const pos = new THREE.Vector3(), look = new THREE.Vector3(-50, 10, 0);
