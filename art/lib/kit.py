@@ -65,11 +65,13 @@ _Z_TO_Y = Matrix.Rotation(-PI / 2, 4, 'X')  # bmesh primitives are built along Z
 
 
 class Brush:
-    __slots__ = ('slot', 'surf', 'color', 'metal', 'rough', 'emit', 'texel')
+    __slots__ = ('slot', 'surf', 'color', 'metal', 'rough', 'emit', 'texel', 'lod')
 
     def __init__(self):
         self.slot = 'fixed'; self.surf = 'flat'; self.color = 0xffffff
         self.metal = 0.0; self.rough = 0.8; self.emit = 0.0; self.texel = 1.0
+        # 0 always drawn; 1 fine detail, dropped when the instance is far or baked; 2 its far-only stand-in
+        self.lod = 0
 
 
 class Model:
@@ -85,6 +87,7 @@ class Model:
         self.F = []              # vertex index lists
         self.f_bone = []; self.f_slot = []; self.f_surf = []; self.f_col = []
         self.f_metal = []; self.f_rough = []; self.f_emit = []; self.f_smooth = []; self.f_texel = []
+        self.f_lod = []
         self.v_tco = []; self.v_tsz = []   # per vertex: primitive-local coords and half size
         self.v_prim = []
         self.p_type = []         # per primitive: 0 box, 1 cylinder along local y, 2 other
@@ -109,8 +112,9 @@ class Model:
         return Vector(self.bones[self.bone_ix[name]]['pos'])
 
     # ---- brush -----------------------------------------------------------------------------
-    def mat(self, slot=None, surf=None, color=None, metal=None, rough=None, emit=None, texel=None):
+    def mat(self, slot=None, surf=None, color=None, metal=None, rough=None, emit=None, texel=None, lod=None):
         b = self.brush
+        if lod is not None: b.lod = lod
         if slot is not None: b.slot = slot
         if surf is not None: b.surf = surf
         if color is not None: b.color = color
@@ -179,6 +183,7 @@ class Model:
             self.f_col.append(hex_rgb(color)); self.f_metal.append(metal); self.f_rough.append(rough); self.f_emit.append(emit)
             self.f_smooth.append(bool(f.smooth) if smooth is None else smooth)
             self.f_texel.append(texel)
+            self.f_lod.append(over.get('lod', b.lod))
         self.p_type.append(ptype)
         self.n_prims += 1
         bm.free()

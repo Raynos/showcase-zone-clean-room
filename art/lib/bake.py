@@ -118,7 +118,7 @@ def gbuffer(obj, size, ao_dist=0.3, edge_dist=0.03, samples=48, margin=4, apart=
     """
     Bake the UV-space G-buffer. Returns dict of float arrays (size, size, 3), top row first.
     `apart` is an optional (n_verts, 3) array of Blender-space offsets applied only while the
-    occlusion pass bakes: variant dressing is moved clear of the body so it does not shadow it.
+    occlusion and edge passes bake: variant dressing is moved clear of the body so it does not shadow it.
     """
     sc = bpy.context.scene
     mat, nt, em, img_node = _bake_material(obj, size)
@@ -166,7 +166,7 @@ def gbuffer(obj, size, ao_dist=0.3, edge_dist=0.03, samples=48, margin=4, apart=
         sc.cycles.samples = spp
         sc.render.bake.margin = mg
         t0 = time.time()
-        if name == 'ao' and apart is not None:
+        if name in ('ao', 'edge') and apart is not None:
             rest = np.empty(len(obj.data.vertices) * 3, dtype=np.float32)
             obj.data.vertices.foreach_get('co', rest)
             obj.data.vertices.foreach_set('co', (rest.reshape(-1, 3) + apart).ravel())

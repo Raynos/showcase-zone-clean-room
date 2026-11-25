@@ -31,7 +31,7 @@ const HEADROOM = 0.8;
 /** Every model the game uses, one art/ script each (art/build.py). Loaded together at boot. */
 export const MODEL_NAMES = [
   'mite', 'pallet', 'drone', 'sentry', 'riveter', 'welder', 'foreman', 'warden', 'titan',
-  'rook', 'folk', 'horse', 'hoverboard',
+  'rook', 'folk',
 ] as const;
 export type ModelName = (typeof MODEL_NAMES)[number];
 
@@ -42,6 +42,8 @@ interface Asset {
   texture: THREE.Texture;
   tris: number;
   sphere: THREE.Sphere;
+  /** some triangles are marked fine-only or far-only (see LOD below) */
+  lod: boolean;
 }
 const assets = new Map<string, Asset>();
 
@@ -69,7 +71,7 @@ export class ModelMaterial extends WorldMaterial {
         .replace('#include <common>', /* glsl */ `#include <common>
 attribute vec3 aMRE; attribute float aSlot; uniform vec3 uPal[${PAL_N}]; varying vec2 vMR;`)
         .replace('#include <project_vertex>', /* glsl */ `#include <project_vertex>
-vMR = aMRE.xy; vEmit = aMRE.z; vColor.rgb = uPal[int(aSlot + 0.5)];`);
+vMR = aMRE.xy; vEmit = aMRE.z; vColor.rgb = uPal[int(mod(aSlot + 0.5, 32.0))];`);
       const f0 = sh.fragmentShader;
       sh.fragmentShader = f0
         .replace('#include <common>', /* glsl */ `#include <common>
@@ -81,8 +83,8 @@ uniform sampler2D uModelMap; varying vec2 vMR;`)
         .replace(/gTN = texture\(uTexN[^;]*;/, 'gTN = vec4(0.5, 0.5, max(vMR.x, 1.0 - mPaint), 1.0);');
       // a hit lights the rim and lifts the model; it never whites it out (docs/LOOK.md, Robots)
       sh.fragmentShader = sh.fragmentShader.replace('outgoingLight = mix(outgoingLight, uFlash.rgb, uFlash.a);', /* glsl */ `{
-  float hitRim = pow(1.0 - saturate(dot(normalize(vViewPosition), normal)), 2.0);
-  outgoingLight = mix(outgoingLight, outgoingLight * 1.45 + uFlash.rgb * (0.10 + 1.7 * hitRim), uFlash.a);
+  float hitRim = pow(1.0 - saturate(dot(normalize(vViewPosition), normal)), 3.0);
+  outgoingLight = mix(outgoingLight, outgoingLight * 1.3 + uFlash.rgb * (0.04 + 0.8 * hitRim), uFlash.a);
 }`);
       if (!sh.fragmentShader.includes('mPaint), 1.0)')) console.warn('ModelMaterial: world shader changed shape; model textures are not applied');
     };
@@ -106,7 +108,6 @@ function loader() {
   if (gltfLoader) return gltfLoader;
   const draco = new DRACOLoader();
   draco.setDecoderPath(ROOT + 'draco/');
-  draco.setDecoderConfig({ type: 'wasm' });
   gltfLoader = new GLTFLoader();
   gltfLoader.setDRACOLoader(draco);
   return gltfLoader;
@@ -134,7 +135,9 @@ async function loadOne(name: string, maxAniso: number): Promise<Asset> {
   g.computeBoundingSphere();
   const sphere = g.boundingSphere!.clone();
   m.castShadow = true; m.receiveShadow = true;
-  return { name, scene: gltf.scene, texture, tris: (g.index ? g.index.count : g.getAttribute('position').count) / 3, sphere };
+  let lod = false;
+  for (let i = 0; i < slot.count && !lod; i++) lod = slot.getX(i) > 31.5;
+  return { name, scene: gltf.scene, texture, tris: (g.index ? g.index.count : g.getAttribute('position').count) / 3, sphere, lod };
 }
 
 /** Download and decode models. `progress(done, total)` fires as each one lands. */
@@ -156,27 +159,54 @@ export interface ModelInstance {
   bones: Record<string, THREE.Bone>;
   material: ModelMaterial;
   tris: number;
+  /** the same surface without its fine-only detail: for far stand-ins and baked copies */
+  low(): THREE.BufferGeometry;
 }
 
+export interface InstanceOpts {
+  /** beyond this many metres from the camera the instance stops casting a sun shadow (the contact shadow carries it). Default grows with the model's size. */
+  shadowDist?: number;
+  /** beyond this many metres the fine-only detail is dropped. Default grows with the model's size. */
+  lodDist?: number;
+}
+
+/*
+ * LOD. A triangle's vertices can carry a level flag in the upper part of their slot value
+ * (art/lib/kit.py, brush `lod`): +32 marks fine-only detail (bolts, fingers, cables: dropped
+ * when the instance is far or baked), +64 marks its far-only stand-in (a mitt for the fingers).
+ */
 const trimmed = new Map<string, { geo: THREE.BufferGeometry; tris: number }>();
-/** The asset's geometry without the triangles skinned to the bones `hide` rejects (shared attributes, own index). */
-function trimmedGeometry(a: Asset, mesh: THREE.SkinnedMesh, hide: (bone: string) => boolean): { geo: THREE.BufferGeometry; tris: number } {
+/** The asset's geometry at one detail level, without the triangles skinned to the bones `hide` rejects (shared attributes, own index). */
+function trimmedGeometry(a: Asset, mesh: THREE.SkinnedMesh, hide: ((bone: string) => boolean) | undefined, low: boolean): { geo: THREE.BufferGeometry; tris: number } {
   const bones = mesh.skeleton.bones;
   const gone = new Set<number>();
-  bones.forEach((b, i) => { if (hide(b.name)) gone.add(i); });
+  if (hide) bones.forEach((b, i) => { if (hide(b.name)) gone.add(i); });
   const src = mesh.geometry;
-  if (!gone.size) return { geo: src, tris: a.tris };
-  const key = `${a.name}|${[...gone].join(',')}`;
+  if (!gone.size && !a.lod && !low) return { geo: src, tris: a.tris };
+  const key = `${a.name}|${low ? 'low' : 'full'}|${[...gone].join(',')}`;
   let hit = trimmed.get(key);
   if (!hit) {
-    const ix = src.index!, sk = src.getAttribute('skinIndex');
+    const ix = src.index!, sk = src.getAttribute('skinIndex'), slot = src.getAttribute('aSlot');
+    const drop = low ? 1 : 2;
     const keep: number[] = [];
     for (let i = 0; i < ix.count; i += 3) {
       const v = ix.getX(i);
-      if (!gone.has(sk.getX(v))) keep.push(v, ix.getX(i + 1), ix.getX(i + 2));
+      if (gone.has(sk.getX(v)) || Math.floor((slot.getX(v) + 0.5) / 32) === drop) continue;
+      keep.push(v, ix.getX(i + 1), ix.getX(i + 2));
     }
     const geo = new THREE.BufferGeometry();
-    for (const k in src.attributes) geo.setAttribute(k, src.attributes[k]);
+    if (low) {
+      // the low level is also what gets baked into unskinned stand-ins, so it carries only its own vertices
+      const map = new Int32Array(src.getAttribute('position').count).fill(-1);
+      let n = 0;
+      for (let i = 0; i < keep.length; i++) { if (map[keep[i]] < 0) map[keep[i]] = n++; keep[i] = map[keep[i]]; }
+      for (const k in src.attributes) {
+        const a0 = src.attributes[k] as THREE.BufferAttribute, sz = a0.itemSize;
+        const arr = new (a0.array.constructor as new (n: number) => THREE.TypedArray)(n * sz);
+        for (let v = 0; v < map.length; v++) { const t = map[v]; if (t >= 0) for (let c = 0; c < sz; c++) arr[t * sz + c] = a0.array[v * sz + c]; }
+        geo.setAttribute(k, new THREE.BufferAttribute(arr, sz, a0.normalized));
+      }
+    } else for (const k in src.attributes) geo.setAttribute(k, src.attributes[k]);
     geo.setIndex(keep);
     geo.boundingSphere = src.boundingSphere!.clone();
     geo.boundingBox = src.boundingBox ? src.boundingBox.clone() : null;
@@ -191,7 +221,7 @@ function trimmedGeometry(a: Asset, mesh: THREE.SkinnedMesh, hide: (bone: string)
  * material uniforms (palette, flash, rim, emission). `hide` names bones whose geometry this
  * instance does not want (variant dressing, unworn outfit pieces): those triangles are dropped.
  */
-export function instantiate(name: string, palette: Palette = {}, hide?: (bone: string) => boolean, cullScale = 1.8): ModelInstance {
+export function instantiate(name: string, palette: Palette = {}, hide?: (bone: string) => boolean, cullScale = 1.8, opts: InstanceOpts = {}): ModelInstance {
   const a = assets.get(name);
   if (!a) throw new Error(`model ${name} is not loaded`);
   const root = cloneSkinned(a.scene);
@@ -204,9 +234,25 @@ export function instantiate(name: string, palette: Palette = {}, hide?: (bone: s
   const material = new ModelMaterial(a.texture);
   material.setPalette(palette);
   mesh.material = material;
-  const t = hide ? trimmedGeometry(a, mesh, hide) : { geo: mesh.geometry, tris: a.tris };
-  mesh.geometry = t.geo;
+  const template = mesh;
+  const full = trimmedGeometry(a, template, hide, false);
+  let lowGeo: THREE.BufferGeometry | null = null;
+  const low = () => (lowGeo ??= trimmedGeometry(a, template, hide, true).geo);
+  mesh.geometry = full.geo;
   // bones move the surface well outside the rest pose (lunges, jumps), so cull against a fat sphere
   mesh.boundingSphere = new THREE.Sphere(a.sphere.center.clone(), a.sphere.radius * cullScale);
-  return { root, mesh, bones, material, tris: t.tris };
+  // far instances: no sun shadow of their own, and no fine detail. Decided as the main pass draws
+  // the mesh, so it applies from the next frame on (shadow pass included).
+  const shadowDist = opts.shadowDist ?? 16 + a.sphere.radius * 8, lodDist = opts.lodDist ?? 16 + a.sphere.radius * 10;
+  if (Number.isFinite(shadowDist) || (a.lod && Number.isFinite(lodDist))) {
+    const m = mesh;
+    m.onBeforeRender = (_r, _s, camera) => {
+      const e = m.matrixWorld.elements, c = camera.matrixWorld.elements;
+      const dx = e[12] - c[12], dy = e[13] - c[13], dz = e[14] - c[14], d2 = dx * dx + dy * dy + dz * dz;
+      const sx = Math.hypot(e[0], e[1], e[2]);
+      m.castShadow = d2 < shadowDist * shadowDist * sx * sx;
+      if (a.lod) { const g = d2 > lodDist * lodDist * sx * sx ? low() : full.geo; if (m.geometry !== g) m.geometry = g; }
+    };
+  }
+  return { root, mesh, bones, material, tris: full.tris, low };
 }

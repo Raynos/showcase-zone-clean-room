@@ -24,7 +24,8 @@ def add_export_attributes(obj, model: kit.Model):
     mr = mesh.attributes.new('_MRE', 'FLOAT_VECTOR', 'CORNER')
     mr.data.foreach_set('vector', np.stack([rep(model.f_metal), rep(model.f_rough), rep(model.f_emit)], axis=1).ravel())
     es = mesh.attributes.new('_SLOT', 'FLOAT', 'CORNER')
-    es.data.foreach_set('value', rep(model.f_slot))
+    # the level-of-detail flag rides in the slot value: +32 fine-only, +64 far-only (src/gfx/models.ts)
+    es.data.foreach_set('value', rep(np.asarray(model.f_slot, dtype=np.float32) + 32.0 * np.asarray(model.f_lod, dtype=np.float32)))
     assert len(mr.data) == nl
     for name in ('surf', 'slot', 'fmetal', 'frough', 'femit', 'fcol', 'tco', 'tsz', 'pinfo'):
         a = mesh.attributes.get(name)
@@ -88,19 +89,28 @@ def export_glb(obj, aobj, path):
 def build(model: kit.Model, tex=512, ao_dist=0.3, edge_dist=0.03, samples=48, margin=4, quality=88, variant=None, post=None, **paint_cfg):
     """Run the whole pipeline for one model. Writes public/models/<name>.glb and <name>.webp."""
     t0 = time.time()
+    if os.environ.get('ART_DRAFT'):   # quick look while modelling: few occlusion samples; never commit its output
+        samples = 6
     os.makedirs(OUT, exist_ok=True)
     bake.reset_scene()
     obj = bake.build_object(model)
     bake.unwrap(obj, model, margin=max(0.002, 2.0 / tex))
-    # variant dressing (opt_* bones) must not shadow the body it is optional on
+    # variant dressing (opt_* bones) must not shadow the body it is optional on, and a far-only
+    # stand-in (lod 2) sits in the same place as the detail it replaces: neither may shade the other
     apart = np.zeros((len(model.V), 3), dtype=np.float32)
     opt = {i: k for k, i in enumerate(i for i, b in enumerate(model.bones) if b['name'].startswith('opt_'))}
-    for f, bi in zip(model.F, model.f_bone):
-        if bi in opt:
-            for i in f: apart[i] = (0.0, 0.0, 40.0 * (opt[bi] + 1))
-    gb = bake.gbuffer(obj, tex, ao_dist=ao_dist, edge_dist=edge_dist, samples=samples, margin=margin, apart=apart if opt else None)
+    far = False
+    for f, bi, lod in zip(model.F, model.f_bone, model.f_lod):
+        off = np.zeros(3, dtype=np.float32)
+        if bi in opt: off[2] = 40.0 * (opt[bi] + 1)
+        if lod == 2: off[0] = 60.0; far = True
+        if off.any():
+            for i in f: apart[i] = off
+    gb = bake.gbuffer(obj, tex, ao_dist=ao_dist, edge_dist=edge_dist, samples=samples, margin=margin, apart=apart if (opt or far) else None)
     rgba, cover = paint.paint(gb, **paint_cfg)
-    if post: rgba = post(rgba, gb, cover) or rgba
+    if post:
+        painted = post(rgba, gb, cover)
+        if painted is not None: rgba = painted
     tex_path = os.path.join(OUT, model.name + '.webp')
     rgba[..., 3] = np.maximum(rgba[..., 3], 3.0 / 255.0)   # lossy WebP discards colour under alpha 0
     bake.save_rgba(rgba, tex_path, quality)

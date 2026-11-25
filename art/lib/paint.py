@@ -81,6 +81,7 @@ DEFAULTS = dict(
     grime=1.0,
     top_light=0.10,
     wear=1.0,
+    edge_other=1.0,     # edge highlight on shapes with no analytic edges (lofts, sheets); thin cloth wants less
 )
 
 
@@ -128,6 +129,7 @@ def paint(gb, **cfg):
     top = 1.0 + c['top_light'] * Nn[..., 1] - 0.04 * (Nn[..., 1] < -0.5)
     ew = c['edge_w']
     edge_hi = (1 - smooth(ew * 0.25, ew, d_edge)) * (ao_s > 0.55)
+    edge_hi = np.where(ptype == 2, edge_hi * c['edge_other'], edge_hi)
 
     mul = np.ones((H, W, 3))
     base = np.where(tinted[..., None], 1.0, col)
@@ -250,11 +252,20 @@ def paint(gb, **cfg):
     weave = (np.sin(P[..., 0] * 900) * np.sin(P[..., 1] * 900) + np.sin(P[..., 2] * 900) * np.sin(P[..., 1] * 900)) * 0.5
     val = np.where(cl, 0.93 + 0.10 * (n_macro - 0.5) + 0.07 * (n_mid - 0.5) + 0.018 * weave, val)
     hi = np.where(cl, edge_hi * 0.10, hi)
+    # garments darken toward the hem and crease where they bunch; knit is ribbed
+    ty = np.clip(tco[..., 1] / np.maximum(tsz[..., 1], 1e-4), -1, 1)
+    fold = fbm(P * np.array([6.0, 2.0, 6.0]), 8.0, 3, 131)
+    crease = smooth(0.5, 0.62, fold) * (1 - smooth(0.62, 0.74, fold))
+    val = np.where(cl, val * (0.93 + 0.10 * ty) * (1 + 0.26 * (fold - 0.5)) * (1 - 0.16 * crease), val)
+    hi = np.where(cl, hi + 0.035 * smooth(0.66, 0.8, fold), hi)
+    rib = np.sin((P[..., 1] * 0.8 + P[..., 0] * 0.45 + P[..., 2] * 0.45) * 330.0)
+    val = np.where(is_('knit'), val * (0.93 + 0.07 * rib), val)
     le = is_('leather')
     val = np.where(le, 0.90 + 0.14 * (n_mid - 0.5) + 0.07 * (n_fine - 0.5), val)
     hi = np.where(le, edge_hi * 0.22 + (n_fine > 0.74) * 0.05, hi)
     sk = is_('skin')
     val = np.where(sk, 0.98 + 0.04 * (n_macro - 0.5), val)
+    val = np.where(le, val * (0.95 + 0.06 * ty), val)
     hr = is_('hair')
     strand = fbm(tco * np.where(long_ax[..., None] == np.arange(3), 0.12, 1.0), 110.0, 2, 29)
     val = np.where(hr, 0.86 + 0.30 * (strand - 0.5) + 0.10 * (n_macro - 0.5), val)
