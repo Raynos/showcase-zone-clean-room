@@ -6,7 +6,7 @@ import { clamp, damp } from './core/util';
 import { placeholderHumanoid, placeholderRobot } from './entities/placeholder';
 import { Player } from './entities/player';
 import type { RobotKind, RobotLook, RobotRig } from './entities/robots/types';
-import { FX } from './gfx/fx';
+import { FX, SP } from './gfx/fx';
 import { GU, installFog } from './gfx/material';
 import { QUALITY, Renderer } from './gfx/renderer';
 import { buildNoiseTexture, buildTextureArrays } from './gfx/textures';
@@ -22,6 +22,7 @@ import { Hud } from './ui/hud';
 import { Chunks } from './world/chunks';
 import { Environment } from './world/environment';
 import { scatterFlora } from './world/flora';
+import { Rain } from './gfx/rain';
 import { Grass } from './world/grass';
 import { BANDS, PADS, ROCK, SPAWN, TOWN, bandAt, inTown } from './world/layout';
 import { Terrain } from './world/terrain';
@@ -104,6 +105,7 @@ export class Game {
     this.fx = new FX();
     this.fx.groundY = (x, z, y) => this.groundY(x, z, y);
     this.scene.add(this.fx.group);
+    this.scene.add(this.rain.mesh);
     this.player = new Player(this);
     this.player.setRig(placeholderHumanoid());
     this.hud = new Hud(this);
@@ -397,6 +399,20 @@ export class Game {
     this.updateHudButtons();
     this.plates();
     this.hud.update(rdt);
+    // rain streaks around the camera + splashes on the ground near the player
+    {
+      const amt = this.interior ? 0 : this.env.w.rain;
+      this.rain.update(rdt, this.camera.position, amt, this.env.w.wind, this.env.nightAmt);
+      if (amt > 0.05) {
+        this.splashT -= rdt * amt * 46;
+        while (this.splashT < 0) {
+          this.splashT += 1;
+          const a = Math.random() * 6.283, r = 1.5 + Math.random() * 13, x = pl.pos.x + Math.cos(a) * r, z = pl.pos.z + Math.sin(a) * r;
+          _v.set(x, this.groundY(x, z, pl.pos.y) + 0.04, z);
+          this.fx.emit(_v, { count: 1, speed: [0, 0], life: [0.22, 0.34], size: [0.1, 0.16], grow: 3.2, color: 0xbfe0ff, glow: 0.7, sprite: SP.RING, flat: true });
+        }
+      }
+    }
     this.audio?.update?.(rdt, this.camera.position, this.cameraRig.forward(_v));
     this.updateAmbience(rdt);
 
@@ -449,6 +465,8 @@ export class Game {
   travelling = false;
   private zoneKeyReset() { this.zoneKey = '~'; this.zoneT = 0; }
   east: any = null;
+  rain = new Rain();
+  private splashT = 0;
   /** humanoid module (makeHumanoid, makeWeaponModel, makeHorse, looks...) once loaded */
   human: any = null;
   bossMob: import('./systems/mobs').Mob | null = null;
