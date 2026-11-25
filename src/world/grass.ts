@@ -80,7 +80,7 @@ float fade = (1.0 - smoothstep(S * 0.36, S * 0.49, dist)) * smoothstep(${(fadeIn
 float alive = smoothstep(aRnd.x * 0.92, aRnd.x * 0.92 + 0.08, cm.a) * fade * step(abs(wxz.x), ${(HALF - 1).toFixed(1)}) * step(abs(wxz.y), ${(HALF - 1).toFixed(1)});
 float clump = texture2D(uNoise, wxz * 0.045).g;
 float bh = ${bladeH.toFixed(3)} * (0.5 + 0.7 * aRnd.y + 0.6 * clump) * alive * (0.7 + 0.5 * cm.a);
-bh *= smoothstep(0.5, 2.4, length(vec3(wxz.x, uCam.y - 1.0, wxz.y) - uCam));
+bh *= smoothstep(0.9, 3.4, length(vec3(wxz.x, uCam.y - 1.0, wxz.y) - uCam));
 float bw = ${bladeW.toFixed(3)} * (0.7 + 0.6 * aRnd.w);
 float y = position.y;
 // wind

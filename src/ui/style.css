@@ -71,6 +71,7 @@
   .bossbar.on ~ .tracker { top: calc(204px + var(--sat)); }
   .bossbar.on ~ .ctimer { top: calc(204px + var(--sat)); }
   .tframe.boss { display: none; }
+  .hud:has(.bossbar.on) .tframe { top: calc(204px + var(--sat)); }
 }
 .bossbar .bn { font-size: 18px; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; color: #ffcf8a; text-shadow: 0 0 14px #ff7a1a, 0 2px 3px #000; }
 .bossbar .bar { height: 14px; margin-top: 5px; }
