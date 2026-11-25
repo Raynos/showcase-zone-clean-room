@@ -636,13 +636,35 @@ and Blender; everything else on Opus. Agents do not spawn agents.
   `public/models`.
 - Beyond the wall and skyline landmarks (`7d29d02`, `c298abf`).
 
-**In flight** (five agents): Rook, townsfolk and Titan models (Fable); a
-second graphics pass on colour grade, remaining light and surface gaps,
-shadow cost and texture memory (Fable); sky traffic, weather, authored
-camera moments and gate walk-arounds (Opus); panels, title and loading
-screen (Opus); enemy stagger and Broken, status effects, telegraphs, threat
-retune, elite mechanics, perks, and the bot update (Opus). Their briefs are
-recoverable from the session transcript.
+**Also finished and committed since.**
+- Rook, 26 townsfolk, the Titan and the horse as models (`f2fba36`,
+  `1e29ec4`, `61f9e29`, `36fc8c2`).
+- Second graphics pass: grade, night floors, character rim, dapple, far
+  shade, Titan whiteout fixed, surface arrays as KTX2 at about 13 MB
+  (`e7cb3d3` to `dcf318c`). Worst view now 262 draw calls and 720k
+  triangles; shadow pass still about 40% in town.
+- Sky traffic and cratefall (`game.cratefall`), lightning, thunder, wind,
+  rain rings, camera moments, gate seals, band 3 to 5 dressing, trophy wall
+  (`f36434e` to `5558fc5`).
+- Panels, title, loading screen, design tokens, always-on frame-rate
+  counter, landscape layouts for every screen (`ea1bab1` to `3bb5cad`).
+- Enemy stagger and Broken, finishers, statuses, telegraphs, threat
+  retune, elite mechanics, Warden phase 3, perks and traits (`38479c6` to
+  `9499c63`).
+- First-person view with toggles (`245d9e1`, `7d7a3f8`, `2c66dd8`), from
+  `docs/UI-ENGINE-PLAN.md`.
+
+**In flight** (five agents): character art round two, faces, weapons,
+first-person arm poses, robot Broken poses and weak points (Fable); sky,
+storm and distance (Fable); HUD slots with portrait, landscape and desktop
+layouts (Opus); shooter stance for ranged weapons (Opus); full-journey QA
+and balance with the bot (Opus). Briefs are recoverable from the session
+transcript.
+
+**Still not done from the graphics lists:** plaster stains, slate roofs,
+fountain brass, concrete formwork, crisp cliff facets, tyre tracks and oil
+stains, rivet seams, docks ground as bare earth. Good Opus work with
+generated decals once a slot frees.
 
 **Known problems to clear before pushing.**
 - Phone tier is over budget in places; the sun-shadow pass grew to about
