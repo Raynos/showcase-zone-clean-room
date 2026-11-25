@@ -1,10 +1,13 @@
-import { CONTRACTS, QUESTS, QUEST_BY_ID, type ContractDef, type QuestDef } from '../data/quests';
+import { ELITES, ENEMIES } from '../data/enemies';
+import { CONTRACTS, QUESTS, QUEST_BY_ID, type ContractDef, type Objective, type QuestDef } from '../data/quests';
 import { ITEMS } from '../data/items';
 import { WEAPONS } from '../data/weapons';
 import type { WeaponId } from '../entities/humanoid/types';
 import type { Game } from '../game';
 
 export type QuestStatus = 'locked' | 'low' | 'available' | 'active' | 'ready' | 'done';
+/** Kills that happen once per story beat (named elites, bosses): the save's kill record can stand in for the event. */
+const ONE_OFF = new Set<string>([...ELITES.map((e) => e.id), ...Object.values(ENEMIES).filter((e) => e.boss).map((e) => e.kind)]);
 
 /** Quest log, objective tracking and the kill-contract board. */
 export class Quests {
@@ -25,6 +28,27 @@ export class Quests {
     ev.on('course', (c) => this.bump('course:' + c.id));
     ev.on('interact', (i) => this.bump('use:' + i.id.split('#')[0]));
     ev.on('flag', (f) => this.bump('flag:' + f.key));
+    // saves made before accept() credited flags and one-off kills may hold a quest that can no longer progress
+    for (const id in game.state.d.quests) { const q = QUEST_BY_ID[id], s = game.state.d.quests[id]; if (q && s.state !== 'done' && this.credit(q, s.prog)) game.state.touch(); }
+  }
+
+  /**
+   * What an objective has already earned from the save, before any event is heard: places seen, flags
+   * set, courses finished, and one-off kills. Repeatable kill counts are left to be earned afresh.
+   */
+  private earned(o: Objective): number {
+    const d = this.game.state.d, cut = o.on.indexOf(':'), type = o.on.slice(0, cut), key = o.on.slice(cut + 1);
+    if (type === 'reach') return d.flags['seen_' + key] ? o.n : 0;
+    if (type === 'flag') return d.flags[key] ? o.n : 0;
+    if (type === 'course') return d.pbs[key] !== undefined ? o.n : 0;
+    if (type === 'kill' && ONE_OFF.has(key)) return d.kills[key] ?? 0;
+    return 0;
+  }
+  /** Raise a quest's progress to what the save already proves. Returns true when anything changed. */
+  private credit(q: QuestDef, prog: number[]): boolean {
+    let changed = false;
+    q.objectives.forEach((o, i) => { const n = Math.min(o.n, this.earned(o)); if (n > (prog[i] ?? 0)) { prog[i] = n; changed = true; } });
+    return changed;
   }
 
   status(id: string): QuestStatus {
@@ -70,10 +94,10 @@ export class Quests {
     if (!q || this.status(id) !== 'available') return false;
     const g = this.game;
     g.state.d.quests[id] = { state: 'active', prog: q.objectives.map(() => 0) };
-    // objectives already satisfied by where the player has been
-    q.objectives.forEach((o, i) => { if (o.on.startsWith('reach:') && g.state.d.flags['seen_' + o.on.slice(6)]) g.state.d.quests[id].prog[i] = 1; });
+    // objectives the player has already met: places seen, flags set (a gauntlet cleared early), one-off kills
+    this.credit(q, g.state.d.quests[id].prog);
     g.state.touch();
-    g.hud.toast(q.name, 'quest', 'Quest accepted');
+    g.hud.toast(q.name, 'quest', this.complete(q) ? 'Already done: return to ' + this.giverName(q) : 'Quest accepted', this.complete(q) ? 'check' : '');
     g.hud.log(`Quest accepted: ${q.name}`, 'quest');
     g.sfx('quest_accept');
     if (q.onAccept) this.effect(q.onAccept, q);
