@@ -186,6 +186,9 @@ vec3 gTerrN; float gTerrR;`)
       const m = new THREE.Mesh(g, mat);
       m.receiveShadow = true; m.castShadow = true;
       m.matrixAutoUpdate = false;
+      // after every other opaque mesh: the ground shader is the costliest per pixel and most of it
+      // is covered by props, characters and grass. Only the sky (1000) draws later.
+      m.renderOrder = 900;
       this.group.add(m);
     }
   }

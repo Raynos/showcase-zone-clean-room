@@ -27,7 +27,8 @@ export class Sky {
     const geo = new THREE.SphereGeometry(1, 48, 24);
     const mat = new THREE.ShaderMaterial({
       uniforms: this.u as any,
-      side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false, toneMapped: false,
+      // depth-tested at exactly the far plane (z = w): it shades only the pixels nothing else covered
+      side: THREE.BackSide, depthWrite: false, depthTest: true, depthFunc: THREE.LessEqualDepth, fog: false, toneMapped: false,
       vertexShader: /* glsl */ `
         varying vec3 vDir;
         void main() {
@@ -131,6 +132,7 @@ export class Sky {
     });
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.frustumCulled = false;
-    this.mesh.renderOrder = -1000;
+    // last of the opaque list, after the terrain (900); transparent effects still draw over it
+    this.mesh.renderOrder = 1000;
   }
 }
