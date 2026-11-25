@@ -166,6 +166,8 @@ vec3 gTerrN; float gTerrR;`)
   rA.rgb *= mix(0.74, 1.16, bedT) * mix(vec3(1.0), vec3(1.14, 0.98, 0.84), smoothstep(0.56, 0.7, bed.y));
   vec3 alb = cm.rgb * mix(sA.rgb * 1.25, rA.rgb * 1.2, rw);
   alb *= (0.86 + 0.3 * macro + 0.1 * macro2) * mix(1.0, 0.62, cm.a * (1.0 - rw));
+  // sunlit earth and dry grass are rich, not chalky: deepen the ground's colour around its own grey and warm it
+  { float gl = dot(alb, vec3(0.3, 0.55, 0.15)); alb = mix(alb, max(gl + (alb - gl) * mix(1.15, 1.3, dW), 0.0) * mix(vec3(0.95, 0.875, 0.78), vec3(1.0, 0.83, 0.71), dW), 1.0 - rw); }
   diffuseColor.rgb *= alb * mix(1.0, 0.78, uWet);
   gTerrR = mix(sA.a, rA.a, rw) * mix(1.0, 0.55, uWet);
   // tangent-ish normal perturbation in world space

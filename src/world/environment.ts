@@ -18,9 +18,9 @@ const NIGHT: Omit<Key, 't'> = {
   exposure: 1.32, sunset: 0, night: 1, cloudLit: 0x6a88b8, cloudDark: 0x0d1526,
 };
 const DAY: Omit<Key, 't'> = {
-  zenith: 0x2a72dc, horizon: 0xb4d8f4, haze: 0xcfdde4, light: 0xfff0d6, lightI: 3.5,
-  hemiSky: 0xa8ccf8, hemiGround: 0x8f7658, hemiI: 0.95, fog: 0xc6dbea, fogSun: 0xf8ead0, fogD: 0.00143,
-  exposure: 1.0, sunset: 0, night: 0, cloudLit: 0xffffff, cloudDark: 0x98a6bd,
+  zenith: 0x1f62d2, horizon: 0x9ccaf2, haze: 0xb8d2ea, light: 0xfff0d6, lightI: 3.5,
+  hemiSky: 0xa8ccf8, hemiGround: 0x8f7658, hemiI: 0.95, fog: 0xa4c4e8, fogSun: 0xf4e4c8, fogD: 0.00112,
+  exposure: 1.0, sunset: 0, night: 0, cloudLit: 0xffffff, cloudDark: 0x8c9ec2,
 };
 const KEYS: Key[] = [
   { t: 0, ...NIGHT },
@@ -50,6 +50,7 @@ export const GRADE = {
   sheenNight: 0.85, sheenIn: 1, streak: 1.0,
   /** key-light rim on characters */
   rimDay: 0.55, rimNight: 0.7, rimIn: 0.6,
+  farShade: 0.8,
 };
 
 export type WeatherKind ='clear' | 'cloudy' | 'rain' | 'storm';
@@ -396,6 +397,8 @@ export class Environment {
     // the noise's broad channel sits between 0.2 and 0.7: this puts about a quarter of the ground in shadow on a clear day
     YARD[2] = 0.5 - (this.w.cover - 0.5) * 0.5;
     YARD[3] = (useSun ? 0.5 * sunUp : 0.3 * moonUp) * open;
+    // past the shadow maps, the ground map's tall-things channel stands in for them
+    YARD[18] = this.sun.shadow.camera.far * 0.68; YARD[19] = GRADE.farShade * (useSun ? Math.min(1, sunUp * 1.5) : 0.4 * moonUp) * open;
     // a sun shadow's edge runs warm, most at the ends of the day; moonlight and lamps have none
     const edge = (useSun ? sunUp : 0) * (1 - k.night) * open * (0.75 + 0.6 * k.sunset);
     YARD[4] = 0.24 * edge; YARD[5] = 0.045 * edge; YARD[6] = -0.09 * edge;

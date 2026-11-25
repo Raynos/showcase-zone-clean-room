@@ -40,6 +40,8 @@ const KEY_FLAT = 1e9, KEY_ALWAYS = 1e6;
 const KEY_GLOW = 1e8, GLOW_CAST = 1.5;
 /** Leaf primitives under this size key (a crown's fill cards, see below) throw no shadow in any cascade: the core and the other half of the cards do. */
 const LEAF_CAST = 0.16;
+/** Height above the ground from which a thing counts as standing tall, for the far shade baked into the ground map. */
+const FAR_TOP = 2.2;
 /** A slab whose top is within this of the terrain throws no shadow worth drawing. */
 const FLAT_TOP = 0.08;
 /** Primitive flags kept for the occlusion bake. */
@@ -475,9 +477,23 @@ export class Chunks {
         for (const q of ceil) { const c = q * 6; if (B[c + 1] < C && sx >= B[c] && sx <= B[c + 3] && sz >= B[c + 2] && sz <= B[c + 5]) C = B[c + 1]; }
         if (C < Infinity) AO[v * 2 + 1] = packAO(Math.max(0, C - y));
       }
-      // what stands on the ground darkens it: undersides within a metre of the terrain go into the contact map
-      if (!occ || named || (f & (P_LEAF | P_GLOW))) continue;
+      if (!occ || named || (f & P_GLOW)) continue;
       const top = y1 - g!((x0 + x1) / 2, (z0 + z1) / 2);
+      // what stands tall shades the ground far away, where no shadow map reaches: crowns by their
+      // cards' footprints, everything else by its up-facing faces more than a storey off the ground
+      if (top >= FAR_TOP && !(f & P_FLAT)) {
+        const I = st.I, leafP = (f & P_LEAF) !== 0;
+        for (let i = R[p * 4 + 2], ie = i + R[p * 4 + 3]; i < ie; i += 3) {
+          const a = I[i] * 3, bb = I[i + 1] * 3, c = I[i + 2] * 3;
+          if (!leafP) {
+            const ny = (P[bb + 2] - P[a + 2]) * (P[c] - P[a]) - (P[bb] - P[a]) * (P[c + 2] - P[a + 2]);
+            if (ny <= 0 || Math.max(P[a + 1], P[bb + 1], P[c + 1]) - g!(P[a], P[a + 2]) < FAR_TOP) continue;
+          }
+          occ.tri(P[a], P[a + 2], P[bb], P[bb + 2], P[c], P[c + 2], leafP ? 235 : 255, occ.tall);
+        }
+      }
+      // what stands on the ground darkens it: undersides within a metre of the terrain go into the contact map
+      if (f & P_LEAF) continue;
       if (top < 0.15) continue;
       const strength = Math.min(1, (top - 0.15) / 0.55) * 255;
       const I = st.I;

@@ -39,7 +39,8 @@ export function lampLayer(y: number) { return y < ARENA_TOP ? 2 : y < VAULT_TOP 
  *  [1] warm shadow edge rgb, share of occlusion that also dims direct light
  *  [2] lamp gain, foot occlusion strength, eave occlusion strength, ground-map strength
  *  [3] sun direction xyz (world), cloud shadow scale (1 / metres)
- *  [4] floor gloss 0..1 (night, rain, interiors), strength of the lamp streaks it shows, spare, spare
+ *  [4] floor gloss 0..1 (night, rain, interiors), strength of the lamp streaks it shows,
+ *      distance at which the baked far shade starts, its strength
  *  [5] spare
  */
 export const YARD = new Float32Array(6 * 4);
@@ -53,8 +54,11 @@ lampTex.minFilter = lampTex.magFilter = THREE.LinearFilter;
 lampTex.wrapS = lampTex.wrapT = THREE.ClampToEdgeWrapping;
 lampTex.needsUpdate = true;
 
-const gaoData = new Uint8Array(GAO_RES * GAO_RES).fill(255);
-export const gaoTex = new THREE.DataTexture(gaoData, GAO_RES, GAO_RES, THREE.RedFormat, THREE.UnsignedByteType);
+// r: contact darkening (255 = open ground). g: what stands tall here, 0..255, read from the sunward
+// side to shade the ground beyond the shadow cascades
+const gaoData = new Uint8Array(GAO_RES * GAO_RES * 2);
+for (let i = 0; i < gaoData.length; i += 2) gaoData[i] = 255;
+export const gaoTex = new THREE.DataTexture(gaoData, GAO_RES, GAO_RES, THREE.RGFormat, THREE.UnsignedByteType);
 gaoTex.minFilter = THREE.LinearMipmapLinearFilter; gaoTex.magFilter = THREE.LinearFilter; gaoTex.generateMipmaps = true;
 gaoTex.wrapS = gaoTex.wrapT = THREE.ClampToEdgeWrapping;
 gaoTex.needsUpdate = true;
@@ -84,7 +88,7 @@ uniform sampler2D uYardMap[2];
 #ifdef YARD_VAO
   varying vec2 vYardAO;
 #endif
-vec3 gYardW; vec3 gYardN; float gYardAO;
+vec3 gYardW; vec3 gYardN; float gYardAO; float gYardFar;
 float yardCloud(vec3 w) {
   if (uYard[0].w <= 0.0) return 1.0;
   // the shadow of the cloud deck, slid along the sun's direction so it leans as the sun drops
@@ -107,7 +111,7 @@ vec3 yardShade(float s) { return vec3(s) + uYard[1].rgb * (s * (1.0 - s) * 4.0);
   gYardW = ( ( vec4( geometryPosition, 1.0 ) - viewMatrix[ 3 ] ) * viewMatrix ).xyz;
 #endif
 gYardN = inverseTransformDirection( geometryNormal, viewMatrix );
-gYardAO = 1.0;
+gYardAO = 1.0; gYardFar = 1.0;
 #ifdef YARD_VAO
 {
   // walls and undersides darken toward what they stand on and toward what hangs over them
@@ -125,10 +129,20 @@ if ( gYardW.y > ${VAULT_TOP.toFixed(1)} ) {
     gao = mix( 1.0, gao, saturate( gYardN.y * 2.0 - 0.6 ) * ( 1.0 - smoothstep( 0.2, 0.7, vYardAO.x ) ) );
   #endif
   gYardAO *= mix( 1.0, gao, uYard[2].w );
+  // past the shadow cascades a tree or a shed still shades the ground on the side away from the sun:
+  // the map's second channel says what stands tall, read a crown's height up-sun of this point
+  float yFar = uYard[4].w * smoothstep( uYard[4].z, uYard[4].z * 1.3, length( geometryPosition ) );
+  if ( yFar > 0.0 ) {
+    float tall = texture2D( uYardMap[0], ( gYardW.xz + uYard[3].xz * ( 4.0 / max( uYard[3].y, 0.3 ) ) ) * ${(1 / ZONE).toFixed(6)} + 0.5 ).g;
+    #ifdef YARD_VAO
+      tall *= saturate( gYardN.y * 2.0 - 0.6 ) * ( 1.0 - smoothstep( 0.2, 0.7, vYardAO.x ) );
+    #endif
+    gYardFar = 1.0 - yFar * tall;
+  }
 }
 #endif`);
   src = src.replace(sunInfo, `${sunInfo}
-		directLight.color *= yardCloud( gYardW ) * mix( 1.0, gYardAO, uYard[1].w );`);
+		directLight.color *= yardCloud( gYardW ) * mix( 1.0, gYardAO, uYard[1].w ) * gYardFar;`);
   src = src.replace(sunShadow, 'directLight.color *= ( directLight.visible && receiveShadow ) ? yardShade( getSunShadow( sunShadowMap[ i ], sunLightShadow, UNROLLED_LOOP_INDEX ) ) : vec3( 1.0 );');
   src += /* glsl */ `
 #if defined( RE_Direct ) && !defined( YARD_NO_LAMP )
@@ -291,8 +305,10 @@ export class GroundOcc {
   readonly res = GAO_RES * 2;
   readonly cell = ZONE / (GAO_RES * 2);
   data = new Uint8Array(GAO_RES * 2 * GAO_RES * 2);
+  /** what stands tall (crowns, roofs, stacks): the footprint the far shade is read from */
+  tall = new Uint8Array(GAO_RES * 2 * GAO_RES * 2);
   /** Fill the xz footprint of a triangle with `v` (kept if something stronger is already there). */
-  tri(ax: number, az: number, bx: number, bz: number, cx: number, cz: number, v: number) {
+  tri(ax: number, az: number, bx: number, bz: number, cx: number, cz: number, v: number, d: Uint8Array = this.data) {
     const s = 1 / this.cell, h = ZONE / 2, n = this.res;
     ax = (ax + h) * s; az = (az + h) * s; bx = (bx + h) * s; bz = (bz + h) * s; cx = (cx + h) * s; cz = (cz + h) * s;
     let area = (bx - ax) * (cz - az) - (bz - az) * (cx - ax);
@@ -300,7 +316,6 @@ export class GroundOcc {
     if (area < 0) { const tx = bx, tz = bz; bx = cx; bz = cz; cx = tx; cz = tz; area = -area; }
     const i0 = Math.max(0, Math.floor(Math.min(ax, bx, cx))), i1 = Math.min(n - 1, Math.ceil(Math.max(ax, bx, cx)));
     const j0 = Math.max(0, Math.floor(Math.min(az, bz, cz))), j1 = Math.min(n - 1, Math.ceil(Math.max(az, bz, cz)));
-    const d = this.data;
     for (let j = j0; j <= j1; j++) {
       const pz = j + 0.5;
       for (let i = i0; i <= i1; i++) {
@@ -321,9 +336,17 @@ export class GroundOcc {
       const o = j * 2 * n + i * 2;
       base[j * R + i] = (d[o] + d[o + 1] + d[o + n] + d[o + n + 1]) / 1020;
     }
-    this.data = new Uint8Array(0);
-    const tight = boxBlur(base.slice(), R, 1, 2), wide = boxBlur(base, R, 3, 3);
-    for (let t = 0; t < R * R; t++) gaoData[t] = Math.round(255 * (1 - Math.min(0.82, 0.62 * tight[t] + 0.5 * wide[t])));
+    const far = new Float32Array(R * R), tl = this.tall;
+    for (let j = 0; j < R; j++) for (let i = 0; i < R; i++) {
+      const o = j * 2 * n + i * 2;
+      far[j * R + i] = (tl[o] + tl[o + 1] + tl[o + n] + tl[o + n + 1]) / 1020;
+    }
+    this.data = new Uint8Array(0); this.tall = new Uint8Array(0);
+    const tight = boxBlur(base.slice(), R, 1, 2), wide = boxBlur(base, R, 3, 3), shade = boxBlur(far, R, 1, 2);
+    for (let t = 0; t < R * R; t++) {
+      gaoData[t * 2] = Math.round(255 * (1 - Math.min(0.82, 0.62 * tight[t] + 0.5 * wide[t])));
+      gaoData[t * 2 + 1] = Math.round(255 * Math.min(1, shade[t] * 1.25));
+    }
     gaoTex.needsUpdate = true;
   }
 }
