@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { DECALS, ensureDecals } from './decals';
 import { FOLIAGE, ensureFoliage } from './foliage';
 import { installLighting } from './lighting';
+import { SURFACE_GLSL, SURF_U } from './surface';
 
 /** Uniforms shared by reference across every world material. */
 export const GU = {
@@ -202,7 +203,7 @@ export class WorldMaterial extends THREE.MeshStandardMaterial {
       sh.uniforms.uNearFade = GU.uNearFade;
       sh.uniforms.uKeyRim = GU.uKeyRim; sh.uniforms.uSheen = GU.uSheen;
       if (wind) { ensureFoliage(); sh.uniforms.uLeaf = FOLIAGE.uLeaf; }
-      if (!wind && !rim) { ensureDecals(); sh.uniforms.uDecal = DECALS.uDecal; }
+      if (!wind && !rim) { ensureDecals(); sh.uniforms.uDecal = DECALS.uDecal; sh.uniforms.uStory = SURF_U.uStory; sh.uniforms.uTrack = SURF_U.uTrack; }
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', /* glsl */ `#include <common>
 attribute float aLayer; attribute float aEmit;
@@ -230,7 +231,7 @@ uniform sampler2DArray uTexA; uniform sampler2DArray uTexN; uniform sampler2D uN
 uniform vec4 uFlash; uniform vec4 uRim; uniform float uEmitBoost; uniform float uEmitMul; uniform float uWet; uniform vec3 uCharFill; uniform vec2 uNearFade; uniform vec3 uKeyRim; uniform float uSheen;
 varying float vLayer; varying float vEmit; varying vec2 vWUv;
 ${wind ? 'varying float vSway; uniform sampler2D uLeaf; float gLeaf;' : ''}
-${!wind && !rim ? 'uniform sampler2D uDecal;' : ''}
+${!wind && !rim ? 'uniform sampler2D uDecal;\n' + SURFACE_GLSL : ''}
 vec4 gTA; vec4 gTN;`)
         .replace('#include <map_fragment>', /* glsl */ `${wind ? /* glsl */ `if (vSway > 0.02) {
   // leaves between the camera and the hero dissolve instead of filling the screen
@@ -290,6 +291,10 @@ ${wind ? /* glsl */ `  // foliage cards (gfx/foliage.ts): a painted clump from t
     gTA.rgb = mix(gTA.rgb, gTA.rgb * 1.3 + 0.09, worn * 0.75);
     gTA.a = mix(gTA.a, gTA.a * 0.8, worn);
   }
+  #if defined( YARD_VAO ) && defined( USE_FOG )
+  // surface detail (gfx/surface.ts): ground stories, wall and roof weathering, rivets, patina, strata
+  if (lay < 63.5) surfDetail(lay, vFogWorld, normalize(inverseTransformDirection(vNormal, viewMatrix)), vYardAO, gTA, gTN, vColor.rgb, vWUv, length(vViewPosition));
+  #endif
   #endif
 ` : ''}${rim ? '' : /* glsl */ `  // slow drift in tone and warmth, so a wall or a square is never one flat fill
   vec2 mv = texture2D(uNoise, vWUv * 0.037).rg;
@@ -309,7 +314,8 @@ ${wind ? /* glsl */ `  // foliage cards (gfx/foliage.ts): a painted clump from t
   float sc = det == 0.0 ? 0.0 : inversesqrt(det);
   vec2 nxy = gTN.xy * 2.0 - 1.0;
   normal = normalize(normal + (Tt * nxy.x + Bb * nxy.y) * sc);
-${!wind && !rim ? /* glsl */ `  // after dark, in rain and indoors a floor is glossy enough to catch the lamps beside it (never a mirror)
+${!wind && !rim ? /* glsl */ `  normal = normalize(normal + (viewMatrix * vec4(gSurfTilt, 0.0)).xyz);
+  // after dark, in rain and indoors a floor is glossy enough to catch the lamps beside it (never a mirror)
   if (uSheen > 0.0) {
     float up = dot(normal, vec3(viewMatrix[0].y, viewMatrix[1].y, viewMatrix[2].y));
     float gl = uSheen * smoothstep(0.6, 0.92, up) * step(vLayer, 63.5);

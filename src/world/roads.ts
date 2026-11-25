@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Rng, vnoise } from '../core/util';
 import { T } from '../gfx/textures';
 import type { Chunks } from './chunks';
-import { HALF, PAL, ROADS, ROAD_SAMPLES, inTown } from './layout';
+import { HALF, PAL, ROADS, ROAD_SAMPLES, bandAt, inTown } from './layout';
 import { Raw, bbox, cloth, pixelText, wallLantern } from './props';
 import type { Terrain } from './terrain';
 
@@ -47,7 +47,9 @@ export function buildRoads(chunks: Chunks, terrain: Terrain): void {
       const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
       if (inTown(mx, mz, -1.2)) continue;
       const g = chunks.solid(mx, mz);
-      const r = new Raw(g, false).mat(colHex, layer);
+      // a trail takes the colour of the ground it crosses: dark trodden cinder through the Slagworks and Rivet Row
+      const band = paved || track ? 0 : bandAt(mx, mz)?.id ?? 0;
+      const r = new Raw(g, false).mat(band === 4 || band === 5 ? 0x6f655c : band === 6 ? 0x8e8c86 : colHex, layer);
       const row: number[][] = [[], []];
       for (let e = 0; e < 2; e++) {
         const p = e === 0 ? a : b;

@@ -308,7 +308,7 @@ export function groundAt(x: number, z: number, slope: number, h: number): Ground
   const b = bandAt(x, z);
   if (b) {
     if (b.id === 1) { mixRGB(o, 0xb89a62, 0.35); }
-    else if (b.id === 2) { mixRGB(o, 0xa8946e, 0.75); o.grass = smooth(0.45, 0.7, n) * 0.55; o.dirt = 0.65; }
+    else if (b.id === 2) { mixRGB(o, 0x8f8272, 0.88); o.grass = smooth(0.5, 0.72, n) * 0.22 + smooth(0.6, 0.85, n2) * 0.12; o.dirt = 0.9; }
     else if (b.id === 3) { mixRGB(o, 0xc8703a, 0.7); o.grass = smooth(0.5, 0.75, n2) * 0.5; o.dirt = 0.5; }
     else if (b.id === 4) { mixRGB(o, 0x4a474a, 0.88); o.grass = 0; o.gravel = 0.8; mixRGB(o, 0x7a3a1c, smooth(0.6, 0.85, n2) * 0.5); }
     else if (b.id === 5) { mixRGB(o, 0x77808a, 0.8); o.grass = smooth(0.62, 0.8, n) * 0.3; o.gravel = 0.9; }

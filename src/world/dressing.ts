@@ -3,6 +3,7 @@ import { startAmbient } from './dressing/ambient';
 import { buildBands } from './dressing/bands';
 import { planFinds, startFinds, type FindPlan } from './dressing/finds';
 import { Ctx, type DressInfo } from './dressing/kit';
+import { buildGround } from './dressing/ground';
 import { buildMarks } from './dressing/marks';
 import { buildWest } from './dressing/west';
 
@@ -21,6 +22,7 @@ export function build(game: Game) {
   const west = buildWest(c);
   plan = planFinds(c);
   buildMarks(c);
+  buildGround(c);
   c.flushPaint();
   info = c.info;
   // exposed for the dev console and screenshot tooling

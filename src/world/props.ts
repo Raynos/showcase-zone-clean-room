@@ -554,8 +554,9 @@ export function gableRoof(g: Geo, w: number, d: number, h: number, o: RoofOpts =
   const top = { color, layer, uvScale: o.uvScale ?? 0.42 }, under = { color: trim };
   slab(g, [[W, ye, zF], [W, ye, zB], [0, h, zB], [0, h, zF]], [0, -t, 0], top, under);
   slab(g, [[-W, ye, zB], [-W, ye, zF], [0, h, zF], [0, h, zB]], [0, -t, 0], top, under);
-  // ridge cap
-  g.box(0.22, 0.14, zF - zB + 0.1, { at: [0, h + 0.03, (zF + zB) / 2], color: trim, layer: T.PLANKS, uvScale: 0.3, col: 'none' });
+  // ridge cap: a run of rounded capping tiles in the roof's own clay or slate, a shade darker
+  const capC = new THREE.Color(color).multiplyScalar(0.78).getHex();
+  g.cyl(0.17, 0.17, zF - zB + 0.12, 7, { at: [0, h + 0.02, (zF + zB) / 2], rot: [Math.PI / 2, 0, 0], scale: [1, 1, 0.7], color: capC, layer: layer, uvScale: 0.42, col: 'none' });
   if (o.gable) {
     const r = new Raw(g).mat(o.gable.color, o.gable.layer);
     r.flatTri([-w / 2, 0, d / 2], [w / 2, 0, d / 2], [0, h, d / 2], 0.5);

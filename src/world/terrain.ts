@@ -3,6 +3,7 @@ import { clamp, clamp01 } from '../core/util';
 import { GU } from '../gfx/material';
 import { T } from '../gfx/textures';
 import { HALF, LAKE, groundAt, heightRaw } from './layout';
+import { STORIES, STORY_GLSL, STORY_U } from './stories';
 
 export const TN = 250;          // cells per side
 export const TCELL = (HALF * 2) / TN; // 2 m
@@ -16,6 +17,8 @@ export class Terrain {
   splatMap!: THREE.DataTexture;   // r dirt, g rock, b gravel, a sand
   heightTex!: THREE.DataTexture;  // R float heights for vertex-shader lookups
   material!: THREE.MeshStandardMaterial;
+  /** ground stories (tracks, wear, stains, scorch, litter), for the dev console */
+  readonly stories = STORIES;
   /** grass density grid for CPU queries (same res as colour map) */
   private grassGrid = new Uint8Array(MAP * MAP);
 
@@ -93,6 +96,17 @@ export class Terrain {
       return t;
     };
     this.colorMap = mk(col, true); this.splatMap = mk(spl, false);
+    // tracks and trodden ground thin the grass under them
+    STORIES.thinGrass = (x, z, r, keep) => {
+      const px = (v: number) => ((v + HALF) / size) * MAP - 0.5, cx = px(x), cz = px(z), pr = (r / size) * MAP;
+      for (let j = Math.max(0, Math.floor(cz - pr)); j <= Math.min(MAP - 1, Math.ceil(cz + pr)); j++) for (let i = Math.max(0, Math.floor(cx - pr)); i <= Math.min(MAP - 1, Math.ceil(cx + pr)); i++) {
+        const d = Math.hypot(i - cx, j - cz) / pr;
+        if (d >= 1) continue;
+        const o = j * MAP + i, k = 1 - (1 - keep) * (d < 0.6 ? 1 : (1 - d) / 0.4);
+        col[o * 4 + 3] = Math.min(col[o * 4 + 3], Math.round(col[o * 4 + 3] * k));
+        this.grassGrid[o] = col[o * 4 + 3];
+      }
+    };
     // colour map alpha must stay linear density: fine, alpha is never sRGB-decoded
     const hd = new Float32Array(TV * TV);
     hd.set(this.heights);
@@ -106,6 +120,7 @@ export class Terrain {
     mat.onBeforeCompile = (sh) => {
       sh.uniforms.uTexA = GU.uTexA; sh.uniforms.uTexN = GU.uTexN; sh.uniforms.uNoise = GU.uNoise;
       sh.uniforms.uColorMap = uColor; sh.uniforms.uSplat = uSplat; sh.uniforms.uWet = GU.uWet;
+      sh.uniforms.uStory = STORY_U.uStory; sh.uniforms.uTrack = STORY_U.uTrack;
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', `#include <common>\nvarying vec3 vWPos; varying vec3 vWNor;`)
         .replace('#include <begin_vertex>', `#include <begin_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vWNor = normalize(mat3(modelMatrix) * normal);`);
@@ -114,11 +129,17 @@ export class Terrain {
 precision highp sampler2DArray;
 uniform sampler2DArray uTexA; uniform sampler2DArray uTexN; uniform sampler2D uColorMap; uniform sampler2D uSplat; uniform sampler2D uNoise; uniform float uWet;
 varying vec3 vWPos; varying vec3 vWNor;
-vec3 gTerrN; float gTerrR;`)
+vec3 gTerrN; float gTerrR;
+${STORY_GLSL}`)
         .replace('#include <map_fragment>', /* glsl */ `{
   vec2 muv = (vWPos.xz + ${HALF.toFixed(1)}) / ${(HALF * 2).toFixed(1)};
   vec4 cm = texture2D(uColorMap, muv);
   vec4 sp = texture2D(uSplat, muv);
+  // ground stories (world/stories.ts): trodden ground is bare packed earth with the grass's shade gone
+  vec4 st = storyAt(vWPos);
+  float wearN = smoothstep(0.22, 0.55, st.r + (texture2D(uNoise, vWPos.xz * 0.15).b - 0.5) * 0.4);
+  sp.r = max(sp.r, wearN); sp.b *= 1.0 - wearN * 0.6;
+  cm.rgb = mix(cm.rgb, cm.rgb * vec3(0.95, 0.88, 0.8), wearN * 0.6); cm.a *= 1.0 - wearN;
   vec3 wn = normalize(vWNor);
   float slope = 1.0 - wn.y;
   float rockW = clamp(max(sp.g, smoothstep(0.24, 0.46, slope)), 0.0, 1.0);
@@ -162,14 +183,28 @@ vec3 gTerrN; float gTerrR;`)
   // painted beds: broad bands of lighter, darker and warmer stone that follow height, gently folded
   float fold = (macro2 - 0.5) * 5.0 + (macro - 0.5) * 9.0;
   vec2 bed = texture2D(uNoise, vec2((vWPos.y + fold) * 0.021, 0.37)).rg;
-  float bedT = smoothstep(0.38, 0.62, bed.x);
-  rA.rgb *= mix(0.74, 1.16, bedT) * mix(vec3(1.0), vec3(1.14, 0.98, 0.84), smoothstep(0.56, 0.7, bed.y));
+  // crisp-edged beds, a dark seam where one ends, and every ledge's top plane lit and warm
+  float bedT = smoothstep(0.47, 0.53, bed.x);
+  float seam = 1.0 - smoothstep(0.0, 0.035, abs(bed.x - 0.5));
+  float topP = smoothstep(0.62, 0.8, wn.y);
+  rA.rgb *= mix(0.7, 1.12, bedT) * mix(vec3(1.0), vec3(1.14, 0.98, 0.84), smoothstep(0.6, 0.64, bed.y)) * (1.0 - seam * 0.4 * (1.0 - topP));
+  rA.rgb = mix(rA.rgb, rA.rgb * vec3(1.34, 1.26, 1.1) + 0.02, topP);
   vec3 alb = cm.rgb * mix(sA.rgb * 1.25, rA.rgb * 1.2, rw);
   alb *= (0.86 + 0.3 * macro + 0.1 * macro2) * mix(1.0, 0.62, cm.a * (1.0 - rw));
   // sunlit earth and dry grass are rich, not chalky: deepen the ground's colour around its own grey and warm it
   { float gl = dot(alb, vec3(0.3, 0.55, 0.15)); alb = mix(alb, max(gl + (alb - gl) * mix(1.15, 1.3, dW), 0.0) * mix(vec3(0.95, 0.875, 0.78), vec3(1.0, 0.83, 0.71), dW), 1.0 - rw); }
+  gTerrR = mix(sA.a, rA.a, rw);
+  // leaf litter under the crowns: the painted litter tile, keeping only its leaves, thinning to the rim
+  if (st.a > 0.02) {
+    vec4 lt = texture(uTexA, vec3(uvG * 0.7, ${T.LITTER}.0));
+    float leafy = max(lt.r, lt.g) - lt.b * 0.5 + (macro2 - 0.5) * 0.2;
+    float lm = smoothstep(0.0, 0.08, leafy - mix(0.8, 0.22, st.a)) * (1.0 - rw);
+    alb = mix(alb, lt.rgb * 1.1, lm); gTerrR = mix(gTerrR, 0.85, lm);
+  }
+  vec2 stTilt;
+  storyGround(st, vWPos, alb, gTerrR, stTilt, 1.0 - rw, length(vWPos - cameraPosition));
   diffuseColor.rgb *= alb * mix(1.0, 0.78, uWet);
-  gTerrR = mix(sA.a, rA.a, rw) * mix(1.0, 0.55, uWet);
+  gTerrR *= mix(1.0, 0.55, uWet);
   // tangent-ish normal perturbation in world space
   vec2 nxy = mix(sN.xy, rN.xy, rw) * 2.0 - 1.0;
   vec3 tx = normalize(cross(wn, vec3(0.0, 0.0, 1.0)) + vec3(1e-4, 0.0, 0.0));
@@ -177,7 +212,10 @@ vec3 gTerrN; float gTerrR;`)
   vec3 soft = normalize(wn + (tx * nxy.x + tz * nxy.y) * mix(0.75, 0.25, cm.a));
   vec3 rtx = mix(vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), bx);
   vec3 hard = normalize(wn + (rtx * nxy.x + vec3(0.0, 1.0, 0.0) * nxy.y) * 0.9);
-  gTerrN = mix(soft, hard, rw);
+  // near rock reads as cut facets: the flat normal of the ground's own 2 m triangles
+  vec3 facet = normalize(cross(dFdx(vWPos), dFdy(vWPos))); facet *= sign(dot(facet, wn));
+  hard = normalize(mix(hard, facet + (hard - wn) * 0.5, 0.75 * (1.0 - smoothstep(40.0, 90.0, length(vWPos - cameraPosition)))));
+  gTerrN = normalize(mix(soft, hard, rw) + vec3(stTilt.x, 0.0, stTilt.y));
 }`)
         .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = roughness * gTerrR;')
         .replace('#include <normal_fragment_maps>', 'normal = normalize((viewMatrix * vec4(gTerrN, 0.0)).xyz);');

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { STORIES } from './stories';
 import { Rng, fbm, smooth, vnoise } from '../core/util';
 import { T } from '../gfx/textures';
 import type { Geo } from '../gfx/geo';
@@ -222,9 +223,12 @@ export function scatterFlora(chunks: Chunks, terrain: Terrain) {
         else t = emberTree(g, r, sc * 0.9, [0xb8542a, 0xf0a030, 0xffcf5a]);
         g.colCyl(t.r, 4, { at: [0, 2, 0] });
       });
+      // the crown's leaves lie under it, drifting downwind
+      if (!(coolGrove && kind < 0.8)) STORIES.stamp(px + 0.8, pz + 0.5, 3.2 * sc, { litter: 0.85 }, treeSeed & 1023, 0.5);
     } else if (roll < pTree + pBush) {
       const g = chunks.leaf(px, pz);
       g.at(px, h - 0.05, pz, yaw, () => bush(g, r, sc));
+      STORIES.stamp(px, pz, 1.7 * sc, { litter: 0.55 }, treeSeed & 1023, 0.5);
     } else if (roll < pTree + pBush + pRock) {
       const g = chunks.solid(px, pz);
       const col = band?.id === 3 ? 0xb66a3c : band?.id === 4 ? 0x45444a : band?.id === 6 ? 0x7c90a2 : 0x8a9099;
@@ -235,4 +239,6 @@ export function scatterFlora(chunks: Chunks, terrain: Terrain) {
     }
   }
   void rectMask;
+  STORIES.flush();
+  terrain.colorMap.needsUpdate = true;
 }

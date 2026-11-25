@@ -3,6 +3,7 @@ import { Rng, TAU, lerp } from '../../core/util';
 import { CAMPS, ELITES } from '../../data/enemies';
 import type { Geo } from '../../gfx/geo';
 import { T } from '../../gfx/textures';
+import { STORIES } from '../stories';
 import { BANDS, PAL, ROADS, ROAD_SAMPLES, bandAt, ridgeAt } from '../layout';
 import { anvil, cart, crate, crateStack, fence, flagPole, hayBale, lampPost, pixelText, sack, workbench } from '../props';
 import {
@@ -597,6 +598,7 @@ function shipyard(c: Ctx) {
 // ---------------------------------------------------------------------------------------------
 function scorch(c: Ctx, x: number, z: number, r: number) {
   c.paint(x, z, r, { grass: 0, color: 0x23272e, k: 0.75 });
+  STORIES.stamp(x, z, r * 0.8, { scorch: 0.8 }, (x * 7) | 0);
   c.paint(x, z, r * 0.45, { color: 0x5fb8c9, k: 0.4 });
 }
 function fulgurite(g: Geo, r: Rng, n = 5, s = 1) {

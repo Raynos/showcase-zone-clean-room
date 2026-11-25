@@ -563,7 +563,7 @@ function eastGate(c: Ctx) {
   g.push().translate(gx, 0, 0); lg.push().translate(gx, 0, 0);
   for (const s of [-1, 1]) {
     const tz = s * 8;
-    bbox(g, 11.7, 5, 6.7, { at: [0, 1.0, tz], bevel: 0.18, color: 0x767b84, layer: T.BRICK, uvScale: 0.36, col: 'none', grad: 0.7 });
+    bbox(g, 11.7, 5, 6.7, { at: [0, 1.0, tz], bevel: 0.18, color: 0x8e9196, layer: T.CONCRETE, uvScale: 0.2, col: 'none', grad: 0.7 });
     g.box(11, H + 2, 6, { at: [0, H / 2 - 1, tz], color: CONC, layer: T.CONCRETE, uvScale: 0.2, col: true, grad: 0.9 });
     g.box(11.06, 0.9, 6.06, { at: [0, 4.05, tz], color: PAL.orange, layer: T.STRIPE, uvScale: 0.5, col: 'none' });
     g.box(11.5, 0.6, 6.5, { at: [0, H - 0.3, tz], color: PAL.slate, layer: T.METAL, uvScale: 0.4, col: 'none' });

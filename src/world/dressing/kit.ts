@@ -6,6 +6,7 @@ import { T } from '../../gfx/textures';
 import { FLORA_KEEPOUT, freeGround } from '../flora';
 import { FLATS, HALF, LAKE, PAL, ROCK } from '../layout';
 import { BEACONS } from '../east';
+import { STORIES } from '../stories';
 
 /** Things the dynamic half (finds, ambience) needs to know about what the static half built. */
 export interface DressInfo {
@@ -34,6 +35,8 @@ export class Ctx {
   info: DressInfo = { pylons: [], pools: [], stacks: [], lamps: [], anchors: {}, windmill: null, nooks: [], tris: 0 };
   private reserved: Array<[number, number, number]> = [];
   private painted = false;
+  /** where props were put (x, z), for the ground stories laid round them (dressing/ground.ts) */
+  placed: Array<[number, number]> = [];
   constructor(public game: Game) {}
   h(x: number, z: number) { return this.game.terrain.h(x, z); }
   /** Height range of the ground under a footprint. */
@@ -131,7 +134,7 @@ export class Ctx {
   put(x: number, z: number, yaw: number, f: (g: Geo) => void, dy = 0, leaf = false) {
     const ch = this.game.chunks, g = leaf ? ch.leaf(x, z) : ch.solid(x, z);
     const v0 = g.idx.length;
-    if (!leaf) FLORA_KEEPOUT.push([x, z, 2.4]);
+    if (!leaf) { FLORA_KEEPOUT.push([x, z, 2.4]); this.placed.push([x, z]); }
     g.at(x, this.h(x, z) + dy, z, yaw, () => f(g));
     this.info.tris += (g.idx.length - v0) / 3;
   }
@@ -193,6 +196,7 @@ export class Ctx {
     const t = this.game.terrain as any;
     if (t.colorMap) t.colorMap.needsUpdate = true;
     if (t.splatMap) t.splatMap.needsUpdate = true;
+    STORIES.flush();
   }
 }
 
