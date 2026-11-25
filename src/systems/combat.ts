@@ -32,6 +32,8 @@ export interface HitInfo {
   forced?: boolean;
   /** the hit was a melee breaker (the heavy after the second light) */
   breaker?: boolean;
+  /** which blow of the weapon's set landed (the Gatecrasher's larvae shrug off the light string) */
+  move?: TraitMove;
   source: 'melee' | 'arrow' | 'bolt' | 'rifle' | 'skill'; color: number;
 }
 export interface Hittable {
@@ -298,7 +300,7 @@ export class Combat {
     let dx = h.pos.x - fx0, dz = h.pos.z - fz0; const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
     const color = st.weapon.color;
     const mob = h as Partial<Mob>, was = mob.state;
-    const dealt = h.takeHit({ dmg, crit, dirX: dx, dirZ: dz, knock: (o.knock ?? 2) * tr.knock, heavy: !!o.heavy, stun: o.stun, poise, source: o.source, color, status, forced: o.crit === true, breaker: o.breaker || move === 'breaker' });
+    const dealt = h.takeHit({ dmg, crit, dirX: dx, dirZ: dz, knock: (o.knock ?? 2) * tr.knock, heavy: !!o.heavy, stun: o.stun, poise, source: o.source, color, status, forced: o.crit === true, breaker: o.breaker || move === 'breaker', move });
     if (dealt > 0) this.afterHit(h, dealt, o.source, move, broken);
     if (dealt <= 0) { h.center(_c); g.hud.damage({ x: _c.x, y: _c.y + 0.6, z: _c.z }, 'IMMUNE', 'miss'); return 0; }
     h.center(_c);

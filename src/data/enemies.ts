@@ -183,9 +183,9 @@ export const ENEMIES: Record<RobotKind, EnemyDef> = {
 /** Named elites. Gate elites open their band gate when first beaten. */
 export interface EliteDef { id: string; name: string; kind: RobotKind; level: number; variant: RobotVariant; x: number; z: number; gate?: string; night?: boolean; title: string; respawn: number; hpMul?: number; scale?: number; mech?: MechDef }
 export const ELITES: EliteDef[] = [
-  { id: 'gatecrasher', name: 'Gatecrasher', kind: 'mite', level: 3, variant: 'elite', x: 65, z: 68, gate: 'g12', title: 'Bane of Boxes', respawn: 300, scale: 2.1, mech: 'brood' },
+  { id: 'gatecrasher', name: 'Gatecrasher', kind: 'mite', level: 3, variant: 'elite', x: 65, z: 68, gate: 'g12', title: 'Bane of Boxes', respawn: 300, scale: 2.1, mech: 'brood', hpMul: 1.8 },
   { id: 'big_pallet', name: 'Big Pallet', kind: 'pallet', level: 6, variant: 'elite', x: 108, z: 165, gate: 'g23', title: 'Forklift Certified', respawn: 300, mech: 'ram' },
-  { id: 'plumb_prime', name: 'Plumb Line Prime', kind: 'drone', level: 9, variant: 'elite', x: 185, z: 93, gate: 'g34', title: 'Level Headed', respawn: 300, mech: 'plumb' },
+  { id: 'plumb_prime', name: 'Plumb Line Prime', kind: 'drone', level: 9, variant: 'elite', x: 185, z: 93, gate: 'g34', title: 'Level Headed', respawn: 300, mech: 'plumb', hpMul: 2 },
   { id: 'slag_boss', name: 'Shift Boss Slag', kind: 'welder', level: 12, variant: 'elite', x: 185, z: -68, gate: 'g45', title: 'Union Buster', respawn: 300, mech: 'plate' },
   { id: 'old_reliable', name: 'Old Reliable', kind: 'riveter', level: 15, variant: 'elite', x: 132, z: -165, gate: 'g56', title: 'Riveting Company', respawn: 300, mech: 'bulwark' },
   { id: 'foreman', name: 'Foreman Unit 7', kind: 'foreman', level: 18, variant: 'elite', x: 78, z: -118, gate: 'shortcut', title: 'Middle Management', respawn: 420, hpMul: 1 },
@@ -200,7 +200,7 @@ export const ELITES: EliteDef[] = [
 export const MECH_ATTACKS: Partial<Record<MechDef, AttackDef[]>> = {
   brood: [M({ id: 'unpack', type: 'summon', range: [0, 30], windup: 0.9, cd: 13, dmg: 0, summon: 'mite', count: 4, weight: 4, anim: 'attack2' })],
   ram: [M({ id: 'ram', type: 'charge', range: [5, 20], windup: 0.9, active: 0.8, recover: 1.9, cd: 6, dmg: 2.0, width: 2.6, length: 18, speed: 22, knock: 11, weight: 4, anim: 'attack2' })],
-  plumb: [M({ id: 'plumbline', type: 'channel', range: [4, 30], windup: 0.9, active: 3.2, recover: 0.8, cd: 10, dmg: 0.22, interval: 0.2, width: 0.5, length: 32, color: 0xff4a3a, weight: 5, anim: 'attack2' })],
+  plumb: [M({ id: 'plumbline', type: 'channel', range: [0, 30], windup: 0.9, active: 3.2, recover: 0.8, cd: 8, dmg: 0.22, interval: 0.2, width: 0.5, length: 32, color: 0xff4a3a, weight: 5, anim: 'attack2' })],
 };
 
 /** Camps: packs of commons. Positions are hand-placed inside each band; count scales with radius. */

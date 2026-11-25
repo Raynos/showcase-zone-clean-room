@@ -11,7 +11,8 @@ const _v = new THREE.Vector3(), _w = new THREE.Vector3();
  * Elite signature mechanics. Each gate elite has one, and each asks for one specific answer:
  *
  *   brood    Gatecrasher unpacks four mite larvae. While two or more live it sits in their static
- *            shell and takes a fifth of the damage. Answer: a sweep (heavy after one light) clears them.
+ *            shell and takes a fifth of the damage. The larvae shrug off most of the light string, so
+ *            tapping does not clear them by accident. Answer: a sweep (heavy after one light) clears them.
  *   ram      Big Pallet's forklift plating takes a quarter of the stagger damage. Its ram is fast and
  *            floors the player; roll through it and counter while it skids, and it breaks outright.
  *   plumb    Plumb Line Prime holds a laser on the player for three seconds. Rolling dodges a tick at
@@ -58,6 +59,14 @@ export class Mech {
       case 'brood': return this.shielded ? 0.2 : 1;
       default: return 1;
     }
+  }
+  /**
+   * brood: what the mother's larvae take from a hit. Their shells shrug off most of the light string,
+   * so tapping at the pile does not clear them by accident; a sweep, a heavy, a skill or a shot does.
+   */
+  larvaMul(h: HitInfo): number {
+    if (this.kind !== 'brood') return 1;
+    return h.source === 'melee' && (h.move === 'light' || h.move === 'light3') ? 0.15 : 1;
   }
   allow(a: AttackDef): boolean {
     if (this.kind === 'brood' && a.id === 'unpack') return this.brood() === 0;
