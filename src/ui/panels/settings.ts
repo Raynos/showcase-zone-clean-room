@@ -38,7 +38,7 @@ export const settingsPanel: PanelSpec = {
     const render = () => {
       let h = '<div class="pn-sec">Graphics</div>';
       h += group(`<div class="pn-seg" role="radiogroup" aria-label="Quality">${QN.map((q) => `<div class="${s.quality === q ? 'on' : ''}" data-a="quality" data-v="${q}" role="radio" aria-checked="${s.quality === q}">${QL[q]}</div>`).join('')}</div>
-        <div class="pn-qd">${QD[s.quality] ?? ''}</div><div class="pn-note fps">Running at <b class="fpsv">${Math.round(g.fps)}</b> fps on <b>${cap(g.renderer.quality.name)}</b>. Resolution adapts on its own to hold 60.</div>`).replace('pn-group bev', 'pn-group bev pad');
+        <div class="pn-qd">${QD[s.quality] ?? ''}</div>${toggle('fps', 'Frame-rate counter', 'charge', s.fps !== false, 'Under your health bars · tap it for detail')}<div class="pn-note fps">Running at <b class="fpsv">${Math.round(g.fps)}</b> fps on <b>${cap(g.renderer.quality.name)}</b>. Resolution adapts on its own to hold 60.</div>`).replace('pn-group bev', 'pn-group bev pad');
       h += '<div class="pn-sec">Audio</div>' + group(slider('sfx', 'Effects', 'bolt') + slider('music', 'Music', 'star'));
       h += '<div class="pn-sec">Camera</div>' + group(slider('sens', 'Look speed', 'target') + slider('shake', 'Screen shake', 'blast')
         + toggle('invertY', 'Invert vertical look', 'swap', s.invertY) + toggle('autoFollow', 'Camera follows movement', 'dash', s.autoFollow, 'Swings behind you as you run'));

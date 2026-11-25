@@ -44,7 +44,7 @@ export interface SaveData {
   found: Record<string, true>;   // collectibles, chests, vistas, secrets, by id
   flags: Record<string, number>;
   playTime: number;
-  settings: { quality: string; sfx: number; music: number; sens: number; invertY: boolean; autoFollow: boolean; shake: number; dmgNumbers: boolean; haptics: boolean; lefty: boolean };
+  settings: { quality: string; sfx: number; music: number; sens: number; invertY: boolean; autoFollow: boolean; shake: number; dmgNumbers: boolean; haptics: boolean; lefty: boolean; /** the always-on frame-rate readout */ fps: boolean };
   /** the quest pinned to the tracker by the player (Quest Log); absent: the first active one */
   track?: string;
 }
@@ -61,7 +61,7 @@ export function freshSave(): SaveData {
     weapons: ['shop_blade'], loadout: ['shop_blade', null], active: 0, ammo: 'bolt', skills: {},
     inv: { kit: 3 }, upgrades: {}, quests: {}, kills: {}, contracts: {}, trophies: [], titles: [], title: null,
     pbs: {}, found: {}, flags: {}, playTime: 0,
-    settings: { quality: 'auto', sfx: 0.8, music: 0.6, sens: 1, invertY: false, autoFollow: true, shake: 1, dmgNumbers: true, haptics: true, lefty: false },
+    settings: { quality: 'auto', sfx: 0.8, music: 0.6, sens: 1, invertY: false, autoFollow: true, shake: 1, dmgNumbers: true, haptics: true, lefty: false, fps: true },
   };
 }
 
