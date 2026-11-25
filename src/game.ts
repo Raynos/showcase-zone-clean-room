@@ -138,6 +138,8 @@ export class Game {
     const at = fresh ? { x: SPAWN.x, y: this.terrain.h(SPAWN.x, SPAWN.z), z: SPAWN.z, yaw: SPAWN.yaw } : this.resolvePos(d.pos[0], d.pos[1], d.pos[2], d.yaw);
     this.player.teleport(at.x, at.y + 0.1, at.z, at.yaw);
     this.cameraRig.snap(this.player.yaw + Math.PI, 0.16);
+    // from here on every save, periodic or not, carries the player's position
+    this.state.onSave = () => { this.capturePos(); };
     d.hp = clamp(d.hp, 1, this.state.maxHp);
     window.addEventListener('resize', () => this.resize());
     window.addEventListener('orientationchange', () => setTimeout(() => this.resize(), 200));
@@ -279,12 +281,24 @@ export class Game {
     this.savePos();
     return true;
   }
-  savePos() {
-    const p = this.player.pos, d = this.state.d;
-    if (!this.interior && !this.player.dead) { d.pos = [p.x, p.y, p.z]; d.yaw = this.player.yaw; }
+  /**
+   * Copy where the player stands into the save data, but only a spot a reload can resume from: on the
+   * surface (interiors keep the doorstep they were entered from), on the ground, and never inside a
+   * place that is sealed right now (those resume at their way out). Returns true when it moved.
+   */
+  capturePos(): boolean {
+    const pl = this.player, p = pl.pos, d = this.state.d;
     d.hour = this.env.hour;
-    this.state.save();
+    if (this.interior || this.travelling || pl.dead) return false;
+    const onGround = pl.mode ? Math.abs(p.y - this.terrain.h(p.x, p.z)) < 0.8 : pl.grounded;
+    if (!onGround) return false;
+    const at = this.resolvePos(p.x, p.y, p.z, pl.yaw);
+    const moved = Math.hypot(at.x - d.pos[0], at.y - d.pos[1], at.z - d.pos[2]) > 1;
+    d.pos = [at.x, at.y, at.z]; d.yaw = at.yaw;
+    return moved;
   }
+  private posT = 0;
+  savePos() { this.state.save(); }
 
   resize() {
     this.renderer.resize();
@@ -388,6 +402,8 @@ export class Game {
       this.loot.update(dt);
       this.interact.update();
       this.quests.update();
+      // walking alone is progress worth keeping: mark the save dirty once the player has moved
+      if ((this.posT -= rdt) <= 0) { this.posT = 2; if (this.capturePos()) this.state.touch(); }
       this.state.update(rdt);
       this.updateZone(rdt);
     }

@@ -80,8 +80,11 @@ export class State {
   static hasSave(): boolean { try { return !!localStorage.getItem(KEY); } catch { return false; } }
   /** set by reset(): nothing is written again until the page reloads, so the wipe sticks */
   private wiped = false;
+  /** runs before every write so live values (where the player stands, the clock) go into the save */
+  onSave: (() => void) | null = null;
   save() {
     if (this.wiped) return;
+    this.onSave?.();
     try { localStorage.setItem(KEY, JSON.stringify(this.d)); } catch { /* storage unavailable */ }
     this.dirty = false;
   }
