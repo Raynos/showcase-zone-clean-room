@@ -195,6 +195,7 @@ export class Environment {
     const lift = Math.max(k.night, this.w.dim * 2.2) * (1 - im);
     if (lift > 0) { const l = Math.min(1, lift); hemiI += 0.8 * l; this.hemi.color.lerp(cA.setHex(0x8494c8), 0.35 * l); this.hemi.groundColor.lerp(cA.setHex(0x3a4466), 0.5 * l); }
     this.hemi.intensity = hemiI;
+    { const l = Math.min(1, Math.max(0, lift)) * 0.5; GU.uCharFill.value.set(0.62 * l, 0.72 * l, 1.0 * l); }
 
     // sky
     const su = this.sky.u;

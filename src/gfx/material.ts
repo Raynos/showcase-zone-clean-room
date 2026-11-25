@@ -9,6 +9,8 @@ export const GU = {
   uWind: { value: new THREE.Vector4(0.8, 0.6, 1, 0) }, // dir.xz, strength, gust
   uWet: { value: 0 },
   uEmitBoost: { value: 3.2 },
+  /** flat fill light on characters (rim materials) so they read at night and in storms */
+  uCharFill: { value: new THREE.Vector3(0, 0, 0) },
 };
 
 /** Fog parameters shared (by element reference) with every fogged material. */
@@ -122,7 +124,7 @@ export class WorldMaterial extends THREE.MeshStandardMaterial {
     this.onBeforeCompile = (sh) => {
       sh.uniforms.uTexA = GU.uTexA; sh.uniforms.uTexN = GU.uTexN;
       sh.uniforms.uTime = GU.uTime; sh.uniforms.uWind = GU.uWind;
-      sh.uniforms.uWet = GU.uWet; sh.uniforms.uEmitBoost = GU.uEmitBoost;
+      sh.uniforms.uWet = GU.uWet; sh.uniforms.uEmitBoost = GU.uEmitBoost; sh.uniforms.uCharFill = GU.uCharFill;
       sh.uniforms.uFlash = this.flash; sh.uniforms.uRim = this.rim; sh.uniforms.uEmitMul = this.emitMul;
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', /* glsl */ `#include <common>
@@ -148,7 +150,7 @@ ${wind ? /* glsl */ `vSway = aSway;
         .replace('#include <common>', /* glsl */ `#include <common>
 precision highp sampler2DArray;
 uniform sampler2DArray uTexA; uniform sampler2DArray uTexN;
-uniform vec4 uFlash; uniform vec4 uRim; uniform float uEmitBoost; uniform float uEmitMul; uniform float uWet;
+uniform vec4 uFlash; uniform vec4 uRim; uniform float uEmitBoost; uniform float uEmitMul; uniform float uWet; uniform vec3 uCharFill;
 varying float vLayer; varying float vEmit; varying vec2 vWUv;
 ${wind ? 'varying float vSway;' : ''}
 vec4 gTA; vec4 gTN;`)
@@ -183,6 +185,7 @@ vec4 gTA; vec4 gTN;`)
         .replace('#include <opaque_fragment>', /* glsl */ `${rim ? /* glsl */ `{
   float rimF = pow(1.0 - saturate(dot(normalize(vViewPosition), normal)), 3.0);
   outgoingLight += uRim.rgb * rimF * uRim.a * (0.35 + 0.65 * saturate(normal.y * 0.5 + 0.7));
+  outgoingLight += diffuseColor.rgb * uCharFill * (0.6 + 0.4 * saturate(normal.y * 0.5 + 0.5));
 }` : ''}
 outgoingLight = mix(outgoingLight, uFlash.rgb, uFlash.a);
 #include <opaque_fragment>`);
