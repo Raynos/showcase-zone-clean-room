@@ -47,7 +47,7 @@ export async function startSystems(game: Game) {
     game.state.events.on('equip', sync);
   }
   const audio = await opt('./core/audio.ts');
-  if (audio?.audio) game.audio = audio.audio;
+  if (audio?.audio) { game.audio = audio.audio; const set = game.state.d.settings; audio.audio.setVolumes?.({ sfx: set.sfx, music: set.music }); }
   const east = await opt('./world/east.ts');
   if (east?.East) game.east = new east.East(game);
   for (const p of ['./world/vault.ts', './world/arena.ts', './world/dressing.ts']) { const m = await opt(p); try { m?.start?.(game); } catch (e) { console.warn('start failed', p, e); } }
