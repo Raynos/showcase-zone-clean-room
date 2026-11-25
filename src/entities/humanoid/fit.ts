@@ -100,7 +100,7 @@ export function fitLook(look: HumanLook): Fit {
     return {
       model: 'rook',
       palette: {
-        skin, hair, top, top2: 0xd9792a, bottom, cloth2: 0x3f5f84, accent, boots, glove: 0x464c56, iris: look.eyes ?? 0x8a5a26,
+        skin, hair, top, top2: 0xd9792a, bottom, cloth2: 0x2f4670, accent, boots, glove: 0x3f444d, iris: look.eyes ?? 0x8a5a26,
         leather: LEATHER, steel: STEEL, dark: DARK, glow: CYAN, glow2: 0xffa53a,
       },
       hide: () => false,
@@ -115,14 +115,16 @@ export function fitLook(look: HumanLook): Fit {
   if (style !== 'bald') {
     if (style !== 'mohawk') wears.add('hairBase');
     // what sits on the crown goes under a covering hat; what hangs behind stays
-    if (!covered || style === 'bun' || style === 'long' || style === 'ponytail') wears.add('hair' + cap(style));
-    if (!covered && style !== 'mohawk' && style !== 'curly') wears.add('hairTop');
+    if (!covered || style === 'bun' || style === 'long' || style === 'ponytail' || style === 'braid') wears.add('hair' + cap(style));
+    if (!covered && style !== 'mohawk' && style !== 'curly' && style !== 'swept') wears.add('hairTop');
   }
   if (hat !== 'none') wears.add('hat' + cap(hat));
   for (const e of ex) wears.add(e);
   if (age === 'elder') wears.add('lines');
   const outfit = look.outfit ?? 'shirt';
   if (outfit !== 'shirt') wears.add(outfit);
+  // the shirt's tail hangs over the belt unless a bib tucks it in
+  if (outfit !== 'overalls') wears.add('hem');
   if (look.sleeves === 'long') wears.add('sleeves');
   return {
     model: 'folk',

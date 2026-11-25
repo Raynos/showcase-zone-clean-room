@@ -90,7 +90,9 @@ class Model:
         self.f_lod = []
         self.v_tco = []; self.v_tsz = []   # per vertex: primitive-local coords and half size
         self.v_prim = []
-        self.p_type = []         # per primitive: 0 box, 1 cylinder along local y, 2 other
+        self.p_type = []         # per primitive: 0 box, 1 cylinder along local y, 2 other, 3 other with painter coordinates written by the builder
+        self.p_region = []       # per primitive: what part of a garment it is (people/base.py REGION), for the model's own painter
+        self.region = 0
         self.n_prims = 0
         self.weights = None      # optional {vertex index: [(bone name, weight), ...]}
         self.sockets = {}
@@ -185,6 +187,7 @@ class Model:
             self.f_texel.append(texel)
             self.f_lod.append(over.get('lod', b.lod))
         self.p_type.append(ptype)
+        self.p_region.append(over.get('region', self.region))
         self.n_prims += 1
         bm.free()
         return range(v0, len(self.V))

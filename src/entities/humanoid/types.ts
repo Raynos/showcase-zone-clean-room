@@ -147,7 +147,7 @@ export interface Face {
 export interface HumanLook {
   /** preset body: the hero or a townsperson archetype */
   kind: 'hero' | 'townsfolk';
-  skin?: number; hair?: number; hairStyle?: 'short' | 'bun' | 'mohawk' | 'bald' | 'long' | 'ponytail' | 'curly' | 'bob';
+  skin?: number; hair?: number; hairStyle?: 'short' | 'swept' | 'bun' | 'mohawk' | 'bald' | 'long' | 'ponytail' | 'braid' | 'curly' | 'bob';
   top?: number; bottom?: number; accent?: number; boots?: number;
   /** iris colour; second shirt colour (yoke, collar); second trouser-family colour (vest, bib). Defaults derive from the others. */
   eyes?: number; top2?: number; cloth2?: number;
@@ -163,7 +163,8 @@ export interface HumanLook {
   /** head size multiplier */
   head?: number;
   hat?: 'none' | 'goggles' | 'hardhat' | 'cap' | 'hood' | 'weldmask' | 'strawhat' | 'bandana';
-  extra?: Array<'scarf' | 'apron' | 'backpack' | 'toolbelt' | 'cape' | 'pauldron' | 'beard' | 'moustache' | 'goatee' | 'stubble' | 'glasses'>;
+  /** kit; the last four are adventurers' gear (forearm bracers, knee pads, a quiver on the back, a bandolier of pouches) */
+  extra?: Array<'scarf' | 'apron' | 'backpack' | 'toolbelt' | 'cape' | 'pauldron' | 'beard' | 'moustache' | 'goatee' | 'stubble' | 'glasses' | 'bracers' | 'kneepads' | 'quiver' | 'bandolier'>;
   /** overall height multiplier (1 = 1.75 m) and build (0.8 slim .. 1.25 stocky) */
   height?: number; build?: number;
 }

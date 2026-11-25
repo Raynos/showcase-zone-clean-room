@@ -109,6 +109,26 @@ def build(model: kit.Model, tex=512, ao_dist=0.3, edge_dist=0.03, samples=48, ma
         if lod == 2: off[0] = 60.0; far = True
         if off.any():
             for i in f: apart[i] = off
+    # model.bake_groups: lists of bones whose surface is baked together but clear of everything else (a hand:
+    # palm and fingers shade each other; the thigh they sit against in the bind pose must not)
+    grp = {}
+    for k, names in enumerate(getattr(model, 'bake_groups', ())):
+        for n in names: grp[model.bone_ix[n]] = k
+    # model.bake_turn: {bone: x}: the runtime carries this bone's surface half a turn about the vertical
+    # axis through x (arms hang elbow-point back, half a turn from the bind pose): occlusion is baked that way round
+    turn = {model.bone_ix[n]: x for n, x in getattr(model, 'bake_turn', {}).items()}
+    if grp or turn:
+        todo = {}; away = {}
+        for f, bi in zip(model.F, model.f_bone):
+            if bi in grp:
+                for i in f: away[i] = grp[bi]
+                far = True
+            elif bi in turn:
+                for i in f: todo[i] = turn[bi]
+                far = True
+        for i, k in away.items(): apart[i, 0] -= 80.0 * (k + 1)
+        for i, x in todo.items():
+            apart[i, 0] += 2.0 * (x - model.V[i][0]); apart[i, 1] += 2.0 * model.V[i][2]
     gb = bake.gbuffer(obj, tex, ao_dist=ao_dist, edge_dist=edge_dist, samples=samples, margin=margin, apart=apart if (opt or far) else None)
     rgba, cover = paint.paint(gb, **paint_cfg)
     if post:
