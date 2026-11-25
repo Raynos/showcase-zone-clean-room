@@ -24,7 +24,7 @@ export const settingsPanel: PanelSpec = {
     const applyQuality = () => {
       const coarse = matchMedia('(pointer: coarse)').matches;
       const q = QUALITY[s.quality === 'auto' ? (coarse ? 'medium' : 'high') : s.quality] ?? QUALITY.high;
-      if (g.renderer.quality !== q) { g.renderer.setQuality(q); g.env.setShadowQuality?.(q.shadowSize); }
+      if (g.renderer.quality !== q) { g.renderer.setQuality(q); g.env.setShadowQuality?.(q.shadowSize, q.shadowDist); }
     };
     const render = () => {
       let h = '<div class="pn-sec">Graphics</div>';

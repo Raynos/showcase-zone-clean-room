@@ -98,6 +98,7 @@ export class Game {
     progress(0.4, 'PLANTING');
     await tick();
     this.env = new Environment(this.scene);
+    this.env.setShadowQuality(this.renderer.quality.shadowSize, this.renderer.quality.shadowDist);
     this.env.hour = this.state.d.hour;
     this.input = new Input(canvas);
     this.cameraRig = new CameraRig(this.camera, this.physics);

@@ -6,16 +6,18 @@ export interface Quality {
   maxPixelRatio: number;
   msaa: number;
   shadowSize: number;
+  /** how far from the camera sun shadows reach, metres */
+  shadowDist: number;
   bloom: boolean;
   godrays: boolean;
   grass: number; // density multiplier
   viewDist: number;
 }
 export const QUALITY: Record<string, Quality> = {
-  low: { name: 'low', maxPixelRatio: 1.25, msaa: 0, shadowSize: 1024, bloom: true, godrays: false, grass: 0.45, viewDist: 420 },
-  medium: { name: 'medium', maxPixelRatio: 1.75, msaa: 2, shadowSize: 2048, bloom: true, godrays: true, grass: 0.75, viewDist: 600 },
-  high: { name: 'high', maxPixelRatio: 2.0, msaa: 4, shadowSize: 2048, bloom: true, godrays: true, grass: 1, viewDist: 800 },
-  ultra: { name: 'ultra', maxPixelRatio: 2.5, msaa: 4, shadowSize: 4096, bloom: true, godrays: true, grass: 1.3, viewDist: 900 },
+  low: { name: 'low', maxPixelRatio: 1.25, msaa: 0, shadowSize: 1024, shadowDist: 55, bloom: true, godrays: false, grass: 0.45, viewDist: 420 },
+  medium: { name: 'medium', maxPixelRatio: 1.75, msaa: 2, shadowSize: 2048, shadowDist: 80, bloom: true, godrays: true, grass: 0.75, viewDist: 600 },
+  high: { name: 'high', maxPixelRatio: 2.0, msaa: 4, shadowSize: 2048, shadowDist: 120, bloom: true, godrays: true, grass: 1, viewDist: 800 },
+  ultra: { name: 'ultra', maxPixelRatio: 2.5, msaa: 4, shadowSize: 4096, shadowDist: 140, bloom: true, godrays: true, grass: 1.3, viewDist: 900 },
 };
 
 const FS_VERT = /* glsl */ `

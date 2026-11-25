@@ -105,8 +105,9 @@ export class Environment {
     this.envScene.add(this.envSky);
   }
 
-  setShadowQuality(size: number) {
+  setShadowQuality(size: number, dist = 120) {
     this.sun.shadow.mapSize.set(size, size);
+    this.sun.shadow.camera.far = dist; this.sun.shadow.camera.updateProjectionMatrix();
     if (this.sun.shadow.map) { this.sun.shadow.map.dispose(); (this.sun.shadow as any).map = null; }
   }
 
