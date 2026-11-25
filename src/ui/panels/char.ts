@@ -1,9 +1,10 @@
 import { fmtTime } from '../../core/util';
 import { CONTRACTS } from '../../data/quests';
-import { SKILLS, WEAPONS } from '../../data/weapons';
+import { OVERDRIVE_LEVEL, SKILLS, SLOT3_LEVEL, ULTIMATES, WEAPONS, skillLoadout, type SkillDef, type SkillKind } from '../../data/weapons';
 import type { WeaponId } from '../../entities/humanoid/types';
 import { icon } from '../icons';
 import { btn, cap, glyph, playTime, type PanelSpec } from './common';
+import './loadout.css';
 
 const COURSES: Record<string, string> = { range: 'Weapon Range · Target Rush', physics: 'Physics Yard · Lock-up', riding: 'Riding Course', movers: 'Movers Run', grapple: 'Grapple Course', climb: 'Climb Yard · Summit', hover_score: 'Hoverboard Park · Session' };
 /** point scores (higher is better) rather than times */
@@ -14,15 +15,26 @@ export const charPanel: PanelSpec = {
   make(host, arg) {
     const g = host.game, st = g.state;
     let tab: string = arg?.tab ?? 'stats', sig = '';
-    const signature = () => tab + st.d.level + st.d.xp + (st.d.title ?? '') + st.d.loadout.join() + st.d.active + st.d.weapons.length + JSON.stringify(st.d.upgrades) + st.d.trophies.length + Object.keys(st.d.pbs).length;
+    const signature = () => tab + st.d.level + st.d.xp + (st.d.title ?? '') + st.d.loadout.join() + st.d.active + st.d.weapons.length + JSON.stringify(st.d.skills) + JSON.stringify(st.d.upgrades) + st.d.trophies.length + Object.keys(st.d.pbs).length;
     const weaponCard = (slot: 0 | 1) => {
       const id = st.d.loadout[slot];
       if (!id) return `<div class="pn-slot empty"><div class="sl">Slot ${slot + 1}</div><div class="se">Empty: equip a second weapon to swap mid-fight</div></div>`;
-      const w = WEAPONS[id], sk = SKILLS[w.kind as keyof typeof SKILLS];
+      const w = WEAPONS[id], kind = w.kind as SkillKind, sk = SKILLS[kind], lvl = st.d.level;
       const col = '#' + w.color.toString(16).padStart(6, '0');
+      // the skill picker: every skill of this weapon kind, with a button per bar slot
+      const slotted = skillLoadout(st.d.skills, kind, lvl), three = lvl >= SLOT3_LEVEL;
+      const row = (s: SkillDef) => {
+        const known = s.level <= lvl, at = slotted.findIndex((x) => x?.id === s.id);
+        const meta = known ? `${s.cd >= 1 ? s.cd + 's cooldown' : 'instant'}${s.energy ? ` · ${s.energy} energy` : ''}` : `Learned at level ${s.level}`;
+        let b = '';
+        if (known) for (let i = 0; i < 3; i++) b += i === 2 && !three ? btn(icon('lock', 14), '', '', 'sq no') : btn(String(i + 1), 'skill', `${kind}:${s.id}:${i}`, 'sq' + (at === i ? ' on' : ''));
+        return `<div class="ld${known ? (at < 0 ? ' off' : '') : ' off locked'}"><span>${icon(known ? s.icon : 'lock', 16)}</span><div class="grow"><b>${s.name}</b><small>${s.desc}</small><i>${meta}</i></div>${b ? `<div class="ld-b">${b}</div>` : ''}</div>`;
+      };
+      const u = ULTIMATES[kind], od = lvl >= OVERDRIVE_LEVEL;
       return `<div class="pn-slot${st.d.active === slot ? ' active' : ''}" style="--wc:${col}"><div class="sl">Slot ${slot + 1}${st.d.active === slot ? '<em>In hand</em>' : ''}</div>
         <div class="sw"><div class="wi">${icon(w.kind, 30)}</div><div class="grow"><b>${w.name}</b><small>${cap(w.kind)} · Power ${w.power}</small></div></div>
-        <div class="sk">${sk.map((s) => `<div><span>${icon(s.icon, 16)}</span><div><b>${s.name}</b><small>${s.desc}</small><i>${s.cd >= 1 ? s.cd + 's cooldown' : 'instant'}${s.energy ? ` · ${s.energy} energy` : ''}</i></div></div>`).join('')}</div></div>`;
+        <div class="sk"><div class="ld-h">Skills<em>${three ? 'Three on the bar' : `Two on the bar · third slot at level ${SLOT3_LEVEL}`}</em></div>${sk.map(row).join('')}
+        <div class="ld ult${od ? '' : ' off'}"><span>${icon(od ? 'overdrive' : 'lock', 16)}</span><div class="grow"><b>${u.name}</b><small>${u.desc}</small><i>${od ? 'Overdrive · spends the full meter' : `Overdrive opens at level ${OVERDRIVE_LEVEL}`}</i></div></div></div></div>`;
     };
     const render = () => {
       sig = signature();
@@ -81,6 +93,17 @@ export const charPanel: PanelSpec = {
       act(a, v) {
         if (a === 'tab') { tab = v; host.body.scrollTop = 0; render(); }
         else if (a === 'title') { st.d.title = v || null; st.touch(); g.sfx('ui_click'); render(); }
+        else if (a === 'skill') {
+          // put a skill in a bar slot; if it already sat in another, the two trade places
+          const [kind, id, n] = v.split(':'), i = +n;
+          const cur = skillLoadout(st.d.skills, kind as SkillKind, st.d.level).map((s) => s?.id ?? null);
+          const from = cur.indexOf(id);
+          if (from === i) return;
+          if (from >= 0) cur[from] = cur[i];
+          cur[i] = id;
+          st.d.skills = { ...st.d.skills, [kind]: cur }; st.touch();
+          g.sfx('ui_equip'); render();
+        }
         else if (a === 'equip0' || a === 'equip1') { st.equip(v as WeaponId, a === 'equip0' ? 0 : 1); g.sfx('ui_equip'); render(); }
       },
     };

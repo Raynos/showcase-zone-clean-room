@@ -1,0 +1,12 @@
+/* Character, Loadout tab: the skill picker inside each weapon card (src/ui/panels/char.ts). */
+.pn-slot .sk > div.ld { align-items: center; }
+.pn-slot .sk > div.ld > .grow { min-width: 0; }
+.pn-slot .sk > div.ld.off > span, .pn-slot .sk > div.ld.off > .grow { opacity: .5; }
+.pn-slot .sk > div.ld.locked > span { color: var(--dim); background: rgba(255, 255, 255, .05); border-color: var(--line); }
+.pn-slot .sk > div.ld.ult > span { color: #ffd24a; background: rgba(255, 210, 74, .1); border-color: rgba(255, 210, 74, .45); }
+.pn-slot .sk .ld-b { flex: none; display: flex; gap: 4px; }
+.pn-slot .sk .ld-b .pn-btn.sq { width: 34px; min-width: 34px; height: 40px; font-size: 15px; }
+.pn-slot .sk .ld-b .pn-btn.sq.no { opacity: .35; pointer-events: none; }
+.pn-slot .sk .ld-b .pn-btn.sq svg { display: block; }
+.pn-slot .sk .ld-h { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+.pn-slot .sk .ld-h em { font-style: normal; letter-spacing: .04em; text-transform: none; font-weight: 600; }
