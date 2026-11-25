@@ -3,7 +3,7 @@ import { clamp, clamp01, damp, lerp, rand } from '../core/util';
 import { BOW_DRAW, BOW_PERFECT, GUNS, RIFLE_STEADY, RIFLE_STEADY_MULT, XBOW_SPECIAL_EVERY, type GunDef } from '../data/moves';
 import { AMMO } from '../data/weapons';
 import type { Game } from '../game';
-import { SP, TELE_VIEW } from '../gfx/fx';
+import { RB, SP, TELE_VIEW } from '../gfx/fx';
 import { Crosshair, type HitKind } from '../ui/crosshair';
 import { AimAssist } from './aimassist';
 import { cast, launchDir, type RayHit } from './ballistics';
@@ -214,7 +214,7 @@ export class Shooter {
     if (G.mag > 0) {
       if (this.reloadT > 0) {
         this.reloadT -= dt;
-        if (this.reloadT <= 0) { this.reloadT = 0; this.mag = G.mag; g.sfx(k === 'rifle' ? 'rifle_cock' : 'xbow_ready'); }
+        if (this.reloadT <= 0) { this.reloadT = 0; this.mag = G.mag; g.sfx(k === 'rifle' ? 'rifle_cock' : 'xbow_ready'); g.fx.play('gun.ready', c.muzzlePos(_m), undefined, st.weapon.color); }
       } else if (ok && this.mag < G.mag && (inp.pressed('reload') || (this.mag <= 0 && (firePressed || this.sinceShot > 0.3)))) this.startReload();
     }
 
@@ -224,6 +224,8 @@ export class Shooter {
       if (k === 'crossbow') this.fireBolt(); else this.fireRifle();
     }
     if (this.cockT > 0 && (this.cockT -= dt) <= 0) g.sfx('rifle_cock', { vol: 0.5, pitch: 1.1 });
+    // effects: the rifle gathers as it steadies, and the scope glints when it has
+    if (k === 'rifle' && this.adsK > 0.95 && pl.speed2d < 2.2 && this.adsT < RIFLE_STEADY + dt) g.fx.play(this.adsT < RIFLE_STEADY ? 'charge' : 'gun.glint', c.muzzlePos(_m), undefined, st.weapon.color, 1, 0.5 * this.adsT / RIFLE_STEADY);
     if (this.burstN > 0 && (this.burstT -= dt) <= 0) {
       this.fireBolt({ mult: this.burstMul, free: true, crit: this.burstCrit && this.burstFirst, special: this.burstFirst, spread: this.spreadNow() * 0.5 });
       this.burstFirst = false; this.burstN--; this.burstT = 0.09;
@@ -285,6 +287,7 @@ export class Shooter {
     const g = this.game, G = this.gun!;
     this.reloadT = this.reloadDur = G.reload * (g.state.perk('quickdraw') ? 0.85 : 1);
     this.boltN = 0;
+    g.fx.play('gun.reload', this.combat.muzzlePos(_m), undefined, 0xffffff, 1, this.kind === 'rifle' ? 1 : 0);
     g.sfx('xbow_reload', { pitch: this.kind === 'rifle' ? 0.85 : 1 });
   }
   private kick(G: GunDef, mul = 1) {
@@ -297,7 +300,7 @@ export class Shooter {
   /** A shot's look and sound at the muzzle, and the camera punch that stays comfortable on a phone. */
   private flash(muzzle: THREE.Vector3, dir: THREE.Vector3, color: number, size: number, punch: number) {
     const g = this.game;
-    g.fx.muzzle(muzzle, dir, color, size);
+    g.fx.muzzle(muzzle, dir, color, size, this.kind);
     g.cameraRig.kick(punch, rand(-0.25, 0.25) * punch);
     g.cameraRig.punch(punch * 35);
     g.haptic(punch > 0.02 ? 14 : 6);
@@ -400,7 +403,7 @@ export class Shooter {
     }
     const end = list[list.length - 1].point;
     const big = oc || !!o.rail, col = big ? 0xffffff : st.weapon.color;
-    g.fx.beam(_m, end, col, o.rail ? 0.6 : oc ? 0.5 : steady ? 0.3 : 0.2, o.rail ? 0.4 : 0.16, 0, o.rail ? 5 : oc ? 7 : 5);
+    g.fx.beam(_m, end, col, o.rail ? 0.6 : oc ? 0.5 : steady ? 0.3 : 0.2, o.rail ? 0.4 : 0.2, 0, o.rail ? 5 : oc ? 7 : 5, o.rail ? RB.BEAM : RB.TRACER);
     if (o.rail) g.fx.beam(_m, end, st.weapon.color, 1.3, 0.5, 0, 1.6);
     g.sfx(big ? 'rifle_overcharge' : 'rifle_fire', steady ? { pitch: 0.88 } : undefined);
     this.flash(_m, _d, col, big ? 2 : steady ? 1.6 : 1.2, big ? 0.03 : 0.02);
@@ -418,7 +421,7 @@ export class Shooter {
     }
     let n = 0;
     for (const h of list) {
-      if (!h.h) { if (!h.miss) g.fx.hitSparks(h.point, h.normal, 0xffc46a, 1); break; }
+      if (!h.h) { if (!h.miss) g.fx.surfaceHit(h.point, h.normal); break; }
       const f = o.rail ? 1 : [1, 0.6, 0.35][n] ?? 0.35;
       const weak = h.zone ? h.zone.def.mult * G.weak : 1;
       c.strikeTarget(h.h, mult * f * weak, {

@@ -125,6 +125,7 @@ export class Game {
     this.scene.add(this.fx.group);
     this.scene.add(this.rain.mesh);
     this.player = new Player(this);
+    this.fx.surface = (x, z) => (this.interior ? 'metal' : inTown(x, z) ? 'stone' : this.terrain.grassAt(x, z) > 0.35 ? 'grass' : 'dirt');
     this.player.setRig(placeholderHumanoid());
     this.hud = new Hud(this);
     this.combat = new Combat(this);
@@ -480,6 +481,7 @@ export class Game {
 
     // post feedback decay
     post.hurt = damp(post.hurt, 0, 3.2, rdt);
+    this.fx.wet = this.interior ? 0 : this.env.wetness;
     post.flash.w = damp(post.flash.w, 0, 6, rdt);
     if (this.fadeHold) post.fade = damp(post.fade, 1, 14, rdt);
     else if (!pl.dead) post.fade = damp(post.fade, 0, 3.5, rdt);

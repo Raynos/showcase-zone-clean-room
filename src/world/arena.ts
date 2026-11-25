@@ -871,7 +871,7 @@ export class Arena implements System {
       this.poseOv = { action: 'death', t: clamp01(t / 7.2) };
       const boom = (sock: string, scale: number) => {
         const s = m.rig.sockets[sock]; if (s) s.getWorldPosition(_v); else m.center(_v);
-        fx.explosion(_v, scale, 0xffa53a); fx.chunks(_v, 14, [PAL.crate, 0xb98548, PAL.slateDark], 10, 0.55); fx.flash(_v, 0xffa53a, 160, 40, 0.5);
+        fx.explosion(_v, scale, 0xffa53a); fx.chunks(_v, 14, [PAL.crate, 0xb98548, 0x8a6a40], 10, 0.4, T.CRATE, undefined, 0.3); fx.flash(_v, 0xffa53a, 160, 40, 0.5);
         g.sfx('explosion_big', { pos: _v }); g.cameraRig.shake(0.7); g.haptic(60);
       };
       beat(0.9, () => boom('handL', 2.4)); beat(1.7, () => boom('handR', 2.4)); beat(2.6, () => boom('head', 3)); beat(3.5, () => boom('core', 3.4));
@@ -881,7 +881,7 @@ export class Arena implements System {
         // let the mob system finish it: final blast and removal
         this.holdDead = false; m.stT = 1;
         m.center(_v); _v.y = Y + 4;
-        fx.explosion(_v, 6, 0xffa53a); fx.ring(_v.set(m.pos.x, Y + 0.3, m.pos.z), 44, 0xffa53a, 1.2, 3.5); fx.chunks(_v, 40, [PAL.crate, 0xb98548, PAL.slateDark, PAL.orange], 16, 0.7);
+        fx.explosion(_v, 6, 0xffa53a); fx.ring(_v.set(m.pos.x, Y + 0.3, m.pos.z), 44, 0xffa53a, 1.2, 3.5); fx.chunks(_v, 40, [PAL.crate, 0xb98548, 0x8a6a40], 16, 0.5, T.CRATE, undefined, 0.3);
         g.sfx('explosion_big', { pos: _v }); g.sfx('kill_big', { pos: _v }); g.cameraRig.shake(1.0); g.cameraRig.punch(7); g.haptic(200);
         g.renderer.post.flash.set(1, 0.9, 0.7, 0.6);
         this.setLook(1);

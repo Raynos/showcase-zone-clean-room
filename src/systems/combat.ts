@@ -8,7 +8,7 @@ import { AMMO, OVERDRIVE_LEVEL, SKILLS, SLOT3_LEVEL, ULTIMATES, skillLoadout, ty
 import { DOWN } from '../entities/humanoid/types';
 import type { WeaponKind } from '../entities/humanoid/types';
 import type { Game } from '../game';
-import { SP, type Trail } from '../gfx/fx';
+import { RB, SP, TRAIL_LOOKS, type Trail } from '../gfx/fx';
 import { WorldMaterial } from '../gfx/material';
 import { T } from '../gfx/textures';
 import { HurtArc } from '../ui/hurtarc';
@@ -80,6 +80,8 @@ const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vect
 const MAXS = 96;
 /** Seconds a press of a buffered action waits for the first frame it is legal. */
 const BUFFER = 0.2;
+/** ribbons fed while a skill carries the hero through the air, and behind a lobbed shell (effects only) */
+const FLIP_ARC = { row: RB.WAVE, width: 1.1, life: 0.34, glow: 1.8, core: 0.9, tile: 0.5 }, LEAP_ARC = { row: RB.SPEAR, width: 0.9, life: 0.3, glow: 2, core: 1, tile: 0.4 }, LOB_TAIL = { row: RB.BEAM, width: 0.6, life: 0.3, glow: 1.3, core: 0.5, tile: 0.6 };
 /** A melee swing slides at most this far toward its target, at no more than this average speed (peak is 1.2x). */
 const LUNGE_MAX = 3, LUNGE_SPEED = 15;
 /**
@@ -305,8 +307,7 @@ export class Combat {
       const killed = !h.alive;
       if (o.at) _v.copy(o.at); else _v.set(_c.x - dx * h.radius * 0.7, _c.y, _c.z - dz * h.radius * 0.7);
       _d.set(-dx, 0.35, -dz).normalize();
-      g.fx.hitSparks(_v, _d, o.weak ? 0xffd23a : deflect ? 0x9fb6c8 : color, o.weak ? 1.5 : deflect ? 0.6 : 0.9);
-      if (o.weak) g.fx.emit(_v, { count: 1, speed: [0, 0], life: [0.1, 0.12], size: [0.6, 0.6], grow: 0.4, color: 0xffd23a, glow: 5, sprite: SP.STAR });
+      g.fx.shotImpact(_v, _d, o.weak ? 'weak' : killed ? 'kill' : deflect ? 'deflect' : 'body', color, mob.def?.colors ?? null);
       if (st.d.settings.dmgNumbers) g.hud.damage({ x: _v.x + rand(-0.15, 0.15), y: _v.y + 0.25, z: _v.z + rand(-0.15, 0.15) }, String(dealt) + (crit ? '!' : ''), killed ? 'kill' : o.weak ? 'weak' : deflect ? 'deflect' : crit ? 'crit shot' : 'shot');
       if (!o.quiet || killed) this.shooter.onHit(killed ? 'kill' : o.weak ? 'weak' : deflect ? 'deflect' : 'body');
       if (g.time - this.lastHitSfx > 0.05) { this.lastHitSfx = g.time; g.sfx('hit_metal', { pos: h.pos, vol: 0.45, pitch: rand(1, 1.15) }); }
@@ -315,8 +316,8 @@ export class Combat {
     // impact point on the near side
     _v.set(_c.x - dx * h.radius * 0.7, _c.y + rand(-0.2, 0.3), _c.z - dz * h.radius * 0.7);
     _d.set(-dx, 0.35, -dz).normalize();
-    g.fx.hitSparks(_v, _d, color, o.heavy || crit ? 1.6 : 1);
-    if (o.source === 'melee' || o.source === 'skill') g.fx.slashHit(_v, color, o.heavy ? 1.5 : 1);
+    if ((o.source === 'melee' || o.source === 'skill') && (this.kind === 'sword' || this.kind === 'spear')) g.fx.impact(_v, _d, color, o.heavy || crit ? 1.6 : 1, mob.def?.colors ?? null, this.kind === 'spear', h.pos.y);
+    else g.fx.hitSparks(_v, _d, color, o.heavy || crit ? 1.6 : 1);
     if (st.d.settings.dmgNumbers) g.hud.damage({ x: _c.x + rand(-0.3, 0.3), y: _c.y + h.height * 0.35, z: _c.z + rand(-0.3, 0.3) }, String(dealt) + (crit ? '!' : ''), crit ? 'crit' : '');
     }
     if (!o.quiet && !o.shot) {
@@ -685,7 +686,7 @@ export class Combat {
     // weapon trail: only the outer part of the blade draws, so the ribbon is an edge and not a sheet over the enemy
     if (this.trail?.active && pl.weaponModel) {
       pl.weaponModel.base.getWorldPosition(_v); pl.weaponModel.tip.getWorldPosition(_v2);
-      this.trail.feed(_v.lerp(_v2, this.kind === 'spear' ? 0.72 : 0.55), _v2);
+      this.trail.feed(_v, _v2);
     }
     this.updateShots(dt);
     this.updateStrikes(dt);
@@ -737,7 +738,7 @@ export class Combat {
       pl.action = s.anim; pl.actionT = Math.min(1, this.swingT);
       pl.actionSlow = light ? 0.25 : 0.1;
       // the trail marks the cut itself, not the wind-up or the recovery
-      if (!this.trailOn && this.swingT >= s.hitAt - 0.16 && this.swingT < s.hitAt + 0.1) { this.trailOn = true; this.startTrail(s.heavy ? 0.16 : 0.11, light ? 0.5 : 0.6); }
+      if (!this.trailOn && this.swingT >= s.hitAt - 0.16 && this.swingT < s.hitAt + 0.1) { this.trailOn = true; this.startTrail(this.kind === 'spear' ? (s.heavy ? 'spearHeavy' : 'spear') : s.heavy ? 'swordHeavy' : 'sword'); }
       else if (this.trailOn && this.swingT > s.hitAt + 0.2) { this.trailOn = false; this.trail?.stop(); }
       // a press at any point of a swing chains the next one
       if (press) { this.queued = true; this.buf = null; this.pressLive = held; this.ownPress = false; }
@@ -796,17 +797,14 @@ export class Combat {
   }
   private chargeFx(lv: number) {
     const g = this.game, pl = g.player, col = lv === 2 ? 0xffffff : g.state.weapon.color;
-    g.fx.ring(pl.pos, lv === 2 ? 3.4 : 2.2, col, 0.3, 3);
-    if (pl.weaponModel) g.fx.emit(pl.weaponModel.tip.getWorldPosition(_v), { count: 1, speed: [0, 0], life: [0.14, 0.14], size: [lv === 2 ? 0.7 : 0.45, lv === 2 ? 0.7 : 0.45], grow: 0.2, color: col, glow: 4, sprite: SP.STAR });
+    g.fx.ring(pl.pos, lv === 2 ? 2.6 : 1.8, col, 0.3, 2.2);
+    if (pl.weaponModel) g.fx.play('charge.lv', pl.weaponModel.tip.getWorldPosition(_v), undefined, g.state.weapon.color, lv);
     g.sfx('bow_full', { pitch: lv === 2 ? 1.5 : 1.15 }); g.haptic(lv === 2 ? 22 : 12);
     if (lv === 2) g.renderer.post.flash.w = Math.max(g.renderer.post.flash.w, 0.05);
   }
-  /** A dim, short-lived ribbon in the weapon's colour. */
-  private startTrail(life: number, dim = 0.5) {
-    const tr = this.trail = this.game.fx.trail();
-    tr.life = life;
-    tr.start(this.game.state.weapon.color);
-    tr.color.multiplyScalar(dim);
+  /** The blade's ribbon, painted for the move (gfx/vfx/ribbons.ts TRAIL_LOOKS). */
+  private startTrail(look: string) {
+    (this.trail = this.game.fx.trail()).start(this.game.state.weapon.color, TRAIL_LOOKS[look]);
   }
   private meleeHit(s: Swing) {
     const g = this.game, pl = g.player, col = g.state.weapon.color, lv = this.swingLv;
@@ -830,12 +828,12 @@ export class Combat {
     if (n > 0) g.state.d.energy = Math.min(g.state.maxEnergy, g.state.d.energy + 5 + n);
     if (s.burst) {
       _v.set(bx, py + 0.1, bz);
-      g.fx.ring(_v, s.burst * 2, col, 0.35, 3); g.fx.dust(_v, 12, 1.6); g.fx.chunks(_v, 6, [0x8a8f98, 0x6a6f78, col], 6, 0.14);
+      g.fx.play('sk.slam', _v, undefined, col, 1 + 0.15 * lv, s.burst * 1.6);
       g.cameraRig.shake(0.4 + 0.1 * lv); g.sfx('skill_slam', { vol: 0.7 });
     } else if (s.line) {
       _v.set(px + sy * 0.6, py + 1.15, pz + cy * 0.6); _v2.set(px + sy * range, py + 1.15, pz + cy * range);
-      g.fx.beam(_v, _v2, col, 0.3 + 0.12 * lv, 0.16, 0, 4);
-    } else if (s.arc > 2) g.fx.ring(pl.pos, range * 2, col, 0.25, 2.5);
+      g.fx.beam(_v, _v2, col, 0.34 + 0.14 * lv, 0.24, 0, 4.5, RB.SPEAR); g.fx.play('sk.airring', _v2, undefined, col, 0.7 + 0.25 * lv);
+    } else if (s.arc > 2) g.fx.play(this.kind === 'spear' ? 'sk.sweep' : 'sk.whirl', pl.pos, pl.forward(_v), col, 0.8, range);
     if (s.heavy) { pl.forward(_v).multiplyScalar(1.6).add(pl.pos); _v.y += 0.1; g.fx.dust(_v, 5, 1.1); if (n === 0) g.cameraRig.shake(0.08); }
     if (s.holdAt !== undefined && s.from === undefined) {
       // a released charge is felt whether or not it connects; a full one whites out for a frame when it does
@@ -1022,7 +1020,7 @@ export class Combat {
       this.aoe(_v2.x, _v2.y, _v2.z, 5.5, 1.6, { heavy: true, knock: 10, source: 'skill', stun: 1.5 });
       return;
     }
-    if (!hits.length && wh) g.fx.hitSparks(_v2, wh.normal, 0xffc46a, 1);
+    if (!hits.length && wh) g.fx.surfaceHit(_v2, wh.normal);
     for (let i = 0; i < hits.length && i < max; i++) {
       const crit = o.crit || (o.steady && i === 0 && Math.random() < 0.5) ? true : undefined;
       this.strikeTarget(hits[i].h, mult * (o.rail ? 1 : RIFLE.falloff[i]), { heavy: true, knock: o.knock ?? (oc ? 12 : 6), source: o.rail ? 'skill' : 'rifle', crit, stun: o.stun ?? (oc ? 2 : 0), poise: o.poise, quiet: i > 0 });
@@ -1071,14 +1069,15 @@ export class Combat {
     const sf = Math.sin(face), cf = Math.cos(face);
     const td = t ? Math.hypot(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) : 0;
     switch (sk.id) {
-      case 'whirlwind': this.skillDur = 0.75; pl.action = 'swordSkill'; this.startTrail(0.22, 0.7); g.sfx('skill_whirl'); break;
+      case 'whirlwind': this.skillDur = 0.75; pl.action = 'swordSkill'; this.startTrail('whirl'); g.sfx('skill_whirl'); break;
+    this.castFx(sk.id, face);
       case 'dash_strike': {
         this.skillDur = 0.34; pl.action = 'sword3';
         const dist = t ? clamp(td + 3, 5, 11) : 9;
         pl.lunge.set(sf * dist / 0.16, 0, cf * dist / 0.16); pl.lungeT = 0.16;
         pl.invuln = Math.max(pl.invuln, 0.3);
         this.dashFrom.copy(pl.pos); this.dashYaw = face;
-        this.startTrail(0.22, 0.7);
+        this.startTrail('skill');
         g.sfx('skill_dash'); g.cameraRig.punch(7);
         break;
       }
@@ -1086,10 +1085,10 @@ export class Combat {
         this.skillDur = 0.5; pl.action = 'swordRise';
         const step = t ? clamp(td - t.radius - 1.8, 0, 4.5) : 0.6;
         if (step > 0.05 && pl.grounded) pl.startLunge(sf, cf, step, 0.15);
-        this.startTrail(0.2, 0.8); g.sfx('swing_heavy', { pitch: 1.15 });
+        this.startTrail('skill'); g.sfx('swing_heavy', { pitch: 1.15 });
         break;
       }
-      case 'arc_wave': this.skillDur = 0.42; pl.action = 'sword1'; this.startTrail(0.2, 0.8); g.sfx('skill_whirl', { pitch: 1.2 }); break;
+      case 'arc_wave': this.skillDur = 0.42; pl.action = 'sword1'; this.startTrail('skill'); g.sfx('skill_whirl', { pitch: 1.2 }); break;
       case 'skewer_leap': {
         this.skillDur = 0.62; pl.action = 'spearSkill';
         const d = Math.max(0.1, td - t!.radius - 1.2), tt = this.skillDur * 0.6;
@@ -1098,14 +1097,14 @@ export class Combat {
         g.sfx('skill_leap');
         break;
       }
-      case 'sweep': this.skillDur = 0.6; pl.action = 'spear3'; this.startTrail(0.22, 0.7); g.sfx('swing_heavy'); break;
+      case 'sweep': this.skillDur = 0.6; pl.action = 'spear3'; this.startTrail('whirl'); g.sfx('swing_heavy'); break;
       case 'impale': {
         this.skillDur = 0.42; pl.action = 'spearHeavy';
         const dist = t ? clamp(td + 2.5, 5, 10) : 8;
         pl.lunge.set(sf * dist / 0.2, 0, cf * dist / 0.2); pl.lungeT = 0.2;
         pl.invuln = Math.max(pl.invuln, 0.3);
         this.dashFrom.copy(pl.pos); this.dashYaw = face;
-        this.startTrail(0.22, 0.8);
+        this.startTrail('spearHeavy');
         g.sfx('skill_dash', { pitch: 0.85 }); g.cameraRig.punch(6);
         break;
       }
@@ -1130,7 +1129,7 @@ export class Combat {
         const order: AmmoId[] = ['bolt', 'bolt_shock', 'bolt_blast', 'bolt_pierce'];
         let i = order.indexOf(st.d.ammo);
         for (let k = 0; k < 4; k++) { i = (i + 1) % 4; if (order[i] === 'bolt' || st.count(order[i]) > 0) break; }
-        st.d.ammo = order[i]; st.touch();
+        st.d.ammo = order[i]; st.touch(); g.fx.play('sk.ammo', this.muzzlePos(_v), undefined, AMMO[order[i]].color);
         g.hud.toast(AMMO[order[i]].name, 'info', order[i] === 'bolt' ? 'unlimited' : `${st.count(order[i])} left`);
         g.sfx('xbow_ready');
         this.skill = null;
@@ -1177,12 +1176,12 @@ export class Combat {
     const col = st.weapon.color, c = pl.center;
     g.hud.damage({ x: c.x, y: c.y + 1.3, z: c.z }, u.name.toUpperCase(), 'crit');
     g.slowMo(0.3, 0.22); g.cameraRig.punch(8); g.cameraRig.shake(0.5); g.haptic(40);
-    g.fx.ring(pl.pos, 9, col, 0.5, 3); g.fx.ring(pl.pos, 5, 0xffffff, 0.35, 4);
-    g.fx.flash({ x: c.x, y: c.y, z: c.z }, col, 90, 16, 0.3);
+    g.fx.play('od.start', pl.pos, undefined, col);
+    if (k === 'spear') g.fx.play('sk.meteor.launch', pl.pos, undefined, col);
     g.renderer.post.flash.w = Math.max(g.renderer.post.flash.w, 0.1);
     g.sfx('skill_charge', { pitch: 0.8 }); g.sfx('rifle_overcharge', { vol: 0.5, pitch: 0.7 });
     switch (k) {
-      case 'sword': this.skillDur = 1.5; pl.action = 'sword1'; pl.invuln = Math.max(pl.invuln, 1.7); this.startTrail(0.25, 0.9); break;
+      case 'sword': this.skillDur = 1.5; pl.action = 'sword1'; pl.invuln = Math.max(pl.invuln, 1.7); this.startTrail('ult'); break;
       case 'spear': {
         this.skillDur = 0.95; pl.action = 'spearSkill';
         const d = t ? Math.max(0.1, Math.hypot(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) - t.radius - 1.2) : 0, tt = this.skillDur * 0.62;
@@ -1224,12 +1223,28 @@ export class Combat {
       if (along > -1 && along < len && side < 1.8 + h.radius && Math.abs(h.pos.y - pl.pos.y) < 3 + h.height * 0.5) { this.strikeTarget(h, mult, { heavy: true, source: 'skill', quiet: n > 0, ...o }); n++; }
     }
     _v.copy(this.dashFrom); _v.y += 1; _v2.copy(pl.pos); _v2.y += 1;
-    g.fx.beam(_v, _v2, g.state.weapon.color, 0.9, 0.25, 0, 3);
+    g.fx.play('sk.dash', this.dashFrom, _v.set(sy, 0, cy), g.state.weapon.color, this.kind === 'spear' ? 2 : 1, len - 1.5);
     return n;
   }
   private dashFrom = new THREE.Vector3(); private dashYaw = 0;
   private updateSkill(dt: number) {
     const g = this.game, pl = g.player, st = g.state;
+  /** A skill's anticipation: what is seen in the beat before it lands. Effects only. */
+  private castFx(id: string, face: number) {
+    const g = this.game, pl = g.player, col = g.state.weapon.color;
+    _d.set(Math.sin(face), 0, Math.cos(face));
+    switch (id) {
+      case 'whirlwind': case 'sweep': g.fx.play('sk.cast', pl.pos, _d, col, 1); break;
+      case 'rising_cut': case 'dash_strike': case 'impale': g.fx.play('sk.cast', pl.pos, _d, col, 0.6); break;
+      case 'arc_wave': if (pl.weaponModel) g.fx.play('charge.lv', pl.weaponModel.tip.getWorldPosition(_v), _d, col, 1); break;
+      case 'skewer_leap': g.fx.play('sk.meteor.launch', pl.pos, _d, col); break;
+      case 'javelin': g.fx.play('sk.javelin.cast', _v.set(pl.pos.x, pl.pos.y + 1.7, pl.pos.z), _d, col); break;
+      case 'flip_volley': g.fx.play('sk.flip', pl.pos, _d, col); break;
+      case 'overcharge': g.fx.play('sk.overcharge', this.muzzlePos(_v), _d, col); break;
+      case 'arc_mine': g.fx.play('sk.place', _v.set(pl.pos.x + _d.x * 1.2, pl.pos.y, pl.pos.z + _d.z * 1.2), _d, 0x7ff0ff); break;
+      case 'volley': case 'shock_arrow': case 'arrow_rain': case 'barrage': case 'jam_bolt': g.fx.play('gun.ready', this.muzzlePos(_v), _d, id === 'shock_arrow' ? 0x7ff0ff : id === 'jam_bolt' ? 0xffd23a : col); break;
+    }
+  }
     const prev = this.skillT;
     this.skillT += dt / this.skillDur;
     const t = this.skillT, col = st.weapon.color;
@@ -1239,7 +1254,7 @@ export class Combat {
       case 'whirlwind':
         for (const x of [0.25, 0.47, 0.69]) if (crossed(x)) {
           this.aoe(pl.pos.x, pl.pos.y, pl.pos.z, 4.4, 0.95, { knock: 3, source: 'skill', heavy: x > 0.6 });
-          g.fx.ring(pl.pos, 4.4 * 2, col, 0.25, 2); g.sfx('swing_sword', { pitch: 1 + x * 0.3 });
+          g.fx.play('sk.whirl', pl.pos, undefined, col, 1, 4.4); g.sfx('swing_sword', { pitch: 1 + x * 0.3 });
         }
         break;
       case 'dash_strike':
@@ -1253,8 +1268,7 @@ export class Combat {
             if (d - h.radius < 3.6 && Math.abs(angleDiff(pl.yaw, Math.atan2(dx, dz))) < 1.1 + Math.atan2(h.radius, d) && Math.abs(h.pos.y - pl.pos.y) < 3 + h.height * 0.5) { this.strikeTarget(h, 2.4, { heavy: true, knock: 3, source: 'skill', stun: 1.2, poise: 3, quiet: n > 0 }); n++; }
           }
           pl.forward(_v).multiplyScalar(1.5).add(pl.pos); _v.y += 0.3;
-          g.fx.emit(_v, { count: 14, speed: [4, 9], up: 9, life: [0.2, 0.45], size: [0.06, 0.12], color: col, color2: 0xffffff, glow: 5, gravity: 10, sprite: SP.STREAK, stretch: 0.08 });
-          g.fx.ring(_v, 3, col, 0.25, 2.5); g.fx.dust(_v, 6, 1.2);
+          g.fx.play('sk.rise', _v, pl.forward(_d), col);
           if (n) g.cameraRig.punch(-3);
         }
         break;
@@ -1263,14 +1277,16 @@ export class Combat {
           _v.copy(pl.pos); _v.y += 1.1; pl.forward(_d);
           this.fire('wave', _v, _d, 30, 2.0, { pierce: true, hit: new Set(), radius: 1.5, life: 0.62, knock: 5, src: 'skill', heavy: true, poise: 1.5 });
           g.sfx('skill_pierce', { pitch: 1.3 }); g.cameraRig.shake(0.25); g.cameraRig.punch(3);
+          g.fx.play('sk.wave.cast', _v, _d, col);
         }
         break;
       case 'skewer_leap':
         if (crossed(0.62)) {
           pl.vel.set(0, -20, 0);
+        if (t < 0.62 && pl.weaponModel) g.fx.follow(pl, pl.weaponModel.tip.getWorldPosition(_v), col, LEAP_ARC);
           this.aoe(pl.pos.x, pl.pos.y, pl.pos.z, 4.2, 2.7, { heavy: true, knock: 8, source: 'skill', stun: 0.8 });
           _v.copy(pl.pos); _v.y = g.groundY(pl.pos.x, pl.pos.z, pl.pos.y + 0.5) + 0.1;
-          g.fx.ring(_v, 8.4, col, 0.4, 2.5); g.fx.dust(_v, 14, 2); g.cameraRig.shake(0.5); g.sfx('skill_slam');
+          g.fx.play('sk.slam', _v, undefined, col, 1.2, 4.2); g.cameraRig.shake(0.5); g.sfx('skill_slam');
         }
         break;
       case 'sweep':
@@ -1280,7 +1296,7 @@ export class Combat {
             const dx = h.pos.x - pl.pos.x, dz = h.pos.z - pl.pos.z, d = Math.hypot(dx, dz);
             if (d - h.radius < 5.4 && Math.abs(angleDiff(pl.yaw, Math.atan2(dx, dz))) < 2.0 && Math.abs(h.pos.y - pl.pos.y) < 3 + h.height * 0.5) { this.strikeTarget(h, 1.9, { heavy: true, knock: 13, source: 'skill', quiet: n > 0 }); n++; }
           }
-          g.fx.ring(pl.pos, 10, col, 0.3, 2);
+          g.fx.play('sk.sweep', pl.pos, pl.forward(_d), col, 1, 5.4);
         }
         break;
       case 'impale':
@@ -1293,6 +1309,7 @@ export class Combat {
           _v.copy(pl.pos); _v.y += 1.45; this.aimDir(_v, _d, 62, 0);
           this.fire('javelin', _v, _d, 62, 2.8, { pierce: true, hit: new Set(), radius: 0.6, life: 1.1, knock: 7, src: 'skill', heavy: true, poise: 2 });
           g.sfx('swing_spear', { pitch: 0.8 }); g.sfx('skill_pierce'); g.cameraRig.kick(0.03); g.cameraRig.punch(3);
+          g.fx.play('sk.javelin.throw', _v, _d, col);
         }
         break;
       case 'volley':
@@ -1301,6 +1318,7 @@ export class Combat {
           const base = Math.atan2(_d.x, _d.z), py = _d.y;
           for (let i = -2; i <= 2; i++) {
             const a = base + i * 0.1; _v2.set(Math.sin(a) * Math.sqrt(1 - py * py), py, Math.cos(a) * Math.sqrt(1 - py * py));
+          g.fx.play('sk.volley', _v, _d, col);
             this.fire('arrow', _v, _v2, 60, 0.85, { knock: 4, grav: 3 });
           }
           g.sfx('bow_release'); g.sfx('skill_volley'); g.cameraRig.kick(0.02);
@@ -1309,7 +1327,7 @@ export class Combat {
       case 'piercer':
         pl.action = t < 0.7 ? 'bowDraw' : 'bowRelease'; pl.actionT = t < 0.7 ? t / 0.7 : (t - 0.7) / 0.3; pl.actionSlow = 0.3;
         pl.weaponModel?.setDraw?.(t < 0.7 ? t / 0.7 : 0);
-        if (t < 0.7) { this.muzzlePos(_v); g.fx.emit(_v, { count: 1, speed: [1, 3], life: [0.15, 0.3], size: [0.05, 0.1], color: col, glow: 4, sprite: SP.STREAK, stretch: 0.1, radius: 0.3 }); }
+        if (t < 0.7) g.fx.play('charge', this.muzzlePos(_v), undefined, col, 1, t / 0.7);
         if (crossed(0.7) && this.stance === 'shooter') {
           // a bolt of light down the crosshair: everything on the line, weak points counted
           this.muzzlePos(_v); this.aimDir(_v, _d, 400, 0);
@@ -1320,7 +1338,7 @@ export class Combat {
             this.strikeTarget(hh.h, 3.1 * (hh.zone ? hh.zone.def.mult : 1), { heavy: true, knock: 9, source: 'skill', quiet: n > 0, at: hh.point, weak: hh.zone?.def.name, shot: true, poise: hh.zone ? 3 : 2 }); n++;
           }
           _v2.copy(hits[hits.length - 1].point);
-          g.fx.beam(_v, _v2, col, 0.7, 0.3, 0, 5); g.fx.beam(_v, _v2, 0xffffff, 0.2, 0.2, 0, 6);
+          this.muzzlePos(_v); g.fx.play('sk.piercer', _v, _d.subVectors(_v2, _v).normalize(), col, 1, _v.distanceTo(_v2));
           g.sfx('skill_pierce'); g.cameraRig.kick(0.04); g.cameraRig.shake(0.35); g.cameraRig.punch(4);
         } else if (crossed(0.7)) {
           this.muzzlePos(_v); this.aimDir(_v, _d, 400, 0);
@@ -1334,7 +1352,7 @@ export class Combat {
             if (Math.hypot(ox - ax * tt, oz - az * tt) < h.radius + 0.6 && Math.abs(oy - ay * tt) < h.height * 0.6 + 0.5) { this.strikeTarget(h, 3.1, { heavy: true, knock: 9, source: 'skill', quiet: n > 0 }); n++; }
           }
           _v.set(ox0, oy0, oz0); _v2.set(ox0 + ax * len, oy0 + ay * len, oz0 + az * len);
-          g.fx.beam(_v, _v2, col, 0.7, 0.3, 0, 5); g.fx.beam(_v, _v2, 0xffffff, 0.2, 0.2, 0, 6);
+          this.muzzlePos(_v); g.fx.play('sk.piercer', _v, _d.subVectors(_v2, _v).normalize(), col, 1, _v.distanceTo(_v2));
           g.sfx('skill_pierce'); g.cameraRig.kick(0.04); g.cameraRig.shake(0.35); g.cameraRig.punch(4);
         }
         break;
@@ -1351,6 +1369,7 @@ export class Combat {
       case 'flip_volley':
         for (let i = 0; i < 3; i++) if (crossed(0.15 + i * 0.25)) this.fireBolt(0.9, 0.012, false);
         break;
+        g.fx.follow(pl, pl.center, col, FLIP_ARC);
 
       // ---- ultimates ----
       case 'ult_sword': {
@@ -1360,7 +1379,7 @@ export class Combat {
           const dx = h.pos.x - pl.pos.x, dz = h.pos.z - pl.pos.z, d = Math.hypot(dx, dz) || 1;
           const go = Math.max(0, d - h.radius - 1.4);
           _v.copy(pl.pos); _v.y += 1; _v2.set(pl.pos.x + dx / d * go, pl.pos.y + 1, pl.pos.z + dz / d * go);
-          g.fx.beam(_v, _v2, col, 0.5, 0.2, 0, 4);
+          g.fx.beam(_v, _v2, col, 0.5, 0.28, 0, 4.5, RB.WAVE);
           pl.yaw = Math.atan2(dx, dz); pl.lunge.set(dx / d * go / 0.06, 0, dz / d * go / 0.06); pl.lungeT = 0.06;
           this.target = h; this.skillHits = i + 1;
           this.strikeTarget(h, 1.3, { heavy: true, knock: 1, source: 'skill', poise: 1.5, quiet: i % 2 === 1 });
@@ -1370,7 +1389,7 @@ export class Combat {
         else { pl.action = 'swordSkill'; pl.actionT = 0.15 + 0.85 * clamp01((t - 0.8) / 0.2); }
         if (crossed(0.9)) {
           this.aoe(pl.pos.x, pl.pos.y, pl.pos.z, 5.5, 2.4, { heavy: true, knock: 9, source: 'skill', poise: 2 });
-          g.fx.ring(pl.pos, 11, col, 0.4, 3); g.fx.ring(pl.pos, 7, 0xffffff, 0.3, 4); g.fx.dust(pl.pos, 14, 2);
+          g.fx.play('od.sword.end', pl.pos, undefined, col, 1, 5.5);
           g.cameraRig.shake(0.7); g.sfx('skill_slam'); g.sfx('skill_whirl', { pitch: 0.8 });
         }
         break;
@@ -1378,12 +1397,10 @@ export class Combat {
       case 'ult_spear':
         if (crossed(0.62)) {
           pl.vel.set(0, -26, 0);
+        if (t < 0.62 && pl.weaponModel) g.fx.follow(pl, pl.weaponModel.tip.getWorldPosition(_v), col, LEAP_ARC);
           this.aoe(pl.pos.x, pl.pos.y, pl.pos.z, 6, 6.5, { heavy: true, knock: 12, source: 'skill', stun: 2, poise: 3 });
           _v.copy(pl.pos); _v.y = g.groundY(pl.pos.x, pl.pos.z, pl.pos.y + 0.5) + 0.1;
-          _v2.set(_v.x + 2, _v.y + 30, _v.z + 1);
-          g.fx.beam(_v2, _v, col, 0.9, 0.35, 0, 3); g.fx.beam(_v2, _v, 0xffffff, 0.28, 0.25, 0, 5);
-          g.fx.ring(_v, 12, col, 0.5, 3); g.fx.ring(_v, 7, 0xffffff, 0.35, 4); g.fx.explosion(_v, 0.8, col); g.fx.dust(_v, 24, 2.6);
-          g.fx.chunks(_v, 12, [0x8a8f98, 0x6a6f78, col], 9, 0.2);
+          g.fx.play('sk.meteor', _v, undefined, col, 1.6, 6);
           g.cameraRig.shake(0.9); g.cameraRig.punch(-6); g.renderer.post.flash.w = Math.max(g.renderer.post.flash.w, 0.07);
           g.sfx('skill_slam'); g.sfx('thunder_strike', { pos: _v });
         }
@@ -1411,7 +1428,7 @@ export class Combat {
         pl.actionSlow = 0.1;
         if (t < 0.6) {
           pl.action = 'rifleAim'; pl.actionT = Math.min(1, t / 0.3);
-          this.muzzlePos(_v); g.fx.emit(_v, { count: 2, speed: [2, 5], life: [0.15, 0.3], size: [0.06, 0.12], color: col, color2: 0xffffff, glow: 5, sprite: SP.STREAK, stretch: 0.1, radius: 0.6 });
+          g.fx.play('charge', this.muzzlePos(_v), undefined, col, 1, t / 0.6);
         } else pl.actionT = clamp01((t - 0.6) / 0.4);
         if (crossed(0.6)) this.fireRifle(8, { rail: true, stun: 1.5, poise: 3, knock: 14 });
         break;
@@ -1479,24 +1496,16 @@ export class Combat {
       }
       if (stop) {
         _v2.set(s.x + _d.x * hitT, s.y + _d.y * hitT, s.z + _d.z * hitT);
-        g.fx.hitSparks(_v2, wh!.normal, s.color, 0.6);
+        g.fx.surfaceHit(_v2, wh!.normal, s.color);
         if (!s.enemy) g.sfx('arrow_thunk', { pos: _v2, vol: 0.5 });
         if (s.zone) this.addZone(s.zone, _v2.x, _v2.y, _v2.z);
         if (s.blast) this.blast(_v2, s.blast, s.dmg * 0.8);
         continue;
       }
       s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
-      // visuals
-      if (s.enemy) {
-        g.fx.emit(s, { count: 1, speed: [0, 0.4], life: [0.14, 0.2], size: [s.radius * 2.6, s.radius * 3], grow: 0.2, color: s.color, glow: 3.2, sprite: SP.DOT });
-      } else if (s.kind === 'wave') {
-        // a crescent: bright streaks thrown out along its width as it flies
-        for (let k = -1; k <= 1; k++) g.fx.emit({ x: s.x - _d.z * k * 0.9, y: s.y + rand(-0.3, 0.3), z: s.z + _d.x * k * 0.9 }, { count: 1, speed: [0, 0.6], life: [0.12, 0.2], size: [0.3, 0.45], grow: 0.2, color: s.color, color2: 0xffffff, glow: 3.5, sprite: SP.DOT });
-      } else {
-        const big = s.kind === 'javelin';
-        g.fx.emit(s, { count: big ? 2 : 1, speed: [0, 0.2], life: [0.1, big ? 0.28 : 0.16], size: big ? [0.2, 0.3] : [0.12, 0.16], grow: 0.1, color: s.color, color2: big ? 0xffffff : undefined, glow: big ? 4 : 2.5, sprite: SP.DOT });
-      }
-      if (s.kind === 'wave') _s.set(52, 3, 0.5); else if (s.kind === 'javelin') _s.set(2.4, 2.4, 2.8); else _s.set(s.enemy ? 2.5 : 1.2, s.enemy ? 2.5 : 1.2, s.enemy ? 0.9 : 1.1);
+      // visuals: the tail, the head, and for the Arc Wave the crescent itself (gfx/vfx/recipes.ts SHOT_LOOKS)
+      g.fx.shot(s, _d);
+      if (s.kind === 'wave') _s.set(0, 0, 0); else if (s.kind === 'javelin') _s.set(2.4, 2.4, 2.8); else _s.set(s.enemy ? 2.5 : 1.2, s.enemy ? 2.5 : 1.2, s.enemy ? 0.9 : 1.1);
       _m.compose(_v.set(s.x, s.y, s.z), _q.setFromUnitVectors(_up, _d), _s);
       this.shotMesh.setMatrixAt(w, _m);
       this.shotMesh.setColorAt(w, _col.setHex(s.color));
@@ -1536,7 +1545,7 @@ export class Combat {
       if (s.kind === 'shell' && s.from) {
         // visible arc
         _v.lerpVectors(s.from, s.pos, k); _v.y += Math.sin(k * Math.PI) * (6 + s.from.distanceTo(s.pos) * 0.18);
-        g.fx.emit(_v, { count: 2, speed: [0, 0.6], life: [0.2, 0.35], size: [0.35, 0.5], grow: 0.2, color: s.color, glow: 3.5, sprite: SP.DOT });
+        g.fx.follow(s, _v, s.color, LOB_TAIL); g.fx.emit(_v, { count: 1, speed: [0, 0], life: [0.05, 0.07], size: [0.5, 0.6], grow: 0.8, color: s.color, glow: 3, sprite: SP.DOT });
       } else if (s.kind === 'crate' && k > 0.45 && cw < MAXS) {
         const f = (k - 0.45) / 0.55;
         _m.compose(_v.set(s.pos.x, s.pos.y + (1 - f * f) * 46 + s.radius * 0.45, s.pos.z), _q.setFromAxisAngle(_up, s.t * 3), _s.setScalar(s.radius * 0.9));
@@ -1553,8 +1562,8 @@ export class Combat {
           g.fx.emit({ x: p.x, y: p.y + 0.3, z: p.z }, { count: 14, speed: [3, 10], up: 4, life: [0.2, 0.5], size: [0.06, 0.12], color: s.color, color2: 0xffffff, glow: 5, gravity: 14, sprite: SP.STREAK, stretch: 0.07 });
           g.sfx('thunder_strike', { pos: p });
         } else {
-          g.fx.explosion({ x: p.x, y: p.y + 0.4, z: p.z } as THREE.Vector3, s.radius / 2.6, s.color);
-          if (s.kind === 'crate') g.fx.chunks(_v.set(p.x, p.y + 0.6, p.z), 9, [0xc9955a, 0xb07a45, 0x8a6a40], 7, 0.3);
+          if (s.kind === 'crate') g.fx.play('crate.land', p, undefined, s.color, s.radius);
+          else g.fx.explosion({ x: p.x, y: p.y + 0.4, z: p.z }, s.radius / 2.6, s.color);
           g.sfx(s.kind === 'crate' ? 'crate_smash' : 'explode_small', { pos: p });
         }
         const d = Math.hypot(pl.pos.x - p.x, pl.pos.z - p.z);

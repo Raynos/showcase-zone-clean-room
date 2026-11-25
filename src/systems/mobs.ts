@@ -179,10 +179,8 @@ export class Mob implements Hittable {
     this.setState('broken');
     this.status.t.shock = 0;
     this.center(_v);
-    fx.emit(_v, { count: 26, speed: [4, 11], up: 3, life: [0.25, 0.6], size: [0.06, 0.14], color: 0xfff0c0, glow: 5, gravity: 14, sprite: SP.STREAK, stretch: 0.07, radius: this.radius * 0.5 });
-    fx.chunks(_v, this.isBoss ? 14 : 8, this.def.colors, this.isBoss ? 9 : 6, this.isBoss ? 0.35 : 0.16);
+    fx.play('robot.break', _v, undefined, 0xffd27a, this.radius, this.height, this.def.colors);
     fx.ring(_v2.set(this.pos.x, this.pos.y + 0.1, this.pos.z), this.radius * 4 + 2, 0xffd27a, 0.45, 3);
-    fx.flash(_v, 0xffd27a, 70, 10 + this.height * 2, 0.35);
     g.hud.damage({ x: _v.x, y: _v.y + this.height * 0.45 + 0.6, z: _v.z }, 'BROKEN', 'crit');
     g.sfx(this.isBoss ? 'boss_slam' : 'enemy_crash', { pos: this.pos, vol: 1 });
     g.cameraRig.shake(this.isBoss ? 0.5 : this.cls === 'elite' ? 0.35 : 0.15);
@@ -420,10 +418,8 @@ export class Mob implements Hittable {
           _d.copy(g.camera.position).sub(core).setY(0).normalize();
           core.addScaledVector(_d, this.radius * 0.75);
           const s = (0.7 + this.radius * 0.6) * (0.85 + 0.3 * Math.sin(this.pose.time * 14));
-          g.fx.emit(core, { count: 1, speed: [0, 0], life: [0.07, 0.09], size: [s, s * 1.2], color: 0xffd890, glow: 5, sprite: SP.STAR });
+          g.fx.play('robot.broken', core, undefined, 0xffd890, s, this.radius);
           if (Math.random() < 0.08) g.fx.ring(_v2.set(this.pos.x, this.pos.y + 0.08, this.pos.z), this.radius * 3.2 + 1, 0xffc870, 0.5, 2);
-          if (Math.random() < 0.3) g.fx.emit(core, { count: 1, speed: [1, 3], up: 1, life: [0.3, 0.6], size: [0.04, 0.08], color: 0xffd27a, glow: 4, gravity: 12, sprite: SP.STREAK, stretch: 0.06, radius: this.radius * 0.3 });
-          if (Math.random() < 0.12) g.fx.smoke(_v.set(this.pos.x, this.pos.y + this.height * 0.8, this.pos.z), 1, 0.5 + this.radius * 0.3, 0x30333a, 0.4);
         }
         if (this.stT >= this.brokenDur) {
           this.stag = 0; this.breakImmune = this.brk.immune;

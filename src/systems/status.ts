@@ -140,7 +140,7 @@ export function tickStatus(m: Mob, dt: number) {
   if (S.t.burn > 0) {
     // flames licking up the body and a dark plume above it
     _v.set(m.pos.x + rand(-r, r) * 0.6, m.pos.y + m.lift + rand(0.15, 0.7) * h, m.pos.z + rand(-r, r) * 0.6);
-    fx.emit(_v, { count: 1, speed: [0.3, 1], up: 2.6, life: [0.35, 0.6], size: [0.25 + r * 0.25, 0.45 + r * 0.35], grow: 1.6, color: 0xff6a1a, color2: 0xffd27a, glow: 2.8, drag: 0.6, sprite: SP.SMOKE, spin: 2 });
+    fx.emit(_v, { count: 1, speed: [0.3, 1], up: 2.6, life: [0.35, 0.6], size: [0.3 + r * 0.3, 0.55 + r * 0.4], grow: 1.5, color: 0xff6a1a, color2: 0xffd27a, glow: 2.4, drag: 0.6, sprite: SP.FLAME, rot: 0, core: 0.9 });
     if (Math.random() < 0.25) fx.smoke(_w.set(_v.x, m.pos.y + m.lift + h * 0.95, _v.z), 1, 0.5 + r * 0.3, 0x2a2624, 0.4);
     if (Math.random() < 0.4) fx.emit(_v,{ count: 1, speed: [0.5, 2], up: 3, life: [0.4, 0.8], size: [0.04, 0.07], color: 0xffc46a, glow: 4, gravity: -1, sprite: SP.EMBER });
   }
@@ -154,7 +154,7 @@ export function tickStatus(m: Mob, dt: number) {
   if (S.t.jam > 0) {
     // seized joints: amber grit spitting out of the body, and a slow amber pulse round the feet
     _v.set(m.pos.x + rand(-r, r) * 0.8, m.pos.y + m.lift + rand(0.15, 0.7) * h, m.pos.z + rand(-r, r) * 0.8);
-    fx.emit(_v, { count: 1, speed: [0.8, 2.2], up: 0.8, life: [0.4, 0.7], size: [0.08, 0.15], color: 0xffd23a, glow: 3.5, gravity: 7, sprite: SP.SHARD, spin: 6 });
+    fx.emit(_v, { additive: false, count: 1, speed: [0.8, 2.2], up: 1.2, life: [0.5, 0.8], size: [0.16, 0.26], grow: 1, color: 0xffd23a, gravity: 7, sprite: Math.random() < 0.5 ? SP.GEAR : SP.NUT, spin: 9 });
     if (Math.random() < 0.06) fx.ring(_w.set(m.pos.x, m.pos.y + 0.08, m.pos.z), r * 2.8 + 0.8, 0xffc21a, 0.7, 2);
   }
 }

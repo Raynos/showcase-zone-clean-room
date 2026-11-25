@@ -71,9 +71,7 @@ export class Mech {
       // cracked: the plate falls away in glowing pieces and the elite reels
       this.crackT = 9;
       m.center(_v);
-      g.fx.chunks(_v, 14, [0xff7a2a, 0x5b6470, 0xffc46a], 8, 0.22);
-      g.fx.emit(_v, { count: 30, speed: [4, 12], up: 3, life: [0.3, 0.7], size: [0.06, 0.14], color: 0xffa03a, glow: 5, gravity: 16, sprite: SP.STREAK, stretch: 0.07, radius: m.radius * 0.6 });
-      g.fx.flash(_v, 0xff8a2a, 80, 14, 0.4);
+      g.fx.play('robot.crack', _v, undefined, 0xff8a2a, m.radius, m.height, [0xff7a2a, 0x5b6470, 0xffc46a]);
       g.hud.damage({ x: _v.x, y: _v.y + m.height * 0.5 + 0.6, z: _v.z }, 'PLATE CRACKED', 'crit');
       g.sfx('enemy_crash', { pos: m.pos, vol: 1 }); g.cameraRig.shake(0.45); g.slowMo(0.3, 0.15);
       m.interrupt(0.9);
@@ -119,7 +117,7 @@ export class Mech {
       m.center(_v);
       for (const o of m.mobs.list) if (o.summoner === m && o.alive && Math.random() < 0.25) g.fx.beam(o.center(_w).clone(), _v.clone(), 0x7ff0ff, 0.06, 0.08, 0.3, 4);
       _w.set(m.pos.x + rand(-r, r), m.pos.y + rand(0.2, 1) * h, m.pos.z + rand(-r, r));
-      g.fx.emit(_w, { count: 1, speed: [0, 0], life: [0.12, 0.18], size: [r * 0.9, r * 1.3], color: 0x5fe0ff, glow: 2, sprite: SP.RING });
+      g.fx.play('robot.shell', m.pos, undefined, 0x5fe0ff, r, h); g.fx.play('robot.shell', m.pos, undefined, 0x5fe0ff, r, h);
     } else if (this.plated) {
       // the plate: a glowing slab carried in front, shedding embers
       const fx = Math.sin(m.yaw), fz = Math.cos(m.yaw);
