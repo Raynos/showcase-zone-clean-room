@@ -1,0 +1,176 @@
+import { CONTRACTS, QUESTS, QUEST_BY_ID, type ContractDef, type QuestDef } from '../data/quests';
+import { ITEMS } from '../data/items';
+import { WEAPONS } from '../data/weapons';
+import type { WeaponId } from '../entities/humanoid/types';
+import type { Game } from '../game';
+
+export type QuestStatus = 'locked' | 'low' | 'available' | 'active' | 'ready' | 'done';
+
+/** Quest log, objective tracking and the kill-contract board. */
+export class Quests {
+  private trackerSig = '';
+  /** fired when a quest side effect needs the world to react (storm, keys...) */
+  onEffect: (effect: string, quest: QuestDef) => void = () => {};
+
+  constructor(private game: Game) {
+    const ev = game.state.events;
+    ev.on('kill', (k) => {
+      this.bump('kill:' + k.kind);
+      if (k.id) this.bump('kill:' + k.id);
+      this.bump('kill:any');
+      if (k.variant === 'night' || k.variant === 'nightElite') this.bump('kill:any:night');
+      if (k.variant === 'rare') this.bump('kill:any:rare');
+    });
+    ev.on('reach', (r) => this.bump('reach:' + r.place));
+    ev.on('course', (c) => this.bump('course:' + c.id));
+    ev.on('interact', (i) => this.bump('use:' + i.id.split('#')[0]));
+    ev.on('flag', (f) => this.bump('flag:' + f.key));
+  }
+
+  status(id: string): QuestStatus {
+    const q = QUEST_BY_ID[id], s = this.game.state.d.quests[id];
+    if (!q) return 'locked';
+    if (s) return s.state === 'done' ? 'done' : this.complete(q) ? 'ready' : 'active';
+    if (q.requires && !q.requires.every((r) => this.game.state.d.quests[r]?.state === 'done')) return 'locked';
+    return this.game.state.d.level >= q.level ? 'available' : 'low';
+  }
+  /** Current count for each objective. */
+  progress(q: QuestDef): number[] {
+    const s = this.game.state.d.quests[q.id], st = this.game.state;
+    return q.objectives.map((o, i) => {
+      if (o.on.startsWith('collect:')) return Math.min(o.n, st.count(o.on.slice(8)));
+      return Math.min(o.n, s?.prog[i] ?? 0);
+    });
+  }
+  private complete(q: QuestDef) { const p = this.progress(q); return q.objectives.every((o, i) => p[i] >= o.n); }
+
+  private bump(key: string, n = 1) {
+    const d = this.game.state.d;
+    let changed = false;
+    for (const id in d.quests) {
+      const s = d.quests[id];
+      if (s.state === 'done') continue;
+      const q = QUEST_BY_ID[id];
+      if (!q) continue;
+      const was = this.complete(q);
+      q.objectives.forEach((o, i) => {
+        if (o.on !== key || s.prog[i] >= o.n) return;
+        s.prog[i] = Math.min(o.n, (s.prog[i] ?? 0) + n);
+        changed = true;
+        this.game.hud.toast(`${o.text}: ${s.prog[i]}/${o.n}`, 'quest');
+      });
+      if (!was && this.complete(q)) this.game.hud.toast(q.name, 'quest', 'Objectives complete: return to ' + this.giverName(q), 'check');
+    }
+    if (changed) { this.game.state.touch(); this.game.state.events.emit('questUpdate', { id: key }); }
+  }
+  private giverName(q: QuestDef) { return this.game.npcName(q.turnIn ?? q.giver); }
+
+  accept(id: string) {
+    const q = QUEST_BY_ID[id];
+    if (!q || this.status(id) !== 'available') return false;
+    const g = this.game;
+    g.state.d.quests[id] = { state: 'active', prog: q.objectives.map(() => 0) };
+    // objectives already satisfied by where the player has been
+    q.objectives.forEach((o, i) => { if (o.on.startsWith('reach:') && g.state.d.flags['seen_' + o.on.slice(6)]) g.state.d.quests[id].prog[i] = 1; });
+    g.state.touch();
+    g.hud.toast(q.name, 'quest', 'Quest accepted');
+    g.hud.log(`Quest accepted: ${q.name}`, 'quest');
+    g.sfx('quest_accept');
+    if (q.onAccept) this.effect(q.onAccept, q);
+    g.state.events.emit('questUpdate', { id });
+    return true;
+  }
+  turnIn(id: string) {
+    const q = QUEST_BY_ID[id];
+    if (!q || this.status(id) !== 'ready') return false;
+    const g = this.game, st = g.state;
+    for (const o of q.objectives) if (o.take && o.on.startsWith('collect:')) st.removeItem(o.on.slice(8), o.n);
+    st.d.quests[id].state = 'done';
+    g.hud.banner('QUEST COMPLETE', q.name, '');
+    g.sfx('quest_complete');
+    g.fx.levelUp(g.player.pos);
+    st.addScrip(q.scrip);
+    for (const [it, n] of q.items ?? []) { st.addItem(it, n); }
+    if (q.weapon) {
+      st.giveWeapon(q.weapon as WeaponId);
+      if (!st.d.loadout[1]) st.equip(q.weapon as WeaponId, 1);
+      g.hud.toast(WEAPONS[q.weapon as WeaponId].name, 'loot', 'New weapon');
+    }
+    g.hud.log(`Quest complete: ${q.name} (+${q.xp} XP, +${q.scrip} Scrip)`, 'quest');
+    st.addXp(q.xp);
+    if (q.onDone) this.effect(q.onDone, q);
+    st.touch(); st.save();
+    st.events.emit('questUpdate', { id });
+    return true;
+  }
+  private effect(e: string, q: QuestDef) {
+    const st = this.game.state;
+    if (e === 'vault_key') st.addItem('vault_key', 1);
+    else if (e === 'horse_whistle') { st.setFlag('horse_whistle'); this.game.hud.toast('Whistle learned', 'good', 'Call Biscuit anywhere west of the wall'); }
+    else if (e === 'storm_start') st.setFlag('storm', 1);
+    else if (e === 'storm_end') st.setFlag('storm', 0);
+    this.onEffect(e, q);
+  }
+
+  /** Quests an NPC has something to say about, most urgent first. */
+  forGiver(npc: string) {
+    const ready: QuestDef[] = [], offer: QuestDef[] = [], active: QuestDef[] = [], low: QuestDef[] = [];
+    for (const q of QUESTS) {
+      const s = this.status(q.id);
+      if ((q.turnIn ?? q.giver) === npc && s === 'ready') ready.push(q);
+      else if (q.giver === npc && s === 'available') offer.push(q);
+      else if (q.giver === npc && s === 'active') active.push(q);
+      else if (q.giver === npc && s === 'low') low.push(q);
+    }
+    return { ready, offer, active, low };
+  }
+  /** Overhead marker: 't' turn-in "?", 'y' yellow "!", 'g' grey "!" (too low), '' nothing. */
+  marker(npc: string): '' | 'y' | 'g' | 't' {
+    const f = this.forGiver(npc);
+    return f.ready.length ? 't' : f.offer.length ? 'y' : f.low.length ? 'g' : '';
+  }
+  active(): QuestDef[] { return QUESTS.filter((q) => { const s = this.status(q.id); return s === 'active' || s === 'ready'; }); }
+
+  // ---- contracts ----
+  contract(c: ContractDef) {
+    const st = this.game.state, kills = st.d.kills[c.target] ?? 0, claimed = st.d.contracts[c.id] ?? 0;
+    const tier = Math.min(claimed, c.tiers.length - 1);
+    const done = claimed >= c.tiers.length;
+    return { kills, claimed, done, need: c.tiers[tier], claimable: !done && kills >= c.tiers[claimed], scrip: c.scrip[tier], xp: c.xp[tier] };
+  }
+  claim(id: string): boolean {
+    const c = CONTRACTS.find((x) => x.id === id);
+    if (!c) return false;
+    const s = this.contract(c), st = this.game.state, g = this.game;
+    if (!s.claimable) return false;
+    st.d.contracts[c.id] = s.claimed + 1;
+    st.addScrip(s.scrip); st.addXp(s.xp);
+    g.sfx('contract_claim');
+    if (s.claimed === 0) {
+      st.d.trophies.push(c.id);
+      if (!st.d.titles.includes(c.title)) st.d.titles.push(c.title);
+      if (!st.d.title) st.d.title = c.title;
+      g.hud.banner('TROPHY EARNED', `${c.trophy} · title "${c.title}"`, '');
+      st.events.emit('flag', { key: 'trophy' });
+    } else g.hud.toast(c.name, 'loot', `Contract tier ${s.claimed + 1} paid`);
+    g.hud.log(`Contract paid: ${c.name} (+${s.scrip} Scrip, +${s.xp} XP)`, 'loot');
+    st.touch(); st.save();
+    return true;
+  }
+  anyClaimable() { return CONTRACTS.some((c) => this.contract(c).claimable); }
+
+  /** Refresh the on-screen tracker (cheap: only rewrites when something changed). */
+  update() {
+    const act = this.active().slice(0, 3);
+    let html = '';
+    for (const q of act) {
+      const p = this.progress(q), ready = p.every((v, i) => v >= q.objectives[i].n);
+      html += `<div class="q${ready ? ' ready' : ''}"><div class="qt">${q.name}</div>`;
+      if (ready) html += `<div class="qo">Return to <b>${this.giverName(q)}</b></div>`;
+      else q.objectives.forEach((o, i) => { html += `<div class="qo${p[i] >= o.n ? ' done' : ''}">${o.text}${o.n > 1 ? ` <b>${p[i]}/${o.n}</b>` : ''}</div>`; });
+      html += '</div>';
+    }
+    if (html !== this.trackerSig) { this.trackerSig = html; this.game.hud.tracker.innerHTML = html; }
+    void ITEMS;
+  }
+}

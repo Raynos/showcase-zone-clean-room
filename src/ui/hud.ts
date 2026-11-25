@@ -28,6 +28,7 @@ export class Hud {
   private ibtn!: HTMLElement; private ibtnLabel!: HTMLElement; private ibtnIcon!: HTMLElement;
   private toasts!: HTMLElement; private bannerEl!: HTMLElement;
   private floatEl!: HTMLElement; private reticle!: HTMLElement; private lowHp!: HTMLElement;
+  private timerEl!: HTMLElement; private timerT = 0; private timerSig = '';
   private plates = new Map<string, Plate>();
   private dmgs: Dmg[] = []; private dmgPool: HTMLElement[] = [];
   acts: Record<string, ActBtn> = {};
@@ -133,6 +134,7 @@ export class Hud {
     this.ibtn.addEventListener('pointercancel', () => g.input.release('interact'));
     h.appendChild(this.ibtn);
 
+    this.timerEl = el('div', 'ctimer', '<div class="cl"></div><div class="ct"></div><div class="cs"></div>'); h.appendChild(this.timerEl);
     this.toasts = el('div', 'toasts'); this.root.appendChild(this.toasts);
     this.bannerEl = el('div', 'banner', '<div class="b1"></div><div class="rule"></div><div class="b2"></div>'); this.root.appendChild(this.bannerEl);
   }
@@ -187,6 +189,14 @@ export class Hud {
     if (o.count !== undefined && a.cnt.textContent !== o.count) a.cnt.textContent = o.count;
     if (o.off !== undefined) a.root.classList.toggle('off', o.off);
     if (o.hidden !== undefined) a.root.style.display = o.hidden ? 'none' : '';
+  }
+  /** Course / event timer; call every frame while it should show. */
+  setTimer(label: string, time: string, sub = '') {
+    this.timerT = 0.3;
+    this.timerEl.classList.add('on');
+    (this.timerEl.children[1] as HTMLElement).textContent = time;
+    const sig = label + '|' + sub;
+    if (sig !== this.timerSig) { this.timerSig = sig; (this.timerEl.children[0] as HTMLElement).textContent = label; (this.timerEl.children[2] as HTMLElement).textContent = sub; }
   }
   setBoss(name: string | null, frac = 1, sub = '') {
     this.boss.classList.toggle('on', !!name);
@@ -310,6 +320,7 @@ export class Hud {
     // minimap at 15 Hz
     this.miniT -= dt;
     if (this.miniT <= 0 && this.drawMini) { this.miniT = 1 / 15; this.drawMini(this.mini.getContext('2d')!, 208); }
+    if (this.timerT > 0) { this.timerT -= dt; if (this.timerT <= 0) this.timerEl.classList.remove('on'); }
     // banners
     this.bannerT -= dt;
     if (this.bannerT <= 0 && this.bannerQueue.length) {

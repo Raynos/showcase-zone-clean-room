@@ -14,7 +14,10 @@ import { Combat } from './systems/combat';
 import { Interact } from './systems/interact';
 import { Loot } from './systems/loot';
 import { Mobs } from './systems/mobs';
+import { Quests } from './systems/quests';
+import { NPC_NAMES } from './data/quests';
 import { State } from './systems/state';
+import { Movers, Triggers, type Course } from './systems/world';
 import { Hud } from './ui/hud';
 import { Chunks } from './world/chunks';
 import { Environment } from './world/environment';
@@ -48,6 +51,10 @@ export class Game {
   mobs!: Mobs;
   loot!: Loot;
   interact!: Interact;
+  quests!: Quests;
+  movers!: Movers;
+  triggers!: Triggers;
+  activeCourse: Course | null = null;
   systems: System[] = [];
   floors: FloorFn[] = [];
   /** real seconds since boot, and simulated seconds */
@@ -104,6 +111,9 @@ export class Game {
     this.mobs = new Mobs(this);
     this.loot = new Loot(this);
     this.interact = new Interact(this);
+    this.quests = new Quests(this);
+    this.movers = new Movers(this.physics);
+    this.triggers = new Triggers(this);
     progress(0.5, 'BUILDING BRASSWICK');
     await tick();
     const content = await import('./content');
@@ -179,6 +189,7 @@ export class Game {
     };
     this.onSprintStart = () => { this.fx.dust(this.player.pos, 4, 0.9); };
     this.input.onFirstGesture = () => { this.audio?.unlock?.(); };
+    this.env.onThunder = (dist) => { this.sfx('thunder', { vol: Math.max(0.25, 1 - dist / 400) }); if (dist < 140) this.cameraRig.shake(0.12); };
   }
   private surfaceSound(): string {
     const p = this.player;
@@ -190,7 +201,31 @@ export class Game {
   }
 
   // ---- services ----
-  sfx(name: string, o?: { vol?: number; pitch?: number; pos?: { x: number; y: number; z: number }; delay?: number }) { this.audio?.play(name, o); }
+  sfx(name: string, o?: { vol?: number; pitch?: number; pos?: { x: number; y: number; z: number }; delay?: number }) {
+    if (!this.audio) return;
+    const real = SFX_ALIAS[name] ?? name;
+    if (name === 'jump_double') o = { ...o, pitch: 1.35 };
+    this.audio.play(real, o);
+  }
+  /** Music, ambience loops and thunder follow where the player is and what is happening. */
+  musicOverride: string | null = null;
+  private ambT = 0; private lastMusic = '';
+  private updateAmbience(rdt: number) {
+    const a = this.audio;
+    if (!a) return;
+    this.ambT -= rdt;
+    if (this.ambT > 0) return;
+    this.ambT = 0.4;
+    const env = this.env, inside = !!this.interior;
+    const storm = env.weather === 'storm';
+    let m = this.musicOverride ?? (inside ? 'dungeon' : storm ? 'storm' : inTown(this.player.pos.x, this.player.pos.z, 6) ? 'town' : env.isNight() ? 'night' : 'wild');
+    if (!this.started) m = 'none';
+    if (m !== this.lastMusic) { this.lastMusic = m; a.music?.(m); }
+    a.setIntensity?.(this.mobs.inCombat > 0 ? 1 : 0);
+    a.loop?.('wind', inside ? 0 : 0.25 + 0.2 * env.w.wind);
+    a.loop?.('rain', inside ? 0 : env.w.rain * 0.9);
+    a.loop?.('storm', inside ? 0 : storm ? 0.7 : 0);
+  }
   haptic(ms: number) { try { if (this.input.isTouch) navigator.vibrate?.(ms); } catch { /* unsupported */ } }
   hitStop(sec: number) { this.stopT = Math.max(this.stopT, sec); }
   slowMo(scale: number, sec: number) { this.slowK = scale; this.slowT = Math.max(this.slowT, sec); }
@@ -204,6 +239,7 @@ export class Game {
     for (const f of this.floors) { const h = f(x, z, y); if (h !== null) return h; }
     return this.terrain.h(x, z);
   }
+  npcName(id: string) { return NPC_NAMES[id]?.name ?? id; }
   addSystem<T extends System>(s: T): T { this.systems.push(s); return s; }
   savePos() {
     const p = this.player.pos, d = this.state.d;
@@ -225,6 +261,7 @@ export class Game {
     const p = this.player.pos;
     let name = 'The Proving Yard', sub = 'Peaceful', danger = false, key = 'yard';
     if (this.interior) { return; }
+    if (this.zoneKey === '~') this.zoneKey = '';
     if (inTown(p.x, p.z)) { name = 'Brasswick'; sub = 'Town · Safe'; key = 'town'; }
     else {
       const b = bandAt(p.x, p.z);
@@ -242,6 +279,7 @@ export class Game {
     const first = this.zoneKey === '';
     this.zoneKey = key; this.zoneName = name; this.zoneDanger = danger;
     if (!first) this.state.events.emit('zone', { name, sub, danger });
+    if (!this.state.d.flags['seen_' + key]) { this.state.d.flags['seen_' + key] = 1; this.state.touch(); }
     this.state.events.emit('reach', { place: key });
   }
 
@@ -302,10 +340,14 @@ export class Game {
       this.combat.update(dt, rdt);
       this.mobs.playerHostile = !pl.dead && this.combat.enabled;
       this.mobs.update(dt);
+      this.movers.update(dt);
+      this.triggers.update(dt);
       for (const s of this.systems) s.update(dt, rdt);
+      this.activeCourse?.update(dt);
       this.physics.step(Math.max(dt, 1e-4));
       this.loot.update(dt);
       this.interact.update();
+      this.quests.update();
       this.state.update(rdt);
       this.updateZone(rdt);
     }
@@ -338,7 +380,8 @@ export class Game {
     // post feedback decay
     post.hurt = damp(post.hurt, 0, 3.2, rdt);
     post.flash.w = damp(post.flash.w, 0, 6, rdt);
-    if (!this.fadeHold && !pl.dead) post.fade = damp(post.fade, 0, 3.5, rdt);
+    if (this.fadeHold) post.fade = damp(post.fade, 1, 14, rdt);
+    else if (!pl.dead) post.fade = damp(post.fade, 0, 3.5, rdt);
     post.speed = damp(post.speed, this.speedFx, 5, rdt);
     post.letterbox = damp(post.letterbox, this.cameraRig.cine ? 1 : 0, 4, rdt);
 
@@ -348,13 +391,66 @@ export class Game {
     this.plates();
     this.hud.update(rdt);
     this.audio?.update?.(rdt, this.camera.position, this.cameraRig.forward(_v));
+    this.updateAmbience(rdt);
 
     this.renderer.render(this.scene, this.camera, rdt);
     inp.endFrame();
   }
+  /**
+   * Fade out, move the player somewhere (optionally into an interior), fade back in.
+   * `interior` is the interior id or null for the surface.
+   */
+  async travel(o: { x: number; y: number; z: number; yaw: number; interior: string | null; look?: import('./world/environment').InteriorLook | null; onArrive?: () => void; sound?: string }) {
+    if (this.travelling) return;
+    this.travelling = true;
+    const pl = this.player;
+    pl.controllable = false; this.combat.cancel(); this.fadeHold = true;
+    this.sfx(o.sound ?? 'portal_enter');
+    await wait(480);
+    this.mobs.clear(); this.combat.clearShots(); this.combat.target = null;
+    this.activeCourse?.cancel(true);
+    pl.setMode(null);
+    this.interior = o.interior;
+    this.env.interior = o.look ?? null;
+    this.mobs.outdoor = !o.interior;
+    this.terrain.group.visible = !o.interior; this.grass.group.visible = !o.interior;
+    pl.teleport(o.x, o.y + 0.15, o.z, o.yaw);
+    this.cameraRig.snap(o.yaw + Math.PI, 0.18);
+    this.zoneKeyReset();
+    o.onArrive?.();
+    await wait(260);
+    this.fadeHold = false; pl.controllable = true; pl.invuln = Math.max(pl.invuln, 1);
+    this.travelling = false;
+  }
+  travelling = false;
+  private zoneKeyReset() { this.zoneKey = '~'; this.zoneT = 0; }
+  east: any = null;
+  /** town build result (NPC spots, lanterns...) */
+  town: any = null;
+  /** menu panels (bag, map, dialog, shops...) */
+  panels: any = null;
+  /** map markers registered by content modules */
+  pois: Array<{ id: string; x: number; z: number; icon: string; label: string; color?: string; show?: () => boolean; big?: boolean }> = [];
+  /** loose service hooks between modules, e.g. hooks.borrowHorse() */
+  hooks: Record<string, (...a: any[]) => any> = {};
   /** extra knobs content modules can drive */
   fovExtra = 0; camDist = 1; speedFx = 0; hideHud = false;
 }
 const BLACK = new THREE.Color(0, 0, 0);
+/** Gameplay sound names -> names in the synth bank. */
+const SFX_ALIAS: Record<string, string> = {
+  ui_click: 'ui_tap', ui_deny: 'ui_error', ui_target: 'ui_tap', hit_metal: 'hit_metal_light', hit_heavy: 'hit_metal_heavy',
+  enemy_windup: 'enemy_attack_tell', boss_windup: 'sentry_charge', enemy_swing: 'swing_light', boss_swing: 'titan_sweep', enemy_slam: 'welder_slam',
+  boss_slam: 'titan_slam', enemy_leap: 'drone_dive', enemy_charge: 'pallet_charge', enemy_crash: 'crate_bump', enemy_land: 'land_heavy',
+  enemy_lob: 'rivet_mortar', enemy_shot: 'drone_shot', boss_beam: 'sentry_zap', arc_zap: 'sentry_zap', arc_pulse: 'sentry_pulse', boss_roar: 'titan_roar',
+  boss_death: 'kill_big', explode_small: 'explosion', flame: 'welder_flame', thunder_strike: 'thunder', crate_smash: 'crate_break',
+  swing_sword: 'swing_light', swing_spear: 'spear_thrust', skill_whirl: 'swing_spin', skill_dash: 'slide', skill_leap: 'jump', skill_slam: 'shockwave',
+  skill_volley: 'bow_release', skill_pierce: 'bolt_pierce', skill_charge: 'sentry_charge', bow_full: 'ui_tab', arrow_thunk: 'arrow_hit',
+  xbow_ready: 'rifle_cock', rifle_aim: 'rifle_cock', rifle_overcharge: 'explosion_big', dodge: 'roll', dodge_perfect: 'block', swap: 'ui_equip',
+  player_hurt: 'hurt', player_burn: 'hit_flesh', player_death: 'death', level_up: 'levelup', pickup: 'salvage', quest_complete: 'quest_done',
+  contract_claim: 'contract_done', course_start: 'checkpoint', course_finish: 'lap_done', course_pb: 'pb', zone_danger: 'zone_enter',
+  beacon_lit: 'beacon_light', gauntlet_start: 'wave_start', victory_sting: 'victory', jump_double: 'jump',
+};
 import { ITEMS as ITEMS_REF } from './data/items';
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
+const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));

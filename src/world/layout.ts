@@ -68,7 +68,14 @@ const RIDGES: Array<[number, number, number, number]> = [
 ];
 
 export const VAULT_PORTAL = { x: 214, z: 8 };
-export const GAUNTLET = { x: 62, z: -214 };
+/** Gauntlet: three 22 m courts in a row (A east, B middle, C west) with a plaza along the south side. */
+export const GAUNTLET = { x: 62, z: -203, courts: [{ x: 88, z: -203 }, { x: 62, z: -203 }, { x: 36, z: -203 }], size: 22, y: 0.5 };
+/** Flattened building lots in the east (not courses, so they keep their band's zone name). */
+export const FLATS: Rect[] = [
+  { x0: 22, x1: 102, z0: -216, z1: -184, y: 0.5, name: 'gauntlet' },
+  { x0: 205, x1: 223, z0: -1, z1: 17, y: 0.4, name: 'vaultPortal' },
+  { x0: 14, x1: 34, z0: -128, z1: -108, y: 0.5, name: 'titanGate' },
+];
 export const TITAN_GATE = { x: 24, z: -118 };
 /** Interiors sit underground inside the cube. */
 export const VAULT = { x: 200, y: -70, z: 0 };
@@ -269,6 +276,10 @@ export function heightRaw(x: number, z: number): number {
     const w = rectMask(x, z, p.x0, p.x1, p.z0, p.z1, 9);
     if (w > 0) h = lerp(h, p.y, w);
   }
+  for (const p of FLATS) {
+    const w = rectMask(x, z, p.x0, p.x1, p.z0, p.z1, 7);
+    if (w > 0) h = lerp(h, p.y, w);
+  }
   h += rockAt(x, z);
   h += ridgeAt(x, z);
   h += rimAt(x, z);
@@ -328,6 +339,10 @@ export function groundAt(x: number, z: number, slope: number, h: number): Ground
     const w = rectMask(x, z, p.x0, p.x1, p.z0, p.z1, 2.5);
     if (w > 0 && k !== 'paddock') { mixRGB(o, 0xa89678, w * 0.85); o.dirt = Math.max(o.dirt, w * 0.8); o.grass *= 1 - w; }
     else if (w > 0) { mixRGB(o, 0xb08a5a, w * 0.8); o.dirt = Math.max(o.dirt, w); o.grass *= 1 - w * 0.8; }
+  }
+  for (const p of FLATS) {
+    const w = rectMask(x, z, p.x0, p.x1, p.z0, p.z1, 2.5);
+    if (w > 0) { mixRGB(o, 0x8f8a80, w * 0.9); o.gravel = Math.max(o.gravel, w); o.grass *= 1 - w; }
   }
   // rock on slopes and ridge crests
   const rk = Math.max(smooth(0.2, 0.42, slope), smooth(1.5, 5, ridgeAt(x, z)), smooth(4, 12, HALF - Math.max(Math.abs(x), Math.abs(z)) < 34 ? h : 0));
