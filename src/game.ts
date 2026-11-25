@@ -146,6 +146,16 @@ export class Game {
     window.addEventListener('orientationchange', () => setTimeout(() => this.resize(), 200));
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.state.save(); this.last = performance.now(); });
     window.addEventListener('pagehide', () => this.savePos());
+    // The static world's vertex data lives only on the GPU, so a lost WebGL context (phones drop
+    // them when the tab is backgrounded) cannot be rebuilt in place: save, then reload once it is back.
+    {
+      const cv = this.renderer.canvas, glc = this.renderer.gl.getContext();
+      let lost = false;
+      const recover = () => { if (lost && !document.hidden) location.reload(); };
+      cv.addEventListener('webglcontextlost', (e) => { e.preventDefault(); lost = true; this.savePos(); });
+      cv.addEventListener('webglcontextrestored', recover);
+      document.addEventListener('visibilitychange', () => { if (!document.hidden && (lost || glc.isContextLost())) { lost = true; setTimeout(recover, 600); } });
+    }
     this.resize();
     progress(1, 'READY');
     // warm the shaders before the first visible frame
