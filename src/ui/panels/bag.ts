@@ -25,6 +25,8 @@ export const bagPanel: PanelSpec = {
       const val = B.value * st.count(b) - A.value * st.count(a);
       return (sortBy === 'rarity' ? rar || kind : sortBy === 'value' ? val || rar : kind || rar) || A.name.localeCompare(B.name);
     });
+    // side by side (landscape, wide), the detail column is always on screen: show the first item rather than an empty column
+    const wide = () => matchMedia('(min-width: 700px), (orientation: landscape)').matches;
     const sellable = (id: string) => { const d = ITEMS[id]; return !!d && d.value > 0 && d.kind !== 'quest' && d.kind !== 'key'; };
     const salvageWorth = () => ids().filter((i) => ITEMS[i].kind === 'salvage' && ITEMS[i].rarity !== 'epic').reduce((s, i) => s + ITEMS[i].value * st.count(i), 0);
     const signature = () => tab + sortBy + JSON.stringify(st.d.inv) + st.packSize + (sel ?? '') + st.d.loadout.join() + st.d.active + st.d.weapons.length + (st.d.hp >= st.maxHp ? 'f' : 'h');
@@ -32,6 +34,7 @@ export const bagPanel: PanelSpec = {
     const itemsTab = () => {
       const list = ids(), size = Math.max(st.packSize, list.length);
       if (sel && !st.count(sel)) sel = null;
+      if (!sel && wide()) sel = list[0] ?? null;
       let h = `<div class="bag-bar"><div class="pn-cap"><span>${icon('bag', 14)} ${st.packUsed} / ${st.packSize} slots</span><div class="pn-bar"><i style="transform:scaleX(${Math.min(1, st.packUsed / st.packSize)})"></i></div></div>`;
       h += list.length > 1 ? btn(`${icon('swap', 15)}<b>${SORT_LABEL[sortBy]}</b>`, 'sort', '', 'sm ghost', 'aria-label="Sort"') : '';
       h += '</div>';
@@ -65,6 +68,7 @@ export const bagPanel: PanelSpec = {
     const gearTab = () => {
       const own = st.d.weapons, inHand = st.d.loadout[st.d.active] ?? st.d.loadout[0];
       if (sel && !own.includes(sel as WeaponId)) sel = null;
+      if (!sel && wide()) sel = inHand;
       let h = `<div class="pn-cap"><span>${icon('sword', 14)} ${own.length} weapons</span></div><div class="pn-grid">`;
       for (const id of own) {
         const w = WEAPONS[id], slot = st.d.loadout[0] === id ? 1 : st.d.loadout[1] === id ? 2 : 0;
