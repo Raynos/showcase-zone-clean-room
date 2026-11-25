@@ -57,7 +57,7 @@ export class Coach implements System {
     if (g.mobs.inCombat > 0 && this.t > 3) this.tip('dodge');
     if (st.d.hp < st.maxHp * 0.45 && st.count('kit') > 0 && !g.player.dead) this.tip('kit');
     if (g.env.isNight() && !g.interior && g.player.pos.x > 12) this.tip('night');
-    if (g.player.pos.x > 12 && st.d.level >= 2 && g.mobs.inCombat === 0) this.tip('elite');
+    if (!g.interior && g.player.pos.x > 12 && st.d.level >= 2 && g.mobs.inCombat === 0) this.tip('elite');
     // card lifecycle
     if (this.showT > 0) {
       this.showT -= rdt;

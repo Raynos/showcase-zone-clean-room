@@ -300,6 +300,6 @@ export class Environment {
     this.envRT?.dispose();
     this.envRT = rt;
     this.scene.environment = rt.texture;
-    this.scene.environmentIntensity = this.interior ? 0.25 : 0.42;
+    this.scene.environmentIntensity = this.interior ? 0.36 : 0.42;
   }
 }

@@ -126,7 +126,7 @@ export const ENEMIES: Record<RobotKind, EnemyDef> = {
       M({ id: 'stomp2', type: 'ring', range: [0, 60], windup: 1.1, active: 4.4, cd: 11, dmg: 1.0, radius: 52, speed: 14, count: 2, interval: 1.0, color: 0xffa53a, anim: 'attack3', minPhase: 2 }),
       M({ id: 'unpack', type: 'summon', range: [0, 80], windup: 1.4, cd: 24, dmg: 0, summon: 'mite', count: 5, minPhase: 2, anim: 'attack2' }),
       // phase 3: core beam
-      M({ id: 'corebeam', type: 'beam', range: [8, 80], windup: 1.5, active: 0.5, cd: 7.5, dmg: 1.9, width: 5, length: 90, color: 0x7ff0ff, anim: 'attack2', minPhase: 3, recover: 1.0 }),
+      M({ id: 'corebeam', type: 'beam', range: [0, 80], windup: 1.5, active: 0.5, cd: 7.5, dmg: 1.9, width: 5, length: 90, color: 0x7ff0ff, anim: 'attack2', minPhase: 3, recover: 1.0 }),
       M({ id: 'stomp3', type: 'ring', range: [0, 60], windup: 1.0, active: 5.2, cd: 10, dmg: 1.0, radius: 56, speed: 16, count: 3, interval: 0.85, color: 0x7ff0ff, anim: 'attack3', minPhase: 3 }),
     ],
     salvage: [['heartcrate', 1], ['core', 1], ['cell', 1]], colors: [0xc9955a, 0xb07a45, 0x8a6a40, 0xf28a2e, 0x5b6470], glow: 0xffa53a,

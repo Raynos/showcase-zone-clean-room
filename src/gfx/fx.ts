@@ -514,7 +514,7 @@ export class FX {
         uniforms: { uColor: { value: new THREE.Color() }, uA: { value: 1 } },
         transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
         vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-        fragmentShader: `uniform vec3 uColor; uniform float uA; varying vec2 vUv; void main(){ float e = 1.0 - abs(vUv.y * 2.0 - 1.0); float c = pow(e, 2.5); gl_FragColor = vec4((uColor * c + vec3(1.0) * pow(e, 8.0)) * uA, 1.0); }`,
+        fragmentShader: `uniform vec3 uColor; uniform float uA; varying vec2 vUv; void main(){ float e = max(0.0, 1.0 - abs(vUv.y * 2.0 - 1.0)); float c = pow(e, 2.5); gl_FragColor = vec4((uColor * c + vec3(1.0) * pow(e, 8.0)) * uA, 1.0); }`,
       });
       const mesh = new THREE.Mesh(g, mat);
       mesh.frustumCulled = false; mesh.renderOrder = 22;

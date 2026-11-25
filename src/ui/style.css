@@ -64,6 +64,14 @@
 .tframe .tsub { font-size: 10px; color: var(--dim); letter-spacing: .1em; text-transform: uppercase; margin-top: 3px; }
 .bossbar { position: absolute; left: 50%; top: calc(64px + var(--sat)); transform: translateX(-50%); width: min(86vw, 520px); text-align: center; opacity: 0; transition: opacity .4s; }
 .bossbar.on { opacity: 1; }
+/* narrow portrait: the boss bar drops below the button row and minimap, and pushes the tracker and timer down */
+@media (max-width: 520px) {
+  .bossbar { top: calc(134px + var(--sat)); width: calc(100% - 24px); }
+  .bossbar .bn { font-size: 16px; }
+  .bossbar.on ~ .tracker { top: calc(204px + var(--sat)); }
+  .bossbar.on ~ .ctimer { top: calc(204px + var(--sat)); }
+  .tframe.boss { display: none; }
+}
 .bossbar .bn { font-size: 18px; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; color: #ffcf8a; text-shadow: 0 0 14px #ff7a1a, 0 2px 3px #000; }
 .bossbar .bar { height: 14px; margin-top: 5px; }
 .bossbar .bar .fill { background: linear-gradient(180deg, #ffb26a, #f0622a 55%, #a0260c); }

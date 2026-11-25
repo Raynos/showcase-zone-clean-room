@@ -87,7 +87,7 @@ export class Mob implements Hittable {
     let dmg = Math.max(1, Math.round(h.dmg * this.dmgTakenMul));
     if (this.state === 'return') dmg = Math.max(1, Math.round(dmg * 0.2));
     this.hp -= dmg;
-    this.flash = 1;
+    this.flash = this.isBoss ? 0.4 : this.variant === 'elite' || this.variant === 'nightElite' ? 0.7 : 1; // a screen-filling boss must not white out
     if (!this.aggro) { this.aggro = true; this.mobs.alertNear(this); }
     if (this.state === 'idle') this.setState('chase');
     // knockback (bosses barely budge)

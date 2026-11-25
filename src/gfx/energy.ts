@@ -87,7 +87,7 @@ export function shaftMat(color: number, strength = 1): THREE.ShaderMaterial {
         vec3 V = normalize(cameraPosition - vW);
         float f = pow(abs(dot(normalize(vN), V)), 1.6);
         float n = texture2D(uNoise, vec2(vUv.x * 2.0, vUv.y * 0.5 - uTime * 0.25)).r;
-        float a = f * (0.35 + 0.65 * n) * pow(1.0 - vUv.y, 1.3) * uK;
+        float a = f * (0.35 + 0.65 * n) * pow(max(1.0 - vUv.y, 0.0), 1.3) * uK;
         a *= 1.0 - smoothstep(260.0, 420.0, vDist);
         gl_FragColor = vec4(uColor * a, 1.0);
       }`,
