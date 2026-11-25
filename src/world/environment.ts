@@ -47,7 +47,7 @@ export const GRADE = {
   /** baked lamp light: gain by day, after dark and indoors */
   lampDay: 0.3, lampNight: 1.1, lampIn: 1.2,
   /** glossy answer of floors to lamp light */
-  sheenNight: 0.85, sheenIn: 1, streak: 0.6,
+  sheenNight: 0.85, sheenIn: 1, streak: 1.0,
   /** key-light rim on characters */
   rimDay: 0.55, rimNight: 0.7, rimIn: 0.6,
 };
@@ -309,7 +309,7 @@ export class Environment {
     if (lift > 0) { const l = Math.min(1, lift); hemiI += 0.8 * l; this.hemi.color.lerp(cA.setHex(0x8494c8), 0.35 * l); this.hemi.groundColor.lerp(cA.setHex(0x3a4466), 0.5 * l); }
     this.hemi.intensity = hemiI;
     // lamps and signs burn brighter after dark and indoors; by day they sit just above the bloom knee
-    GU.uEmitBoost.value = lerp(lerp(1.7, 3.2, Math.min(1, Math.max(k.night, this.w.dim * 1.5))), 3.0, im);
+    GU.uEmitBoost.value = lerp(lerp(1.7, 4.4, Math.min(1, Math.max(k.night, this.w.dim * 1.5))), 3.6, im);
     { const l = 0.16 + Math.min(1, Math.max(0, lift, k.sunset * 0.5)) * 0.4; GU.uCharFill.value.set(0.7 * l, 0.76 * l, 1.0 * l); }
 
     // sky
@@ -358,7 +358,7 @@ export class Environment {
     // baked lamp light (gfx/lighting.ts): pools at night, in storms and indoors; by day it only shows in shade
     const dark = Math.min(1, Math.max(k.night, this.w.dim * 1.6));
     // lamps and furnaces already carry the street at dusk, while the sun is still on the horizon
-    const lampK = Math.min(1, Math.max(dark, k.sunset * 0.75 * (1 - Math.min(1, this.sunDir.y * 4))));
+    const lampK = Math.min(1, Math.max(dark, k.sunset * 0.7));
     YARD[8] = lerp(lerp(GRADE.lampDay, GRADE.lampNight, lampK), GRADE.lampIn, im);
     // floors turn glossy enough to catch that light after dark and indoors; rain has its own wetness term
     GU.uSheen.value = Math.max(Math.max(k.night, lampK * 0.8) * GRADE.sheenNight, im * GRADE.sheenIn) * (1 - 0.45 * GU.uWet.value);

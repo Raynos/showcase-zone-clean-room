@@ -308,7 +308,10 @@ ${wind ? /* glsl */ `  // foliage cards (gfx/foliage.ts): a painted clump from t
 ${!wind && !rim ? /* glsl */ `  // after dark, in rain and indoors a floor is glossy enough to catch the lamps beside it (never a mirror)
   if (uSheen > 0.0) {
     float up = dot(normal, vec3(viewMatrix[0].y, viewMatrix[1].y, viewMatrix[2].y));
-    roughnessFactor *= mix(1.0, 0.4, uSheen * smoothstep(0.6, 0.92, up) * step(vLayer, 63.5));
+    float gl = uSheen * smoothstep(0.6, 0.92, up) * step(vLayer, 63.5);
+    roughnessFactor *= mix(1.0, 0.4, gl);
+    // a glossy floor is a darker floor: the light it no longer scatters is the light it mirrors
+    diffuseColor.rgb *= 1.0 - 0.38 * gl;
   }` : ''}
 }`)
         .replace('#include <emissivemap_fragment>', 'totalEmissiveRadiance += vColor.rgb * gTA.rgb * (vEmit * uEmitBoost * uEmitMul);')

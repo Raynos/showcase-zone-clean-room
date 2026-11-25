@@ -210,7 +210,7 @@ export class Renderer {
           // tone map on the brightest channel so a strong warm light keeps its hue (per channel,
           // orange climbs to acid yellow), eased toward the per-channel curve so highlights still pale
           float m = max(col.r, max(col.g, col.b));
-          col = mix(col * (aces(vec3(m)).r / max(m, 1e-4)), aces(col), 0.4);
+          col = mix(col * (aces(vec3(m)).r / max(m, 1e-4)), aces(col), 0.4 + 0.45 * smoothstep(2.5, 6.0, m)); // a light source itself still burns toward white
         }
         // grade
         float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
