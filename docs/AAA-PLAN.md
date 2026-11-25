@@ -521,6 +521,15 @@ and 11 finish it. Rough total: 16 to 20 runs.
 Phases 5 and 6 can overlap once the look bible exists, and phase 8 can start
 as soon as phase 6 delivers the adventurer bodies.
 
+**Owner's direction, 2026-11-25: biggest impact first.** Graphics and
+gameplay are what the owner is most excited about, and the remaster targets
+are approved. So the large levers are built up front and in parallel, each
+taken all the way to its target rather than in cautious steps: light and
+atmosphere, surfaces and vegetation, characters and robots, world scale,
+camera and controls, combat weight and depth. The long tail (small fixes,
+sound, quest variety, collections, loading and install) comes after. Run 2
+starts all of these that fit in five parallel agents.
+
 **Recommended first run:** phases 0, 1 and 2. It ends with no dead ends, a
 live URL that tracks the branch, measured headroom, and 24 remaster targets
 for the owner to accept or reject before any art is built.
