@@ -310,6 +310,11 @@ class Mounts implements System, MountApi {
       this.hGrounded = p.moveBy(_v, true) || this.hGrounded;
       moved = Math.hypot(p.pos.x - bx, p.pos.z - bz);
     }
+    // ground too steep to stand on (a band ridge): no gathered jump from it, and the horse slides back down
+    if (this.hGrounded && p.steepGround(_x)) {
+      this.hGrounded = false; this.hGather = 0; this.hSpeed = Math.min(this.hSpeed, 3);
+      p.moveBy(_v.set(_x.x * 7 * dt, -7 * dt, _x.z * 7 * dt), true);
+    }
     if (was && want > 0.02 && moved < want * 0.45) {
       this.hBlock += dt;
       if (this.hBlock > 0.09) {

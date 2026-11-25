@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Game } from '../game';
-import { G_PLAYER, RAPIER } from '../core/physics';
+import { CG, G_PLAYER, RAPIER, groups } from '../core/physics';
 import { angleDiff, clamp, damp, dampAngle, lerp } from '../core/util';
 import { DOWN as KNOCKDOWN } from './humanoid/types';
 import type { HumanAction, HumanPose, HumanoidRig, Locomotion, WeaponModel } from './humanoid/types';
@@ -11,6 +11,15 @@ const _v = new THREE.Vector3(), _f = new THREE.Vector3(), _r = new THREE.Vector3
 
 /** Alternate traversal states (riding, hoverboard, zipline, ladders...) plug in here. */
 const _probe = new THREE.Vector3(), DOWN = new THREE.Vector3(0, -1, 0);
+/**
+ * Footing. Ground steeper than WALK degrees cannot be stood on: no jump or air jump from it, the
+ * hero slides down it, and no move (air control, a roll, a lunge) carries them up a face that
+ * steep. This is what keeps the band ridges a wall rather than a staircase of jumps.
+ */
+const WALK = 50, COS_WALK = Math.cos((WALK * Math.PI) / 180), SLIDE_ACC = 16, SLIDE_MAX = 9;
+const _gn = new THREE.Vector3(), _face = new THREE.Vector3(), _pre = new THREE.Vector3();
+/** what the hero can stand on */
+const RAY_FOOT = groups(0xffff, CG.WORLD | CG.PROP | CG.NOCAM);
 
 export interface MoveMode {
   name: Locomotion;
@@ -28,6 +37,10 @@ export class Player {
   /** facing heading: forward = (sin yaw, 0, cos yaw) */
   yaw = 0;
   grounded = true;
+  /** on ground too steep to stand on (see WALK): sliding off it, and no jumping from it */
+  sliding = false;
+  /** seconds since the last contact with a too-steep face, and that face's outward direction */
+  private faceT = 9; private faceN = new THREE.Vector3();
   root = new THREE.Group();
   rig!: HumanoidRig;
   weaponModel: WeaponModel | null = null;
@@ -201,6 +214,50 @@ export class Player {
     this.lunge.set((dx / l) * v, 0, (dz / l) * v); this.lungeT = dur; this.lungeDur = dur;
   }
 
+  /**
+   * Can the ground under the hero be stood on (no steeper than WALK)? Leaves its normal in _gn. The
+   * terrain is a 2 m mesh whose facets kink, so it is judged by its slope across the feet.
+   */
+  private walkable(): boolean {
+    const g = this.game, p = this.pos;
+    const h = g.physics.raycast(_probe.set(p.x, p.y + 0.45, p.z), DOWN, 0.85, RAY_FOOT, this.collider);
+    if (h) {
+      if (h.collider.shapeType() === RAPIER.ShapeType.TriMesh && Math.abs(h.point.y - g.terrain.h(p.x, p.z)) < 0.12) g.terrain.normal(p.x, p.z, _gn);
+      else _gn.copy(h.normal);
+      return _gn.y >= COS_WALK;
+    }
+    // nothing under the centre (perched on an edge): go by what the capsule touches
+    const k = this.kcc, n = k.numComputedCollisions();
+    let steep = false;
+    for (let i = 0; i < n; i++) {
+      const c = k.computedCollision(i);
+      if (!c) continue;
+      if (c.normal1.y >= COS_WALK) return true;
+      if (c.normal1.y > 0.05) { steep = true; _gn.set(c.normal1.x, c.normal1.y, c.normal1.z); }
+    }
+    return !steep;
+  }
+  /** For mounts: is the ground under the capsule too steep to stand on (see WALK)? Its level downhill direction goes in `out`. */
+  steepGround(out: THREE.Vector3): boolean {
+    if (this.walkable()) return false;
+    out.set(_gn.x, 0, _gn.z).normalize();
+    return true;
+  }
+  /** The outward direction (level) of a too-steep face the last move touched, or null. */
+  private steepContact(): THREE.Vector3 | null {
+    const k = this.kcc, n = k.numComputedCollisions();
+    for (let i = 0; i < n; i++) {
+      const c = k.computedCollision(i);
+      if (c && c.normal1.y > 0.05 && c.normal1.y < COS_WALK) return _face.set(c.normal1.x, 0, c.normal1.z).normalize();
+    }
+    return null;
+  }
+  /** Drop the part of a level motion that runs into the face in faceN. */
+  private offFace(v: THREE.Vector3) {
+    const into = v.x * this.faceN.x + v.z * this.faceN.z;
+    if (into < 0) { v.x -= into * this.faceN.x; v.z -= into * this.faceN.z; }
+  }
+
   startRoll(dirX: number, dirZ: number) {
     if (this.rolling || this.rollCd > 0 || !this.grounded && this.airTime > 0.15) return false;
     // from the ground: once the fall has landed, a roll is the quick way up
@@ -328,7 +385,7 @@ export class Player {
         this.vel.x += this.groundVel.x; this.vel.z += this.groundVel.z;
         this.jumpT = 0;
         this.onJump?.(false);
-      } else if (this.jumpsLeft > 0 && this.airTime > 0.12) {
+      } else if (this.jumpsLeft > 0 && this.airTime > 0.12 && !this.sliding && this.faceT > 0.25) {
         this.vel.y = 8.6; this.jumpsLeft--; this.jumpBuf = 0; this.fallStart = Math.max(this.fallStart, this.pos.y);
         this.jumpT = 0;
         this.onJump?.(true);
@@ -342,6 +399,15 @@ export class Player {
     // knockback decays
     this.knock.x = damp(this.knock.x, 0, 7, dt); this.knock.z = damp(this.knock.z, 0, 7, dt);
 
+    // footing: slide off ground too steep to stand on; off walkable ground, nothing pushes up a steep face
+    this.faceT += dt;
+    if (this.sliding && !this.rolling) {
+      const s = this.vel.x * this.faceN.x + this.vel.z * this.faceN.z;
+      if (s < SLIDE_MAX) { const a = Math.min(SLIDE_ACC * dt, SLIDE_MAX - s); this.vel.x += this.faceN.x * a; this.vel.z += this.faceN.z * a; }
+      this.vel.y = Math.max(this.vel.y, -SLIDE_MAX);
+    }
+    if (!this.grounded && this.faceT < 0.25) this.offFace(this.vel);
+
     const wasGrounded = this.grounded;
     const vyBefore = this.vel.y;
     _v.set((this.vel.x + this.knock.x) * dt, this.vel.y * dt, (this.vel.z + this.knock.z) * dt);
@@ -354,7 +420,31 @@ export class Player {
       _v.y -= 0.02;
     }
     const yBefore = this.pos.y;
+    _pre.copy(this.pos);
     this.grounded = this.moveBy(_v, this.vel.y <= 0);
+    {
+      // A steep face met off walkable ground must not lift us: the controller slides a push into a
+      // slope up along it. Take the push into the face out and make the move again from where it began.
+      let face = this.steepContact();
+      if (face && this.pos.y - yBefore > Math.max(_v.y, 0) + 0.004 && !(this.grounded && this.walkable())) {
+        this.faceN.copy(face); this.faceT = 0;
+        this.offFace(_v);
+        this.pos.copy(_pre);
+        this.grounded = this.moveBy(_v, this.vel.y <= 0);
+        face = this.steepContact();
+      }
+      if (face) { this.faceN.copy(face); this.faceT = 0; }
+      // standing on it is not the same as being able to stand on it
+      const was = this.sliding;
+      this.sliding = (this.grounded || (!!face && this.vel.y <= 0.5)) && !this.walkable();
+      if (this.sliding) {
+        this.grounded = false;
+        this.faceN.set(_gn.x, 0, _gn.z).normalize(); this.faceT = 0;
+        // a slide is not a fall: no fall damage or heavy landing when it runs out onto level ground
+        this.fallStart = this.pos.y;
+        if (!was) this.coyote = 0;
+      }
+    }
     // hit a ceiling
     if (this.vel.y > 0 && this.pos.y - yBefore < _v.y * 0.3) this.vel.y = Math.min(this.vel.y, 1);
     if (this.grounded) {

@@ -191,8 +191,8 @@ export function ridgeAt(x: number, z: number): number {
     const gd = Math.hypot(x - g.x, z - g.z);
     gate = Math.min(gate, smooth(g.half + 0.5, g.half + 7, gd));
   }
-  // also leave room for the blast wall base
-  gate *= smooth(10, 20, x);
+  // run the ridge full height into the blast wall: a taper here was a walkable ramp round the ridge end
+  gate *= smooth(9, 10.5, x);
   const n = 0.75 + 0.5 * ridged(x * 0.05, z * 0.05, 3, 77);
   const core = smooth(12.5, 3.5, d) * (0.82 + 0.18 * smooth(3.5, 0, d));
   return core * (10 + 7 * n) * gate;

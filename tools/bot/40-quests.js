@@ -187,8 +187,23 @@
     if (slot.def.level > lvl + 2) return null;      // far too strong for now: level first
     return { goalKey, label: `open the way: destroy ${slot.def.name} (L${slot.def.level})`, run: () => B.huntElite(slot) };
   };
+  // the Rock's switchback boardwalk (src/world/west/rock.ts): its faces are too steep to stand on, so walk up the planks
+  const ROCK_WALK = [[-164.5, -152.5], [-163.0, -155.4], [-159.6, -161.5], [-158.2, -169.5], [-160.6, -177.5], [-161.6, -185.5], [-162.2, -194.5]];
   B.doReach = async (key) => {
     const g = G(), [x, z] = PLACES[key];
+    if (key === 'rock') {
+      const seen = () => !!g.state.d.flags.seen_rock;
+      // to the trail head by the map, then up the planks by eye (the nav grid is too coarse for a switchback)
+      const r = await B.goTo(ROCK_WALK[0][0], ROCK_WALK[0][1], { r: 1.6, partialOk: 3, until: seen, fight: true });
+      if (r === 'combat') { await B.fight(); return; }
+      for (const [wx, wz] of ROCK_WALK.slice(1)) {
+        const t0 = B.now();
+        while (!seen() && B.d2({ x: wx, z: wz }, g.player.pos) > 1.2 && B.now() - t0 < 10) { B.moveTo(wx, wz, 1, false); await B.tick(); }
+        if (seen()) break;
+      }
+      B.stop();
+      if (seen()) return;
+    }
     const r = await B.goTo(x, z, { r: 4, partialOk: 30, until: () => !!g.state.d.flags['seen_' + key], fight: true });
     if (r === 'combat') { await B.fight(); return; }
     if (!g.state.d.flags['seen_' + key]) { B.note(`could not reach ${key}: ${r}`); B.mem.dropped = B.mem.dropped || {}; B.mem.reachFail = (B.mem.reachFail || 0) + 1; await B.sleep(2); }

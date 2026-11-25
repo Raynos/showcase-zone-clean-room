@@ -20,6 +20,7 @@
   nav.ix = (x) => B.clamp(Math.floor((x - ORG) / CS), 1, N - 2);
   nav.cx = (i) => ORG + (i + 0.5) * CS;
   const _o = { x: 0, y: 0, z: 0 }, _d = { x: 0, y: 0, z: 0 };
+  let _nv = null;
   /** Height of what a player would stand on here: the terrain, or a deck, plinth or plaza built up to 2 m over it. */
   nav.ground = (x, z) => {
     const g = B.G(), t = g.terrain.h(x, z);
@@ -42,12 +43,30 @@
     _o.x = ax; _o.y = ay; _o.z = az; _d.x = dx / l; _d.y = dy / l; _d.z = dz / l;
     return !!B.G().physics.raycast(_o, _d, l, FILTER, terrainCol() || undefined);
   };
+  /** Is something built here (planks, a deck, a ramp) at about ground height, which the hero would stand on instead? */
+  const built = (x, z, t) => {
+    _o.x = x; _o.y = t + 1.5; _o.z = z; _d.x = 0; _d.y = -1; _d.z = 0;
+    return !!B.G().physics.raycast(_o, _d, 1.9, FILTER, terrainCol() || undefined);
+  };
   /** Can a player walk straight from a to b (a short hop, a few metres at most)? */
   nav.hop = (ax, az, bx, bz, ha, hb) => {
     const d = Math.hypot(bx - ax, bz - az);
     if (d < 1e-3) return true;
     if (Math.abs(hb - ha) / d > 1.0) return false;
     if (hb < -1.3 && bx < 0) return false;             // the lake
+    // bare ground steeper than the hero can stand on anywhere along the hop: the controller slides the
+    // hero off anything past 50 degrees, judged by the terrain's own normal (src/entities/player.ts)
+    const T = B.G().terrain;
+    _nv = _nv || new (B.G().player.pos.constructor)();
+    {
+      const n = Math.max(2, Math.ceil(d / 0.75));
+      for (let k = 1; k < n; k++) {
+        const px = ax + (bx - ax) * k / n, pz = az + (bz - az) * k / n;
+        T.normal(px, pz, _nv);
+        // steep ground under planks or a deck does not count: the hero stands on what is built there
+        if (_nv.y < 0.643 && !built(px, pz, T.h(px, pz))) return false;
+      }
+    }
     const px = -(bz - az) / d * 0.42, pz = (bx - ax) / d * 0.42;
     if (ray(ax, ha + 0.62, az, bx, hb + 0.62, bz)) return false;
     if (ray(ax, ha + 1.45, az, bx, hb + 1.45, bz)) return false;
