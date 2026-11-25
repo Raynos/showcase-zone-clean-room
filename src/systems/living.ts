@@ -6,6 +6,7 @@ import { Adventurers, type Adv } from './adventurers';
 import { CLASS_OF } from './adventurers/roster';
 import { Director } from './chat/director';
 import { ZoneEvents } from './events';
+import { Sightings } from './sightings';
 
 /**
  * The living zone: the cratefall event, the other adventurers, and zone chat, wired together.
@@ -17,6 +18,7 @@ export class Living {
   advs: Adventurers;
   chat: Chat;
   director: Director;
+  sightings: Sightings;
   private card: HTMLElement;
   private shown: Adv | null = null;
   private down: { x: number; y: number; t: number; id: number } | null = null;
@@ -27,6 +29,7 @@ export class Living {
     this.advs = new Adventurers(g, this.events);
     this.chat = new Chat(g);
     this.director = new Director(g, this.chat, this.advs, this.events);
+    this.sightings = new Sightings(g, this.advs, this.chat);
     g.addSystem({ update: (_dt: number, rdt: number) => { this.chat.update(rdt); this.director.update(rdt); this.tick(); } });
     // ---- tap an adventurer to see who they are
     this.card = document.createElement('div');
@@ -59,7 +62,7 @@ export class Living {
         <div class="lz-in-c">${cls}${d.guild ? ` · &lt;${esc(d.guild)}&gt;` : ''}</div></div></div>
       <div class="lz-in-gear">
         <div class="w">${icon(w.kind === 'crossbow' ? 'crossbow' : w.kind, 16, 2.2)}<b>${esc(w.name)}</b><small>Weapon</small></div>
-        ${d.gear.map((gname, i) => `<div>${icon(['shield', 'kit', 'star'][i] ?? 'star', 16, 2.2)}<span>${esc(gname)}</span><small>${['Armour', 'Kit', 'Trinket'][i] ?? ''}</small></div>`).join('')}
+        ${d.gear.map((gname, i) => `<div>${icon(['char', 'shield', 'bag'][i] ?? 'star', 16, 2.2)}<span>${esc(gname)}</span><small>${['Head', 'Body', 'Gear'][i] ?? ''}</small></div>`).join('')}
       </div>
       <div class="lz-in-doing">${esc(cap(a.doing || 'out and about'))}</div>
       <div class="lz-in-acts"><button class="pn-btn" data-k="wave">${icon('wave', 16, 2.4)}Wave</button><button class="pn-btn" data-k="close">Close</button></div>

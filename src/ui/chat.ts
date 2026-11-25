@@ -189,9 +189,10 @@ export class Chat {
       w.appendChild(b);
     });
     this.game.sfx('ui_open', { vol: 0.4 });
+    this.feed.style.visibility = 'hidden';
     requestAnimationFrame(() => w.classList.add('on'));
   }
-  closeWheel() { this.wheel.classList.remove('on'); }
+  closeWheel() { if (!this.wheel.classList.contains('on')) return; this.wheel.classList.remove('on'); if (!this.open) this.feed.style.visibility = ''; }
 
   update(rdt: number) {
     if (this.quickCd > 0) this.quickCd -= rdt;

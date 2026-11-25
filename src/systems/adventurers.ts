@@ -6,7 +6,7 @@ import { WEAPONS } from '../data/weapons';
 import type { HorseRig, HumanAction, HumanPose, HumanoidRig, WeaponKind, WeaponModel } from '../entities/humanoid/types';
 import type { RobotKind, RobotPose, RobotRig } from '../entities/robots/types';
 import type { Game, System } from '../game';
-import { BANDS, GAUNTLET, ROADS, TITAN_GATE, bandAt, inTown, type Band } from '../world/layout';
+import { BANDS, BAND_GATES, GAUNTLET, ROADS, TITAN_GATE, bandAt, inTown, type Band } from '../world/layout';
 import { ROSTER, type AdvDef } from './adventurers/roster';
 import type { ZoneEvents } from './events';
 
@@ -301,6 +301,28 @@ export class Adventurers implements System {
       if (near) { this.crateTake.add(near); const r = rand(4, 7), an = rand(0, TAU); near.goal = { act: 'crate', x: ev.x + Math.cos(an) * r, z: ev.z + Math.sin(an) * r, yaw: null, dur: 240, label: 'at the supply drop', face: { x: ev.x, z: ev.z } }; near.route = this.path(near.x, near.z, near.goal.x, near.goal.z); near.ri = 0; near.act = 'move'; near.t = 0; near.doing = 'on the way to the supply drop'; near.mounted = !!near.def.rides && this.routeLen(near) > 150; if (near.foe) { this.releaseFoe(near.foe); near.foe = null; } }
     }
   }
+  /** A few who fit go and watch something from a distance (a sighted elite): they never engage it. */
+  converge(x: number, z: number, label: string, minLevel: number, n: number, dur: number) {
+    const cands = this.list.filter((a) => a.def.level >= minLevel && a.goal?.act !== 'crate' && !a.mounted && Math.hypot(a.x - x, a.z - z) < 230)
+      .sort((p, q) => Math.hypot(p.x - x, p.z - z) - Math.hypot(q.x - x, q.z - z)).slice(0, n);
+    for (const a of cands) {
+      // stand off on the near side, where the road is
+      let gx = x, gz = z;
+      for (let k = 0; k < 8; k++) {
+        const an = Math.atan2(a.z - z, a.x - x) + rand(-0.7, 0.7), r = rand(24, 32);
+        gx = x + Math.cos(an) * r; gz = z + Math.sin(an) * r;
+        if (!forbidden(gx, gz) && this.game.terrain.slope(gx, gz) < 0.3) break;
+      }
+      if (a.foe) { this.releaseFoe(a.foe); a.foe = null; }
+      a.goal = { act: 'idle', x: gx, z: gz, yaw: Math.atan2(x - gx, z - gz), dur, label, face: { x, z } };
+      a.route = this.path(a.x, a.z, gx, gz); a.ri = 0; a.act = 'move'; a.t = 0; a.partner = null; a.target = null;
+      a.mounted = !!a.def.rides && !inTown(a.x, a.z, 4) && this.routeLen(a) > 150;
+      a.doing = 'on the way, ' + label; a.band = bandAt(gx, gz)?.id ?? 0;
+    }
+    return cands;
+  }
+  /** Everyone whose goal starts with this label moves on to something else. */
+  release(label: string) { for (const a of this.list) if (a.goal?.label.startsWith(label)) this.decide(a); }
   private crateDone(opened: boolean) {
     for (const a of this.crateTake) {
       if (a.act === 'crate') { a.act2 = opened ? 'cheer' : null; a.act2T = 0; a.act2Dur = 1.4; a.goal!.dur = Math.min(a.goal!.dur, a.t + rand(6, 14)); }
@@ -351,9 +373,8 @@ export class Adventurers implements System {
     if (tgt) {
       if (!tgt.alive) return;
       tgt.center(_v); tx = _v.x; ty = _v.y; tz = _v.z;
-      // chip at the guard: it stays the player's to finish, and nothing it drops is theirs
-      const floor = tgt.maxHp * 0.35;
-      if (tgt.hp > floor) { tgt.hp = Math.max(floor, tgt.hp - tgt.maxHp * (ranged ? 0.035 : 0.045)); tgt.flash = 0.6; }
+      // the guard is the player's: their blows land as sparks and a flinch, never as damage, kills or loot
+      tgt.flash = Math.max(tgt.flash, 0.35);
     } else if (a.foe && a.foe.st === 'fight') {
       const f = a.foe;
       tx = f.x; ty = f.y + (f.rig ? f.rig.height * 0.55 : 0.8); tz = f.z;
@@ -489,8 +510,12 @@ export class Adventurers implements System {
   }
   /** The gauntlet's courts while a run is on: nobody of ours anywhere near. */
   private hiddenByPlace(a: Adv) {
-    const gs = (this.game.east as { gState?: string } | null)?.gState;
-    return !!gs && gs !== 'idle' && Math.abs(a.x - GAUNTLET.x) < 70 && Math.abs(a.z - GAUNTLET.z) < 40;
+    const east = this.game.east as { gState?: string; gateUnlocked?: (d: unknown) => boolean } | null;
+    const gs = east?.gState;
+    if (gs && gs !== 'idle' && Math.abs(a.x - GAUNTLET.x) < 70 && Math.abs(a.z - GAUNTLET.z) < 40) return true;
+    // a band gate the player has not opened yet is shut for them: the others pass it out of sight (phased)
+    if (a.act === 'move') for (const gt of BAND_GATES) if (Math.abs(a.x - gt.x) < 9 && Math.abs(a.z - gt.z) < 9 && !(this.game.state.flag('gate_' + gt.id) || east?.gateUnlocked?.(gt))) return true;
+    return false;
   }
   private show(a: Adv, lod: -1 | 0 | 2) {
     if (a.lod === lod) return;
