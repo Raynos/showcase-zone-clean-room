@@ -222,7 +222,8 @@ export class Combat {
     const t = this.target;
     if (t && t.alive && Math.hypot(t.pos.x - p.x, t.pos.z - p.z) - t.radius < range + 2) return t;
     // prefer where the stick points, else where the camera looks
-    const yaw = pl.moveHeading ?? g.cameraRig.yaw + Math.PI;
+    // first person: where the view looks, not where the stick strafes
+    const yaw = g.cameraRig.fp ? g.cameraRig.yaw + Math.PI : pl.moveHeading ?? g.cameraRig.yaw + Math.PI;
     const n = this.acquire(range, yaw);
     if (n) this.target = n;
     return n;
@@ -699,7 +700,8 @@ export class Combat {
     // close the gap: a short slide that arrives before the blade does. With nothing to hit it is only a
     // weight shift, so a string swung at the air stays roughly where it started.
     let yaw = pl.moveHeading ?? pl.yaw, step = s.step * 0.4;
-    if (t) {
+    // first person slides only at a target in front of the view (camera.ts inView; always true in third person)
+    if (t && g.cameraRig.inView(t.pos)) {
       const dx = t.pos.x - pl.pos.x, dz = t.pos.z - pl.pos.z, d = Math.hypot(dx, dz) - t.radius;
       yaw = Math.atan2(dx, dz);
       step = clamp(d - (s.burst ? s.range - 0.4 : s.range - 1.3), 0, Math.max(LUNGE_MAX, s.step));
@@ -985,7 +987,7 @@ export class Combat {
     this.cds[sk.id] = sk.cd;
     pl.sinceCombat = 0;
     this.skill = sk.id; this.skillT = 0; this.skillHits = 0;
-    const face = t ? Math.atan2(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) : pl.moveHeading ?? (melee ? pl.yaw : g.cameraRig.yaw + Math.PI);
+    const face = t && g.cameraRig.inView(t.pos) ? Math.atan2(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) : g.cameraRig.fp ? g.cameraRig.yaw + Math.PI : pl.moveHeading ?? (melee ? pl.yaw : g.cameraRig.yaw + Math.PI);
     pl.yaw = face;
     const sf = Math.sin(face), cf = Math.cos(face);
     const td = t ? Math.hypot(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) : 0;
@@ -1085,7 +1087,7 @@ export class Combat {
     this.clearAttack();
     this.od = 0; this.skill = u.id; this.skillT = 0; this.skillHits = 0; this.ultSeen.clear();
     pl.sinceCombat = 0;
-    const face = t ? Math.atan2(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) : pl.moveHeading ?? (melee ? pl.yaw : g.cameraRig.yaw + Math.PI);
+    const face = t && g.cameraRig.inView(t.pos) ? Math.atan2(t.pos.x - pl.pos.x, t.pos.z - pl.pos.z) : g.cameraRig.fp ? g.cameraRig.yaw + Math.PI : pl.moveHeading ?? (melee ? pl.yaw : g.cameraRig.yaw + Math.PI);
     pl.yaw = face;
     const col = st.weapon.color, c = pl.center;
     g.hud.damage({ x: c.x, y: c.y + 1.3, z: c.z }, u.name.toUpperCase(), 'crit');
