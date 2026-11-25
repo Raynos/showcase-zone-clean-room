@@ -143,6 +143,10 @@ vec3 gTerrN; float gTerrR;`)
   // drifts of small stones lying on bare earth
   float stones = smoothstep(0.6, 0.72, texture2D(uNoise, vWPos.xz * 0.047 + 0.71).r + (vA.r - 0.5) * 0.25);
   vec4 eA = mix(dA, vec4(vA.rgb * 1.05, vA.a), stones * 0.85); vec4 eN = mix(dN, vN, stones * 0.85);
+  // far away the tiles blur to one tone; the same paintings at a tenth the scale keep the fields mottled
+  float farK = smoothstep(25.0, 110.0, length(vWPos - cameraPosition));
+  gA.rgb = mix(gA.rgb, texture(uTexA, vec3(uvG * 0.13, ${T.GRASS}.0)).rgb * 1.04, farK * 0.75);
+  eA.rgb = mix(eA.rgb, texture(uTexA, vec3(uvD * 0.11, ${T.DIRT}.0)).rgb, farK * 0.75);
   vec4 sA = mix(gA, eA, dW); vec4 sN = mix(gN, eN, dW);
   float vW = smoothstep(0.38, 0.62, sp.b + (edge + (vA.r - 0.5) * 0.5) * step(0.02, sp.b) * (1.0 - smoothstep(0.85, 1.0, sp.b)));
   sA = mix(sA, vA, vW); sN = mix(sN, vN, vW);
@@ -155,6 +159,11 @@ vec3 gTerrN; float gTerrR;`)
   vec4 rA = mix(texture(uTexA, vec3(uvZ, ${T.ROCK}.0)), texture(uTexA, vec3(uvX, ${T.ROCK}.0)), bx);
   vec4 rN = mix(texture(uTexN, vec3(uvZ, ${T.ROCK}.0)), texture(uTexN, vec3(uvX, ${T.ROCK}.0)), bx);
   float rw = clamp((rockW - 0.5 + (rA.r - 0.5) * 0.6) * 3.0 + 0.5, 0.0, 1.0) * step(0.01, rockW);
+  // painted beds: broad bands of lighter, darker and warmer stone that follow height, gently folded
+  float fold = (macro2 - 0.5) * 5.0 + (macro - 0.5) * 9.0;
+  vec2 bed = texture2D(uNoise, vec2((vWPos.y + fold) * 0.021, 0.37)).rg;
+  float bedT = smoothstep(0.38, 0.62, bed.x);
+  rA.rgb *= mix(0.74, 1.16, bedT) * mix(vec3(1.0), vec3(1.14, 0.98, 0.84), smoothstep(0.56, 0.7, bed.y));
   vec3 alb = cm.rgb * mix(sA.rgb * 1.25, rA.rgb * 1.2, rw);
   alb *= (0.86 + 0.3 * macro + 0.1 * macro2) * mix(1.0, 0.62, cm.a * (1.0 - rw));
   diffuseColor.rgb *= alb * mix(1.0, 0.78, uWet);

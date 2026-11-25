@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { Rng, fbm, smooth, vnoise } from '../core/util';
 import { T } from '../gfx/textures';
 import type { Geo } from '../gfx/geo';
@@ -117,18 +118,87 @@ export function boulders(g: Geo, r: Rng, s = 1, color: number = 0x8a9099, solid 
   return maxR;
 }
 
-/** Tall faceted rock stacks that give the rim and ridges a carved, deliberate silhouette. */
+/** Mixes two 0xRRGGBB colours. */
+function mixHex(a: number, b: number, t: number): number {
+  const ch = (s: number) => Math.round(((a >> s) & 255) * (1 - t) + ((b >> s) & 255) * t);
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+
+const slabCache = new Map<string, THREE.BufferGeometry>();
+/**
+ * One bed of rock: a faceted ring of `seg` sides, unit radius at the foot and `taper` at the
+ * top, one unit tall, with a top face and no underside (beds only ever step inward, so the
+ * underside is never seen).
+ */
+function slabGeo(seg: number, taper: number): THREE.BufferGeometry {
+  const key = `${seg}|${taper}`;
+  let g = slabCache.get(key);
+  if (g) return g;
+  const pos: number[] = [];
+  const ring = (i: number, top: boolean): [number, number, number] => {
+    // corners sit at uneven angles and distances so no two faces match
+    const a = ((i % seg) / seg) * TAU + Math.sin(i * 12.9898 + seg) * 0.22, rr = (top ? taper : 1) * (0.86 + 0.14 * Math.abs(Math.sin(i * 78.233 + seg * 3.1)));
+    return [Math.cos(a) * rr, top ? 0.5 : -0.5, Math.sin(a) * rr];
+  };
+  for (let i = 0; i < seg; i++) {
+    const a = ring(i, false), b = ring(i + 1, false), c = ring(i + 1, true), d = ring(i, true);
+    pos.push(...a, ...d, ...c, ...a, ...c, ...b);
+    pos.push(0, 0.5, 0, ...c, ...d);
+  }
+  g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  slabCache.set(key, g);
+  return g;
+}
+
+/**
+ * Stratified rock for the rim and ridges: a few thick faceted beds of very uneven thickness,
+ * dipping together at one angle and stepping inward as they rise to a leaning peak, with lower
+ * buttresses against the main mass. Every bed throws a ledge of light and a line of shadow;
+ * the tone shifts bed to bed and now and then there is a warm seam.
+ */
 export function crag(g: Geo, r: Rng, s = 1, color: number = 0x8a9099) {
-  g.mat(color, T.ROCK).uvScale(0.12).sway(0);
-  const n = r.int(2, 4);
+  g.mat(color, T.ROCK).uvScale(0.16).sway(0);
+  const n = r.int(2, 3);
+  // the whole outcrop shares one dip, as tilted strata do
+  const dipX = r.range(-0.16, 0.16), dipZ = r.range(-0.16, 0.16);
   for (let i = 0; i < n; i++) {
-    const a = r.range(0, TAU), d = i === 0 ? 0 : r.range(0.5, 1.1) * s;
-    const br = (i === 0 ? 1 : r.range(0.45, 0.8)) * s;
-    const tall = r.range(1.3, 2.3);
-    g.ico(br, 1, {
-      at: [Math.cos(a) * d, br * tall * 0.35, Math.sin(a) * d], rot: [r.range(-0.18, 0.18), r.range(0, 6), r.range(-0.18, 0.18)], scale: [1, tall, 0.85 + r.range(0, 0.3)],
-      lump: 0.28, seed: r.int(0, 7), grad: 0.55, jit: 0.1, flat: true, col: 'none',
-    });
+    const a = r.range(0, TAU), d = i === 0 ? 0 : r.range(0.75, 1.2) * s;
+    const br = (i === 0 ? 1 : r.range(0.55, 0.85)) * s;
+    const tall = br * r.range(1.5, 2.4) * (i === 0 ? 1 : 0.6);
+    const beds = i === 0 ? r.int(3, 4) : r.int(2, 3);
+    const w: number[] = [];
+    let wsum = 0;
+    for (let b = 0; b < beds; b++) { const k = r.range(0.45, 2.1); w.push(k); wsum += k; }
+    const yaw = r.range(0, TAU), squash = r.range(0.6, 0.95), seg = r.int(5, 7);
+    const peak = i === 0 || r.chance(0.5);
+    const bodyH = tall * (peak ? 0.62 : 1);
+    g.push().translate(Math.cos(a) * d, -br * 0.3, Math.sin(a) * d).rotateX(dipX).rotateZ(dipZ);
+    let y = 0, ox = 0, oz = 0, rad = br * r.range(0.95, 1.1);
+    const driftA = r.range(0, TAU);
+    const tint = () => {
+      const tone = r.range(-0.16, 0.12);
+      const c = tone < 0 ? mixHex(color, 0x23272e, -tone) : mixHex(color, 0xffffff, tone * 0.8);
+      return r.chance(0.16) ? mixHex(c, 0xb8683a, 0.3) : c;
+    };
+    for (let b = 0; b < beds; b++) {
+      const th = (bodyH * w[b]) / wsum;
+      const taper = r.pick([0.84, 0.9, 0.96]);
+      g.add(slabGeo(seg, taper), { at: [ox, y + th / 2, oz], rot: [0, yaw + r.range(-0.4, 0.4), 0], color: tint(), grad: 0.7 }, new THREE.Vector3(rad, th, rad * squash));
+      y += th * 0.97;
+      // the next bed sits back from this one's top edge: a ledge, sometimes a deep one
+      const next = rad * taper * (r.chance(0.35) ? r.range(0.68, 0.82) : r.range(0.88, 0.97));
+      const slack = (rad * taper - next) * 0.7;
+      ox += Math.cos(driftA) * slack * r.range(0.3, 1); oz += Math.sin(driftA) * slack * r.range(0.3, 1) * squash;
+      rad = next;
+    }
+    if (peak) {
+      // a leaning shard for the summit instead of a table top
+      const th = tall - bodyH;
+      g.add(slabGeo(seg, 0.34), { at: [ox, y + th / 2, oz], rot: [r.range(-0.12, 0.12), yaw + r.range(-0.4, 0.4), r.range(-0.12, 0.12)], color: tint(), grad: 0.75 }, new THREE.Vector3(rad, th, rad * squash));
+    }
+    g.pop();
   }
 }
 
