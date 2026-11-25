@@ -29,6 +29,21 @@ export async function buildWorld(game: Game, _progress: (p: number, label: strin
 export async function startSystems(game: Game) {
   const robots = await opt('./entities/robots/index.ts');
   if (robots?.makeRobot) game.robotFactory = robots.makeRobot;
+  const human = await opt('./entities/humanoid/index.ts');
+  if (human?.makeHumanoid) {
+    game.human = human;
+    const pl = game.player;
+    pl.setRig(human.makeHumanoid(human.HERO_LOOK));
+    const cache = new Map<string, any>();
+    const sync = () => {
+      const id = game.state.weaponId;
+      let m = cache.get(id);
+      if (!m) { m = human.makeWeaponModel(id); cache.set(id, m); }
+      pl.weaponModel = m; pl.rig?.setWeapon(m);
+    };
+    sync();
+    game.state.events.on('equip', sync);
+  }
   const audio = await opt('./core/audio.ts');
   if (audio?.audio) game.audio = audio.audio;
   const east = await opt('./world/east.ts');

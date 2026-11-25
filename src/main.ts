@@ -8,5 +8,5 @@ const text = document.getElementById('boottext')!;
 const game = new Game();
 (window as any).game = game;
 game.boot(canvas, (p, label) => { bar.style.width = `${Math.round(p * 100)}%`; text.textContent = label; })
-  .then(() => { boot.style.opacity = '0'; setTimeout(() => boot.remove(), 700); })
+  .then(() => { boot.style.opacity = '0'; setTimeout(() => boot.remove(), 700); return game.intro(); })
   .catch((e) => { console.error(e); text.textContent = 'FAILED: ' + (e?.message ?? e); });

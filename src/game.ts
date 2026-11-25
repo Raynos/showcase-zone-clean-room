@@ -219,7 +219,7 @@ export class Game {
     const env = this.env, inside = !!this.interior;
     const storm = env.weather === 'storm';
     let m = this.musicOverride ?? (inside ? 'dungeon' : storm ? 'storm' : inTown(this.player.pos.x, this.player.pos.z, 6) ? 'town' : env.isNight() ? 'night' : 'wild');
-    if (!this.started) m = 'none';
+    if (!this.started && !this.musicOverride) m = 'none';
     if (m !== this.lastMusic) { this.lastMusic = m; a.music?.(m); }
     a.setIntensity?.(this.mobs.inCombat > 0 ? 1 : 0);
     a.loop?.('wind', inside ? 0 : 0.25 + 0.2 * env.w.wind);
@@ -384,7 +384,7 @@ export class Game {
     if (this.fadeHold) post.fade = damp(post.fade, 1, 14, rdt);
     else if (!pl.dead) post.fade = damp(post.fade, 0, 3.5, rdt);
     post.speed = damp(post.speed, this.speedFx, 5, rdt);
-    post.letterbox = damp(post.letterbox, this.cameraRig.cine ? 1 : 0, 4, rdt);
+    post.letterbox = damp(post.letterbox, this.cameraRig.cine && this.started ? 1 : 0, 4, rdt);
 
     // hud
     {
@@ -402,6 +402,23 @@ export class Game {
 
     this.renderer.render(this.scene, this.camera, rdt);
     inp.endFrame();
+  }
+  /** Title screen over a slow aerial drift across Brasswick; resolves when the player starts. */
+  async intro() {
+    if (this.dev || !this.panels?.title) { this.started = true; return; }
+    this.started = false;
+    const pos = new THREE.Vector3(), look = new THREE.Vector3(-50, 10, 0);
+    this.cameraRig.startCine({
+      pos: (t) => { const a = 0.42 + t * 0.035; return pos.set(-50 + Math.cos(a) * 62, 21 + Math.sin(t * 0.11) * 2.5, Math.sin(a) * 62); },
+      look: () => look, fov: 46,
+    });
+    this.musicOverride = 'title';
+    await this.panels.title();
+    this.musicOverride = null;
+    this.cameraRig.endCine();
+    this.cameraRig.snap(this.player.yaw + Math.PI, 0.16);
+    this.started = true;
+    this.hud.banner('BRASSWICK', 'The Proving Yard', '');
   }
   /**
    * Fade out, move the player somewhere (optionally into an interior), fade back in.
@@ -432,6 +449,8 @@ export class Game {
   travelling = false;
   private zoneKeyReset() { this.zoneKey = '~'; this.zoneT = 0; }
   east: any = null;
+  /** humanoid module (makeHumanoid, makeWeaponModel, makeHorse, looks...) once loaded */
+  human: any = null;
   bossMob: import('./systems/mobs').Mob | null = null;
   bossSub: string | null = null;
   npcs: any = null;

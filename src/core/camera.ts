@@ -49,7 +49,7 @@ export class CameraRig {
     this.cam.aspect = aspect;
     const portrait = aspect < 1;
     this.baseFov = portrait ? 64 : 52;
-    this.dist = portrait ? 7.0 : 6.0;
+    this.dist = portrait ? 5.9 : 5.6;
     this.lift = portrait ? 0.9 : 0.45;
     this.cam.updateProjectionMatrix();
   }

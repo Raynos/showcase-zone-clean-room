@@ -49,7 +49,7 @@ const KEY = 'cratefall.save.v1';
 export function freshSave(): SaveData {
   return {
     v: 1, name: 'Rook', level: 1, xp: 0, hp: 120, energy: 100, scrip: 25,
-    pos: [-30, 0, 6], yaw: -Math.PI / 2, hour: 7.25,
+    pos: [-30, 0, 6], yaw: -Math.PI / 2, hour: 9.3,
     weapons: ['shop_blade'], loadout: ['shop_blade', null], active: 0, ammo: 'bolt',
     inv: { kit: 3 }, upgrades: {}, quests: {}, kills: {}, contracts: {}, trophies: [], titles: [], title: null,
     pbs: {}, found: {}, flags: {}, playTime: 0,
