@@ -136,6 +136,21 @@ goes (the plates carry an add's health, and the boss bar is the target
 control); on a desktop it steps down under the bar. The quest line and
 chat go, as in any fight. The notice lane hangs under the bar.
 
+## Nameplates
+
+Robots carry a plate only as far as it helps (`hud.plate`, `focus`):
+
+- **The target and every elite or rare:** the full plate (level, name,
+  health, stagger, status icons). The target's bar is wider and ringed.
+- **Any other robot:** a thin health bar once it is hurt or hunting, and
+  nothing before.
+- **No two plates overlap.** Each frame they are placed in rank (target,
+  elite, a marked NPC, then the nearer): one that would cross another
+  steps up clear of it, and in a crowd sits the frame out.
+- **Damage numbers stop under a plate** and slide out sideways.
+- A broken robot says BROKEN once, over its head as it breaks; the
+  target frame shows the state as an icon and a white bar, with no word.
+
 ## Overlays
 
 Everything that appears for a moment, whichever system raises it, goes
@@ -223,6 +238,108 @@ the HUD's columns, so an off-screen target's arrow never lands on the
 quest line or the cluster. On a wide screen the band's top is above the
 clear middle, and an arrow that would land on its bottom edge (over the
 hero) goes to the nearer side.
+
+## Panels
+
+Every screen behind the menu glyph, the vendors, the conversation and the
+title is one frame (`ui/panels.ts`, `ui/panels.css`, parts in
+`ui/components.css`, colours and sizes in `ui/tokens.css`). The study is
+`docs/HUD-STUDY.md`, "Panels".
+
+**The frame.** Head (icon, title, the purse when the screen spends scrip,
+close), sections, content, and a foot for what is selected and its
+action. Three shapes, chosen by the screen alone:
+
+| Shape         | When                   | Sections       | Detail        |
+|---------------|------------------------|----------------|---------------|
+| Bottom sheet  | phone upright          | bar at bottom  | under list    |
+| Window, short | phone on its side      | rail, 132 pt   | right, 300 pt |
+| Window        | 700 pt wide and up     | rail, 164 pt   | right, 340 pt |
+
+- The sheet is 80% of the height and stops above the home indicator; the
+  windows sit inside both notches. A desktop window is 980 px wide and as
+  tall as its content, from 500 to 760 px, then it scrolls.
+- **Close:** the X (44 pt), a tap outside, a drag down from the head on
+  the sheet (past 96 pt, or a flick), `Esc` on a desktop. A screen opened
+  from another (the armoury from a conversation) shows Back, and close
+  returns there first. A conversation closes by its own Goodbye or X.
+- **Sections** are tabs with an icon and a name, 44 pt or taller: under
+  the thumb along the sheet's foot, down the left edge of a window.
+  A count rides the name as a small figure, never in brackets.
+- **Windows carry a switcher** for the five menu screens in the head
+  (pack, character, quests, map, settings), with the keys on a desktop
+  (`I P L M Esc`). The sheet has no room for it: the tray is one tap away.
+- **Opening** takes the controls: the stick and the look let go, held
+  buttons release, and the thumb that was on the stick takes it up again
+  if it is still down when the screen closes. Settings and the title
+  pause the world; every other screen dims it and leaves it running.
+- **Motion** is one 180 ms slide or fade (`--t-sheet`), presses 70 ms;
+  reduced motion makes both instant.
+
+**Rules a screen keeps.**
+
+1. One orange button in view: the action the screen is for. A price in a
+   list row is gold on dark (`.pn-btn.buy`); a choice that spends points
+   or fills a slot is cyan; a button that cannot be used now is dark with
+   grey words and says why.
+2. No target under 44 pt on a phone (24 px for a mouse). Item cells are
+   52 pt or more.
+3. No type under 11 pt, the map's names included.
+4. Nothing under a notch or the home indicator.
+5. Rarity is one colour everywhere (`--r-common` to `--r-epic`): the
+   cell's rim, the word in the detail, the tuning's name.
+6. An empty list is drawn and says what fills it.
+7. No text is cut: a title that will not fit drops a size before it gets
+   an ellipsis.
+
+**The screens.**
+
+| Screen      | Sections                 | Its one action             |
+|-------------|--------------------------|----------------------------|
+| Pack        | items, gear              | use; equip to slot 1       |
+| Sell        | (the pack as a counter)  | sell the stack             |
+| Character   | overview, loadout,       | none: slots and points     |
+|             | perks, records           | are cyan                   |
+| Quest log   | active, open, done       | track                      |
+| Map         | none                     | none: it is a chart        |
+| Settings    | controls, camera,        | none; reset is red         |
+|             | aiming, display, sound,  |                            |
+|             | game                     |                            |
+| Armoury     | weapons, supplies, sell  | none: prices are gold      |
+| Workshop    | none                     | none: prices are gold      |
+| Board       | bounties, hunts, wanted  | claim, when one is ready   |
+| Trophy wall | none                     | none                       |
+| Talk        | none                     | continue, accept, complete |
+| Title       | none                     | start or continue          |
+
+- **Map.** Each band is washed and outlined in its colour and named with
+  its levels; the legend lists the bands with the same swatches, and
+  the markers. The player is a white arrow in a cyan ring. Names never
+  cross: the bands and the town are always printed, then quest and place
+  markers, then courses and landmarks, each only where it is clear, so
+  zooming in brings the rest. Drag pans and a pinch or the wheel zooms;
+  the buttons zoom and centre. The tracked quest is a chip that opens the
+  log. `Brasswick` is the zone's one fast travel (the same return as
+  Settings, with the same refusal when it is not allowed).
+- **Settings.** Six groups, each a screen or less: Controls (left-handed,
+  vibration, and how to play for the hand in use: touch or keys, not
+  both), Camera (view, look speed, invert, follow; first-person field of
+  view upright and sideways, head bob and its amount, the tilt toward a
+  close target (off until asked for) and the wider view beside big
+  robots; screen shake),
+  Aiming (aim button stays or holds, speed when aimed, aim assist and its
+  two strengths, gyro), Display (quality, frame-rate counter, damage
+  numbers), Sound (everything, music, effects, ambience), Game (return
+  to town, save, start over). `panels.open('menu', { tab })` lands on
+  one.
+- **The fall** is not a panel (`hud.downed`, raised by the `DOWN`
+  banner): the word, a bar that runs out at the respawn, a line saying
+  nothing is lost; the controls dim, menus close, tips wait.
+- **A level** is the notice lane's headline, shown on the kill that
+  earned it, with what it opened under the number.
+- **Loading** (`ui/loading.ts`) is built from the same tokens: one
+  column on a phone upright, two on its side, and the same two at desk
+  size from 1000 px wide. It leaves in the sheet's 180 ms.
 
 ## Layouts
 
@@ -372,4 +489,11 @@ lane may reach 28% of the height under a target frame), touch sizes
 (44 pt; 40 for chips and glyphs), 8 pt between buttons, the budget, a
 fight's two feed lines, and that no system draws a toast, card or meter
 of its own.
+`tools/hud-matrix.sh --set panels` stages twenty-six screens
+(`tools/hud-matrix/panels.js`) at 402x874, 874x402 and 1920x1080 and
+checks each (`HM.checkPanel`): the surface on screen, no sideways
+overflow, no cut text, no type under 11 px, no target under 44 pt (24 px
+with a mouse), nothing in a notch or the home indicator band, and at most
+one orange button in view. Text drawn on the map's canvas is outside its
+reach.
 `?safe=t,r,b,l` fakes the insets on any build.

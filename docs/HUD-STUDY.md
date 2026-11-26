@@ -158,3 +158,110 @@ What they share:
 10. **The centre belongs to the game.**
 11. **The desktop is its own layout:** hotbar with keys, frames, chat
     window, tracker and map where a PC player looks for them.
+
+## Panels
+
+The screens behind the menu glyph, read the same way for `docs/HUD.md`,
+"Panels". Layout, density, hierarchy, target sizes and navigation only;
+no game's art, names or icons were taken.
+
+Sources: frames from public captures of Genshin Impact (menu hub,
+profile, shop), Wuthering Waves (equipment pages, sets, a progress
+screen), Zenless Zone Zero (shops, a schedule page), Guild Wars 2 (bags,
+vendor, trading post, hero panel, bank) and Final Fantasy XIV (settings
+windows, key bindings, HUD layout). Punishing: Gray Raven, Tower of
+Fantasy and World of Warcraft searches returned unrelated or thin
+footage and add nothing here. **Not captured this pass:** a portrait
+layout (none of the six action games offers one), and the death,
+level-up, loading and title moments. Rows marked "recalled" are from
+knowing the games, not from a frame re-read for this pass.
+
+### Phone on its side: one page at a time
+
+| Pattern                         | Seen in              | Measured        |
+|---------------------------------|----------------------|-----------------|
+| A page owns the screen          | all three            | 100% of height  |
+| Back or close in a top corner   | all three            | 7 to 9% tall    |
+| Currency top right, by close    | all three            | one line        |
+| Sections as a rail on the left  | all three            | 12 to 22% wide  |
+| List or grid in the middle      | all three            | 4 to 7 columns  |
+| Subject and facts on the right  | Wuthering, Genshin   | 30 to 45% wide  |
+| One or two actions bottom right | all three            | 8 to 9% tall    |
+| A hub of icons before any page  | Genshin              | 4 x 5 icons     |
+
+- **A page, not a window.** Each screen replaces the game; nothing of
+  the world is touchable behind it. Navigation is hub, then page, then
+  back. No game stacks two pages side by side.
+- **The rail is the tab bar.** Categories run down the left edge under
+  the left thumb, each an icon with a short name or an icon alone. Tabs
+  along the top appear only as a second level inside a page.
+- **Three columns.** Rail, list, detail. The detail column carries the
+  picture, the name with its rarity, the facts as rows of label and
+  value, and the page's action at its foot: the right thumb never
+  leaves the bottom right corner to confirm.
+- **One loud button.** A page has one filled, coloured action (equip,
+  buy, claim); the second is an outline. Prices sit on cards as plain
+  numbers with the currency icon, not as buttons.
+- **Cells.** An item cell is 11 to 14% of the height (about 44 to 56 pt
+  on our phone) with the count in a corner and the rarity as the cell's
+  ground or underline. Shop cards are larger, 22 to 30% of the height,
+  with the price under the picture.
+- **Type.** The smallest text on a page is the fact rows at about 3% of
+  the height, 11 to 12 pt on our phone; names are 4 to 5%.
+- **An empty slot is drawn** (a dashed cell or a plus), never left as
+  bare ground.
+
+### Desktop: windows over a live world
+
+| Pattern                        | Seen in        | Measured           |
+|--------------------------------|----------------|--------------------|
+| A window, the world undimmed   | GW2, FFXIV     | 20 to 40% of width |
+| Title bar, close at its right  | GW2, FFXIV     | 2 to 3% tall       |
+| Dense grid, 10 to 12 columns   | GW2 bags       | cells 3% of height |
+| Tabs across a window's top     | FFXIV settings | two rows of four   |
+| Keys listed beside each action | FFXIV binds    | one row each       |
+| Vendor beside the open bags    | GW2            | two windows        |
+| Hover gives the item's detail  | GW2            | a tooltip          |
+
+- A PC player opens screens by key and expects the key to be shown; a
+  window is sized to its content, not to the monitor.
+- Cells are a third of a phone's because a mouse points precisely; text
+  is 12 to 14 px at 1080p.
+- We keep one window at a time and dim the world: the game is single
+  player and a second window buys nothing here. That is a decision, not
+  a finding.
+
+### Moments (recalled, not re-read)
+
+- **Level up.** The action games show a brief centred line with the new
+  level and what it opened, and never take the controls. The MMOs add a
+  sound and a flash on the character and put the detail in the log.
+- **Death.** The screen loses colour, one word says what happened, and
+  the way back is either a button (revive, return) or a short count.
+  Controls leave the screen.
+- **Loot and rewards.** Small pickups run up a feed at a screen edge;
+  a reward summary (quest done, chest) is a short list of cells with
+  counts, dismissed by a tap anywhere.
+- **Dialogue.** The speaker's name sits over the line at the bottom of
+  the screen; choices stack at the right edge, 44 pt or more each; a
+  tap anywhere advances.
+- **Title and loading.** The title is the logo over a live scene and one
+  action ("tap to begin"); loading is a full picture, a thin bar and one
+  line of advice.
+
+### Principles drawn for our panels
+
+1. **One frame for every screen:** head (what this is, the purse, close),
+   sections, content, the action at the foot.
+2. **Sections where the thumb is:** a rail on the left when the screen is
+   wide; a bar along the bottom when the phone is upright (our case, and
+   none of theirs: taken from the platform's tab bar, not from a game).
+3. **Rail, list, detail** on a wide screen; list over detail upright.
+4. **One orange button per screen.** Prices are gold on dark; choices
+   that spend points are cyan.
+5. **Cells of 52 pt or more on a phone**, smaller only for a mouse.
+6. **Nothing under 11 pt.**
+7. **Draw the empty state** and say what fills it.
+8. **A window on a desktop**, sized to its content, with its keys shown.
+9. **Moments do not take the controls**, except the fall, where there
+   are none to take.
