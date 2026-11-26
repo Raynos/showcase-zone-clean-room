@@ -18,8 +18,12 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const opt = (n, d) => { const i = args.indexOf('--' + n); return i >= 0 && args[i + 1] !== undefined ? args[i + 1] : d; };
-const boss = opt('boss', 'warden'), weapon = opt('weapon', 'bandsaw');
-const level = Number(opt('level', boss === 'titan' ? '20' : '11'));
+// --boss also takes after-hours runs from a level-20 save with the Titan broken (checkpoint `after`, normal
+// loadout unless --weapon): ot-vault and ot-titan (an overtime run through the heroic portal pending, as its
+// choice sheet sets it), and shift (the Long Shift in court A). --style careless plays them attack-only.
+const boss = opt('boss', 'warden'), weapon = opt('weapon', ''), style = opt('style', 'competent');
+const after = ['ot-vault', 'ot-titan', 'shift'].includes(boss);
+const level = Number(opt('level', boss === 'warden' ? '11' : '20'));
 const runs = Number(opt('runs', '1')), maxMin = Number(opt('max-minutes', '9'));
 const out = opt('out', join(HERE, '../../shots/boss.jsonl'));
 const base = opt('url', 'http://localhost:5174/?q=medium');
@@ -42,17 +46,18 @@ async function open() {
 }
 
 async function trial(n) {
-  const runId = `boss-${boss}-${weapon}-L${level}-${Date.now()}`;
+  const runId = `boss-${boss}-${weapon || 'kit'}-L${level}-${style}-${Date.now()}`;
   await open();
   ev(`localStorage.removeItem('cratefall.bot.report'); window.game.state.reset(); "wiped"`);
   await open();
   ab(['eval', '--stdin'], readFileSync(join(HERE, 'checkpoints.js'), 'utf8') + '\n;"ok"');
-  const res = ev(`window.__pbCheckpoint(${JSON.stringify(boss === 'titan' ? 'titan' : 'vault')}, ${JSON.stringify({ level, weapon })})`);
+  const res = ev(`window.__pbCheckpoint(${JSON.stringify(after ? 'after' : boss === 'titan' ? 'titan' : 'vault')}, ${JSON.stringify({ level, weapon: weapon || undefined })})`);
   if (!String(res).startsWith('ok')) throw new Error('checkpoint: ' + res);
   await open();
   try { ab(['set', 'viewport', '402', '874', '1']); } catch { /* ignore */ }
   const lv = ev('window.game.state.d.level'), w = ev('window.game.state.weaponId');
-  if (lv !== level || w !== weapon) throw new Error(`setup did not take: level ${lv}, weapon ${w}`);
+  if (lv !== level || (weapon && w !== weapon)) throw new Error(`setup did not take: level ${lv}, weapon ${w}`);
+  if (after) return afterHours(n, runId);
   // into the interior; for the Warden, straight to the top landing (the boss starts when the hero walks in)
   if (boss === 'titan') {
     ev('window.game.hooks.enterArena(); "in"');
@@ -64,7 +69,7 @@ async function trial(n) {
     ev(`(() => { const g = window.game, v = g.vault; v.stage = 'ascent'; v.reachedGallery = true; for (let i = 0; i < 4; i++) v.setDoor(i, true, true); g.player.teleport(200, -70 + 16 + 0.3, -42, Math.PI); return 'skipped'; })()`);
   }
   ab(['eval', '--stdin'], botSource() + '\n;"injected"');
-  ev(`window.__pb.start(${JSON.stringify({ runId, from: 'boss', style: 'competent' })})`);
+  ev(`window.__pb.start(${JSON.stringify({ runId, from: 'boss', style })})`);
   const t0 = Date.now();
   let st = null;
   for (;;) {
@@ -86,6 +91,36 @@ async function trial(n) {
     tools: won ? won.tools : null, last: st, url: base };
   appendFileSync(out, JSON.stringify(rec) + '\n');
   log(`${boss} ${weapon} L${level} run ${n}: ${rec.result} in ${rec.sec} s, deaths ${rec.deaths}, lowest ${won ? Math.round(won.minHp * 100) : '?'}%`);
+}
+
+/** An after-hours run: overtime through a portal, or the Long Shift. Records the run clock, medal or waves. */
+async function afterHours(n, runId) {
+  if (boss === 'shift') ev(`(() => { const g = window.game; g.player.teleport(88, g.terrain.h(88, -203) + 0.5, -203, Math.PI); g.overtime.shift.start(); return 'on'; })()`);
+  else {
+    const act = boss === 'ot-vault' ? 'vault' : 'titan';
+    ev(`(() => { const g = window.game; g.overtime.heroic.pending = { act: ${JSON.stringify(act)}, t: 8 }; ${act === 'vault' ? 'g.hooks.enterVault()' : 'g.hooks.enterArena()'}; return 'in'; })()`);
+  }
+  await sleep(3000);
+  const rule = ev(`(() => { const h = window.game.overtime.heroic; return h.run ? h.run.rule.id : ''; })()`);
+  ab(['eval', '--stdin'], botSource() + '\n;"injected"');
+  ev(`window.__pb.start(${JSON.stringify({ runId, from: 'boss', style })})`);
+  const t0 = Date.now();
+  let st = null, gone = 0;
+  for (;;) {
+    await sleep(3000);
+    st = evJ(`JSON.stringify((() => { const g = window.game, B = window.__pb, h = g.overtime.heroic.run, sh = g.overtime.shift;
+      return { run: h ? { t: Math.round(h.t), done: h.done, failed: h.failed } : null, shift: { on: sh.on, wave: sh.wave, cleared: sh.cleared }, interior: g.interior, deaths: B.rep.deaths.length, game: Math.round(B.rep.gameSec), goal: B.goal, stage: g.vault && g.vault.stage, arena: g.arena && g.arena.stage };
+    })())`);
+    if (!st) continue;
+    if (boss === 'shift' ? !st.shift.on : (!st.run || st.run.done || st.run.failed)) { if (++gone >= 2) break; } else gone = 0;
+    if ((Date.now() - t0) / 60000 > maxMin) { log('time limit'); break; }
+  }
+  ev('window.__pb.halt("after-hours trial over"); "halted"');
+  const r = evJ('window.__pb.report()');
+  const rec = { boss, style, weapon: weapon || 'kit', level, run: n, at: new Date().toISOString(), rule, last: st, deaths: r ? r.deaths.length : null, gameSec: r ? Math.round(r.gameSec) : null,
+    deathLog: r && r.deathLog ? r.deathLog.map((d) => ({ hits: d.hits.slice(-4), lastHurt: d.lastHurt })) : [], fights: r && r.fights, url: base };
+  appendFileSync(out, JSON.stringify(rec) + '\n');
+  log(`${boss} ${style} run ${n}: ${JSON.stringify(st && (boss === 'shift' ? st.shift : st.run))}, deaths ${rec.deaths}, rule ${rule}`);
 }
 
 (async () => {

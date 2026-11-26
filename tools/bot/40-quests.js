@@ -358,6 +358,7 @@
   // ---------------------------------------------------------------- one strategic step
   B.step = async () => {
     const g = G(), st = g.state, qs = g.quests;
+    if (g.overtime && g.overtime.shift && g.overtime.shift.on) return B.runShift();
     if (g.interior === 'vault') return B.runVault();
     if (g.interior === 'arena') return B.runArena();
     if (g.interior) { B.setGoal('inside ' + g.interior + ': finding the way out'); await B.sleep(2); return; }

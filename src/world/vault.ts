@@ -1,3 +1,4 @@
+import { BOSS_TAKEN } from '../data/bosses';
 import * as THREE from 'three';
 import type { RAPIER } from '../core/physics';
 import { TAU, clamp, rand } from '../core/util';
@@ -461,6 +462,9 @@ export class Vault implements System {
     const c = g.combat.checkpoint; if (c) { c.x = X; }
     const m = g.mobs.spawn('warden', { level: lvl, x: X, z: -74, floor: Y + UP, aggro: false, leash: 400, name: 'Vault Warden' });
     m.yaw = 0; this.warden = m;
+    // boss-side weapon balance by the class in hand (data/bosses.ts)
+    const hit = m.takeHit.bind(m);
+    m.takeHit = (h) => hit({ ...h, dmg: h.dmg * BOSS_TAKEN.warden[g.combat.kind] });
     g.musicOverride = 'boss'; g.sfx('elite_roar', { pos: m.pos });
     g.player.controllable = false;
     const from = new THREE.Vector3(X + 7, Y + UP + 2.2, -60), to = new THREE.Vector3(X - 3, Y + UP + 3.4, -66);

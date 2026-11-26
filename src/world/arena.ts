@@ -1,3 +1,4 @@
+import { BOSS_TAKEN } from '../data/bosses';
 import * as THREE from 'three';
 import type { RAPIER } from '../core/physics';
 import { TAU, angleDiff, clamp, clamp01, lerp, rand, smooth } from '../core/util';
@@ -506,6 +507,8 @@ export class Arena implements System {
     // phase 3: the open furnace is a weak point. Hits landed from the Titan's front arc do 30% more.
     const hit = m.takeHit.bind(m);
     m.takeHit = (h: HitInfo) => {
+      // boss-side weapon balance by the class in hand (data/bosses.ts)
+      h = { ...h, dmg: h.dmg * BOSS_TAKEN.titan[g.combat.kind] };
       if (m.phase >= 3 && this.stage === 'fight' && m.alive && !m.invuln && this.transT <= 0) {
         const pl = g.player, a = Math.atan2(pl.pos.x - m.pos.x, pl.pos.z - m.pos.z);
         if (Math.abs(angleDiff(m.yaw, a)) < 0.95) {

@@ -25,6 +25,8 @@
     gauntlet: { level: 16, done: upto('q_gauntlet'), active: ['q_gauntlet'], gates: ['g12', 'g23', 'g34', 'g45', 'g56'], pos: [88, -184], about: 'level 16 outside the gauntlet with its quest accepted' },
     // level 19 as the band plays: the field done, the gauntlet run and Foreman Unit 7 fired, Cratefall still to take
     'l19-titan': { level: 19, done: upto('q_titan'), gates: ['g12', 'g23', 'g34', 'g45', 'g56', 'shortcut'], flags: ['gauntlet_clear'], pos: [-30, 6], about: 'level 19 in town, gauntlet cleared, Foreman down, Cratefall not yet taken' },
+    // after hours (tools/bot/boss.mjs): level 20, the Titan broken, the whole chain handed in
+    after: { level: 20, done: CHAIN.slice(), gates: ['g12', 'g23', 'g34', 'g45', 'g56', 'shortcut'], flags: ['gauntlet_clear', 'titan_dead', 'titan_seen'], pos: [-30, 6], about: 'level 20 in town, the Titan broken: after hours open' },
     titan: { level: 18, done: upto('q_titan'), active: ['q_titan'], gates: ['g12', 'g23', 'g34', 'g45', 'g56', 'shortcut'], flags: ['gauntlet_clear'], pos: [30, -121], about: 'level 18 at the Titan portal, gauntlet cleared, Cratefall accepted' },
   };
 

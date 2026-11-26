@@ -240,6 +240,17 @@
     void pl;
   };
 
+  // ================================================================= The Long Shift (after hours, court A)
+  /** Hold court A: fight whatever is in it, and between waves stand in the middle. */
+  B.runShift = async () => {
+    const g = G(), sh = g.overtime.shift, c = COURTS[0];
+    B.goalKey = 'shift';
+    B.setGoal(`The Long Shift: wave ${sh.wave}, ${sh.cleared} cleared`);
+    if (B.threatened(30)) { await B.fight({ noFlee: true, range: 30, linger: 0.6, until: () => !sh.on }); await B.collectLoot(1); return; }
+    await B.walk(c[0], c[1], { r: 3, timeout: 6, fight: true, fightRange: 26 });
+    await B.tick();
+  };
+
   // ================================================================= Crate Titan
   const AX = 80, AZ = -140;
   B.enterArena = async () => {
