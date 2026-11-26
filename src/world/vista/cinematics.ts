@@ -11,6 +11,9 @@ import { BANDS, BAND_GATES, HALF } from '../layout';
  *
  * Shots are key poses (position, heading, pitch) eased one into the next; the last key is always
  * the follow camera's own pose behind the player, so a shot hands over without a cut.
+ * Shots run on the wall clock, not the simulation's (which is capped at 50 ms a frame), so a shot
+ * lasts as long on a slow desktop as on a phone: the opening used to stretch from 9 s to 16 s on a
+ * loaded desktop (docs/PLAYTEST.md, finding 12). A shot can be skipped after its first second.
  * In `?dev` builds nothing plays by itself (tests and bots stay in control) unless `?cine` is set;
  * `game.cine.play(name)` plays any shot by hand: 'open', 'gate:g12' .. 'gate:service', 'summit'.
  */
@@ -51,10 +54,10 @@ export function startCinematics(game: Game): Cinematics {
         const toB = headingTo(4, -20, 150, 10);
         return [
           { t: 0, pos: [-6, 44, -46], yaw: toB - 0.25, pitch: -0.12, fov: 50 },
-          { t: 4.0, pos: [8, 38, -6], yaw: toB + 0.12, pitch: -0.1, fov: 50 },
+          { t: 3.2, pos: [8, 38, -6], yaw: toB + 0.12, pitch: -0.1, fov: 50 },
           // over the gate and down the main street, turning to find the player in the square
-          { t: 6.6, pos: [-4, 17, 3], yaw: -Math.PI / 2 + 0.5, pitch: -0.32, fov: 56 },
-          home(8.8),
+          { t: 5.3, pos: [-4, 17, 3], yaw: -Math.PI / 2 + 0.5, pitch: -0.32, fov: 56 },
+          home(7.2),
         ];
       },
     },
@@ -95,11 +98,18 @@ export function startCinematics(game: Game): Cinematics {
     };
   }
 
-  let cur: { shot: Shot; keys: Key[]; t: number; dur: number; ctl: boolean } | null = null;
+  let cur: { shot: Shot; keys: Key[]; t: number; dur: number; ctl: boolean; at: number } | null = null;
+  /** a shot may be skipped after this long (s); the hint shows from then */
+  const SKIP_AFTER = 1;
   const pending: Array<{ name: string; x: number; z: number; age: number }> = [];
   let calm = 0;
   const hint = document.createElement('div');
-  hint.textContent = 'TAP TO SKIP';
+  /**
+   * HOOK for the HUD (the wording is theirs, docs/PLAYTEST.md finding 10): the skip line for the
+   * controls on screen. Touch says tap; keyboard and mouse say click or a key.
+   */
+  const skipWords = () => (game.hud?.touchUi ?? game.input.isTouch) ? 'TAP TO SKIP' : 'CLICK OR SPACE TO SKIP';
+  hint.textContent = skipWords();
   hint.style.cssText = 'position:absolute;left:0;right:0;bottom:calc(64px + env(safe-area-inset-bottom));text-align:center;font:800 11px/1 system-ui,sans-serif;letter-spacing:.3em;color:#fff;opacity:.55;pointer-events:none;text-shadow:0 1px 3px #000;display:none';
   document.getElementById('ui')?.appendChild(hint);
 
@@ -125,12 +135,12 @@ export function startCinematics(game: Game): Cinematics {
       game.camera.getWorldDirection(_f);
       keys[0] = { t: 0, pos: [game.camera.position.x, game.camera.position.y, game.camera.position.z], yaw: Math.atan2(_f.x, _f.z), pitch: Math.asin(clamp(_f.y, -1, 1)), fov: game.camera.fov };
     }
-    cur = { shot, keys, t: 0, dur: keys[keys.length - 1].t, ctl: pl.controllable };
+    cur = { shot, keys, t: 0, dur: keys[keys.length - 1].t, ctl: pl.controllable, at: performance.now() };
     pl.controllable = false;
     // the rig reads these every frame; this system moves them
     rig.startCine({ pos: () => _p, look: () => _l, fov: pose(keys, 0) });
-    hint.textContent = game.input.isTouch ? 'TAP TO SKIP' : 'CLICK OR SPACE TO SKIP';   // the device's own word
-    hint.style.display = '';
+    hint.textContent = skipWords();
+    hint.style.display = 'none';
   };
   const finish = () => {
     if (!cur) return;
@@ -164,15 +174,18 @@ export function startCinematics(game: Game): Cinematics {
       if (sf && !summitWas && auto) pending.push({ name: 'summit', x: pl.pos.x, z: pl.pos.z, age: 0 });
       summitWas = sf;
       if (openWanted && game.started) {
-        openWanted = false; st.setFlag('cine_open');
-        if (Math.abs(pl.pos.x) < HALF) pending.unshift({ name: 'open', x: pl.pos.x, z: pl.pos.z, age: 0 });
+        // once per save, the moment START hands over (never on Continue: the save is past 2 s of play)
+        openWanted = false; st.setFlag('cine_open'); st.save();
+        if (Math.abs(pl.pos.x) < HALF && canPlay()) { begin(shots.open); return; }
       }
 
       if (cur) {
         const c = cur;
-        c.t += dt;
+        // the wall clock: the same length at 20 frames a second as at 60
+        c.t = Math.min((performance.now() - c.at) / 1000, c.t + 0.25);
         const inp = game.input;
-        const skip = c.t > 0.4 && (inp.taps.length > 0 || inp.pressed('attack') || inp.pressed('jump') || inp.pressed('dodge') || inp.pressed('interact'));
+        if (c.t >= SKIP_AFTER && hint.style.display === 'none') hint.style.display = '';
+        const skip = c.t >= SKIP_AFTER && (inp.taps.length > 0 || inp.pressed('attack') || inp.pressed('jump') || inp.pressed('dodge') || inp.pressed('interact'));
         if (skip || game.combat.inCombat || pl.dead || game.travelling || game.interior || c.t >= c.dur) { finish(); return; }
         const fov = pose(c.keys, c.t);
         if (rig.cine) rig.cine.fov = fov;
