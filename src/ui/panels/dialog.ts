@@ -89,7 +89,7 @@ export const talkPanel: PanelSpec = {
       } else if (mode.k === 'quest') {
         const q = mode.q;
         if (mode.kind === 'offer') {
-          card = `<div class="sc-card"><small>New job · level ${q.level}</small><b>${q.name}</b>${q.objectives.map((o) => `<div class="ob">${o.text}${o.n > 1 ? ` <em>×${o.n}</em>` : ''}</div>`).join('')}${rewardsHtml(q)}</div>`;
+          card = `<div class="sc-card"><small>New job · level ${q.level}</small><b>${q.name}</b><div class="obs${q.objectives.length > 3 ? ' many' : ''}">${q.objectives.map((o) => `<div class="ob">${o.text}${o.n > 1 ? ` <em>×${o.n}</em>` : ''}</div>`).join('')}</div>${rewardsHtml(q)}</div>`;
           c += choice('Accept', 'accept', q.id, 'pri') + choice('Not now', 'root', '', 'bye');
         } else {
           card = `<div class="sc-card done"><small>Job done · your reward</small><b>${q.name}</b>${rewardsHtml(q)}</div>`;

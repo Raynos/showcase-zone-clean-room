@@ -491,6 +491,8 @@ body.desktop .pn-kx { margin-right: -4px; }
   background: linear-gradient(90deg, transparent, var(--gold), transparent) bottom / 100% 1px no-repeat; }
 .sc-card .ob { font-size: 14px; line-height: 1.4; color: #ece6da; }
 .sc-card .ob em { color: var(--amber); font-weight: 800; }
+/* a long list of stops is two columns: the card stays short, so the speaker's words stay under their face, not over it */
+.sc-card .obs.many { display: grid; grid-template-columns: 1fr 1fr; column-gap: 14px; }
 .sc-card .pn-rew { justify-content: center; margin-top: 9px; }
 .sc-card.done > small { color: var(--green); }
 

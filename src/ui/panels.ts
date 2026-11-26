@@ -69,6 +69,8 @@ export class Panels implements System, Host {
     this.backBtn = q('.pn-back'); this.navEl = q('.pn-nav'); this.tabsEl = q('.pn-tabs'); this.body = q('.pn-body'); this.foot = q('.pn-foot'); this.modal = q('.pn-modal');
     this.bind();
     applyComfort(game);
+    // (a height kept in px means nothing after a turn of the phone or a resized window)
+    window.addEventListener('resize', () => { this.sheetMin = 0; this.sheet.style.minHeight = ''; });
     game.hud.onMenu = (id) => this.toggle(id);
     game.hud.drawMini = this.zoneMap.drawMini;
     game.addSystem(this);
@@ -170,8 +172,15 @@ export class Panels implements System, Host {
       const s = this.game.state.d.scrip;
       if (s !== this.scripShown) { this.scripShown = s; this.headScrip.innerHTML = `${icon('coin', 15)}<span>${s.toLocaleString('en-US')}</span>`; }
     }
+    // The sheet is as tall as what it holds, and while it stays open it only grows: a shorter section, or the next
+    // menu screen from the strip, leaves the top edge (and the strip on it) where the thumb last found it.
+    if (this.current && this.spec?.cls !== 'dialog') {
+      const h = this.sheet.offsetHeight;
+      if (h > this.sheetMin + 0.5) { this.sheetMin = h; this.sheet.style.minHeight = h + 'px'; }
+    }
     this.raf = requestAnimationFrame(this.tick);
   };
+  private sheetMin = 0;
   private get spec(): PanelSpec | null { return this.current ? this.specs[this.current] : null; }
 
   // ------------------------------------------------------------------ open / close
@@ -189,6 +198,10 @@ export class Panels implements System, Host {
     this.current = id; this.arg = arg;
     g.input.uiCapture = true; g.input.exitPointerLock();
     for (const b of ['attack', 'jump', 'dodge', 'skill1', 'skill2', 'sprint'] as const) g.input.release(b);
+    // (the height the sheet has reached is kept from one menu screen to the next, and dropped for anything else)
+    const isMenu = (x: string | null) => !!x && NAV.some((n) => n[0] === x);
+    const phone = !matchMedia('(min-width: 700px), (orientation: landscape)').matches;   // the bottom sheet, which carries the strip
+    if (!(was === id || (phone && isMenu(was) && isMenu(id)))) { this.sheetMin = 0; this.sheet.style.minHeight = ''; }
     this.sheet.className = 'pn-sheet ' + (spec.cls ?? '');
     this.root.classList.toggle('dlg', spec.cls === 'dialog');
     this.setTitle(spec.title, spec.icon);
