@@ -57,10 +57,13 @@ def main():
             for box in ((0, 0, im.width, s['t'] * k), (0, im.height - s['b'] * k, im.width, im.height), (0, 0, s['l'] * k, im.height), (im.width - s['r'] * k, 0, im.width, im.height)):
                 if box[2] > box[0] and box[3] > box[1]:
                     d.rectangle(box, fill=(255, 40, 20, 46))
-            if r['layout'] != 'portrait':
+            if r['layout'] != 'portrait' and not r.get('panel'):
                 d.rectangle((im.width / 3, im.height / 3, im.width * 2 / 3, im.height * 2 / 3), outline=(94, 240, 255, 90), width=max(1, int(k)))
             for i in r['issues']:
-                if i['kind'] == 'overlap' and 'at' in i:
+                if 'at' in i and r.get('panel'):
+                    x, y, w, h = i['at']
+                    d.rectangle((x * k - 1, y * k - 1, (x + w) * k + 1, (y + h) * k + 1), outline=(RED if i['kind'] in ('clipped', 'unsafe', 'overflow') else MAG) + (255,), width=max(2, int(k)))
+                elif i['kind'] == 'overlap' and 'at' in i:
                     x, y, w, h = i['at']
                     d.rectangle((x * k - 2, y * k - 2, (x + w) * k + 2, (y + h) * k + 2), outline=MAG + (255,), width=max(2, int(2 * k)))
             im = Image.alpha_composite(im.convert('RGBA'), ov).convert('RGB')
@@ -83,7 +86,7 @@ def main():
         for n, (st, r, im) in enumerate(tiles):
             c, rr = n % cols, n // cols
             x, y = gap + c * (tw + gap), gap + rr * (th + head + gap)
-            bad = [i for i in r['issues'] if i['kind'] in ('overlap', 'clipped', 'unsafe', 'middle')]
+            bad = [i for i in r['issues'] if i['kind'] in ('overlap', 'clipped', 'unsafe', 'middle', 'overflow', 'primary')]
             d.text((x, y + 1), st, fill=INK, font=f1)
             d.text((x, y + 17), f'{r["layout"]} · {len(bad)} issue{"s" if len(bad) != 1 else ""}' + (f' · {len(r["issues"]) - len(bad)} small' if len(r['issues']) > len(bad) else ''), fill=RED if bad else OK, font=f2)
             sheet.paste(im.resize((tw, th), Image.LANCZOS), (x, y + head))

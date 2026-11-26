@@ -9,6 +9,8 @@
     status: 'idle',
     size(w, h, safe, o = {}) {
       HM.status = 'running';
+      // another agent's half-saved file raises Vite's error overlay over a page that is running fine
+      for (const e of document.querySelectorAll('vite-error-overlay')) e.remove();
       const g = window.game, root = document.documentElement.style;
       const s = String(safe || '0,0,0,0').split(',');
       ['--sat', '--sar', '--sab', '--sal'].forEach((k, i) => root.setProperty(k, (+s[i] || 0) + 'px'));
@@ -23,6 +25,7 @@
       const tick = () => {
         if (++n < 8) { requestAnimationFrame(tick); return; }
         H.freeze();
+        for (const e of document.querySelectorAll('vite-error-overlay')) e.remove();
         for (const a of document.getAnimations?.() ?? []) { try { a.pause(); } catch (e) { /* ignore */ } }
         HM.status = 'ready';
       };
@@ -140,6 +143,75 @@
         if (cluster > cap) issues.push({ kind: 'budget', what: cluster + ' buttons in the cluster, the cap is ' + cap });
       }
       return JSON.stringify({ layout: hud.layout.id, w: W, h: Hh, safe: S, ms: +hud.lastLayoutMs.toFixed(2), boxes: units.length, cluster, chips, touch, ctx: hud.ctx, issues });
+    },
+    /**
+     * A panel, a conversation, a modal, the open tuning choice or the title: every visible box inside
+     * the open surface (docs/HUD.md, "Panels"). Issues: a surface or a control off the screen (clipped),
+     * content wider than its scroller (overflow), text cut short (cut), type under 11 px (tiny), touch
+     * targets under 44 pt, or 24 px with a mouse (small), a control or text under the notch or the home
+     * indicator (unsafe), and more than one primary action in view (primary).
+     */
+    checkPanel() {
+      const W = innerWidth, Hh = innerHeight, hud = window.game.hud, S = hud.safe, touch = hud.game.input.isTouch;
+      const vis = (e) => {
+        for (let x = e; x && x !== document.documentElement; x = x.parentElement) {
+          const cs = getComputedStyle(x);
+          if (cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity < 0.05) return false;
+        }
+        return true;
+      };
+      const issues = [], seen = new Set();
+      const push = (kind, what, r, px) => {
+        const key = kind + '|' + what;
+        if (seen.has(key)) return;
+        seen.add(key);
+        if (issues.filter((i) => i.kind === kind).length >= 14) return;
+        const i = { kind, what: String(what).slice(0, 70) };
+        if (r) i.at = [r.left, r.top, r.width, r.height].map(Math.round);
+        if (px !== undefined) i.px = Math.round(px * 10) / 10;
+        issues.push(i);
+      };
+      const name = (e) => (e.dataset.a ? e.dataset.a + (e.dataset.v ? ':' + e.dataset.v : '') : e.dataset.t || e.dataset.m || e.dataset.s || String(e.className).split(' ').slice(0, 2).join('.')) || e.tagName;
+      const roots = [...document.querySelectorAll('.pn.on .pn-sheet, .pn-modal.on .pn-mcard, .pn-title, .gr-tune.open .bev, .death.on, .note.head.level.on')].filter((e) => vis(e) && e.getBoundingClientRect().top < Hh - 4);
+      let targets = 0, prim = 0, boxes = 0;
+      for (const root of roots) {
+        const rr = root.getBoundingClientRect();
+        if (rr.left < -1 || rr.top < -1 || rr.right > W + 1 || rr.bottom > Hh + 1) push('clipped', 'surface ' + name(root), rr);
+        for (const sc of root.querySelectorAll('.pn-body, .pn-tabs, .pn-foot')) if (vis(sc) && sc.scrollWidth > sc.clientWidth + 1 && getComputedStyle(sc).overflowX !== 'auto' && getComputedStyle(sc).overflowX !== 'scroll') push('overflow', name(sc) + ' is ' + (sc.scrollWidth - sc.clientWidth) + ' px wider than its box', sc.getBoundingClientRect());
+        for (const e of root.querySelectorAll('*')) {
+          const r = e.getBoundingClientRect();
+          if (r.width < 1 || r.height < 1) continue;
+          // only what is on screen now (the rest of a list is a scroll away), and inside its scroller's window
+          if (r.bottom < 2 || r.top > Hh - 2 || r.right < 2 || r.left > W - 2) continue;
+          const body = e.closest('.pn-body, .pn-foot, .pn-tabs');
+          let rb = r.bottom;   // what shows of it: a scroller cuts its children at its own edge
+          if (body && body !== e) { const b = body.getBoundingClientRect(); if (r.top + r.height / 2 < b.top || r.top + r.height / 2 > b.bottom) continue; rb = Math.min(rb, b.bottom); }
+          if (!vis(e)) continue;
+          boxes++;
+          const cs = getComputedStyle(e);
+          const own = [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim().length > 0);
+          const hit = e.matches('[data-a], [data-m], [data-t], .pn-slider, button, a[href], input') && cs.pointerEvents !== 'none';
+          if (own) {
+            const fs = parseFloat(cs.fontSize);
+            if (fs < 10.95) push('tiny', name(e) + ' "' + e.textContent.trim().slice(0, 24) + '"', r, fs);
+            if (e.scrollWidth > e.clientWidth + 1 && cs.overflowX !== 'visible') push('cut', name(e) + ' "' + e.textContent.trim().slice(0, 28) + '"', r, e.scrollWidth - e.clientWidth);
+          }
+          if (own || hit) {
+            if (r.left < -1 || r.right > W + 1) push('clipped', name(e), r);
+            else if (r.left < S.l - 1 || r.right > W - S.r + 1 || rb > Hh - S.b + 1 || r.top < S.t - 1) push('unsafe', name(e), r);
+          }
+          if (hit) {
+            targets++;
+            const m = Math.min(r.width, r.height), need = touch ? 44 : 24;
+            if (m < need - 0.5) push('small', name(e), r, m);
+            if (e.matches('.pn-btn.pri, .tt-btn.pri') && !e.classList.contains('off')) prim++;
+          }
+        }
+      }
+      if (prim > 1) push('primary', prim + ' primary actions in view');
+      if (!roots.length) push('clipped', 'no surface is open');
+      const g = window.game, id = g.panels.current || (roots[0] ? name(roots[0]) : 'none');
+      return JSON.stringify({ layout: hud.layout.id, w: W, h: Hh, safe: S, ms: 0, boxes, cluster: 0, chips: 0, touch: targets, ctx: id, panel: true, issues });
     },
   });
 })();

@@ -4,9 +4,12 @@
 # clear centre of a landscape screen, touch targets under 44 pt, an action budget over its cap)
 # and contact sheets. The rules are docs/HUD.md's.
 #
-#   tools/hud-matrix.sh [state ...] [--url <base>] [--out <dir>] [--sizes <key,key>]
+#   tools/hud-matrix.sh [state ...] [--set panels] [--url <base>] [--out <dir>] [--sizes <key,key>]
 #
 #   state    a state from tools/hud-matrix/states.js by name or number (default: all)
+#   --set    panels: the screens behind the menu glyph (tools/hud-matrix/panels.js) at p402, l874 and
+#            d1920, checked for overflow, clipped text, small type and targets, the safe area and
+#            more than one primary action (HM.checkPanel; docs/HUD.md, "Panels")
 #   --url    base URL of a running build (default http://localhost:5174)
 #   --out    output directory (default shots/hud/matrix, git-ignored)
 #   --sizes  comma list of size keys (default: all of p402 l874 p375 l667 d1920)
@@ -29,16 +32,24 @@ ROOT="$(dirname "$HERE")"
 URL="http://localhost:5174"
 OUT="$ROOT/shots/hud/matrix"
 SIZES="p402,l874,p375,l667,d1920"
+SET="hud"; STATES="states.js"; VAR="HM_STATES"; CHECK="HM.check()"; OUT_SET=0; SIZES_SET=0
 WANT=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --url) URL="${2%/}"; shift 2 ;;
-    --out) OUT="$2"; shift 2 ;;
-    --sizes) SIZES="$2"; shift 2 ;;
+    --out) OUT="$2"; OUT_SET=1; shift 2 ;;
+    --sizes) SIZES="$2"; SIZES_SET=1; shift 2 ;;
+    --set) SET="$2"; shift 2 ;;
     -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
     *) WANT+=("$1"); shift ;;
   esac
 done
+
+if [ "$SET" = "panels" ]; then
+  STATES="panels.js"; VAR="PN_STATES"; CHECK="HM.checkPanel()"
+  [ "$OUT_SET" = 0 ] && OUT="$ROOT/shots/hud3/matrix"
+  [ "$SIZES_SET" = 0 ] && SIZES="p402,l874,d1920"
+fi
 
 size_of() {   # key -> "w h scale safe opts"
   case "$1" in
@@ -53,9 +64,9 @@ size_of() {   # key -> "w h scale safe opts"
 
 ALL="$(node -e '
   const src = require("fs").readFileSync(process.argv[1], "utf8");
-  const s = new Function("window", src + "; return HM_STATES;")({});
+  const s = new Function("window", src + "; return " + process.argv[2] + ";")({});
   for (const x of s) console.log(String(x.n).padStart(2, "0") + "-" + x.name);
-' "$HERE/hud-matrix/states.js")" || { echo "cannot read states.js" >&2; exit 1; }
+' "$HERE/hud-matrix/$STATES" "$VAR")" || { echo "cannot read $STATES" >&2; exit 1; }
 PICK=""
 if [ ${#WANT[@]} -eq 0 ]; then PICK="$ALL"
 else
@@ -94,7 +105,7 @@ while read -r file <&3; do
     agent-browser set viewport "$w" "$h" "$sc" >/dev/null 2>&1
     agent-browser open "$URL/?golden&dev&q=medium" >/dev/null 2>&1
     sleep 1
-    { echo '(() => {'; cat "$ROOT/tools/golden/lib.js" "$HERE/hud-matrix/states.js" "$HERE/hud-matrix/check.js"; echo '})()'; } | agent-browser eval --stdin >/dev/null 2>&1
+    { echo '(() => {'; cat "$ROOT/tools/golden/lib.js" "$HERE/hud-matrix/$STATES" "$HERE/hud-matrix/check.js"; echo '})()'; } | agent-browser eval --stdin >/dev/null 2>&1
     agent-browser eval "GOLDEN.start('$file')" >/dev/null 2>&1
     st="$(poll "window.GOLDEN ? GOLDEN.status : 'noload'" done)"
     if [ "$st" = "done" ]; then ok=1; break; fi
@@ -114,7 +125,7 @@ while read -r file <&3; do
     agent-browser eval "HM.size($w, $h, '$safe', $opts)" >/dev/null 2>&1
     st="$(poll "window.HM ? HM.status : 'none'" ready 60)"
     [ "$st" != "ready" ] && echo "  $file $key: sizing ended with '$st'" >&2
-    res="$(agent-browser eval "HM.check()" 2>/dev/null)"
+    res="$(agent-browser eval "$CHECK" 2>/dev/null)"
     agent-browser screenshot "$OUT/$file/$key.png" >/dev/null 2>&1
     echo "$file $key $res" >> "$REPORT.part"
     n="$(echo "$res" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const r=JSON.parse(JSON.parse(s));console.log(r.layout+" "+r.ctx+": cluster "+r.cluster+"+"+r.chips+", "+r.touch+" touchable, "+r.issues.length+" issues"+(r.issues.length?" ("+r.issues.map(i=>i.kind+" "+i.what).join("; ")+")":"")+", re-laid in "+r.ms+" ms")}catch(e){console.log("?")}})')"
