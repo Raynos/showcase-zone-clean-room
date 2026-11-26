@@ -163,7 +163,9 @@ export const ENEMIES: Record<RobotKind, EnemyDef> = {
     salvage: [['core', 1], ['cell', 1], ['servo', 1]], colors: [0xffcf3a, 0x5b6470, 0xf28a2e, 0x383e47], glow: 0xffcf3a,
   },
   titan: {
-    kind: 'titan', name: 'Crate Titan', hp: 78, dmg: 1.55, speed: 2.4, turn: 1.5, aggro: 200, leash: 500, poise: 0.03, boss: true,
+    // hp 78 -> 96 (QA 2026-11-26, de4e747, competent bot at level 20, checkpoint gear): Stormrod won in
+    // 220 s, aimed for 4-5 min; the Rail Rifle won in 46 s, which no health number fixes
+    kind: 'titan', name: 'Crate Titan', hp: 96, dmg: 1.55, speed: 2.4, turn: 1.5, aggro: 200, leash: 500, poise: 0.03, boss: true,
     attacks: [
       // phase 1: fists and stomps
       M({ id: 'fist', type: 'slam', range: [0, 17], windup: 1.25, cd: 3.4, dmg: 1.3, radius: 6.5, knock: 9, recover: 0.9 }),
