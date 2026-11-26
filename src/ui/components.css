@@ -273,11 +273,11 @@ body.desktop .pn-later:hover { color: #fff; }
 .md.m3 { --mc: var(--gold); } .md.m2 { --mc: #cfd8e3; } .md.m1 { --mc: #d68a4c; }
 .md .rb { fill: none; stroke: var(--mc); stroke-width: 1.4; stroke-linejoin: round; opacity: .55; }
 .md .dc { fill: none; stroke: var(--mc); stroke-width: 1.5; stroke-dasharray: 2.6 2.2; opacity: .6; }
-.md text { font-size: 10px; font-weight: 900; letter-spacing: 0; fill: var(--mc); opacity: .6; }
+.md text { font-size: 10.500px; font-weight: 900; letter-spacing: 0; fill: var(--mc); opacity: .75; }
 .md.on .rb { fill: var(--mc); opacity: 1; }
 .md.on .dc { fill: var(--mc); stroke: #fff; stroke-width: 1; stroke-dasharray: none; opacity: 1; }
 .md.on text { fill: #1a1408; opacity: 1; }
-.pn-medals { display: flex; align-items: center; gap: 14px; }
+.pn-medals { display: flex; align-items: center; gap: 12px; }
 .pn-medals span { display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 800; letter-spacing: .02em; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .pn-medals span.on { color: #fff; }
 .pn-medals b { font-weight: 800; }

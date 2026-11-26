@@ -127,15 +127,15 @@ export const scripHtml = (n: number | string, size = 14) => `<span class="pn-scr
 export const btn = (label: string, act: string, v = '', cls = '', extra = '') => `<div class="pn-btn ${cls}" data-a="${act}"${v ? ` data-v="${v}"` : ''} ${extra}>${label}</div>`;
 /**
  * A medal: a ribbon and a disc with the podium place in it (1 gold, 2 silver, 3 bronze), so the three read apart
- * without their colours. Earned is struck solid; not yet earned is an empty dashed outline. `tier`: 3 gold, 2 silver, 1 bronze.
+ * without their colours (from 24 px up; a smaller medal is drawn without the figure and needs its name beside it). Earned is struck solid; not yet earned is an empty dashed outline. `tier`: 3 gold, 2 silver, 1 bronze.
  */
-export function medal(tier: number, on: boolean, size = 22): string {
+export function medal(tier: number, on: boolean, size = 26): string {
   const name = ['', 'Bronze', 'Silver', 'Gold'][tier] ?? '';
-  return `<svg class="md m${tier}${on ? ' on' : ''}" viewBox="0 0 24 24" width="${size}" height="${size}" role="img" aria-label="${name}${on ? ', earned' : ', not yet earned'}"><path class="rb" d="M7 1.500h3.400L12 4.800l1.600-3.300H17l-2.900 6.700H9.900z"/><circle class="dc" cx="12" cy="15" r="7.200"/><text x="12" y="18.700" text-anchor="middle">${4 - tier}</text></svg>`;
+  return `<svg class="md m${tier}${on ? ' on' : ''}" viewBox="0 0 24 24" width="${size}" height="${size}" role="img" aria-label="${name}${on ? ', earned' : ', not yet earned'}"><path class="rb" d="M7 1.500h3.400L12 4.800l1.600-3.300H17l-2.900 6.700H9.900z"/><circle class="dc" cx="12" cy="15" r="7.200"/>${size >= 24 ? `<text x="12" y="18.900" text-anchor="middle">${4 - tier}</text>` : ''}</svg>`;
 }
 /** Par figures as a medal row: gold, silver, bronze, each medal over its figure. */
 export function medalRow(p: { gold: string; silver: string; bronze: string; earned?: number; unit?: string }): string {
-  const e = p.earned ?? 0, cell = (tier: number, v: string) => `<span class="${e >= tier ? 'on' : ''}">${medal(tier, e >= tier, 20)}<b>${v}</b></span>`;
+  const e = p.earned ?? 0, cell = (tier: number, v: string) => `<span class="${e >= tier ? 'on' : ''}">${medal(tier, e >= tier, 26)}<b>${v}</b></span>`;
   return `<div class="pn-medals">${cell(3, p.gold)}${cell(2, p.silver)}${cell(1, p.bronze)}${p.unit ? `<em>${p.unit}</em>` : ''}</div>`;
 }
 export const pips = (n: number, max: number) => `<span class="pn-pips">${Array.from({ length: max }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</span>`;

@@ -18,10 +18,10 @@
 
 /* ---------- the kinds of find: twelve tiles, four across on a phone, six in a window ---------- */
 .tb-cats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
-.tb-cat { position: relative; min-height: 54px; padding: 7px 8px 9px; box-sizing: border-box; border-radius: 10px; border: 1.5px solid transparent; display: grid; grid-template-columns: 17px minmax(0, 1fr); align-items: center; column-gap: 5px; row-gap: 3px;
+.tb-cat { position: relative; min-height: 54px; padding: 7px 5px 9px 7px; box-sizing: border-box; border-radius: 10px; border: 1.5px solid transparent; display: grid; grid-template-columns: 17px minmax(0, 1fr); align-items: center; column-gap: 5px; row-gap: 3px;
   color: var(--text-2); background: linear-gradient(180deg, #232931, #14181e) padding-box, var(--rim-soft) border-box; box-shadow: var(--lit); overflow: hidden; }
 .tb-cat svg { grid-row: 1; }
-.tb-cat span { grid-row: 1; font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-cat span { grid-row: 1; font-size: 11px; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tb-cat b { grid-column: 1 / -1; font-size: 15px; font-weight: 900; line-height: 1; color: var(--text); font-variant-numeric: tabular-nums; }
 .tb-cat b em { font-style: normal; font-size: 11.5px; font-weight: 700; color: var(--text-3); }
 /* how far along, as a line on the tile's foot */
@@ -72,7 +72,7 @@ body.desktop .tb-cat:hover:not(.on) { color: #fff; }
 .tb-pegs > i { position: absolute; inset: 0; border-radius: 5px; transform-origin: 0 50%; background: linear-gradient(180deg, #ffd49a, var(--orange) 45%, var(--orange-deep)); }
 .tb-pegs span { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; box-sizing: border-box; border-radius: 50%; border: 2px solid #6c7480; background: #14181e; }
 .tb-pegs span.on { border-color: #fff; background: var(--green); }
-.tb-pegs span b { position: absolute; left: 50%; top: 15px; translate: -50% 0; font-size: 10.5px; font-weight: 800; color: var(--text-3); }
+.tb-pegs span b { position: absolute; left: 50%; top: 15px; translate: -50% 0; font-size: 11px; font-weight: 800; color: var(--text-3); }
 .tb-pegs span.on b { color: var(--text); }
 .tb-track small { display: block; margin-top: 6px; font-size: 12px; color: var(--dim); }
 
@@ -85,7 +85,7 @@ body.desktop .tb-cat:hover:not(.on) { color: #fff; }
 .tb-rec .bst { font-size: 18px; font-weight: 900; color: #fff; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tb-rec .bst em { margin-right: 6px; font-style: normal; font-size: var(--fs-cap); font-weight: 800; letter-spacing: var(--track-cap); text-transform: uppercase; color: var(--text-3); }
 .tb-rec .rule { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
-.tb-rec .rule em { flex: none; align-self: center; display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px 0 6px; border-radius: 10px; font-style: normal; font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #dcd3ff;
+.tb-rec .rule em { flex: none; align-self: center; display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px 0 6px; border-radius: 10px; font-style: normal; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #dcd3ff;
   background: rgba(150, 124, 255, .16); box-shadow: inset 0 0 0 1px rgba(170, 148, 255, .5); }
 .tb-rec .rule span { font-size: 12.5px; line-height: 1.3; color: var(--text-2); }
 .tb-rec .wk { position: relative; padding: 7px 30px 8px 10px; border-radius: var(--rad-1); background: var(--ink-0); box-shadow: var(--lit-well), 0 1px 0 rgba(255, 255, 255, .08); }
@@ -98,14 +98,16 @@ body.desktop .tb-cat:hover:not(.on) { color: #fff; }
 
 /* ---------- course medals: a table ---------- */
 .tb-table { border-radius: var(--rad-1); background: var(--ink-0); box-shadow: var(--lit-well), 0 1px 0 rgba(255, 255, 255, .08); }
-.tb-table > div { display: grid; grid-template-columns: minmax(0, 1fr) 62px 56px 66px; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border-top: 1px solid rgba(255, 255, 255, .06); }
-.tb-table > .th { min-height: 28px; border-top: 0; font-size: 10.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+.tb-table > div { display: grid; grid-template-columns: minmax(0, 1fr) 60px 56px 84px; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border-top: 1px solid rgba(255, 255, 255, .06); }
+.tb-table > .th { min-height: 28px; border-top: 0; font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
 .tb-table > div > :nth-child(n + 2) { text-align: right; justify-self: end; }
 .tb-table span { font-size: 14px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tb-table .th span { font-size: inherit; color: inherit; }
 .tb-table b { font-size: 15px; font-weight: 800; color: var(--text-off); font-variant-numeric: tabular-nums; }
 .tb-table .par { font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; }
-.tb-table .ms { display: inline-flex; gap: 3px; overflow: visible; }
+.tb-table .ms { display: inline-flex; align-items: center; gap: 5px; overflow: visible; }
+.tb-table .ms em { font-style: normal; font-size: 12.5px; font-weight: 800; color: var(--text-3); }
+.tb-table .has .ms em { color: #fff; }
 .tb-table .has > span:first-child { color: var(--text); } .tb-table .has b { color: #fff; }
 
 /* ---------- the exchange: a shop, priced in cogs ---------- */

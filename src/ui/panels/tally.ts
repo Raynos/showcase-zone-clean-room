@@ -146,10 +146,10 @@ export const tallyPanel: PanelSpec = {
       h += '</div>';
 
       // course medals: a table, the three medals a row
-      h += '<div class="pn-sec">Course medals<em>out west</em></div><div class="tb-table"><div class="th"><span>Course</span><span>Best</span><span>Gold</span><span>Medals</span></div>';
+      h += '<div class="pn-sec">Course medals<em>out west</em></div><div class="tb-table"><div class="th"><span>Course</span><span>Best</span><span>Gold at</span><span>Medal</span></div>';
       for (const c of COURSE_PARS) {
         const best = T().best(c.id), m = medalOf(c, best), fig = (v: number) => (c.score ? v.toLocaleString('en-US') : fmtTime(v));
-        h += `<div class="${m ? 'has' : ''}" aria-label="${c.name}: ${m ? MEDALS[m] : 'no medal'}"><span>${c.name}</span><b>${best === undefined ? '—' : fig(best)}</b><span class="par">${fig(c.gold)}</span><span class="ms">${medal(3, m >= 3, 18)}${medal(2, m >= 2, 18)}${medal(1, m >= 1, 18)}</span></div>`;
+        h += `<div class="${m ? 'has' : ''}" aria-label="${c.name}: ${m ? MEDALS[m] : 'no medal'}"><span>${c.name}</span><b>${best === undefined ? '—' : fig(best)}</b><span class="par">${fig(c.gold)}</span><span class="ms">${medal(m || 1, m > 0, 24)}<em>${m ? MEDALS[m] : 'None'}</em></span></div>`;
       }
       h += '</div><div class="pn-note">A medal pays the first time it is reached.</div>';
       return h;
@@ -175,7 +175,7 @@ export const tallyPanel: PanelSpec = {
 
     const render = () => {
       sig = signature();
-      host.setTabs([{ id: 'finds', label: 'Finds', ic: 'cog' }, { id: 'sets', label: 'Sets', ic: 'trophy' }, { id: 'after', label: 'After hours', ic: 'moon', pip: !!O()?.open && !O()!.orders.clocked }, { id: 'trade', label: 'Trade', ic: 'swap' }], tab);
+      host.setTabs([{ id: 'finds', label: 'Finds', ic: 'cog' }, { id: 'sets', label: 'Sets', ic: 'trophy' }, { id: 'after', label: 'Shifts', ic: 'moon', pip: !!O()?.open && !O()!.orders.clocked }, { id: 'trade', label: 'Trade', ic: 'swap' }], tab);
       const top = host.body.scrollTop;
       host.body.innerHTML = `<div class="tb tb-${tab}">${tab === 'finds' ? finds() : tab === 'sets' ? sets() : tab === 'after' ? after() : trade()}</div>`;
       host.body.scrollTop = top;
