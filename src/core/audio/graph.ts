@@ -1,7 +1,9 @@
 /**
  * Bus graph shared by the live engine and offline renders.
  *
- *   voices ─► sfx ───────────────────────────────┐
+ *   tells  ─► tell ─┐
+ *   voices ─► sfx ◄─┘────────────────────────────┐
+ *   speech ─► voice ─────────────────────────────┤
  *   score  ─► music ─► musicDuck ─┐              │
  *   loops  ─► amb ───► ambDuck ───┴► duckF/duckG ─┼─► master ─► hp 32 Hz ─► limiter ─► trim ─► soft clip ─► out
  *   sends  ─► revIn ─► place reverb A/B ─────────┘
@@ -16,6 +18,14 @@ export class Graph {
   ctx: BaseAudioContext;
   master: GainNode;
   sfx: GainNode; music: GainNode; amb: GainNode;
+  /**
+   * the telegraph bus: elite and boss tells, counters and fails (category `tell`). It feeds the effects
+   * bus, so the effects slider moves it too; its own voices are pooled apart, so a fight's hits can
+   * never take a tell's voice.
+   */
+  tell: GainNode;
+  /** conversation voices and chatter (category `dialog`): the Voices slider */
+  voice: GainNode;
   /** music and ambience duck under big hits and dialogue (engine.duck / engine.dialogue) */
   musicDuck: GainNode; ambDuck: GainNode;
   /** reverb send input */
@@ -37,6 +47,9 @@ export class Graph {
     this.revIn = ctx.createGain();
     this.duckF = ctx.createBiquadFilter(); this.duckF.type = 'lowpass'; this.duckF.frequency.value = 20000; this.duckF.Q.value = 0.5;
     this.duckG = ctx.createGain();
+    this.tell = ctx.createGain(); this.tell.gain.value = TELL_BUS;
+    this.tell.connect(this.sfx);
+    this.voice = ctx.createGain(); this.voice.connect(this.master);
     this.sfx.connect(this.master);
     this.music.connect(this.musicDuck); this.amb.connect(this.ambDuck);
     this.musicDuck.connect(this.duckF); this.ambDuck.connect(this.duckF);
@@ -77,6 +90,8 @@ export class Graph {
   }
 }
 
+/** the telegraph bus level: unity (tells are trimmed to their own category target, -18 LUFS) */
+export const TELL_BUS = 1;
 /** Limiter settings (tools/audio limiterCheck measures the make-up gain these produce). */
 export const LIM = { threshold: -4, knee: 0, ratio: 20, attack: 0.002, release: 0.12 };
 /** The compressor node's automatic make-up gain for LIM (Chromium and WebKit share the kernel), measured. */

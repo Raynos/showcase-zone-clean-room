@@ -2,6 +2,8 @@ import { Kit, R, RING_BAR, RING_BELL, RING_COIN, RING_PLATE } from './kit';
 import { HERO_SFX } from './sfx-hero';
 import { ROBOT_SFX } from './sfx-robots';
 import { WORLD_SFX } from './sfx-world';
+import { MECH_SFX } from './sfx-mech';
+import { CONTENT_SFX } from './sfx-content';
 
 /** Weight class: decides voice priority (a 'huge' sound may steal a 'soft' one's voice). */
 export type Cls = 'soft' | 'ui' | 'low' | 'mid' | 'loud' | 'impact' | 'huge';
@@ -10,7 +12,7 @@ export const CLS_PEAK: Record<Cls, number> = { soft: 0.16, ui: 0.22, low: 0.3, m
  * Mix category: sets the loudness target (norm.ts, tools/audio), the voice limit, the distance curve
  * and how far the sound carries. See CAT in core/audio.ts.
  */
-export type Cat = 'ui' | 'dialog' | 'reward' | 'hero' | 'foley' | 'impact' | 'enemy' | 'tell' | 'idle' | 'world' | 'big' | 'amb';
+export type Cat = 'ui' | 'dialog' | 'reward' | 'hero' | 'foley' | 'impact' | 'enemy' | 'tell' | 'idle' | 'world' | 'big' | 'amb' | 'crowd';
 
 export interface SfxDef {
   c: Cls;
@@ -282,7 +284,7 @@ const TABLE = {
       debris(k, t, 0.8, 9, 0.2);
     },
   },
-  sparks: { c: 'low', min: 0.06, fn: (k, t) => { const n = 5 + Math.floor(R(0, 4)); for (let i = 0; i < n; i++) { const tt = t + R(0, 0.3); click(k, tt, R(0.3, 0.9), R(4000, 9000), R(0.004, 0.012)); if (i % 3 === 0) k.tone(tt, 0.03, R(3000, 6000), 0.2); } } },
+  sparks: { c: 'low', min: 0.3, fn: (k, t) => { const n = 5 + Math.floor(R(0, 4)); for (let i = 0; i < n; i++) { const tt = t + R(0, 0.3); click(k, tt, R(0.3, 0.9), R(4000, 9000), R(0.004, 0.012)); if (i % 3 === 0) k.tone(tt, 0.03, R(3000, 6000), 0.2); } } },
   servo: { c: 'low', min: 0.1, fn: (k, t) => { k.tone(t, 0.2, [210, 430], 0.5, { type: 'sawtooth', lp: 1600, a: 0.02, end: 0.5 }); k.tone(t + 0.19, 0.16, [430, 300], 0.5, { type: 'sawtooth', lp: 1500, a: 0.01 }); k.noise(t, 0.34, 0.12, { bp: 3200, q: 3, a: 0.02 }); } },
   shockwave: { c: 'loud', min: 0.15, rev: 0.3, fn: (k, t) => { whoosh(k, t, 0.62, [200, 2600, 110], 0.8, 0.8, 0.14); k.tone(t, 0.55, [72, 34], 0.8, { a: 0.03, end: 0.01 }); k.noise(t + 0.06, 0.4, 0.2, { hp: 3000, a: 0.08 }); } },
 
@@ -473,7 +475,7 @@ const TABLE = {
   },
 } satisfies Record<string, SfxDef>;
 
-const ALL = { ...TABLE, ...HERO_SFX, ...ROBOT_SFX, ...WORLD_SFX };
+const ALL = { ...TABLE, ...HERO_SFX, ...ROBOT_SFX, ...WORLD_SFX, ...MECH_SFX, ...CONTENT_SFX };
 export type SfxName = keyof typeof ALL;
 export const SFX: Record<SfxName, SfxDef> = ALL;
 export const SFX_NAMES = Object.keys(SFX) as SfxName[];
@@ -484,7 +486,7 @@ const CAT_PREFIX: [string, Cat][] = [
   ['camp_', 'reward'], ['count_', 'ui'],
   ['step_', 'foley'], ['ladder_', 'foley'], ['hoof', 'foley'], ['rstep_', 'foley'], ['cloth_', 'foley'], ['aim_', 'foley'], ['reload_', 'foley'], ['dry_', 'foley'],
   ['imp_', 'impact'], ['impH_', 'impact'], ['hit_', 'impact'], ['shot_', 'impact'], ['kill_', 'impact'], ['block', 'impact'],
-  ['tell_', 'tell'], ['rv_', 'enemy'], ['enemy_', 'enemy'], ['explosion', 'big'], ['titan_', 'big'], ['warden_', 'big'], ['boss_', 'big'],
+  ['tell_', 'tell'], ['mt_', 'tell'], ['exam_', 'tell'], ['fist_', 'tell'], ['adv_', 'crowd'], ['smith_', 'crowd'], ['voice_', 'dialog'], ['rv_', 'enemy'], ['enemy_', 'enemy'], ['explosion', 'big'], ['titan_', 'big'], ['warden_', 'big'], ['boss_', 'big'],
   ['thunder', 'big'], ['crate_land', 'big'], ['finisher_', 'big'], ['od_', 'hero'],
   ['bird', 'amb'], ['cricket', 'amb'], ['owl', 'amb'], ['amb_', 'amb'], ['clock_', 'world'], ['rain_', 'amb'],
 ];

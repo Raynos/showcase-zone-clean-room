@@ -93,8 +93,8 @@ export interface SaveData {
     /** shooter stance (systems/shooter.ts): aim button hold or tap-toggle (unset: toggle, on touch and with a mouse); look speed aimed;
      *  touch aim assist on/off, its slow-down and pull 0..1; gyroscope aiming and its sensitivity */
     adsMode?: 'hold' | 'tap'; adsSens?: number; aimAssist?: boolean; assistSlow?: number; assistPull?: number; gyro?: boolean; gyroSens?: number;
-    /** sound mix (core/audio/director.ts): everything, and the world's own bed, 0..1 (unset: 1 and 0.6; `sfx` and `music` above are the other two) */
-    master?: number; ambience?: number;
+    /** sound mix (core/audio/director.ts): everything, the world's own bed, voices, 0..1 (unset: 1, 0.6, 1; `sfx` and `music` above are the other two) */
+    master?: number; ambience?: number; voice?: number;
     /** comfort (Settings): menus and conversations cut in and the screen does not shake (unset: off; the device's own
      *  reduced-motion preference always counts); how bright a blast or a heavy hit may light the screen, 0..1 (unset: 1) */
     reduceMotion?: boolean; flash?: number };

@@ -35,12 +35,13 @@ export const settingsPanel: PanelSpec = {
     let townWhy: string | null = null;
     let gyroNote: string | null = null;
     const pct = (v: number) => Math.round(v * 100) + '%';
-    const vol = () => g.audio?.setVolumes?.({ master: (mix.master ?? 1) * 0.9, sfx: s.sfx, music: s.music, ambience: mix.ambience ?? 0.6 });
+    const vol = () => g.audio?.setVolumes?.({ master: (mix.master ?? 1) * 0.9, sfx: s.sfx, music: s.music, ambience: mix.ambience ?? 0.6, voice: mix.voice ?? 1 });
     const sliders: Record<string, { min: number; max: number; get: () => number; set: (v: number) => void; fmt: (v: number) => string }> = {
       master: { min: 0, max: 1, get: () => mix.master ?? 1, set: (v) => { mix.master = v; vol(); }, fmt: pct },
       music: { min: 0, max: 1, get: () => s.music, set: (v) => { s.music = v; vol(); }, fmt: pct },
       sfx: { min: 0, max: 1, get: () => s.sfx, set: (v) => { s.sfx = v; vol(); }, fmt: pct },
       ambience: { min: 0, max: 1, get: () => mix.ambience ?? 0.6, set: (v) => { mix.ambience = v; vol(); }, fmt: pct },
+      voice: { min: 0, max: 1, get: () => mix.voice ?? 1, set: (v) => { mix.voice = v; vol(); }, fmt: pct },
       sens: { min: 0.4, max: 2, get: () => s.sens, set: (v) => { s.sens = v; }, fmt: (v) => v.toFixed(2) + '×' },
       shake: { min: 0, max: 1.5, get: () => s.shake, set: (v) => { s.shake = v; }, fmt: pct },
       flash: { min: 0, max: 1, get: () => s.flash ?? 1, set: (v) => { s.flash = v; }, fmt: pct },
@@ -117,7 +118,7 @@ export const settingsPanel: PanelSpec = {
       display: () => sec('Quality') + group(seg('quality', 'Quality', s.quality, QN.map((q) => [q, QL[q]] as [string, string]))
           + `<div class="pn-qd">${QD[s.quality] ?? ''}</div><div class="pn-note fps">Running at <b class="fpsv">${Math.round(g.fps)}</b> fps on <b>${cap(g.renderer.quality.name)}</b>. Resolution adapts on its own to hold 60.</div>`, true)
           + sec('On screen') + group(toggle('fps', 'Frame-rate counter', 'charge', s.fps !== false, 'By the minimap. Tap it for detail') + toggle('dmgNumbers', 'Damage numbers', 'exclaim', s.dmgNumbers, 'Numbers over robots as you hit them')),
-      sound: () => sec('Volume') + group(slider('master', 'Everything', 'sound') + slider('music', 'Music', 'star') + slider('sfx', 'Effects', 'bolt', 'Weapons, robots, the menus') + slider('ambience', 'Ambience', 'cloud', 'Wind, rain, the town, machines')),
+      sound: () => sec('Volume') + group(slider('master', 'Everything', 'sound') + slider('music', 'Music', 'star') + slider('sfx', 'Effects', 'bolt', 'Weapons, robots, the menus') + slider('ambience', 'Ambience', 'cloud', 'Wind, rain, the town, machines') + slider('voice', 'Voices', 'chat', 'People talking')),
       comfort: () => {
         const os = matchMedia('(prefers-reduced-motion: reduce)').matches, less = os || s.reduceMotion === true, bobOn = s.headBob !== false && !os;
         return sec('Motion') + group(toggle('reduceMotion', 'Reduce motion', 'eye', less, os ? 'On: your device asks for it' : 'Menus and conversations cut in, and the screen does not shake')

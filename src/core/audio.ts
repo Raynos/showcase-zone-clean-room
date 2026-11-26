@@ -13,7 +13,7 @@
  */
 import { Graph, type Place } from './audio/graph';
 import { Kit, RNG, hashStr, seeded } from './audio/kit';
-import { LOOP_BUILDERS, type LoopInst, type LoopName } from './audio/loops';
+import { LOOP_BUILDERS, TELL_LOOPS, type LoopInst, type LoopName } from './audio/loops';
 import { Music, type MusicState } from './audio/music';
 import { LOOP_NORM, MUSIC_NORM, SFX_NORM } from './audio/norm';
 import { SFX, catOf, type Cat, type Cls, type SfxDef, type SfxName } from './audio/sfx';
@@ -37,6 +37,8 @@ export interface PlayOpts {
   own?: boolean;
   /** force a take (tests) */
   take?: number;
+  /** play under another mix category's rules (an adventurer's rifle is a distant crowd sound, not the hero's) */
+  cat?: Cat;
 }
 
 export interface AudioStats {
@@ -55,7 +57,7 @@ export interface AudioApi {
   /** Safe any time; creates/resumes the AudioContext (needs a user gesture once). */
   unlock(): void;
   readonly ready: boolean;
-  setVolumes(v: { master?: number; sfx?: number; music?: number; ambience?: number }): void;
+  setVolumes(v: { master?: number; sfx?: number; music?: number; ambience?: number; voice?: number }): void;
   setMuted(m: boolean): void;
   /** Call every frame. */
   update(dt: number, listener: { x: number; y: number; z: number }, forward: { x: number; z: number }): void;
@@ -90,6 +92,8 @@ export const CAT: Record<Cat, { lim: number; pri: number; ref: number; range: nu
   hero: { lim: 6, pri: 3, ref: 4, range: 60 }, foley: { lim: 5, pri: 0, ref: 2.5, range: 28 }, impact: { lim: 7, pri: 3, ref: 5, range: 70 },
   enemy: { lim: 7, pri: 1, ref: 5, range: 60 }, tell: { lim: 5, pri: 4, ref: 8, range: 70 }, idle: { lim: 3, pri: -1, ref: 3, range: 26 },
   world: { lim: 5, pri: 1, ref: 6, range: 90 }, big: { lim: 4, pri: 5, ref: 12, range: 220 }, amb: { lim: 3, pri: -1, ref: 8, range: 120 },
+  // other people's business: adventurers' fights and emotes, the smiths' hammers. Two voices, gone by 32 m
+  crowd: { lim: 2, pri: -2, ref: 3, range: 32 },
 };
 const MAX_VOICES = 34;
 /** each take is a little higher or lower; the recipe's own seed changes its timbre */
@@ -112,14 +116,14 @@ export interface VoiceOpts {
 
 /** A voice's tail: low-pass, panner and reverb send, kept connected and reused (the pool). */
 export interface Chain { lp: BiquadFilterNode; pan: StereoPannerNode | null; send: GainNode; busy: boolean }
-function makeChain(g: Graph): Chain {
+function makeChain(g: Graph, dest: AudioNode = g.sfx): Chain {
   const ctx = g.ctx, lp = ctx.createBiquadFilter();
   lp.type = 'lowpass'; lp.frequency.value = 20000; lp.Q.value = 0.5;
   const pan = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
   const send = ctx.createGain(); send.gain.value = 0;
   let tail: AudioNode = lp;
   if (pan) { lp.connect(pan); tail = pan; }
-  tail.connect(g.sfx); tail.connect(send); send.connect(g.revIn);
+  tail.connect(dest); tail.connect(send); send.connect(g.revIn);
   NODES.made += pan ? 3 : 2;
   return { lp, pan, send, busy: false };
 }
@@ -132,7 +136,8 @@ export function startVoice(g: Graph, kit: Kit, name: SfxName, t: number, o: Voic
   const def: SfxDef = SFX[name];
   const ctx = g.ctx;
   const own = !o.chain;
-  const ch = o.chain ?? makeChain(g);
+  const ct = catOf(name);
+  const ch = o.chain ?? makeChain(g, ct === 'tell' ? g.tell : ct === 'dialog' ? g.voice : g.sfx);
   const vg = ctx.createGain();
   vg.gain.value = o.gain;
   vg.connect(ch.lp);
@@ -168,6 +173,14 @@ interface LoopState {
   pan?: StereoPannerNode | null; lp?: BiquadFilterNode; pos?: { x: number; y: number; z: number } | null; r?: number; vol?: number; nodes: number;
 }
 interface Live { name: SfxName; cat: Cat; pri: number; t0: number; vg: number; chain: Chain; srcs: AudioScheduledSourceNode[]; stolen: boolean }
+/**
+ * (dev) one line per decision the engine makes: [wall-clock s, name, what happened, distance m].
+ * 0 played, 1 merged into the same sound inside its minimum gap, 2 refused by a voice limit, 3 stolen
+ * (cut short for a more important sound), 4 too quiet or out of range; loops log 'loop+id' / 'loop-id'
+ * (code 5), music 'music:<state>' (code 6), a timed window's scheduled end (7, the delay in the last field),
+ * a UI cue merged into the frame's one UI sound (8). On with `?dev` or `?audiolog`, or `audioEngine.logOn = true`.
+ */
+export type LogLine = [number, string, number, number];
 
 /** The director: game glue that lives in audio/director.ts. */
 export interface Director { update(dt: number): void; cue(name: string, o?: PlayOpts): void }
@@ -177,7 +190,7 @@ export class Engine implements AudioApi {
   g: Graph | null = null;
   private kit: Kit | null = null;
   private mus: Music | null = null;
-  private vol = { master: 0.9, sfx: 0.9, music: 0.5, ambience: 0.6 };
+  private vol = { master: 0.9, sfx: 0.9, music: 0.5, ambience: 0.6, voice: 1 };
   private muted = false;
   /** listener: position, right vector, forward; eye 0..1 (first person) */
   lx = 0; ly = 0; lz = 0; private rx = 1; private rz = 0; private fx = 0; private fz = -1; eye = 0;
@@ -188,6 +201,15 @@ export class Engine implements AudioApi {
   private drop(name: string) { this.dropped++; this.drops[name] = (this.drops[name] ?? 0) + 1; }
   private live: Live[] = [];
   private pool: Chain[] = [];
+  private tellPool: Chain[] = [];
+  private voicePool: Chain[] = [];
+  logOn = typeof location !== 'undefined' && /[?&](dev|audiolog)\b/.test(location.search);
+  log: LogLine[] = [];
+  /** stamp a line in the play log (the director logs the windows it times, too) */
+  note(name: string, code: number, d = 0) {
+    if (!this.logOn || this.log.length > 80000) return;
+    this.log.push([Math.round(performance.now()) / 1000, name, code, Math.round(d * 10) / 10]);
+  }
   private catN: Partial<Record<Cat, number>> = {};
   private last: Partial<Record<SfxName, number>> = {};
   private bags: Partial<Record<SfxName, number[]>> = {};
@@ -225,6 +247,8 @@ export class Engine implements AudioApi {
     const g = new Graph(ctx, ctx.destination, true, this.wantPlace);
     this.ctx = ctx; this.g = g;
     for (let i = 0; i < MAX_VOICES + 6; i++) this.pool.push(makeChain(g));
+    for (let i = 0; i < CAT.tell.lim + 3; i++) this.tellPool.push(makeChain(g, g.tell));
+    for (let i = 0; i < CAT.dialog.lim + 2; i++) this.voicePool.push(makeChain(g, g.voice));
     this.kit = new Kit(ctx, g.sfx);
     const mus = new Music(ctx, g.music, g.revIn, MUSIC_NORM);
     mus.track = (s) => { this.sources++; s.addEventListener('ended', () => { this.sources--; }, { once: true }); };
@@ -265,14 +289,15 @@ export class Engine implements AudioApi {
     set(g.sfx.gain, this.vol.sfx);
     set(g.music.gain, this.vol.music);
     set(g.amb.gain, this.vol.ambience);
+    set(g.voice.gain, this.vol.voice);
   }
 
-  setVolumes(v: { master?: number; sfx?: number; music?: number; ambience?: number }): void {
+  setVolumes(v: { master?: number; sfx?: number; music?: number; ambience?: number; voice?: number }): void {
     const c = (x: number | undefined, d: number) => (typeof x === 'number' && isFinite(x) ? Math.max(0, Math.min(1.5, x)) : d);
     const was = { ...this.vol };
     this.vol.master = c(v.master, this.vol.master); this.vol.sfx = c(v.sfx, this.vol.sfx);
-    this.vol.music = c(v.music, this.vol.music); this.vol.ambience = c(v.ambience, this.vol.ambience);
-    if (was.master !== this.vol.master || was.sfx !== this.vol.sfx || was.music !== this.vol.music || was.ambience !== this.vol.ambience) this.applyVolumes();
+    this.vol.music = c(v.music, this.vol.music); this.vol.ambience = c(v.ambience, this.vol.ambience); this.vol.voice = c(v.voice, this.vol.voice);
+    if (was.master !== this.vol.master || was.sfx !== this.vol.sfx || was.music !== this.vol.music || was.ambience !== this.vol.ambience || was.voice !== this.vol.voice) this.applyVolumes();
   }
 
   setMuted(m: boolean): void { this.muted = !!m; this.applyVolumes(); }
@@ -363,7 +388,7 @@ export class Engine implements AudioApi {
       if (!best || v.pri < best.pri || (v.pri === best.pri && v.t0 < best.t0)) best = v;
     }
     if (!best) return false;
-    best.stolen = true; this.stolen++;
+    best.stolen = true; this.stolen++; this.note(best.name, 3);
     const now = this.ctx!.currentTime;
     for (const s of best.srcs) { try { s.stop(now + 0.025); } catch { /* */ } }
     return true;
@@ -377,14 +402,15 @@ export class Engine implements AudioApi {
     try {
       const t = ctx.currentTime + Math.max(0, opts?.delay ?? 0) + 0.004;
       const last = this.last[name];
-      if (last !== undefined && Math.abs(t - last) < (def.min ?? 0.03)) { this.repeats++; return; }
-      const cat = catOf(name), C = CAT[cat];
+      if (last !== undefined && Math.abs(t - last) < (def.min ?? 0.03)) { this.repeats++; this.note(name, 1); return; }
+      const cat = opts?.cat ?? catOf(name), C = CAT[cat];
       let gain = (SFX_NORM[name] ?? 0.4) * (opts?.vol ?? 1);
       let pan = 0, lp = 20000, send = 1;
       const p = opts?.pos;
+      let dist = 0;
       if (p) {
         const s = this.spatial(p, cat);
-        gain *= s.gain; pan = s.pan; lp = s.lp;
+        gain *= s.gain; pan = s.pan; lp = s.lp; dist = s.d;
         // far sounds are mostly room
         send = 1 + Math.min(1.5, s.d / 30);
       } else if (opts?.own || cat === 'foley' || cat === 'hero') {
@@ -393,19 +419,23 @@ export class Engine implements AudioApi {
       }
       // distant thunder is duller as well as quieter
       if (name === 'thunder' && (opts?.vol ?? 1) < 0.95) lp = Math.min(lp, 350 + Math.pow(Math.max(0, opts?.vol ?? 1), 2) * 9000);
-      if (!(gain > 0.0015)) return;
+      if (!(gain > 0.0015)) { this.note(name, 4, dist); return; }
       const pri = RANK[def.c] + C.pri + (p ? -Math.min(3, (Math.hypot(p.x - this.lx, p.z - this.lz) / 25)) : 0.5);
       // per-category limit, then the global one: steal the weakest that is not more important
-      if ((this.catN[cat] ?? 0) >= C.lim && !this.steal(pri, cat)) { this.drop(name); return; }
-      if (this.voices >= MAX_VOICES && !this.steal(pri, null)) { this.drop(name); return; }
-      const chain = this.pool.find((c) => !c.busy);
-      if (!chain) { this.drop(name); return; }
+      if ((this.catN[cat] ?? 0) >= C.lim && !this.steal(pri, cat)) { this.drop(name); this.note(name, 2, dist); return; }
+      // tells have their own chains on the telegraph bus, voices on the voice bus: the global limit and the pool
+      // are the rest of the mix's
+      const tell = cat === 'tell' || cat === 'dialog', pool = cat === 'tell' ? this.tellPool : cat === 'dialog' ? this.voicePool : this.pool;
+      if (!tell && this.voices >= MAX_VOICES && !this.steal(pri, null)) { this.drop(name); this.note(name, 2, dist); return; }
+      const chain = pool.find((c) => !c.busy);
+      if (!chain) { this.drop(name); this.note(name, 2, dist); return; }
       this.last[name] = t;
       const take = opts?.take ?? this.takeOf(name, def);
       const jitter = def.fixed ? 1 : TAKE_PITCH[take % TAKE_PITCH.length] * (0.985 + Math.random() * 0.03);
       const pm = Math.max(0.25, Math.min(4, opts?.pitch ?? 1)) * jitter;
       chain.busy = true;
       this.voices++; this.played++; this.catN[cat] = (this.catN[cat] ?? 0) + 1;
+      this.note(name, 0, dist);
       const v: Live = { name, cat, pri, t0: t, vg: gain, chain, srcs: [], stolen: false };
       this.live.push(v);
       startVoice(g, kit, name, t, {
@@ -424,7 +454,7 @@ export class Engine implements AudioApi {
   loopAt(id: string, name: LoopName, vol: number, pos: { x: number; y: number; z: number } | null, o?: { r?: number; pitch?: number }): void {
     if (!pos || !(vol > 0)) { this.loopKey(id, name, 0, 1, null); return; }
     const st = this.loops[id];
-    if (st && !st.dying) { st.pos = pos; st.vol = vol; st.r = o?.r ?? 30; if (o?.pitch) st.pitch = o.pitch; return; }
+    if (st && !st.dying) { st.pos = pos; st.vol = vol; st.r = o?.r ?? 30; if (o?.pitch && Math.abs(o.pitch - st.pitch) > 0.003) { st.pitch = o.pitch; try { st.inst.set(o.pitch, st.level, this.ctx!.currentTime); } catch { /* */ } } return; }
     // created on first call, levels then follow the listener every frame (updateLoops)
     const r = o?.r ?? 30, d = Math.hypot(pos.x - this.lx, pos.y - this.ly, pos.z - this.lz);
     if (d > r) return;
@@ -447,11 +477,12 @@ export class Engine implements AudioApi {
         const build = LOOP_BUILDERS[name];
         if (!build) return;
         const m0 = NODES.made;
-        let dest: AudioNode = g.amb, pan: StereoPannerNode | null = null, lp: BiquadFilterNode | undefined;
+        const bus = TELL_LOOPS.has(name) ? g.tell : g.amb;
+        let dest: AudioNode = bus, pan: StereoPannerNode | null = null, lp: BiquadFilterNode | undefined;
         if (at) {
           lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 20000; lp.Q.value = 0.5;
           pan = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
-          if (pan) { lp.connect(pan); pan.connect(g.amb); } else lp.connect(g.amb);
+          if (pan) { lp.connect(pan); pan.connect(bus); } else lp.connect(bus);
           dest = lp; NODES.made += pan ? 2 : 1;
         }
         const inst = build(ctx, kit, dest);
@@ -459,6 +490,7 @@ export class Engine implements AudioApi {
         st.nodes = NODES.made - m0 + countLoopNodes(inst);
         NODES.made += countLoopNodes(inst);
         this.loops[id] = st;
+        this.note('loop+' + id, 5);
       }
       if (st.dying) { if (st.timer) clearTimeout(st.timer); st.timer = null; st.dying = false; }
       if (at) { st.pos = at.pos; st.r = at.r; st.vol = at.vol; }
@@ -470,17 +502,31 @@ export class Engine implements AudioApi {
     } catch { /* */ }
   }
 
-  private kill(id: string, st: LoopState) {
-    const ctx = this.ctx!, now = ctx.currentTime;
+  /**
+   * Stop a loop now. `fast`: a 6 ms fade (-40 dB in 28 ms), for a held tone that marks a window and must
+   * end with it (a vent, a planted fist); otherwise the usual 100 ms fade. `after`: schedule the stop on
+   * the audio clock that many seconds from now (sample-accurate, not a frame late).
+   */
+  loopStop(id: string, fast = true, after = 0) {
+    const st = this.loops[id];
+    if (st && !st.dying && this.ctx) this.kill(id, st, fast, after);
+  }
+  /** is loop `id` playing (and not fading out)? */
+  looping(id: string) { const st = this.loops[id]; return !!st && !st.dying; }
+  private kill(id: string, st: LoopState, fast = false, after = 0) {
+    const ctx = this.ctx!, now = ctx.currentTime, at = now + Math.max(0, after);
     st.dying = true; st.level = 0;
+    this.note('loop-' + id, 5, after);
     const og = st.inst.out.gain;
-    og.cancelScheduledValues(now); og.setTargetAtTime(0, now, 0.1);
+    og.cancelScheduledValues(now);
+    if (after > 0) og.setValueAtTime(og.value, now);
+    og.setTargetAtTime(0, at, fast ? 0.006 : 0.1);
     st.timer = setTimeout(() => {
       st.inst.stop(ctx.currentTime);
       try { st.lp?.disconnect(); st.pan?.disconnect(); } catch { /* */ }
       NODES.freed += st.nodes;
       if (this.loops[id] === st) delete this.loops[id];
-    }, 600);
+    }, 600 + after * 1000);
   }
 
   /** positional loops follow the listener: level by distance, pan, air */
@@ -504,6 +550,7 @@ export class Engine implements AudioApi {
   }
 
   music(state: MusicState): void {
+    if (state !== this.wantMusic) this.note('music:' + state, 6);
     this.wantMusic = state;
     try { if (this.ready && this.mus) this.mus.setState(state); } catch { /* */ }
   }

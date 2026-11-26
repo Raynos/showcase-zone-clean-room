@@ -2,10 +2,16 @@ import type { Kit } from './kit';
 
 export type LoopName = 'wind' | 'rain' | 'storm' | 'fire' | 'hover' | 'zipline' | 'grind' | 'gallop' | 'portal' | 'lava' | 'arc' | 'conveyor' | 'drone' | 'titan_core'
   | 'rain_hard' | 'rain_metal' | 'market' | 'fountain' | 'clock' | 'lake' | 'day_bed' | 'night_bed' | 'slag' | 'rivets' | 'docks' | 'heights' | 'fields'
-  | 'freighter' | 'gold' | 'loot_hum' | 'vault_air' | 'arena_air';
+  | 'freighter' | 'gold' | 'loot_hum' | 'vault_air' | 'arena_air'
+  | 'mt_vent_hold' | 'mt_heat' | 'mt_laser' | 'mt_tether' | 'mt_dazed' | 'mt_fuse' | 'mt_link' | 'mt_ring' | 'fist_hold'
+  | 'tarp' | 'mast' | 'welder' | 'steam_vent' | 'crane';
 export const LOOP_NAMES: LoopName[] = ['wind', 'rain', 'storm', 'fire', 'hover', 'zipline', 'grind', 'gallop', 'portal', 'lava', 'arc', 'conveyor', 'drone', 'titan_core',
   'rain_hard', 'rain_metal', 'market', 'fountain', 'clock', 'lake', 'day_bed', 'night_bed', 'slag', 'rivets', 'docks', 'heights', 'fields',
-  'freighter', 'gold', 'loot_hum', 'vault_air', 'arena_air'];
+  'freighter', 'gold', 'loot_hum', 'vault_air', 'arena_air',
+  'mt_vent_hold', 'mt_heat', 'mt_laser', 'mt_tether', 'mt_dazed', 'mt_fuse', 'mt_link', 'mt_ring', 'fist_hold',
+  'tarp', 'mast', 'welder', 'steam_vent', 'crane'];
+/** loops that mark a mechanic's state: they play in the telegraph bus, not the ambience bus */
+export const TELL_LOOPS = new Set<LoopName>(['mt_vent_hold', 'mt_heat', 'mt_laser', 'mt_tether', 'mt_dazed', 'mt_fuse', 'mt_link', 'mt_ring', 'fist_hold']);
 
 export interface LoopInst {
   /** output gain (level is applied here by the engine) */
@@ -411,6 +417,136 @@ export const LOOP_BUILDERS: Record<LoopName, (ctx: BaseAudioContext, kit: Kit, d
     b.lfo(0.07, 0.3, rum.g.gain);
     const hall = b.noise('p', 'bandpass', 240, 0.9, 0.4);
     b.lfo(0.05, 60, hall.f.frequency);
+    return b.done(() => { /* */ });
+  },
+  // ---- mechanic states (the telegraph bus). Identity sits between 300 Hz and 4 kHz for phone speakers.
+  /** the vent's open window: one held organ-pipe tone (A5 over A4) with a breath of steam; it stops with the window */
+  mt_vent_hold: (ctx, kit, dest) => {
+    const b = new LB(ctx, kit, dest);
+    const f = b.filter('bandpass', 900, 1.2);
+    const o1 = b.osc('triangle', 880, 0.5), o2 = b.osc('sawtooth', 440, 0.22, f), o3 = b.osc('sine', 1320, 0.12);
+    b.lfo(5.5, 0.12, o1.g.gain);
+    const st = b.noise('p', 'bandpass', 2600, 1.2, 0.18);
+    b.lfo(0.7, 0.08, st.g.gain);
+    void o2; void o3;
+    return b.done(() => { /* */ });
+  },
+  /** Cinder's heat: a boiler simmer whose pitch (heat 0..1 -> 0.6..1.6) climbs as she fills */
+  mt_heat: (ctx, kit, dest) => {
+    const b = new LB(ctx, kit, dest);
+    const bub = b.noise('c', 'bandpass', 900, 1.5, 0.9, 0.8);
+    const sim = b.noise('p', 'bandpass', 1400, 2.5, 0.35);
+    const o = b.osc('sine', 700, 0.08);
+    b.lfo(3.1, 0.2, sim.g.gain);
+    return b.done((p, lv, t) => { bub.s.playbackRate.setTargetAtTime(0.6 + p * 0.6, t, 0.2); sim.f.frequency.setTargetAtTime(900 * p + 300, t, 0.2); o.o.frequency.setTargetAtTime(500 * p + 200, t, 0.2); o.g.gain.setTargetAtTime(0.04 + 0.1 * Math.max(0, p - 1), t, 0.2); void lv; });
+  },
+  /** the laser line burning: a thin electric sing, beating */
+  mt_laser: (ctx, kit, dest) => {
+    const b = new LB(ctx, kit, dest);
+    const o1 = b.osc('sine', 1760, 0.3), o2 = b.osc('sine', 1772, 0.3), o3 = b.osc('square', 880, 0.04);
+    const fz = b.noise('c', 'highpass', 3500, 0.7, 0.35, 1.6);
+    b.lfo(9, 12, o1.o.detune);
+    return b.done((p, lv, t) => { o1.o.frequency.setTargetAtTime(1760 * p, t, 0.05); o2.o.frequency.setTargetAtTime(1772 * p, t, 0.05); o3.o.frequency.setTargetAtTime(880 * p, t, 0.05); void fz; void lv; });
+  },
+  /** Static Cling's tether charging: a buzz whose pitch (charge 0..1 -> 0.7..2) and flutter climb together */
+  mt_tether: (ctx, kit, dest) => {
+    const b = new LB(ctx, kit, dest);
+    const bp = b.filter('bandpass', 1100, 3);
+    const o = b.osc('sawtooth', 300, 0.5, bp);
+    const fl = b.lfo(20, 0.3, o.g.gain, 'square');
+    const cr = b.noise('c', 'highpass', 2800, 0.6, 0.4, 1.8);
+    return b.done((p, lv, t) => { o.o.frequency.setTargetAtTime(300 * p, t, 0.05); bp.frequency.setTargetAtTime(800 + 900 * p, t, 0.05); fl.o.frequency.setTargetAtTime(14 + 16 * p, t, 0.1); void cr; void lv; });
+  },
+  /** dazed (a grounded flyer, Glimmer on the ground): a woozy two-tone warble, birds round the head */
+  mt_dazed: (ctx, kit, dest) => {
+    const b = new LB(ctx, kit, dest);
+    const o1 = b.osc('triangle', 1180, 0.25), o2 = b.osc('triangle', 1480, 0.2);
+    b.lfo(2.2, 90, o1.o.detune); b.lfo(2.9, 120, o2.o.detune); b.lfo(1.4, 0.2, o2.g.gain, 'square');
+    return b.done(() => { /* */ });
+  },
+  /** Slow Burn's lit fuse: a sputtering fizz that tightens as it burns (pitch = how far it has burnt, 1..2) */
+  mt_fuse: (ctx, kit, dest) => {
+    const b = new LB(ctx, kit, dest);
+    const fz = b.noise('c', 'bandpass', 2400, 1.5, 1.0, 1.4);
+    const hi = b.noise('w', 'bandpass', 4200, 3, 0.2);
+    b.lfo(11, 0.3, fz.g.gain);
+    return b.done((p, lv, t) => { fz.s.playbackRate.setTargetAtTime(1 + p * 0.6, t, 0.2); fz.f.frequency.setTargetAtTime(1800 * p + 600, t, 0.2); hi.f.frequency.setTargetAtTime(3200 + 1200 * p, t, 0.2); void lv; });
+  },
+  /** Overseer Volt's linked shield: a steady electric chord */
+  mt_link: (ctx, kit, dest) => {
+    const b = new LB(ctx, kit, dest);
+    const lp = b.filter('lowpass', 2600, 0.8);
+    for (const [f, g] of [[392, 0.28], [588, 0.2], [784, 0.12]]) { const o = b.osc('sawtooth', f, g, lp); b.lfo(0.3 + f / 2000, 5, o.o.detune); }
+    b.lfo(7.5, 0.15, lp.frequency as unknown as AudioParam);
+    return b.done(() => { /* */ });
+  },
+  /** Rita's ring held round her: a fast rivet-gun rattle */
+  mt_ring: (ctx, kit, dest) => {
+    const b = new LB(ctx, kit, dest);
+    const r = b.noise('w', 'bandpass', 1500, 2, 0.8);
+    b.lfo(17, 0.7, r.g.gain, 'square');
+    const o = b.osc('square', 620, 0.05);
+    b.lfo(17, 0.05, o.g.gain, 'square');
+    return b.done(() => { /* */ });
+  },
+  /** the Titan's planted fist, 2.6 s to punish: a ticking clock bell over a strained hum */
+  fist_hold: (ctx, kit, dest) => {
+    const b = new LB(ctx, kit, dest);
+    const strain = b.filter('bandpass', 620, 3);
+    const o = b.osc('sawtooth', 155, 0.5, strain);
+    b.lfo(5, 8, o.o.detune);
+    const tk = b.osc('triangle', 1245, 0.0);
+    b.lfo(4, 0.25, tk.g.gain, 'square');
+    return b.done(() => { /* */ });
+  },
+  // ---- world sources
+  /** an outpost's tarp: irregular flapping in the wind */
+  tarp: (ctx, kit, dest) => {
+    const b = new LB(ctx, kit, dest);
+    const fl = b.noise('p', 'bandpass', 700, 1.1, 0.0);
+    b.lfo(3.3, 0.5, fl.g.gain, 'square'); b.lfo(0.37, 0.35, fl.g.gain); b.lfo(0.21, 300, fl.f.frequency);
+    const rope = b.noise('w', 'bandpass', 1900, 6, 0.06);
+    b.lfo(0.5, 0.05, rope.g.gain);
+    return b.done(() => { /* */ });
+  },
+  /** a signal post's mast: guy wires singing, a transformer hum (a fifth, above the phone's floor) */
+  mast: (ctx, kit, dest) => {
+    const b = new LB(ctx, kit, dest);
+    const o1 = b.osc('sine', 360, 0.25), o2 = b.osc('sine', 540, 0.12), o3 = b.osc('sawtooth', 120, 0.05);
+    b.lfo(0.17, 0.12, o1.g.gain); b.lfo(0.23, 0.08, o2.g.gain);
+    const w = b.noise('w', 'bandpass', 2700, 9, 0.08);
+    b.lfo(0.09, 400, w.f.frequency);
+    void o3;
+    return b.done(() => { /* */ });
+  },
+  /** a welder at work: an arc's crackling buzz that sputters on and off */
+  welder: (ctx, kit, dest) => {
+    const b = new LB(ctx, kit, dest);
+    const arc = b.noise('c', 'bandpass', 3200, 0.9, 1.0, 1.7);
+    const bz = b.osc('sawtooth', 240, 0.08);
+    const hs = b.noise('w', 'highpass', 5000, 0.6, 0.12);
+    b.lfo(0.31, 0.6, arc.g.gain, 'square'); b.lfo(0.31, 0.06, bz.g.gain, 'square'); b.lfo(7, 0.15, arc.g.gain);
+    void hs;
+    return b.done(() => { /* */ });
+  },
+  /** a steam vent: a steady hiss that puffs every couple of seconds */
+  steam_vent: (ctx, kit, dest) => {
+    const b = new LB(ctx, kit, dest);
+    const hs = b.noise('w', 'bandpass', 3400, 0.9, 0.35);
+    const puff = b.noise('p', 'bandpass', 1200, 0.8, 0.3);
+    b.lfo(0.45, 0.3, puff.g.gain, 'sawtooth'); b.lfo(0.45, 0.15, hs.g.gain, 'sawtooth');
+    return b.done(() => { /* */ });
+  },
+  /** a dock crane: a motor whining under load and the chain clacking through its sheave */
+  crane: (ctx, kit, dest) => {
+    const b = new LB(ctx, kit, dest);
+    const lp = b.filter('bandpass', 700, 2);
+    const m = b.osc('sawtooth', 175, 0.4, lp);
+    b.lfo(0.08, 40, m.o.detune); b.lfo(0.12, 0.2, m.g.gain);
+    const ch = b.buffer(rhythm(ctx, 'clack'), 0.5);
+    ch.s.playbackRate.value = 0.7;
+    const cr = b.noise('w', 'bandpass', 1500, 8, 0.0);
+    b.lfo(0.19, 0.08, cr.g.gain);
     return b.done(() => { /* */ });
   },
 };

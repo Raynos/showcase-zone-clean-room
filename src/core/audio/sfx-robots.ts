@@ -145,6 +145,8 @@ function tell(kind: Tell): SfxDef {
           k.tone(t, h, [55, 95], 0.55, { type: 'sawtooth', lp: 700, trem: [14, 0.8], a: 0.04, r: 0.04 });
           k.tone(t + h, L - h, [95, 190], 0.6, { type: 'sawtooth', lp: [800, 1600], trem: [32, 0.8], a: 0.02, end: 0.7 });
           k.noise(end - 0.32, 0.32, 0.35, { bp: [2800, 3400], q: 7, a: 0.04, end: 0.6 });
+          // the engine revving, heard on a phone: its second and fourth harmonics through a climbing band
+          k.tone(t, L, [220, 760], 0.3, { type: 'square', bp: [500, 1500], q: 3, trem: [14, 0.6], a: L * 0.3, end: 0.7 });
           break;
         }
         case 'shot': {
@@ -164,11 +166,16 @@ function tell(kind: Tell): SfxDef {
           k.tone(t, L, [76, 230], 0.25, { type: 'triangle', a: L * 0.85, end: 0.7 });
           hiss(k, t + L * 0.3, L * 0.7, 0.25, [2600, 5200]);
           thump(k, end - 0.06, 0.08, 220, 120, 0.6); k.ring(end - 0.06, 0.12, 420, 0.3, RING_BAR);
+          // the swell, heard on a phone: a groaning saw rising through the mids
+          k.tone(t, L, [150, 460], 0.5, { type: 'sawtooth', bp: [450, 1300], q: 4, a: L * 0.8, end: 0.6 });
           break;
         case 'lob':
           k.noise(t, L, 0.7, { bp: [260, 340], q: 9, a: L * 0.8, end: 0.6 });
           click(k, t + L * 0.35, 0.5, 1800, 0.02); click(k, t + L * 0.6, 0.5, 1800, 0.02);
           k.tone(end - 0.05, 0.12, [300, 180], 0.6, { type: 'triangle', a: 0.002 });
+          // the mortar's tube, heard on a phone: a hollow pop at the start and a rising whistle
+          k.tone(t, 0.08, [700, 420], 0.4, { type: 'triangle', a: 0.002 });
+          k.tone(t + 0.08, L - 0.1, [900, 1500], 0.18, { a: L * 0.5, end: 0.5 });
           break;
         case 'beam':
           k.tone(t, L, [420, 3300], 0.4, { a: L * 0.9, end: 0.8 });
@@ -177,7 +184,7 @@ function tell(kind: Tell): SfxDef {
           break;
         case 'ring': {
           let tt = t, gap = L * 0.3, n = 0;
-          while (tt < end - 0.04 && n++ < 9) { thump(k, tt, 0.14, 95, 50, 0.55 + n * 0.06); tt += gap; gap = Math.max(0.06, gap * 0.65); }
+          while (tt < end - 0.04 && n++ < 9) { thump(k, tt, 0.14, 95, 50, 0.55 + n * 0.06); knock(k, tt, 0.45 + n * 0.04, 480 + n * 45); tt += gap; gap = Math.max(0.06, gap * 0.65); }
           k.noise(t, L, 0.2, { bp: [300, 1800], q: 0.8, a: L * 0.8, end: 0.6 });
           break;
         }
@@ -193,11 +200,14 @@ function tell(kind: Tell): SfxDef {
         case 'channel':
           k.tone(t, L, 220, 0.4, { type: 'sawtooth', lp: [400, 3400], trem: [30, 0.5], a: L * 0.5, end: 0.8 });
           k.tone(t, L, 440, 0.2, { type: 'sawtooth', lp: [600, 4000], a: L * 0.5, end: 0.8 });
+          k.tone(t, L, 880, 0.12, { trem: [30, 0.5], a: L * 0.5, end: 0.8 });
           break;
         case 'spin':
           k.noise(t, L * 0.5, 0.45, { bp: [700, 1100], q: 1.2, trem: [5, 0.9], a: 0.05, r: 0.03 });
           k.noise(t + L * 0.5, L * 0.5, 0.5, { bp: [1100, 1900], q: 1.2, trem: [22, 0.9], a: 0.03, end: 0.7 });
           k.tone(t, L, [110, 340], 0.3, { type: 'sawtooth', lp: 1200, a: L * 0.6, end: 0.7 });
+          // the beam's emitter spinning up, heard on a phone: a whirr climbing an octave and a half
+          k.tone(t, L, [600, 1700], 0.22, { type: 'square', lp: 3500, trem: [9, 0.8], a: L * 0.4, end: 0.6 });
           break;
       }
     },

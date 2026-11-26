@@ -17,6 +17,13 @@
  *
  * Runtime hooks (wrapping an instance method, no file edits): Shooter.onHit and the quick wheel's
  * onFx, so the hit confirm and the wheel get their own sounds instead of the generic ones they call.
+ *
+ * Elite and boss mechanics are heard through director-mech.ts, the later content (outposts, field jobs,
+ * the Tally Book, After Hours, voices, crowds, world sources) through director-content.ts. Both see
+ * each cue before the table below and may replace it.
+ *
+ * A tap sounds once: of the UI cues sent in one frame only the most specific plays (a panel opening
+ * beats the button press that opened it), and a plain press within 100 ms of another UI sound is merged.
  */
 import type { Engine, PlayOpts } from '../audio';
 import type { LoopName } from './loops';
@@ -26,6 +33,8 @@ import type { Fam, Tell } from './sfx-robots';
 import type { ImpM, ImpW } from './sfx-hero';
 import { BANDS, LAKE, TOWN, bandAt, inTown } from '../../world/layout';
 import { ITEMS } from '../../data/items';
+import { MechSound, WINDUP } from './director-mech';
+import { ContentSound } from './director-content';
 
 type V3 = { x: number; y: number; z: number };
 const R = (a: number, b: number) => a + (b - a) * Math.random();
@@ -49,6 +58,10 @@ const FAM_OF: Record<string, Fam> = { mite: 'mite', pallet: 'pallet', drone: 'dr
 const MAT_OF: Record<Fam, ImpM> = { mite: 'light', drone: 'light', pallet: 'plate', welder: 'plate', riveter: 'plate', sentry: 'heavy', warden: 'heavy', foreman: 'heavy', titan: 'titan' };
 const WPN_OF: Record<string, ImpW> = { sword: 'blade', spear: 'spear', bow: 'arrow', crossbow: 'bolt', rifle: 'round' };
 const TELL_OK = new Set<string>(['melee', 'leap', 'charge', 'shot', 'cone', 'slam', 'lob', 'beam', 'ring', 'rain', 'summon', 'channel', 'spin']);
+/** gameplay UI cues, by how specific they are: a plain press (0) gives way to what it opened (1) */
+const UI_RANK: Record<string, number> = {
+  ui_click: 0, ui_tap: 0, ui_target: 0, ui_open: 1, ui_close: 1, ui_tab: 1, ui_deny: 1, ui_error: 1, ui_buy: 1, ui_equip: 1, tray_slide: 1,
+};
 /** cues the robot poller speaks for */
 const POLLED = new Set(['enemy_windup', 'boss_windup', 'enemy_alert']);
 
@@ -74,9 +87,14 @@ export class AudioDirector {
   private cf = { whistled: new Set<number>(), lastTick: -1, gold: null as V3 | null, shipPrev: null as V3 | null };
   private settings = '';
   private wrapped = new WeakSet<object>();
+  private mech: MechSound;
+  private content: ContentSound;
+  private uiAt = -1e9;
 
   constructor(private engine: Engine, private game: any) {
     (engine as any).ownsAmbience = true;
+    this.mech = new MechSound(engine, game);
+    this.content = new ContentSound(engine, game, (name, o) => { this.q.push({ name, o, t: performance.now() }); });
     const ev = game.state?.events;
     if (ev) {
       ev.on('item', (e: { id: string }) => { this.seen.items.push(e.id); });
@@ -111,13 +129,28 @@ export class AudioDirector {
     const q = this.q;
     if (!q.length) return;
     this.q = [];
-    for (const c of q) { try { this.resolve(c.name, c.o); } catch { /* */ } }
+    // one UI sound per frame, the most specific; a plain press right after another UI sound is the same tap
+    let ui: Q | null = null, uiRank = -1;
+    for (const c of q) {
+      const r = UI_RANK[c.name];
+      if (r === undefined || c.o?.pos) continue;
+      if (r > uiRank) { ui = c; uiRank = r; }
+    }
+    const now = performance.now();
+    if (ui && uiRank === 0 && now - this.uiAt < 100) ui = null;
+    if (uiRank >= 0) this.uiAt = now;
+    for (const c of q) {
+      if (UI_RANK[c.name] !== undefined && !c.o?.pos && c !== ui) { this.engine.note?.(c.name, 8); continue; }
+      try { this.resolve(c.name, c.o); } catch { /* */ }
+    }
   }
 
   /** a gameplay name with context -> bank sounds */
   private resolve(name: string, o?: PlayOpts) {
     const g = this.game, e = this.engine, S = this.seen;
     const pl = g.player;
+    if (pl && this.mech.pre(name, o)) return;
+    if (pl && this.content.pre(name, o)) return;
     switch (name) {
       // ---- the hero's feet
       case 'step_grass': case 'step_dirt': case 'step_stone': case 'step_metal': case 'step_wood':
@@ -241,12 +274,16 @@ export class AudioDirector {
     this.t += dt; this.slow -= dt;
     this.listener();
     this.wrap();
+    try { this.mech.wrap(); this.content.wrap(); } catch { /* */ }
     const slow = this.slow <= 0;
     if (slow) this.slow = 0.1;
     try { this.pollShooter(); } catch { /* */ }
     try { this.pollMobs(dt); } catch { /* */ }
     try { this.pollGrind(); } catch { /* */ }
+    try { this.mech.poll(dt); } catch { /* */ }
+    try { this.content.poll(dt); this.content.lines(); } catch { /* */ }
     if (slow) {
+      try { this.content.sources(); } catch { /* */ }
       if (!this.cfHooked) try { this.hookCratefall(); } catch { /* */ }
       try { this.pollHud(); } catch { /* */ }
       try { this.pollCratefall(); } catch { /* */ }
@@ -254,6 +291,7 @@ export class AudioDirector {
       try { this.ambience(0.1); } catch { /* */ }
     }
     this.flush();
+    this.mech.endFrame(); this.content.endFrame();
     this.seen.streak = 0; this.seen.camp = false; this.seen.perk = false; this.seen.pass = false; this.seen.items.length = 0; this.seen.bounty = false; this.seen.ult = false; this.seen.rare = false; this.seen.finisher = false;
     void e;
   }
@@ -366,7 +404,9 @@ export class AudioDirector {
         if (m.state === 'windup' && m.atk) {
           const type = String(m.atk.type);
           const len = typeof m.windupOf === 'function' ? m.windupOf(m.atk) : m.atk.windup ?? 0.8;
-          if (TELL_OK.has(type)) e.play(('tell_' + type as `tell_${Tell}`), { pos, len, pitch: m.isBoss ? 0.7 : pitch, vol: m.isBoss || elite ? 1.15 : 1 });
+          // a mechanic's own attack has its own tell (director-mech.ts); elite and boss tells duck the music a little
+          if (TELL_OK.has(type) && !WINDUP[String(m.atk.id)]) e.play(('tell_' + type as `tell_${Tell}`), { pos, len, pitch: m.isBoss ? 0.7 : pitch, vol: m.isBoss || elite ? 1.15 : 1 });
+          if ((m.isBoss || elite) && d < 60) e.duckHit(0.25, Math.min(2, len + 0.2));
         } else if (m.state === 'broken') { e.play(('rv_' + fam + '_broken') as SfxName, o); }
       }
       if (m.hp < s.hp - 0.5 && s.hurtT <= 0) { s.hurtT = m.isBoss ? 0.6 : 0.3; e.play(('rv_' + fam + (fam === 'titan' ? '_hurt' : '_hurt')) as SfxName, { ...o, vol: 0.8 }); }
@@ -432,7 +472,8 @@ export class AudioDirector {
     const card = !!g.grind?.tuneEl?.classList?.contains?.('open');
     if (card && !H.card) e.play('card_open');
     H.card = card;
-    this.engine.dialogue(g.panels?.current === 'dialog');
+    // the conversation sheet is the `talk` panel (ui/panels.ts)
+    this.engine.dialogue(g.panels?.current === 'talk');
   }
 
   // ------------------------------------------------------------------ cratefall
@@ -475,10 +516,10 @@ export class AudioDirector {
   // ------------------------------------------------------------------ mix: volumes, place, music
   private mix() {
     const g = this.game, e = this.engine, set = g.state?.d?.settings ?? {};
-    const key = `${set.master ?? ''}|${set.sfx}|${set.music}|${set.ambience ?? ''}`;
+    const key = `${set.master ?? ''}|${set.sfx}|${set.music}|${set.ambience ?? ''}|${set.voice ?? ''}`;
     if (key !== this.settings) {
       this.settings = key;
-      e.setVolumes({ master: typeof set.master === 'number' ? set.master * 0.9 : undefined, sfx: set.sfx, music: set.music, ambience: typeof set.ambience === 'number' ? set.ambience : undefined });
+      e.setVolumes({ master: typeof set.master === 'number' ? set.master * 0.9 : undefined, sfx: set.sfx, music: set.music, ambience: typeof set.ambience === 'number' ? set.ambience : undefined, voice: typeof set.voice === 'number' ? set.voice : undefined });
     }
     const pl = g.player.pos;
     e.setPlace(g.interior === 'vault' ? 'vault' : g.interior === 'arena' ? 'arena' : g.interior ? 'vault' : inTown(pl.x, pl.z, 4) ? 'town' : 'field');
