@@ -47,14 +47,15 @@ export const YARD = new Float32Array(6 * 4);
 YARD.set([0, 0, 0.5, 0, 0.22, 0.04, -0.08, 0.5, 0, 0.6, 0.5, 1, 0, 1, 0, 0.0034]);
 
 /**
- * Wet ground and the light it answers with, `uniform vec4 uYardW[3]`:
+ * Wet ground and the light it answers with, `uniform vec4 uYardW[4]`:
  *  [0] rain wetness 0..1, puddle amount 0..1, strength of the sky's sheen, roughness of standing water
  *      (a mirror under a clear night, a soft sheen under a storm that has no sun to glint)
  *  [1] the streak map's frame: camera forward on the ground (x, z), 0.5 / its half-width in
  *      tan(azimuth), 1 while the map is live
  *  [2] rgb of the cool fill warm surfaces answer after dark (moonlit wood reads slate, not black)
+ *  [3] rgb of the furnace glow that catches the works of the Slagworks after dark (0: none)
  */
-export const YARDW = new Float32Array(3 * 4);
+export const YARDW = new Float32Array(4 * 4);
 /**
  * The two hero lights nearest the player, `uniform vec4 uYardHero[4]`: [2i] world position and
  * reach, [2i + 1] colour × strength (w > 0 while lit). Real point lights without shadows: a beacon
@@ -115,7 +116,7 @@ export function installLighting() {
   const C = THREE.ShaderChunk as Record<string, string>;
   C.lights_pars_begin += /* glsl */ `
 uniform vec4 uYard[6];
-uniform vec4 uYardW[3];
+uniform vec4 uYardW[4];
 uniform vec4 uYardHero[4];
 uniform highp sampler2DArray uYardLamp[1];
 uniform sampler2D uYardMap[4];
@@ -309,6 +310,18 @@ if ( uYard[4].x > 0.0 ) {
     // (and bare steel, which has only a black sky to mirror, answers it as rough metal would)
     vec3 yA = material.diffuseContribution;
     reflectedLight.indirectDiffuse += uYardW[2].rgb * ( ( max( dot( yA, vec3( 0.5, 0.42, 0.08 ) ) - yA.b, 0.0 ) + metalnessFactor * ( dot( diffuseColor.rgb, vec3( 0.3 ) ) + 0.02 ) ) * gYardAO * ( 0.55 + 0.45 * gYardN.y ) );
+  }
+#endif
+#if defined( RE_IndirectDiffuse ) && defined( STANDARD ) && defined( YARD_GAO ) && !defined( YARD_NO_LAMP )
+  if ( uYardW[3].r > 0.0 ) {
+    // the Slagworks after dark: slag and slate iron give a black sky nothing back, and the works stood as a
+    // void. The glow of the pools and the furnace haze catches them whatever they are made of: a low wash on
+    // walls and undersides, an edge of light where a shape turns away from the eye, strongest near the ground
+    float yRim = 1.0 - saturate( dot( geometryNormal, geometryViewDir ) );
+    yRim *= yRim * yRim;
+    float yWall = mix( 0.3, 1.0, saturate( 1.0 - gYardN.y ) );
+    float yLow = 1.0 - 0.65 * smoothstep( 3.0, 30.0, gYardW.y );
+    reflectedLight.indirectSpecular += uYardW[3].rgb * ( ( 0.16 + 0.84 * yRim ) * yWall * yLow * ( 0.4 + 0.6 * gYardAO ) );
   }
 #endif
 #if defined( RE_IndirectDiffuse )

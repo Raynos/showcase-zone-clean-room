@@ -55,6 +55,12 @@ export const GRADE = {
   skySheen: 0.5,
   /** what warm surfaces (wood, brick, tile) give back to the night sky: rgb, strength */
   nightFill: [0.5, 0.56, 0.8, 0.28],
+  /**
+   * the Slagworks after dark lights itself: the glow that catches the works (rgb, strength), how much the
+   * ground's bounce warms and lifts, the ember haze the air takes (rgb, how far the fog goes to it) and how
+   * much thicker that air is; `emberDay` is the share of all this a clear noon keeps
+   */
+  ember: [1.0, 0.36, 0.1, 0.085], emberLift: 0.7, emberFog: [0.34, 0.12, 0.05, 0.62], emberFogD: 0.5, emberDay: 0.12,
   /** storm: the slate everything is pulled to, and the cold key */
   stormSlate: [0.15, 0.2, 0.27], stormKey: [0.66, 0.8, 1.0],
   /** key-light rim on characters */
@@ -102,6 +108,8 @@ export class Environment {
   /** how wet the ground is (rain soaks it in seconds, it dries over minutes) and how full the puddles are */
   wetness = 0; puddles = 0;
   private slagMix = 0;
+  /** 0..1: how much of the Slagworks' night glow is up (the band's share × the dark) */
+  private ember = 0;
   private elapsed = 0;
   sunDir = new THREE.Vector3(0, 1, 0);
   moonDir = new THREE.Vector3(0, -1, 0);
@@ -368,6 +376,11 @@ export class Environment {
     // keep the playfield readable in the dark: a cool ambient floor under night and heavy overcast
     const lift = Math.max(k.night, this.w.dim * 2.2) * (1 - im);
     if (lift > 0) { const l = Math.min(1, lift); hemiI += 0.8 * l; this.hemi.color.lerp(cA.setHex(0x7090d0), 0.35 * l); this.hemi.groundColor.lerp(cA.setHex(0x3a4466), 0.5 * l); }
+    // the Slagworks: the pools and furnace mouths throw their colour up at what stands over them
+    const ember = this.slagMix * (1 - im) * lerp(GRADE.emberDay, 1, Math.min(1, Math.max(k.night, this.w.dim * 1.5, k.sunset * 0.5)));
+    if (ember > 0) { hemiI += GRADE.emberLift * ember; this.hemi.groundColor.lerp(cA.setRGB(GRADE.ember[0], GRADE.ember[1] * 0.8, GRADE.ember[2]), 0.75 * ember); }
+    { const e = GRADE.ember, s = e[3] * ember; YARDW[12] = e[0] * s; YARDW[13] = e[1] * s; YARDW[14] = e[2] * s; }
+    this.ember = ember;
     this.hemi.intensity = hemiI;
     // lamps and signs burn brighter after dark and indoors; by day they sit just above the bloom knee
     GU.uEmitBoost.value = lerp(lerp(1.7, 4.4, Math.min(1, Math.max(k.night, this.w.dim * 1.5))), 3.6, im);
@@ -416,7 +429,9 @@ export class Environment {
     mixHex(this.fog.color, a.fog, b.fog, t);
     this.fog.color.lerp(cA.copy(su.uHorizon.value), Math.min(1, dim * 1.2));
     this.fog.color.lerp(cA.setRGB(GRADE.stormSlate[0], GRADE.stormSlate[1], GRADE.stormSlate[2]).multiplyScalar(lerp(1, 0.55, k.night)), 0.85 * storm);
-    let fogD = k.fogD * this.w.fogMul;
+    // (and the Slagworks' air glows: the works stand against it instead of vanishing into the night)
+    { const e = GRADE.emberFog; this.fog.color.lerp(cA.setRGB(e[0], e[1], e[2]), e[3] * this.ember); }
+    let fogD = k.fogD * this.w.fogMul * (1 + GRADE.emberFogD * this.ember);
     const fogSun = FOGX[1];
     mixHex(cB, a.fogSun, b.fogSun, t);
     cB.lerp(this.fog.color, 1 - su.uSunGlow.value * 0.9);
