@@ -598,43 +598,60 @@ Another agent was rebuilding first person while I looked.
 1. **Overtime clock runs through the Titan intro** (36 s gone before
    control, `e-19`). Quests and boss. Fix: start the clock on the first
    frame of control.
+   Fixed (fa434a9): every race clock runs on systems/playclock.ts, paused
+   in cutscenes, conversations and menus.
 2. **Escort fails silently and costs the whole walk.** Hob at 1% "UNDER
    ATTACK" for 40 s, then reset to the berth with no fail notice; the
    card said "WAITING FOR YOU" while I fought his attackers (`m-20`,
    `m-22`). Quests. Fix: a fail banner and a restart from the last
    quarter; "waiting" only when the player is out of range.
+   Fixed (34a0fe3): FAILED banner and sound with the reason, a restart
+   from the last quarter, a truthful state line, attackers come for the
+   hero; every escort, defence and timed job checked.
 3. **The lens collapses onto the hero's head in tight places:** Benchmark
    stakes (178, 140) for the whole stay, Tallyline Post (63, -12), the
    Brasswick signal post arrival, the stable mount (`m-09`, `p-31`,
    `p-39`, `c-02`). Camera. Fix: under 1.5 m, rise over the shoulder or
    fade the blocker instead.
+   Fixed (3f39e0e): the lens swings round or rises; 0 of 56 headings
+   under 1.5 m in portrait and landscape.
 4. **The photo job walks you into the nest** (82, -24) and says "scope
    it" after you die. Quests. Fix: point at a vantage 20 m out; show the
    scope line on accept.
+   Fixed (cc1c909): lookouts 20-32 m out, "scope it" there.
 5. **Respawn inside the same fight,** travel refused, dead again in 35 s
    (portrait, 889 s and 925 s). Balance. Fix: respawn at the last lit
    post outside aggro; drop aggro on death.
+   Fixed (53b4d1c): a spot 30 m clear of camps and robots, else town;
+   4 s unnoticed after.
 6. **No hand-over after the Titan:** no headline, no tracked return, no
    waypoint, one line about the Tally Book (`e-05` to `e-11`). Quests.
    Fix: auto-track the return, then a headline "After hours open · Tally
    Book › Shifts" with a dot on the tray.
+   Fixed (3250346): tracked return, CRATE TITAN DOWN headline, then each
+   after-hours offer once at its board, portal or gauntlet.
 7. **A melee player cannot touch the rare drone** hovering at 6.6 m;
    two deaths (`m-16`). Combat. Fix: rares dip into reach on a tell, or
    say "ranged" on the plate.
 8. **Hero stands inside quest givers**: Odell (`p-17`, `l-08`), Okoro
    (`m-03`), first-person face-in-face (`f-09`). World art. Fix: a solid
    talk radius round givers.
+   Fixed (5da0b4e): 0.75 m soft body; talking steps back to 2.3 m.
 9. **First camp has three mites, the job five;** the diamond stays on
    the empty camp (`p-11`, `d-07`). Quests. Fix: retarget to the nearest
    live mites once the camp is clear.
+   Fixed (cc1c909): an emptied camp is skipped.
 10. **True North: wrong prompt and no lamp order** on screen (`m-09`).
     Quests. Fix: objective props outrank camp props; order in tracker.
+    Fixed (cc1c909): order, count and next stake in the timer slot.
 11. **Range step two points at the entrance,** 23 m from the dummies
     (`p-19`). Quests. Fix: point "knock flat" at the ring.
+    Fixed (cc1c909); all 52 objectives audited (tools/playtest/audit.js).
 12. **Menu tray clipped off the left edge in portrait** ("ACK",
     "sswick", `p-24`). HUD. Fix: clamp the tray card to the safe area.
 13. **Passers-by fill the conversation close-up** (`p-15`, `p-16`).
     Camera. Fix: fade walkers between lens and speaker in a talk shot.
+    Fixed (5da0b4e): they dissolve; walkers near the pair wait.
 14. **First person: lens at grass height hides small robots** (`f-05`);
     reticle and ammo stay on the horse (`f-10`). First person. Fix: thin
     grass near the lens; hide the reticle when mounted.
@@ -642,6 +659,7 @@ Another agent was rebuilding first person while I looked.
     vs 51 m, `p-27`); the bounty line flips three times in two minutes;
     the first talk prompt names a passer-by, not the `!` giver (`p-03`).
     HUD. Fix: router distance; keep a shown bounty; givers win prompts.
+    Fixed (d5e4a1d, 69647e2): route length, bounty held 90 s, givers win.
 
 ### Sound, from the play log
 
