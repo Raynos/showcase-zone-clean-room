@@ -9,6 +9,7 @@ import { shaftMat } from '../gfx/energy';
 import { Geo } from '../gfx/geo';
 import { FLASHL, worldMat } from '../gfx/material';
 import { T } from '../gfx/textures';
+import { speech } from '../ui/speech';
 import { PAL } from '../world/layout';
 import type { NpcSpot, TownInfo } from '../world/town';
 import { EXTRA_WALKERS, FOLK, type FolkDef } from './npcs/cast';
@@ -103,7 +104,6 @@ export class Npcs implements System {
   private talkOpen = false;
   /** the conversation's performance: how far the speaker's hands are into a gesture, the mouth's opening, a nod's progress (-1 none) */
   private talkK = 0; private mouth = 0; private nodT = -1; private nodHooked = false;
-  private line = ''; private saidAt = 0;
   /** the key and the rim on the speaker's face: who is lit and how far it has come up */
   private lit: Npc | null = null; private litK = 0; private litRim = 0.65;
   private camPos = new THREE.Vector3(); private camLook = new THREE.Vector3(); private camDir = new THREE.Vector3();
@@ -339,24 +339,21 @@ export class Npcs implements System {
       look: () => look.copy(this.camLook),
       fov,
     });
-    this.talkK = 0; this.mouth = 0; this.nodT = -1; this.line = ''; this.saidAt = 0;
+    this.talkK = 0; this.mouth = 0; this.nodT = -1;
     // a deal struck (a job taken, a job handed in) gets a nod
     if (!this.nodHooked) { this.nodHooked = true; g.state.events.on('questUpdate', () => { if (this.talking) this.nodT = 0; }); }
   }
   /**
-   * The speaker's performance, read off the sheet (ui/panels/dialog.ts keeps the words shown in `.sc-line .on`
-   * and those still to come in `.sc-line .off`). The words arrive faster than anyone speaks, so the mouth starts
-   * with them and then says the line at a speaking pace: open on a vowel, half on a consonant, shut on a space,
-   * a held breath at a comma or a full stop. The hands gesture while the line is being said and rest while the
-   * hero chooses.
+   * The speaker's performance, taken from the line being said (ui/speech.ts: the conversation sheet reveals each
+   * line at a reading pace and reports it there, so the mouth and the words end together and a tap that finishes
+   * the line shuts the mouth). Open on a vowel, half on a consonant, shut on a space, a held breath at a comma or
+   * a full stop. The hands gesture while the line is being said and rest while the hero chooses.
    */
   private perform(dt: number) {
-    const on = document.querySelector('.sc-line .on')?.textContent ?? '', line = on + (document.querySelector('.sc-line .off')?.textContent ?? '');
-    if (line !== this.line) { this.line = line; this.saidAt = 0; }
-    const ch = line.charAt(Math.floor(this.saidAt)).toLowerCase(), speaking = this.saidAt < line.length;
+    const speaking = speech.speaking, ch = speech.text.charAt(Math.floor(speech.shown)).toLowerCase();
     const letter = ch >= 'a' && ch <= 'z';
-    if (speaking) this.saidAt = Math.min(Math.max(on.length, this.saidAt), this.saidAt + dt * (letter ? 17 : ch === ' ' ? 26 : 4.5));
-    this.mouth = !speaking ? 0 : 'aeiouy'.includes(ch) && letter ? 1 : letter ? 0.4 : 0.03;
+    // (the letters pass at twice a speaking pace, so the jaw follows them eased, not letter by letter)
+    this.mouth = damp(this.mouth, !speaking ? 0 : 'aeiouy'.includes(ch) && letter ? 1 : letter ? 0.4 : 0.03, speaking ? 26 : 40, dt);
     this.talkK = damp(this.talkK, speaking ? 1 : 0, speaking ? 7 : 2.2, dt);
     if (this.nodT >= 0) { this.nodT += dt / 0.95; if (this.nodT >= 1) this.nodT = -1; }
   }

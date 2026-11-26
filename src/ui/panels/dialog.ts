@@ -1,5 +1,6 @@
 import { NPC_NAMES, QUEST_BY_ID, type QuestDef } from '../../data/quests';
 import { icon } from '../icons';
+import { speech } from '../speech';
 import { calm as still, type PanelSpec } from './common';
 import { rewardsHtml } from './quests';
 
@@ -25,8 +26,13 @@ const FOLK = [
 const ROLE: Record<string, string> = { quest1: '#ff9a3c', quest2: '#5ef0ff', quest3: '#ff7a5a', tinker: '#ffc46a', weapons: '#ffb968', stable: '#7dffb0' };
 type Mode = { k: 'root' } | { k: 'quest'; q: QuestDef; kind: 'offer' | 'turnin' } | { k: 'line'; text: string };
 
-/** Letters a second. A tap finishes the line at once, so this only has to feel like speech, not hold anyone up. */
-const CPS = 120;
+/**
+ * Letters a second: a reading pace, so the words and the speaker's mouth (which follows `speech`, ui/speech.ts)
+ * end together. A comma holds a breath and a full stop a longer one. A tap finishes the line at once, so the
+ * pace never holds anyone up.
+ */
+const CPS = 36;
+const pace = (prev: string) => (/[.!?]/.test(prev) ? CPS * 0.16 : /[,;:]/.test(prev) ? CPS * 0.3 : CPS);
 /**
  * A line is said a breath at a time: its sentences are gathered into beats of about two lines of
  * large type, so the words never become a paragraph over the scene.
@@ -116,6 +122,7 @@ export const talkPanel: PanelSpec = {
       onEl.textContent = t.slice(0, n); offEl.textContent = t.slice(n);
       root.classList.toggle('wait', n >= t.length && !last());
       root.classList.toggle('said', n >= t.length);
+      speech.set(t, shown);
     };
     const go = (m: Mode, whole = false) => {
       mode = m;
@@ -151,13 +158,14 @@ export const talkPanel: PanelSpec = {
 
     const view = {
       render,
-      dispose() { window.removeEventListener('keydown', onKey, true); },
+      dispose() { window.removeEventListener('keydown', onKey, true); speech.clear(); },
       update(dt: number) {
         const t = text();
         if (shown >= t.length) return;
         const before = Math.floor(shown);
-        shown = Math.min(t.length, shown + dt * CPS);
+        shown = Math.min(t.length, shown + dt * pace(t.charAt(before - 1)));
         if (Math.floor(shown) !== before) { paint(); if (Math.floor(shown) % 6 === 0) g.sfx('ui_click', { vol: 0.14, pitch: 1.7 }); }
+        else speech.shown = shown;
       },
       act(a: string, v: string, _el?: HTMLElement) {
         const q = QUEST_BY_ID[v];
