@@ -15,6 +15,18 @@ const FN = 16, FSIZE = (HALF * 2) / FN;
  * is drawn as its four cells, except that cells under SPARSE_TRIS share a mesh.
  */
 const SPLIT_TRIS = 9000, SPARSE_TRIS = 1200;
+/**
+ * What carries far is kept apart from what does not. A primitive of FAR_KEY metres or more (and
+ * everything always drawn: ground slabs, roads, signs, lit windows) goes into the far layer; trim
+ * and small things stay in the near layer, whose cells draw nothing at all once the camera is far
+ * enough for their largest primitive to be dropped.
+ *
+ * A far-layer square heavier than FAR_SPLIT is drawn two ways from one vertex buffer: as its cells
+ * (tight culling and shadow casting where the camera is), and, FAR_AT metres and more away, as one
+ * mesh whose index buffer runs over all of them. A wide view from a height is then a few dozen
+ * squares, not every cell of the zone, for the price of a second copy of the indices.
+ */
+const FAR_KEY = 0.6, FAR_SPLIT = 9000, FAR_SPARSE = 1500, FAR_AT = 100;
 /** A primitive longer than this (walls, cables, rails) would stretch its cell's bounds over its neighbours; those are kept apart. */
 const LONG = 44;
 
@@ -36,8 +48,10 @@ export const CASTER = {
 const COLOR_MAX = 2, EMIT_MAX = 6.25;
 /** Size keys above any real size: ground-hugging slabs (never cast), then hand-built triangles. */
 const KEY_FLAT = 1e9, KEY_ALWAYS = 1e6;
-/** Glowing primitives under GLOW_CAST metres: always drawn, sorted beside the slabs so they stay out of the shadow pass too. */
-const KEY_GLOW = 1e8, GLOW_CAST = 1.5;
+/** Glowing primitives under GLOW_CAST metres are trim (never cast) that carries GLOW_FAR times as far as its size would. */
+const GLOW_CAST = 1.5, GLOW_FAR = 10;
+/** In landscape the view is half as tall in pixels and nearly four times as wide: detail goes this much sooner. */
+const LOD_WIDE = 1.4;
 /** Leaf primitives under this size key (a crown's fill cards, see below) throw no shadow in any cascade: the core and the other half of the cards do. */
 const LEAF_CAST = 0.16;
 /** Height above the ground from which a thing counts as standing tall, for the far shade baked into the ground map. */
@@ -143,7 +157,7 @@ function packedMaterial(wind: boolean): WorldMaterial {
 interface Cell {
   mesh: THREE.Mesh;
   box: THREE.Box3;
-  /** indices of ground slabs and small glowing things at the head of the buffer: drawn always, never cast */
+  /** indices of trim and ground slabs at the head of the buffer: never cast */
   flat: number;
   /** indices drawn at any distance */
   always: number;
@@ -155,8 +169,12 @@ interface Cell {
   /** index range the colour pass draws this frame: [start, main) */
   main: number; start: number;
   uploaded: boolean; force: boolean;
+  /** the other way of drawing this square is in use (see FAR_AT) */
+  off: boolean;
   name?: string;
 }
+/** A far-layer square drawn either as its cells or as one mesh. */
+interface Block { whole: Cell; kids: Cell[] }
 
 /** Index count that keeps every primitive of at least `size` metres. */
 function countFor(c: Cell, size: number): number {
@@ -187,10 +205,13 @@ export class Chunks {
   private extra = new Map<string, Geo>();
   private extraStore = new Map<string, Store>();
   private fine: Array<Array<Store | undefined>> = [new Array(FN * FN), new Array(FN * FN)];
+  /** the far layer (see FAR_KEY), on the same grid */
+  private far: Array<Array<Store | undefined>> = [new Array(FN * FN), new Array(FN * FN)];
   /** primitives too long for a cell, per 125 m district */
   private long: Array<Array<Store | undefined>> = [new Array(16), new Array(16)];
   private colliders: ColliderSpec[] = [];
   private cells: Cell[] = [];
+  private blocks: Block[] = [];
   private pending: Cell[] = [];
   private interior: string | null = null;
   group = new THREE.Group();
@@ -225,9 +246,9 @@ export class Chunks {
     for (const [name, m] of this.namedMeshes) m.visible = !!interior && name.startsWith(interior);
   }
 
-  private store(x: number, z: number, leaf: boolean): Store {
+  private store(x: number, z: number, leaf: boolean, far: boolean): Store {
     const cx = Math.min(FN - 1, Math.max(0, Math.floor((x + HALF) / FSIZE))), cz = Math.min(FN - 1, Math.max(0, Math.floor((z + HALF) / FSIZE)));
-    const list = this.fine[leaf ? 1 : 0];
+    const list = (far ? this.far : this.fine)[leaf ? 1 : 0];
     return (list[cz * FN + cx] ??= new Store(leaf));
   }
 
@@ -274,11 +295,13 @@ export class Chunks {
       // the two largest extents: their geometric mean is the primitive's size on screen and in a shadow map
       const big = Math.max(ex, ey, ez), small = Math.min(ex, ey, ez), mid = ex + ey + ez - big - small;
       let key = Math.sqrt(big * Math.max(mid, 1e-3));
-      // lamps, signs and lit windows bloom into points of light that carry across the whole zone
-      // at night, however small they are: they are never dropped
-      // a small glowing thing (a bulb, a lantern glass, a light strip) is a light, not a caster
+      // signs and lit windows bloom into points of light that carry across the whole zone at night:
+      // they are never dropped. A small glowing thing (a bulb, a lantern glass, a light strip) is a
+      // light, not a caster, and carries GLOW_FAR times as far as an unlit thing of its size: past
+      // that it is a fraction of a pixel that only flickers. It is trim of that size.
+      let lit = false;
       if (named) key = KEY_ALWAYS;
-      else if (glow > 0.5) key = key < GLOW_CAST ? KEY_GLOW : KEY_ALWAYS;
+      else if (glow > 0.5) { if (key < GLOW_CAST) { key *= -GLOW_FAR; lit = true; } else key = KEY_ALWAYS; }
       else if (ground && big >= 0.8
         && y1 - ground(x0, z0) <= FLAT_TOP && y1 - ground(x1, z0) <= FLAT_TOP && y1 - ground(x0, z1) <= FLAT_TOP && y1 - ground(x1, z1) <= FLAT_TOP
         && y1 - ground((x0 + x1) / 2, (z0 + z1) / 2) <= FLAT_TOP) key = KEY_FLAT;
@@ -290,8 +313,8 @@ export class Chunks {
       // trim with a level-of-detail bias (Geo.lodK) goes, or stays, as if it were that much smaller or larger
       // (a negative key is trim, of that size: drawn by distance like the rest, never in the shadow pass)
       const lk = g.primK?.get(p >> 2);
-      if (lk !== undefined && key < KEY_ALWAYS) key *= lk;
-      const st = named ?? (Math.max(ex, ez) > LONG ? this.longStore((x0 + x1) / 2, (z0 + z1) / 2, leaf) : this.store((x0 + x1) / 2, (z0 + z1) / 2, leaf));
+      if (lk !== undefined && key < KEY_ALWAYS && !lit) key *= lk;
+      const st = named ?? (Math.max(ex, ez) > LONG ? this.longStore((x0 + x1) / 2, (z0 + z1) / 2, leaf) : this.store((x0 + x1) / 2, (z0 + z1) / 2, leaf, Math.abs(key) >= FAR_KEY));
       st.reserve(vc, i1 - i0);
       const base = st.nv - v0;
       for (let v = v0, e = v0 + vc; v < e; v++) st.put(g, v);
@@ -349,7 +372,7 @@ export class Chunks {
     for (let i = a; i + 2 < b; i += 3) {
       const va = idx[i], vb = idx[i + 1], vc = idx[i + 2];
       const cx = (pos[va * 3] + pos[vb * 3] + pos[vc * 3]) / 3, cz = (pos[va * 3 + 2] + pos[vb * 3 + 2] + pos[vc * 3 + 2]) / 3;
-      const st = named ?? this.store(cx, cz, leaf);
+      const st = named ?? this.store(cx, cz, leaf, true);
       let m = maps.get(st);
       if (!m) { m = new Map(); maps.set(st, m); }
       st.reserve(3, 3);
@@ -407,15 +430,39 @@ export class Chunks {
       tris += st.ni / 3; meshes++;
       if (name) { this.namedMeshes.set(name, c.mesh); c.mesh.visible = false; c.mesh.frustumCulled = false; } else this.surface.push(c.mesh);
     };
-    for (let k = 0; k < 2; k++) {
-      const list = this.fine[k], mat = k ? leafMat : solidMat;
+    for (let k = 0; k < 4; k++) {
+      const far = k > 1, list = (far ? this.far : this.fine)[k & 1], mat = k & 1 ? leafMat : solidMat;
+      const split = far ? FAR_SPLIT : SPLIT_TRIS, lone = far ? FAR_SPARSE : SPARSE_TRIS;
       for (let pz = 0; pz < FN; pz += 2) for (let px = 0; px < FN; px += 2) {
         const kids = [pz * FN + px, pz * FN + px + 1, (pz + 1) * FN + px, (pz + 1) * FN + px + 1];
         let all = 0;
         for (const i of kids) all += (list[i]?.ni ?? 0) / 3;
-        const sparse = kids.filter((i) => list[i] && (all < SPLIT_TRIS || list[i]!.ni / 3 < SPARSE_TRIS));
+        const sparse = kids.filter((i) => list[i] && (all < split || list[i]!.ni / 3 < lone));
+        const dense = kids.filter((i) => list[i] && !sparse.includes(i));
+        if (far && dense.length + Math.min(1, sparse.length) > 1) {
+          // one vertex buffer for the square; its cells and the whole are index buffers over it
+          const block = new Store(!!(k & 1)), groups: number[][] = [];
+          const take = (ids: number[]) => {
+            const p0 = block.pI.length;
+            for (const i of ids) { block.append(list[i]!); list[i] = undefined; }
+            groups.push(Array.from({ length: block.pI.length - p0 }, (_, j) => p0 + j));
+          };
+          if (sparse.length) take(sparse);
+          for (const i of dense) take([i]);
+          const shared = this.attributes(block);
+          const add = (prims?: number[]) => {
+            const c = this.makeCell(block, mat, undefined, prims, shared);
+            this.cells.push(c); this.pending.push(c); this.group.add(c.mesh); this.surface.push(c.mesh);
+            return c;
+          };
+          const whole = add();
+          whole.off = true;
+          this.blocks.push({ whole, kids: groups.map((g) => add(g)) });
+          tris += block.ni / 3; meshes += groups.length;
+          continue;
+        }
         if (sparse.length > 1) {
-          const merged = new Store(!!k);
+          const merged = new Store(!!(k & 1));
           for (const i of sparse) { merged.append(list[i]!); list[i] = undefined; }
           emit(merged, mat);
         }
@@ -564,54 +611,69 @@ export class Chunks {
     CASTER.yMin = lo - 0.5; CASTER.yMax = Math.max(hi + 8, eye.y + 2);
   }
 
-  private makeCell(st: Store, mat: THREE.Material, name?: string): Cell {
-    const nv = st.nv, np = st.pI.length;
+  /** The vertex attributes of a store, each letting go of its CPU copy once the GPU has it. */
+  private attributes(st: Store) {
+    const nv = st.nv;
+    const drop = (a: THREE.BufferAttribute) => a.onUpload(function (this: THREE.BufferAttribute) { (this as { array: ArrayLike<number> }).array = new Uint8Array(0); });
+    return {
+      position: drop(new THREE.BufferAttribute(st.P.subarray(0, nv * 3), 3)),
+      uv: drop(new THREE.BufferAttribute(st.U.subarray(0, nv * 2), 2)),
+      nl: drop(new THREE.BufferAttribute(st.NL.subarray(0, nv * 4), 4, true)),
+      ce: drop(new THREE.BufferAttribute(st.CE.subarray(0, nv * 4), 4, true)),
+      sway: st.SW ? drop(new THREE.BufferAttribute(st.SW.subarray(0, nv * 4), 4, true)) : null,
+      ao: drop(new THREE.BufferAttribute(st.AO.subarray(0, nv * 2), 2)),
+    };
+  }
+
+  /** One mesh over a store: all of it, or the given primitives of it over vertex attributes shared with its siblings. */
+  private makeCell(st: Store, mat: THREE.Material, name?: string, prims?: number[], shared?: ReturnType<Chunks['attributes']>): Cell {
+    const nv = st.nv;
     // largest first; equal keys keep build order so neighbouring primitives stay neighbours
-    const order = new Uint32Array(np);
-    for (let i = 0; i < np; i++) order[i] = i;
     const pS = st.pS, pI = st.pI, pN = st.pN;
-    const all = Array.from(order);
+    const all = prims ?? Array.from({ length: pI.length }, (_, i) => i);
+    let ni = 0;
+    for (const p of all) ni += pN[p];
     // trim first, smallest first (the colour pass starts its range past what is too small to see, the shadow pass past all of it)
     const trims = all.filter((p) => pS[p] < 0).sort((a, b) => pS[b] - pS[a] || a - b);
     const sorted = all.filter((p) => pS[p] >= 0).sort((a, b) => pS[b] - pS[a] || a - b);
-    const I = nv > 65535 ? new Uint32Array(st.ni) : new Uint16Array(st.ni);
+    const I = nv > 65535 ? new Uint32Array(ni) : new Uint16Array(ni);
     const sizes: number[] = [], counts: number[] = [], tSizes: number[] = [], tCounts: number[] = [];
     let w = 0, flat = 0, always = 0;
     for (const p of trims) { I.set(st.I.subarray(pI[p], pI[p] + pN[p]), w); w += pN[p]; tSizes.push(-pS[p]); tCounts.push(w); }
     flat = always = w;
     for (const p of sorted) {
       I.set(st.I.subarray(pI[p], pI[p] + pN[p]), w); w += pN[p];
-      if (pS[p] >= KEY_GLOW) flat = w;
+      if (pS[p] >= KEY_FLAT) flat = w;
       if (pS[p] >= KEY_ALWAYS) always = w; else { sizes.push(pS[p]); counts.push(w); }
     }
     const box = new THREE.Box3();
     const P = st.P;
-    for (let i = 0; i < nv * 3; i += 3) {
+    const grow = (i: number) => {
       const x = P[i], y = P[i + 1], z = P[i + 2];
       if (x < box.min.x) box.min.x = x; if (x > box.max.x) box.max.x = x;
       if (y < box.min.y) box.min.y = y; if (y > box.max.y) box.max.y = y;
       if (z < box.min.z) box.min.z = z; if (z > box.max.z) box.max.z = z;
-    }
+    };
+    if (prims) for (let i = 0; i < ni; i++) grow(I[i] * 3); else for (let i = 0; i < nv * 3; i += 3) grow(i);
     const geo = new THREE.BufferGeometry();
     const cell: Cell = {
-      mesh: null!, box, flat, always, total: st.ni, sizes: new Float32Array(sizes), counts: new Uint32Array(counts),
+      mesh: null!, box, flat, always, total: ni, sizes: new Float32Array(sizes), counts: new Uint32Array(counts),
       tSizes: new Float32Array(tSizes), tCounts: new Uint32Array(tCounts),
-      main: st.ni, start: 0, uploaded: false, force: false, name,
+      main: ni, start: 0, uploaded: false, force: false, off: false, name,
     };
-    // the CPU copy is only there to be uploaded: let go of it as soon as the GPU has it
-    const drop = (a: THREE.BufferAttribute, last = false) => a.onUpload(function (this: THREE.BufferAttribute) {
+    const a = shared ?? this.attributes(st);
+    geo.setAttribute('position', a.position);
+    geo.setAttribute('uv', a.uv);
+    geo.setAttribute('normal', a.nl);
+    geo.setAttribute('aNL', a.nl);
+    geo.setAttribute('aCE', a.ce);
+    if (a.sway) geo.setAttribute('aSway', a.sway);
+    geo.setAttribute('aAO', a.ao);
+    // (the CPU copy is only there to be uploaded: it is let go as soon as the GPU has it)
+    geo.setIndex(new THREE.BufferAttribute(I, 1).onUpload(function (this: THREE.BufferAttribute) {
       (this as { array: ArrayLike<number> }).array = new Uint8Array(0);
-      if (last) cell.uploaded = true;
-    });
-    const nl = drop(new THREE.BufferAttribute(st.NL.subarray(0, nv * 4), 4, true));
-    geo.setAttribute('position', drop(new THREE.BufferAttribute(st.P.subarray(0, nv * 3), 3)));
-    geo.setAttribute('uv', drop(new THREE.BufferAttribute(st.U.subarray(0, nv * 2), 2)));
-    geo.setAttribute('normal', nl);
-    geo.setAttribute('aNL', nl);
-    geo.setAttribute('aCE', drop(new THREE.BufferAttribute(st.CE.subarray(0, nv * 4), 4, true)));
-    if (st.SW) geo.setAttribute('aSway', drop(new THREE.BufferAttribute(st.SW.subarray(0, nv * 4), 4, true)));
-    geo.setAttribute('aAO', drop(new THREE.BufferAttribute(st.AO.subarray(0, nv * 2), 2)));
-    geo.setIndex(drop(new THREE.BufferAttribute(I, 1), true));
+      cell.uploaded = true;
+    }));
     geo.boundingBox = box;
     geo.boundingSphere = box.getBoundingSphere(new THREE.Sphere());
     const mesh = new THREE.Mesh(geo, mat);
@@ -642,13 +704,23 @@ export class Chunks {
     this.frame++;
     this.heightsNear(camera.position);
     // metres a primitive must span, per metre of distance, to cover `lodPx` pixels
-    const k = (this.lodPx * (600 / viewDist) * 2 * Math.tan((camera.fov * Math.PI) / 360)) / Math.max(1, viewportPx);
+    const k = (this.lodPx * (camera.aspect > 1.2 ? LOD_WIDE : 1) * (600 / viewDist) * 2 * Math.tan((camera.fov * Math.PI) / 360)) / Math.max(1, viewportPx);
     const eye = camera.position;
+    // a far-layer square is one mesh from where its cells' tighter culling stops paying: past the shadow cascades at the least
+    const farAt = Math.max(FAR_AT, CASTER.dist * 1.25);
+    if (!this.interior) for (const b of this.blocks) {
+      const far = b.whole.box.distanceToPoint(eye) > farAt;
+      b.whole.off = !far;
+      for (const c of b.kids) c.off = far;
+    }
     if (!this.interior) for (const c of this.cells) {
       if (c.name) continue;
       const size = c.box.distanceToPoint(eye) * k;
       const n = countFor(c, size), s = startFor(c, size);
       if (n !== c.main || s !== c.start) { c.main = n; c.start = s; c.mesh.geometry.setDrawRange(s, n - s); }
+      // a cell with nothing left to draw at this distance is not a draw call either
+      const vis = (n > s && !c.off) || !c.uploaded;
+      if (c.mesh.visible !== vis) c.mesh.visible = vis;
     }
     const pend = this.pending;
     for (let i = pend.length - 1; i >= 0; i--) {
@@ -668,10 +740,14 @@ export class Chunks {
   /** Dev: what the static world costs right now. */
   stats() {
     let tris = 0, drawn = 0, verts = 0, bytes = 0, waiting = 0;
+    const seen = new Set<THREE.BufferAttribute | THREE.InterleavedBufferAttribute>(), whole = new Set(this.blocks.map((b) => b.whole));
     for (const c of this.cells) {
-      const g = c.mesh.geometry;
-      tris += c.total / 3; if (!c.name) drawn += (c.main - c.start) / 3; verts += g.attributes.position.count;
-      bytes += g.attributes.position.count * (g.attributes.aSway ? 36 : 32) + c.total * (g.attributes.position.count > 65535 ? 4 : 2);
+      const g = c.mesh.geometry, nv = g.attributes.position.count;
+      if (!whole.has(c)) tris += c.total / 3;
+      if (!c.name && c.mesh.visible) drawn += (c.main - c.start) / 3;
+      // a square's cells and its far mesh share one vertex buffer
+      if (!seen.has(g.attributes.position)) { seen.add(g.attributes.position); verts += nv; bytes += nv * (g.attributes.aSway ? 36 : 32); }
+      bytes += c.total * (nv > 65535 ? 4 : 2);
       if (!c.uploaded) waiting++;
     }
     return { meshes: this.cells.length, tris, lodTris: drawn, verts, gpuMB: +(bytes / 1048576).toFixed(1), waiting };

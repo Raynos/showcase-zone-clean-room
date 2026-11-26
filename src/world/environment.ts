@@ -169,6 +169,8 @@ export class Environment {
 
   /** Redraw the far shadow cascade every n-th frame; the near one, where the characters are, is drawn every frame. */
   farEvery = 1;
+  /** share of the tier's shadow reach kept in landscape */
+  shadowWide = 0.7;
   private farFresh = false; private farAge = 0;
   private farMatrix = new THREE.Matrix4();
   /**
@@ -269,6 +271,11 @@ export class Environment {
   update(dt: number, camera: THREE.PerspectiveCamera, focus: THREE.Vector3, renderer: Renderer) {
     this.elapsed += dt;
     this.farEvery = renderer.quality.shadowFarEvery;
+    // In landscape the frame is half as tall in pixels, so a shadow 80 m out is drawn as small as one
+    // under 50 m out in portrait, while the cascades have nearly four times the width to cover. They
+    // reach that much less far, and the ground map's stand-in for far shade takes over sooner.
+    const reach = Math.round(renderer.quality.shadowDist * (camera.aspect > 1.2 ? this.shadowWide : 1));
+    if (reach !== CASTER.dist) this.setShadowQuality(renderer.quality.shadowSize, reach);
     if (this.forcedHour !== null) {
       // glide the clock toward the forced hour (shortest way round)
       let d = this.forcedHour - this.hour;

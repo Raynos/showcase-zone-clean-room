@@ -11,6 +11,7 @@ import type { RobotKind, RobotLook, RobotRig } from './entities/robots/types';
 import { FX, SP } from './gfx/fx';
 import { ContactShadows } from './gfx/contact';
 import { GU, installFog } from './gfx/material';
+import { FarCull } from './gfx/farcull';
 import { QUALITY, Renderer } from './gfx/renderer';
 import { buildNoiseTexture, buildTextureArrays, loadStagedArrays } from './gfx/textures';
 import { BOOT_MODELS, LATE_MODELS, loadModels } from './gfx/models';
@@ -50,6 +51,7 @@ export class Game {
   grass!: Grass;
   contact = new ContactShadows();
   chunks!: Chunks;
+  farCull = new FarCull();
   physics!: Physics;
   input!: Input;
   cameraRig!: CameraRig;
@@ -536,7 +538,9 @@ export class Game {
     this.updateAmbience(rdt);
 
     this.chunks.update(this.camera, this.renderer.height * this.renderer.pixelRatio, this.renderer.quality.viewDist);
+    this.farCull.hide(this.scene, this.camera, this.renderer.height * this.renderer.pixelRatio);
     this.renderer.render(this.scene, this.camera, rdt);
+    this.farCull.show();
     inp.endFrame();
   }
   /** Title screen over a slow aerial drift across Brasswick; resolves when the player starts. */
