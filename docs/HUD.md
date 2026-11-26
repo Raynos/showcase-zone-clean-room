@@ -237,7 +237,10 @@ bar is at the bottom, under it where it is at the top.
 the HUD's columns, so an off-screen target's arrow never lands on the
 quest line or the cluster. On a wide screen the band's top is above the
 clear middle, and an arrow that would land on its bottom edge (over the
-hero) goes to the nearer side.
+hero) goes to the nearer side. A phone held sideways has no free edge
+(the band starts a third of the way in), so there an off-screen target's
+arrow and distance ride the end of the quest line's first row
+(`hud.wayDock`); a target in view keeps its marker in the world.
 
 ## Panels
 
@@ -256,19 +259,22 @@ action. Three shapes, chosen by the screen alone:
 | Window, short | phone on its side      | rail, 132 pt   | right, 300 pt |
 | Window        | 700 pt wide and up     | rail, 164 pt   | right, 340 pt |
 
-- The sheet is 80% of the height and stops above the home indicator; the
+- The sheet is as tall as what it holds, from 52% to 84% of the height
+  (the map: 90%), and stops above the home indicator. Its foot does not
+  move when a section is shorter: the top edge does. The
   windows sit inside both notches. A desktop window is 980 px wide and as
   tall as its content, from 500 to 760 px, then it scrolls.
 - **Close:** the X (44 pt), a tap outside, a drag down from the head on
   the sheet (past 96 pt, or a flick), `Esc` on a desktop. A screen opened
   from another (the armoury from a conversation) shows Back, and close
-  returns there first. A conversation closes by its own Goodbye or X.
+  returns there first.
 - **Sections** are tabs with an icon and a name, 44 pt or taller: under
   the thumb along the sheet's foot, down the left edge of a window.
   A count rides the name as a small figure, never in brackets.
-- **Windows carry a switcher** for the five menu screens in the head
-  (pack, character, quests, map, settings), with the keys on a desktop
-  (`I P L M Esc`). The sheet has no room for it: the tray is one tap away.
+- **A switcher** for the five menu screens (pack, character, quests,
+  map, settings) is in every head: beside the title in a window, with
+  the keys on a desktop (`I P L M Esc`); a strip of five across the top
+  of the sheet, the open one lit.
 - **Opening** takes the controls: the stick and the look let go, held
   buttons release, and the thumb that was on the stick takes it up again
   if it is still down when the screen closes. Settings and the title
@@ -309,7 +315,6 @@ action. Three shapes, chosen by the screen alone:
 | Workshop    | none                     | none: prices are gold      |
 | Board       | bounties, hunts, wanted  | claim, when one is ready   |
 | Trophy wall | none                     | none                       |
-| Talk        | none                     | continue, accept, complete |
 | Title       | none                     | start or continue          |
 
 - **Map.** Each band is washed and outlined in its colour and named with
@@ -321,17 +326,29 @@ action. Three shapes, chosen by the screen alone:
   the buttons zoom and centre. The tracked quest is a chip that opens the
   log. `Brasswick` is the zone's one fast travel (the same return as
   Settings, with the same refusal when it is not allowed).
-- **Settings.** Six groups, each a screen or less: Controls (left-handed,
-  vibration, and how to play for the hand in use: touch or keys, not
-  both), Camera (view, look speed, invert, follow; first-person field of
-  view upright and sideways, head bob and its amount, the tilt toward a
-  close target (off until asked for) and the wider view beside big
-  robots; screen shake),
-  Aiming (aim button stays or holds, speed when aimed, aim assist and its
-  two strengths, gyro), Display (quality, frame-rate counter, damage
-  numbers), Sound (everything, music, effects, ambience), Game (return
+- **Settings.** Seven groups, each a screen or less. The first is named
+  for the hand in use, Touch or Keys (left-handed, vibration, and how
+  to play with that hand, not both). Camera (view, look speed, invert,
+  follow; first-person field of view upright and sideways, the tilt
+  toward a close target (off until asked for) and the wider view beside
+  big robots). Aiming (aim button stays or holds, speed when aimed, aim
+  assist and its two strengths, gyro). Display (quality, frame-rate
+  counter, damage numbers). Sound (everything, music, effects,
+  ambience: `master`, `music`, `sfx`, `ambience`). Comfort (reduce
+  motion, screen shake, head bob and its amount, flashes). Game (return
   to town, save, start over). `panels.open('menu', { tab })` lands on
   one.
+- **Reduce motion** (`reduceMotion`, or the device's own preference,
+  which cannot be switched off from here) marks the page
+  (`data-motion=reduced`): sheets, the conversation, the title, loading
+  and headlines cut in (1 ms), a line of speech is shown whole, and the
+  camera does not shake. `flash` caps how bright a blast may light the
+  screen. First-person head bob and the particle system read the
+  device's preference themselves, not yet the setting.
+- **Trophy wall.** A plaque not yet earned is not a row of question
+  marks: it names the quarry and where it lives, and shows how far the
+  hunt has come (`37 / 120 broken`), or for an elite that it is not yet
+  broken.
 - **The fall** is not a panel (`hud.downed`, raised by the `DOWN`
   banner): the word, a bar that runs out at the respawn, a line saying
   nothing is lost; the controls dim, menus close, tips wait.
@@ -340,6 +357,39 @@ action. Three shapes, chosen by the screen alone:
 - **Loading** (`ui/loading.ts`) is built from the same tokens: one
   column on a phone upright, two on its side, and the same two at desk
   size from 1000 px wide. It leaves in the sheet's 180 ms.
+
+## Conversations
+
+Talking to someone is a scene, not a sheet (`ui/panels/dialog.ts`). The
+NPC system starts it (`systems/npcs.ts`): it puts the camera on the
+speaker through the rig's cinematic hook (`cameraRig.startCine`), which
+also drops the letterbox, hides the HUD and, in first person, steps out
+of the hero's eyes. The panel then draws, with no frame:
+
+- **The words.** The speaker's name, ruled in the colour of their
+  trade, their role under it, and one beat of large text (19 pt on a
+  phone, 26 px on a desktop) over a soft dark gradient. A long line is
+  said a beat at a time (about two lines), never as a paragraph.
+- **The reveal.** 120 letters a second. A tap anywhere finishes the
+  line; the next tap moves on. The words to come hold their place
+  unseen, so nothing re-wraps.
+- **The choices.** A short stack of 52 pt rows that appears on the last
+  beat: under the words on a phone upright, up the right edge on its
+  side and beside the words on a desktop. A job carries its marker and
+  its state (`!` new job and level, `?` ready to hand in, `...` in
+  progress, grey when the level is short); a vendor's counters are
+  rows too; `Leave` is always the last row and an X is always top
+  right.
+- **A job's terms and its reward** are a card in the headline's type
+  (gold, tracked, ruled) with the reward chips, above `Accept` or
+  `Collect`, the scene's one orange row. Handing in raises the lane's
+  headline with what it paid, the one a level gets.
+- **Counters** (armoury, workshop, selling) open over the scene from a
+  choice and Back returns to it, the camera still on the speaker and
+  the line already said.
+- **Keys:** `1`-`9` choose a row, `Space`, `Enter` or `E` finish the
+  line and move on (and take the orange row at the end), `Esc` leaves.
+- There is no painted portrait: the camera always shows the speaker.
 
 ## Layouts
 
@@ -489,7 +539,7 @@ lane may reach 28% of the height under a target frame), touch sizes
 (44 pt; 40 for chips and glyphs), 8 pt between buttons, the budget, a
 fight's two feed lines, and that no system draws a toast, card or meter
 of its own.
-`tools/hud-matrix.sh --set panels` stages twenty-six screens
+`tools/hud-matrix.sh --set panels` stages twenty-nine screens
 (`tools/hud-matrix/panels.js`) at 402x874, 874x402 and 1920x1080 and
 checks each (`HM.checkPanel`): the surface on screen, no sideways
 overflow, no cut text, no type under 11 px, no target under 44 pt (24 px
