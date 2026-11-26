@@ -60,6 +60,8 @@ export const GRADE = {
    * ground's bounce warms and lifts, the ember haze the air takes (rgb, how far the fog goes to it) and how
    * much thicker that air is; `emberDay` is the share of all this a clear noon keeps
    */
+  /** the moon's edge light and bounce on big shapes after dark: rgb, strength */
+  moonEdge: [0.42, 0.6, 1.0, 0.07],
   ember: [1.0, 0.36, 0.1, 0.085], emberLift: 0.7, emberFog: [0.34, 0.12, 0.05, 0.62], emberFogD: 0.5, emberDay: 0.12,
   /** storm: the slate everything is pulled to, and the cold key */
   stormSlate: [0.15, 0.2, 0.27], stormKey: [0.66, 0.8, 1.0],
@@ -379,7 +381,11 @@ export class Environment {
     // the Slagworks: the pools and furnace mouths throw their colour up at what stands over them
     const ember = this.slagMix * (1 - im) * lerp(GRADE.emberDay, 1, Math.min(1, Math.max(k.night, this.w.dim * 1.5, k.sunset * 0.5)));
     if (ember > 0) { hemiI += GRADE.emberLift * ember; this.hemi.groundColor.lerp(cA.setRGB(GRADE.ember[0], GRADE.ember[1] * 0.8, GRADE.ember[2]), 0.75 * ember); }
-    { const e = GRADE.ember, s = e[3] * ember; YARDW[12] = e[0] * s; YARDW[13] = e[1] * s; YARDW[14] = e[2] * s; }
+    {
+      // what finds big shapes after dark (gfx/lighting.ts): the moon's edge light and bounce everywhere, the furnace glow in the Slagworks
+      const e = GRADE.ember, s = e[3] * ember, m = GRADE.moonEdge, n = m[3] * k.night * (1 - im) * (1 - Math.min(1, this.w.dim * 1.5)), w = this.slagMix;
+      YARDW[12] = lerp(m[0] * n, e[0] * s, w); YARDW[13] = lerp(m[1] * n, e[1] * s, w); YARDW[14] = lerp(m[2] * n, e[2] * s, w); YARDW[15] = w;
+    }
     this.ember = ember;
     this.hemi.intensity = hemiI;
     // lamps and signs burn brighter after dark and indoors; by day they sit just above the bloom knee

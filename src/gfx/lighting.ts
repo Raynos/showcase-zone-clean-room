@@ -53,7 +53,8 @@ YARD.set([0, 0, 0.5, 0, 0.22, 0.04, -0.08, 0.5, 0, 0.6, 0.5, 1, 0, 1, 0, 0.0034]
  *  [1] the streak map's frame: camera forward on the ground (x, z), 0.5 / its half-width in
  *      tan(azimuth), 1 while the map is live
  *  [2] rgb of the cool fill warm surfaces answer after dark (moonlit wood reads slate, not black)
- *  [3] rgb of the furnace glow that catches the works of the Slagworks after dark (0: none)
+ *  [3] rgb of the light that finds big shapes after dark (0: none): the moon's edge light and its bounce, or
+ *      (w: the share) the furnace glow that catches the works of the Slagworks from the ground up
  */
 export const YARDW = new Float32Array(4 * 4);
 /**
@@ -313,15 +314,21 @@ if ( uYard[4].x > 0.0 ) {
   }
 #endif
 #if defined( RE_IndirectDiffuse ) && defined( STANDARD ) && defined( YARD_GAO ) && !defined( YARD_NO_LAMP )
-  if ( uYardW[3].r > 0.0 ) {
-    // the Slagworks after dark: slag and slate iron give a black sky nothing back, and the works stood as a
-    // void. The glow of the pools and the furnace haze catches them whatever they are made of: a low wash on
-    // walls and undersides, an edge of light where a shape turns away from the eye, strongest near the ground
+  if ( uYardW[3].r + uYardW[3].b > 0.0 ) {
+    // After dark a cliff or a shed turned from the moon had only a dark sky to answer and stood as a flat
+    // mass, or (slag, slate iron) a void. Two lights find big shapes whatever they are made of.
+    // The moon's: an edge of light where a face turns from the eye on the moon's side, and a bounce on the
+    // faces turned from it, so the two sides of a rock differ and its ledges read.
+    // The Slagworks' own: the glow of the pools and the furnace haze, a low wash on walls and undersides and
+    // an edge of light, strongest near the ground.
     float yRim = 1.0 - saturate( dot( geometryNormal, geometryViewDir ) );
     yRim *= yRim * yRim;
     float yWall = mix( 0.3, 1.0, saturate( 1.0 - gYardN.y ) );
     float yLow = 1.0 - 0.65 * smoothstep( 3.0, 30.0, gYardW.y );
-    reflectedLight.indirectSpecular += uYardW[3].rgb * ( ( 0.16 + 0.84 * yRim ) * yWall * yLow * ( 0.4 + 0.6 * gYardAO ) );
+    float yEmber = ( 0.16 + 0.84 * yRim ) * yWall * yLow;
+    float yWrap = dot( gYardN, uYard[3].xyz );
+    float yMoon = ( 0.1 + 0.62 * saturate( 0.35 - yWrap ) ) * yWall + 0.9 * yRim * saturate( 0.7 + 0.5 * yWrap );
+    reflectedLight.indirectSpecular += uYardW[3].rgb * ( mix( yMoon, yEmber, uYardW[3].a ) * ( 0.4 + 0.6 * gYardAO ) );
   }
 #endif
 #if defined( RE_IndirectDiffuse )
