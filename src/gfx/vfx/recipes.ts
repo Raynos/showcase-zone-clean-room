@@ -80,6 +80,47 @@ export const RECIPES: Record<string, Recipe> = {
     fx.emit({ x: c.p.x, y: Math.max(c.p.y, gy) + 0.12 * s, z: c.p.z }, { additive: false, count: n, speed: [0.6 * s, 2.2 * s], up: 0.7, life: [0.5, 1.0], size: [0.4 * s, 0.75 * s], grow: 2.1, color: c.tint === -1 ? DUST[surf] : c.tint, alpha: surf === 'metal' && c.tint === -1 ? 0.3 : 0.5, drag: 2.3, gravity: -0.35, sprite: SP.PUFF, spin: 2, radius: 0.2 * s, ground: gy });
     if (surf === 'grass' && n > 2) fx.emit({ x: c.p.x, y: gy + 0.2, z: c.p.z }, { additive: false, count: Math.ceil(n * 0.4), speed: [0.6, 2.4], up: 2.6, life: [0.45, 0.85], size: [0.11, 0.2], grow: 1, colors: STRAW, gravity: 10, drag: 0.8, spin: 12, sprite: SP.BLADE, aspect: 0.5, radius: 0.3 * s });
   },
+  /**
+   * One footfall (k: 0 walking, 1 sprinting, 2 a hoof at the gallop). What comes up is what is underfoot: straw
+   * on grass, a low puff and grit on dirt, almost nothing on stone and plate, a ripple and drops when it is wet.
+   */
+  step: (fx, c) => {
+    const p = c.p, gy = fx.groundY(p.x, p.z, p.y + 0.5), surf = fx.surface(p.x, p.z), run = c.k >= 1, hoof = c.k >= 2, s = c.s;
+    _a.set(p.x + rnd(-0.12, 0.12), gy + 0.05, p.z + rnd(-0.12, 0.12));
+    if (fx.wet > 0.4) {
+      fx.emit(_a, { count: 1, speed: [0, 0], life: [0.3, 0.42], size: [0.12 * s, 0.16 * s], grow: run ? 4.2 : 3, color: 0xcfe6ff, glow: 0.8, sprite: SP.RING, flat: true });
+      if (run) fx.emit(_a, { count: hoof ? 4 : 2, speed: [1.2, 2.6], up: 2.4, life: [0.2, 0.36], size: [0.03, 0.05], color: 0xd8ecff, glow: 1.4, gravity: 12, sprite: SP.STREAK, stretch: 0.06, spread: 1.2 });
+      return;
+    }
+    if (surf === 'grass') {
+      // thrown clear of the grass tops, or nobody sees them
+      _a.y = gy + 0.3;
+      if (run || Math.random() < 0.5) fx.emit(_a, { additive: false, count: hoof ? 4 : run ? 3 : 1, speed: [0.6, 2], up: hoof ? 4 : run ? 3.3 : 2.2, life: [0.45, 0.75], size: [0.15, 0.25], grow: 1, colors: STRAW, gravity: 10, drag: 0.8, spin: 12, sprite: SP.BLADE, aspect: 0.5, radius: 0.12 });
+      if (run) fx.emit(_a, { additive: false, count: 1, speed: [0.3, 0.9], up: 0.4, life: [0.45, 0.75], size: [(hoof ? 0.3 : 0.22) * s, (hoof ? 0.45 : 0.32) * s], grow: 2, color: DUST.grass, alpha: hoof ? 0.32 : 0.24, drag: 2.3, sprite: SP.PUFF, spin: 2, ground: gy });
+      return;
+    }
+    if (surf === 'dirt') {
+      fx.emit(_a, { additive: false, count: 1, speed: [0.2, 0.7], up: 0.3, life: [0.4, 0.7], size: [(run ? 0.3 : 0.18) * s, (run ? 0.42 : 0.26) * s], grow: 2, color: DUST.dirt, alpha: run ? 0.42 : 0.26, drag: 2.3, sprite: SP.PUFF, spin: 2, ground: gy });
+      if (run) fx.emit(_a, { additive: false, count: hoof ? 4 : 2, speed: [0.8, 2.6], up: hoof ? 2.6 : 1.8, life: [0.35, 0.6], size: [0.04, 0.08], grow: 1, color: 0x8a6f4e, color2: 0xb39a74, gravity: 13, sprite: SP.DOT, spread: 1.3 });
+      return;
+    }
+    // stone and plate: only a runner raises anything
+    if (run) fx.emit(_a, { additive: false, count: 1, speed: [0.2, 0.6], up: 0.25, life: [0.3, 0.5], size: [0.2 * s, 0.3 * s], grow: 1.9, color: DUST[surf], alpha: 0.2, drag: 2.3, sprite: SP.PUFF, spin: 2, ground: gy });
+  },
+  /** under a hover board at speed (k: speed 0..1): what its wash lifts off the ground, by what the ground is */
+  'hover.wash': (fx, c) => {
+    const p = c.p, gy = fx.groundY(p.x, p.z, p.y + 0.5), surf = fx.surface(p.x, p.z);
+    if (p.y - gy > 1.2) return;
+    _a.set(p.x + rnd(-0.2, 0.2), gy + 0.06, p.z + rnd(-0.2, 0.2));
+    if (c.k < 0.45 || Math.random() > 0.5) return;
+    if (fx.wet > 0.4) fx.emit(_a, { count: 2, speed: [1.2, 2.8], up: 2.2, life: [0.2, 0.36], size: [0.03, 0.05], color: 0xd8ecff, glow: 1.4, gravity: 12, sprite: SP.STREAK, stretch: 0.06, spread: 1.3 });
+    else if (surf === 'grass') fx.emit(_a, { additive: false, count: 2, speed: [0.8, 2.2], up: 2, life: [0.4, 0.7], size: [0.09, 0.15], grow: 1, colors: STRAW, gravity: 10, drag: 0.8, spin: 12, sprite: SP.BLADE, aspect: 0.5, radius: 0.2 });
+    else fx.emit(_a, { additive: false, count: 1, speed: [0.3, 0.9], up: 0.3, life: [0.4, 0.65], size: [0.26, 0.38], grow: 2, color: DUST[surf], alpha: surf === 'dirt' ? 0.36 : 0.18, drag: 2.3, sprite: SP.PUFF, spin: 2, ground: gy });
+  },
+  /** a mote let go up a loot beam (s: the beam's height) */
+  'loot.mote': (fx, c) => {
+    fx.emit(c.p, { count: 1, speed: [0, 0], up: c.s * 0.9, life: [0.7, 1.0], size: [0.05, 0.08], grow: 0.4, color: c.tint, color2: WHITE, glow: 2.2, sprite: SP.SPARKLE, radius: 0.12, drag: 0.6 });
+  },
   'debris.land': (fx, c) => {
     const surf = fx.surface(c.p.x, c.p.z);
     fx.emit(c.p, { additive: false, count: 1, speed: [0.2, 0.8], up: 0.4, life: [0.35, 0.6], size: [0.35 * c.s, 0.6 * c.s], grow: 2, color: DUST[surf], alpha: 0.55, drag: 2.5, sprite: SP.PUFF, spin: 2, ground: c.p.y - 0.1 });

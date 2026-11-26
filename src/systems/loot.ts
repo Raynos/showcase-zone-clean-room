@@ -9,6 +9,8 @@ interface Orb { x: number; y: number; z: number; vx: number; vy: number; vz: num
 const MAX = 96;
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _c = new THREE.Color();
 
+const RANK = Object.keys(RARITY_COLOR);
+
 /** Loot that bursts out of kills and chests, bounces, then flies to the player. */
 export class Loot {
   private orbs: Orb[] = [];
@@ -80,6 +82,7 @@ export class Loot {
       }
       if (o.t > 90) { if (o.kind === 'scrip') g.state.addScrip(o.n); continue; }
       const bob = magnet ? 0 : Math.sin(o.t * 3 + o.spin) * 0.06;
+      if (o.kind === 'item') { if (magnet) g.fx.tail(o, o, o.color, 'loot'); else if (o.vy === 0) g.fx.lootBeam(o.x, o.y - 0.2, o.z, o.color, RANK.indexOf(ITEMS[o.id].rarity), o.t - 0.6); }
       const s = o.kind === 'scrip' ? 0.8 : 1.25;
       _m.compose(_p.set(o.x, o.y + bob, o.z), _q.setFromEuler(_e.set(0.5, o.t * 4 + o.spin, 0.3)), _s.set(s, s * 1.2, s));
       this.mesh.setMatrixAt(w, _m);

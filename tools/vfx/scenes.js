@@ -144,6 +144,43 @@
         const m = this.m, hit = (f) => m.takeHit({ dmg: m.maxHp * f, crit: false, dirX: 0, dirZ: -1, knock: 0, heavy: false, source: 'skill', color: 0xffffff });
         hit(0.4); await G.secs(1.1); hit(0.35);
       } },
+    { name: 'world-loot', every: 9, cells: 8, crop: [0, 0.2, 1, 0.5],
+      async setup(G, g) {
+        arm(G, g, 5, 'shop_blade'); G.place(52, -16, 1.2); G.cam(1.2 + PI, 0.16, 1.0); await G.secs(0.4);
+        const at = (d, s) => { const x = 52 + Math.sin(1.2) * d + Math.cos(1.2) * s, z = -16 + Math.cos(1.2) * d - Math.sin(1.2) * s; return { x, y: g.groundY(x, z, 1e3), z }; };
+        g.loot.item(at(11, -2.4), 'lens', 1, 0.15); g.loot.item(at(12, -0.6), 'core', 1, 0.15); g.loot.item(at(12, 1.4), 'heartcrate', 1, 0.15); g.loot.item(at(10.5, 3), 'scrap', 1, 0.15);
+        await G.secs(1.8); G.quiet();
+      },
+      async act(G, g) { await G.secs(0.75); const p = g.player; p.teleport(p.pos.x + Math.sin(1.2) * 4.5, p.pos.y, p.pos.z + Math.cos(1.2) * 4.5, 1.2); } },
+    { name: 'world-steps', every: 5, cells: 8, crop: [0, 0.5, 1, 0.36],
+      async setup(G, g) {
+        arm(G, g, 5, 'shop_blade');
+        // ?surf=dirt: the same run with the ground read as bare dirt, to see that recipe's look
+        const at = [52, -16], surf = new URLSearchParams(location.search).get('surf');
+        if (surf) g.fx.surface = () => surf;
+        G.place(at[0], at[1], PI / 2); G.cam(PI, 0.1, 0.7); await G.secs(0.4); G.quiet();
+        g.input.stick = { active: true, ox: 86, oy: 724, x: 1, y: 0 }; g.input.press('sprint');
+        await G.secs(0.8);
+      },
+      async act() {} },
+    { name: 'world-horse', every: 5, cells: 8, hour: 14, crop: [0, 0.3, 1, 0.44],
+      async setup(G, g) {
+        const h = G.interactable('horse_mount');
+        G.place(h.pos.x + 1, h.pos.z + 1, -PI / 2); await G.secs(0.3); h.onUse();
+        G.cam(PI / 2 + 0.3, 0.14, 1.0);
+        g.input.stick = { active: true, ox: 86, oy: 724, x: 0, y: -1 }; g.input.press('sprint');
+        await G.secs(2.9); G.quiet();
+      },
+      async act() {} },
+    { name: 'world-hover', every: 5, cells: 8, hour: 14, crop: [0, 0.42, 1, 0.5],
+      async setup(G, g) {
+        const h = G.interactable('board_rack');
+        G.place(h.pos.x, h.pos.z + 3, 0); await G.secs(0.3); h.onUse();
+        G.cam(PI + 0.5, 0.26, 1.0);
+        g.input.stick = { active: true, ox: 86, oy: 724, x: 0, y: -1 };
+        await G.secs(1.0); G.quiet();
+      },
+      async act() {} },
     { name: 'world-levelup', every: 6, cells: 12,
       async setup(G, g) { arm(G, g, 5, 'shop_blade'); G.place(52, -16, 1.2); G.cam(1.2 + PI, 0.2, 1.0); await G.secs(0.5); G.quiet(); },
       async act(G, g) { g.fx.levelUp(g.player.pos); await G.secs(0.6); g.fx.heal(g.player.pos); await G.secs(0.35); g.fx.pickup(g.player.pos); } },
@@ -251,11 +288,33 @@
       if (sc.measure) {
         const r = { calls: 0, tris: 0, fx: 0, fxAtWorst: 0 };
         const end = H.frame + sc.measure * 60;
+        // who made the calls: every draw is tallied by what it belongs to (the scene child it hangs from, or
+        // the robot or person it is part of) and whether it was a shadow pass; the worst frame's tally is kept
+        const gl = g.renderer.gl, direct = gl.renderBufferDirect.bind(gl);
+        let tally = {};
+        const names = new WeakMap();
+        const where = {};
+        const owner = (o) => {
+          let top = o, who = '';
+          while (top.parent && !top.parent.isScene) { top = top.parent; if (!who && top.userData && (top.userData.mob || top.userData.kind)) who = String(top.userData.kind || 'mob'); }
+          if (g.fx.group === top) return 'fx';
+          if (who || top.name) return who || top.name;
+          // an unnamed thing is called by the first name found inside it, and where it stands
+          if (!names.has(top)) { let n = ''; top.traverse((c) => { if (!n && c.name) n = c.name; }); names.set(top, top.type + '<' + n + '>'); }
+          return names.get(top) + (Math.hypot(top.position.x - g.player.pos.x, top.position.z - g.player.pos.z) > 40 ? ' far' : '');
+        };
+        gl.renderBufferDirect = (camera, scene, geometry, material, object, group) => {
+          const k = owner(object) + (object.name ? '/' + object.name : '') + '[' + (geometry.name || (geometry.attributes.position ? geometry.attributes.position.count : 0)) + ']' + (material.isMeshDepthMaterial || material.isMeshDistanceMaterial || /depth|shadow/i.test(material.name || '') ? ' (shadow)' : '');
+          tally[k] = (tally[k] || 0) + 1;
+          if (!where[k]) { const e = object.matrixWorld.elements; where[k] = Math.round(e[12]) + ' ' + Math.round(e[13]) + ' ' + Math.round(e[14]) + ' ' + (material.name || material.type) + ' ' + Object.keys(object.userData || {}).join('|') + (object.isInstancedMesh ? ' inst' + object.count : ''); }
+          return direct(camera, scene, geometry, material, object, group);
+        };
         G._waiters.push(() => {
           const i = g.renderer.gl.info.render, f = fxCalls(g);
           // who else is on screen at the worst frame: the effects layer is only ever a handful of these calls
-          if (i.calls > r.calls) { r.calls = i.calls; r.fxAtWorst = f; r.robots = g.mobs.list.filter((m) => m.alive).length; r.frame = H.frame; }
+          if (i.calls > r.calls) { r.calls = i.calls; r.fxAtWorst = f; r.robots = g.mobs.list.filter((m) => m.alive).length; r.frame = H.frame; r.who = Object.entries(tally).sort((x, y) => y[1] - x[1]).slice(0, 16).map((e) => e[0] + ':' + e[1] + ' @' + where[e[0]]).join(', '); r.hero = Math.round(g.player.pos.x) + ' ' + Math.round(g.player.pos.z); }
           r.tris = Math.max(r.tris, i.triangles); r.fx = Math.max(r.fx, f);
+          tally = {};
           return H.frame >= end;
         });
         await sc.act(G, g);

@@ -227,7 +227,7 @@ export class Game {
     this.player.onStep = () => {
       const p = this.player;
       this.sfx(this.surfaceSound(), { vol: p.sprinting ? 0.55 : 0.4, pitch: 0.92 + Math.random() * 0.16 });
-      if (p.sprinting) this.fx.dust(p.pos, 1, 0.7);
+      this.fx.play('step', p.pos, undefined, -1, 1, p.sprinting ? 1 : 0);
     };
     this.player.onJump = (dbl) => {
       this.sfx(dbl ? 'jump_double' : 'jump');

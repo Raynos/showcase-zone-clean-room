@@ -248,7 +248,7 @@ class Mounts implements System, MountApi {
     g.sfx('hoof', { vol: v, pitch: pt, pos });
     if (gallop) { g.sfx('hoof', { vol: v * 0.9, pitch: pt * 1.08, pos, delay: 0.07 }); g.sfx('hoof', { vol: v * 0.8, pitch: pt * 0.94, pos, delay: 0.15 }); }
     else if (speed >= 3.4) g.sfx('hoof', { vol: v * 0.8, pitch: pt * 1.06, pos, delay: 0.1 });
-    if (speed > 6) g.fx.dust(pos, gallop ? 3 : 1, gallop ? 1.0 : 0.7);
+    if (speed > 3.4) g.fx.play('step', pos, undefined, -1, 1.2, gallop ? 2 : 1);
     if (gallop && this.hState === 'ridden') { g.haptic(6); g.cameraRig.shake(0.035); }
   }
   private rideUpdate(p: Player, dt: number) {
@@ -707,10 +707,10 @@ class Mounts implements System, MountApi {
     b.update(dt, clamp01(0.25 + sp / 14));
     // underglow wash + speed feel
     this.glowT -= dt;
+    if (sp > 3) g.fx.tail(this, this.c, PAL.cyan, 'hover');
     if (this.bGround && sp > 3 && this.glowT <= 0) {
       this.glowT = 0.05;
-      g.fx.emit(this.c, { count: 1, speed: [0.2, 0.8], life: [0.25, 0.5], size: [0.18, 0.34], grow: 0.3, color: PAL.cyan, glow: 2.2, alpha: 0.5, gravity: -0.5, sprite: SP.DOT, radius: 0.25 });
-      if (sp > 9 && Math.random() < 0.4) g.fx.dust(this.c, 1, 0.7);
+      g.fx.play('hover.wash', this.c, undefined, PAL.cyan, 1, clamp01(sp / 14));
     }
     const k = clamp01((sp - 6) / 9);
     g.fovExtra = damp(g.fovExtra, k * 12, 4, dt);

@@ -216,6 +216,11 @@ class Pool {
 
 // ---------------------------------------------------------------------------------------------
 const _c1 = new THREE.Color(), _c2 = new THREE.Color(), _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion();
+const TAILS = {
+  loot: { row: RB.BEAM, width: 0.16, life: 0.22, glow: 1.4, core: 0.6, tile: 0.5 } as FollowLook,
+  // part paint, part light: light alone is lost on pale concrete at noon
+  hover: { row: RB.BEAM, width: 0.8, life: 0.7, glow: 1.3, core: 0.35, add: 0.2, tile: 0.35 } as FollowLook,
+};
 const _ba = new THREE.Vector3(), _bb = new THREE.Vector3(), _bd = new THREE.Vector3();
 const _m = new THREE.Matrix4(), _s = new THREE.Vector3(), _e = new THREE.Euler();
 const UP = new THREE.Vector3(0, 1, 0), ZP = new THREE.Vector3(0, 0, 1);
@@ -501,6 +506,31 @@ export class FX {
   trail(): Trail { return this.ribbons.trail(); }
   /** A tail behind a moving thing; call every frame with the same key. */
   follow(key: object, pos: { x: number; y: number; z: number }, color: number, look: FollowLook) { if (this.inReach(pos)) return; this.ribbons.follow(key, pos.x, pos.y, pos.z, color, look); }
+  /** A tail of a named kind behind something that moves (call every frame it moves): 'loot' flying to the hero, 'hover' behind a board. */
+  tail(key: object, pos: { x: number; y: number; z: number }, color: number, kind: keyof typeof TAILS) { this.follow(key, pos, color, TAILS[kind]); }
+  /**
+   * The light standing on a dropped item, for this frame: a thin column in the item's rarity colour with the
+   * light running up it, taller and wider with `rank` (0 has none), and a mote let go now and then.
+   * `t`: seconds it has lain there (it rises in over the first half second).
+   */
+  lootBeam(x: number, y: number, z: number, color: number, rank: number, t: number) {
+    if (rank <= 0) return;
+    const c = this.camPos, rb = this.ribbons;
+    let sx = z - c.z, sz = -(x - c.x); const sl = Math.hypot(sx, sz);
+    if (sl < this.reach || sl > 90) return;
+    sx /= sl; sz /= sl;
+    _c1.setHex(color);
+    const up = Math.min(1, Math.max(0, t) * 2), h = (1.7 + rank * 0.9) * up * (2 - up), w = (0.1 + rank * 0.035) * (0.9 + 0.1 * Math.sin(this.time * 3 + x)), u0 = -this.time * 0.9;
+    for (let pass = 0; pass < 2; pass++) {
+      const ww = pass ? w * 0.3 : w, g = pass ? 1.1 : 0.9 + rank * 0.1, r = pass ? 1 : _c1.r, gg = pass ? 1 : _c1.g, b = pass ? 1 : _c1.b, hh = pass ? h * 0.6 : h;
+      rb.imBegin();
+      for (let i = 0; i < 4; i++) {
+        const k = i / 3, a = Math.pow(1 - k, 1.3), yy = y + hh * k;
+        rb.imPoint(x - sx * ww, yy, z - sz * ww, x + sx * ww, yy, z + sz * ww, u0 + k * hh / 1.6, r * g * a, gg * g * a, b * g * a, a, RB.BEAM, 0, pass ? 1 : 0.3, 1);
+      }
+    }
+    if (Math.random() < 0.06 * rank) this.play('loot.mote', _ba.set(x, y, z), UP, color, h);
+  }
   private inReach(p: { x: number; y: number; z: number }) { const c = this.camPos; return Math.hypot(p.x - c.x, p.y - c.y, p.z - c.z) < this.reach; }
   /**
    * A projectile in flight, once a frame: its tail, its head, and for the shaped ones (the Arc Wave's
