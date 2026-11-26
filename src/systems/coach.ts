@@ -1,17 +1,21 @@
 import type { Game, System } from '../game';
 import { icon } from '../ui/icons';
 
-/** `at` is the control the tip teaches: the HUD pulses it while the tip is up (hud.tip). */
-interface Tip { id: string; touch: string; desk: string; title: string; at?: string }
+/**
+ * `at` is the control the tip teaches: the HUD pulses it while the tip is up (hud.tip). `when`, if
+ * given, must still hold when the tip's turn comes, or it goes back unshown to fire another time
+ * (a kit tip queued in a fight must not appear at full health with no kit button on screen).
+ */
+interface Tip { id: string; touch: string; desk: string; title: string; at?: string; when?: (g: Game) => boolean }
 /** a key cap for a desktop's wording, a control's own glyph for a phone's */
 const K = (k: string) => `<kbd>${k}</kbd>`, G = (id: string) => icon(id, 14, 2.3);
 const TIPS: Record<string, Tip> = {
   move: { id: 'move', title: 'Getting around', at: 'stick', touch: 'Drag on the left to move, anywhere else to look.', desk: `${K('W')}${K('A')}${K('S')}${K('D')} move, the mouse looks. ${K('Shift')} sprints.` },
-  quest: { id: 'quest', title: 'Find work', touch: 'A yellow ! means a job. Walk up and tap the prompt.', desk: `A yellow ! means a job. Walk up and press ${K('E')}.` },
+  quest: { id: 'quest', title: 'Find work', when: (g) => Object.keys(g.state.d.quests).length === 0, touch: 'A yellow ! means a job. Walk up and tap the prompt.', desk: `A yellow ! means a job. Walk up and press ${K('E')}.` },
   gate: { id: 'gate', title: 'The live yard', touch: 'East of the Blast Wall the robots are hostile.', desk: 'East of the Blast Wall the robots are hostile.' },
-  fight: { id: 'fight', title: 'Fighting', at: 'attack', touch: 'Tap to attack. Keep tapping to chain a combo.', desk: `Left click attacks: keep clicking to combo. ${K('Tab')} next target.` },
+  fight: { id: 'fight', title: 'Fighting', at: 'attack', touch: 'Tap to attack. Keep tapping to chain a combo.', desk: `Right click once to take the mouse, then left click attacks: keep clicking to combo. ${K('Tab')} next target.` },
   dodge: { id: 'dodge', title: 'Read the floor', at: 'dodge', touch: `Red on the ground? Roll out with ${G('dodge')}.`, desk: `Red on the ground? Roll out with ${K('C')}.` },
-  kit: { id: 'kit', title: 'Repair kits', at: 'kit', touch: `Low on health? Tap ${G('potion')} for a repair kit.`, desk: `Low on health? ${K('H')} uses a repair kit.` },
+  kit: { id: 'kit', title: 'Repair kits', at: 'kit', when: (g) => !g.player.dead && g.state.count('kit') > 0 && g.state.d.hp < g.state.maxHp * 0.6, touch: `Low on health? Tap ${G('potion')} for a repair kit.`, desk: `Low on health? ${K('H')} uses a repair kit.` },
   skills: { id: 'skills', title: 'Skills', at: 'skill1', touch: 'Cyan buttons are skills. They cost energy.', desk: `${K('Q')} and ${K('R')} are skills. They cost energy.` },
   level: { id: 'level', title: 'Level up', touch: 'New weapons open by level at the shop.', desk: 'New weapons open by level at the shop.' },
   swap: { id: 'swap', title: 'Two weapons', at: 'swap', touch: 'Tap the weapon chip to switch. Hold it for the wheel.', desk: `${K('F')} switches between your two weapons.` },
@@ -57,6 +61,7 @@ export class Coach implements System {
     if (this.gap > 0) return;
     for (let i = 0; i < this.queue.length; i++) {
       const t = this.queue[i];
+      if (t.when && !t.when(g)) { this.queue.splice(i--, 1); continue; }
       if (!g.hud.tip({ title: t.title, text: g.hud.touchUi ? t.touch : t.desk, at: t.at, secs: 6 })) continue;
       this.queue.splice(i, 1);
       this.done(t.id);
