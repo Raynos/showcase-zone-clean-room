@@ -253,6 +253,8 @@ export class Quests {
       html += '</div>';
     }
     html += this.game.grind?.trackerLine() ?? '';
+    // after the Titan: what after hours offers, until each has been tried (systems/overtime/handover.ts)
+    if (act.length < 3) html += (this.game as unknown as { overtime?: { hand?: { trackerLine(): string } } }).overtime?.hand?.trackerLine() ?? '';
     // (the HUD owns how a changing line appears: one cross-fade, then it holds: hud.setTracker)
     if (html !== this.trackerSig) { this.trackerSig = html; this.game.hud.setTracker(html); }
     void ITEMS;

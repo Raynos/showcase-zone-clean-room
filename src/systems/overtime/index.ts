@@ -5,6 +5,7 @@ import type { Mob, MobOpts } from '../mobs';
 import type { Tally } from '../tally';
 import { choose } from './choose';
 import { Heroic } from './heroic';
+import { HandOver } from './handover';
 import { LongShift } from './longshift';
 import { Orders } from './orders';
 import { clock, otSave } from './save';
@@ -16,6 +17,8 @@ import { clock, otSave } from './save';
  */
 export class Overtime {
   heroic: Heroic; orders: Orders; shift: LongShift;
+  /** the ending's hand-over: the return to Brask, then each after-hours offer in the world (handover.ts) */
+  hand: HandOver;
   /** the device clock the day and week come from (tests swap `clock.now`, never the system clock) */
   clock = clock;
   private handT = 0;
@@ -25,6 +28,7 @@ export class Overtime {
     this.orders = new Orders(g);
     this.heroic = new Heroic(g, (on, n) => this.orders.note(on, n));
     this.shift = new LongShift(g, (on, n) => this.orders.note(on, n));
+    this.hand = new HandOver(g);
     // every robot spawned while a run or an order wants it raised goes through here (systems/mobs.ts calls its own spawn too)
     const mobs = g.mobs as unknown as { spawn(kind: RobotKind, o: MobOpts): Mob };
     const spawn = mobs.spawn.bind(mobs);
@@ -78,7 +82,7 @@ export class Overtime {
   private handOver() {
     const g = this.game, o = otSave(g);
     o.handed = 1; g.state.touch(); g.state.save();
-    g.hud.banner('AFTER HOURS', 'Overtime · backhaul orders · the Long Shift', 'reward');
+    g.hud.banner('AFTER HOURS', 'Backhaul orders at the board · overtime at the portals · the Long Shift at the gauntlet', 'reward');
     g.sfx('quest_complete');
     g.hud.log("After hours: Brask's overtime is open at the vault and arena portals, backhaul orders at the town board, and the Long Shift at the gauntlet. The Tally Book in the menu keeps the records.", 'quest');
     setTimeout(() => g.hud.tip({ title: 'After hours', text: 'Menu, then Tally: the work and its records', at: 'menu', secs: 9 }), 5200);
@@ -88,7 +92,10 @@ export class Overtime {
     const g = this.game;
     this.heroic.update(dt, rdt);
     this.shift.update(dt);
-    if (this.open && !otSave(g).handed && !g.interior && !g.travelling && g.player.controllable && !g.panels?.current) {
+    this.hand.update(rdt);
+    // (the AFTER HOURS headline waits for Cratefall to be handed in: before that the way back to Brask is the news)
+    const tq = g.state.d.quests.q_titan;
+    if (this.open && !otSave(g).handed && (!tq || tq.state === 'done') && !g.interior && !g.travelling && g.player.controllable && !g.panels?.current) {
       if ((this.handT += rdt) > 2.5) this.handOver();
     } else this.handT = 0;
   }

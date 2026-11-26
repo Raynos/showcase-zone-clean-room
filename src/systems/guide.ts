@@ -135,6 +135,11 @@ export class Guide implements System {
   }
   private pick(): Target | null {
     const g = this.game, qs = g.quests;
+    if (g.interior === 'arena' && g.state.flag('titan_dead') && qs.status('q_titan') === 'ready') {
+      // the Titan is down and Brask is waiting: the way out of the arena
+      const ex = g.interact.list.find((i) => i.id === 'arena_exit' && (!i.enabled || i.enabled()));
+      return ex ? { x: ex.pos.x, z: ex.pos.z, label: 'Way out' } : null;
+    }
     if (g.interior) return g.interior === 'vault' ? this.inVault() : null;
     for (const q of qs.active()) { const t = this.forQuest(q); if (t) return t; }
     for (const f of GUIDE_IDLE) { const t = f(); if (t) return t; }
