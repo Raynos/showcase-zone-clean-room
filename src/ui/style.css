@@ -168,7 +168,7 @@
 .tfx .fx { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--glass-2); box-shadow: inset 0 0 0 1.25px currentColor; }
 .tfx .fx.shock { color: var(--cyan); } .tfx .fx.burn { color: #ff8a3c; } .tfx .fx.jam { color: var(--purple); }
 .tfx .fx.guard { color: #9fd8ff; } .tfx .fx.mend { color: #7dffb0; }
-.tfx .fx.brk { width: auto; display: flex; gap: 3px; padding: 0 7px 0 5px; border-radius: 10px; color: #0b0e12; background: linear-gradient(180deg, #fff, #9ff6ff); box-shadow: none; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.tfx .fx.brk { width: auto; display: flex; gap: 3px; padding: 0 6px; border-radius: 10px; color: #0b0e12; background: linear-gradient(180deg, #fff, #9ff6ff); box-shadow: none; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .bossbar { position: relative; width: 100%; text-align: center; opacity: 0; transition: opacity .4s; }
 .bossbar.on { opacity: 1; pointer-events: auto; }
 .bossbar.down { transform: scale(.985); }
@@ -506,6 +506,7 @@ body.desktop .ibtn small { display: block; }
 .death.on .d-bar i { animation: d-run 3.4s linear forwards; }
 @keyframes d-run { to { transform: scaleX(0); } }
 .death .d-n { font-size: 12.5px; font-weight: 600; color: #ece6da; text-shadow: var(--tsh); }
-#ui.is-down .hud > .slot:not(.s-status) { opacity: .22 !important; transition: opacity .18s; pointer-events: none; }
+#ui.is-down .hud > :is(.slot:not(.s-status), .acts, .stick) { opacity: .16 !important; transition: opacity .18s; pointer-events: none; }
+#ui.is-down > .slot { opacity: 0 !important; }
 @media (orientation: landscape) and (max-height: 520px) { .death { padding-top: calc(var(--sat) + 15vh); gap: 3px; } .death .d-t { font-size: 38px; } }
 @media (prefers-reduced-motion: reduce) { .death.on .d-t { animation: none; } }

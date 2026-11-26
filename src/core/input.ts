@@ -50,6 +50,8 @@ export class Input {
   private btn = new Map<Btn, BtnState>();
   private keys = new Set<string>();
   private stickId = -1;
+  /** the thumb that was on the stick when a menu took the screen: it takes the stick up again if it is still down when the menu goes */
+  private heldStick = -1;
   private lookIds = new Map<number, { x: number; y: number; sx: number; sy: number; t: number; moved: number }>();
   private pinchDist = 0;
   private mouseLook = false;
@@ -145,6 +147,7 @@ export class Input {
       this.lookY -= e.movementY * 0.0024 * this.lookSensitivity * (this.invertY ? -1 : 1);
       return;
     }
+    if (e.pointerId === this.heldStick && this.stickId < 0 && !this.uiCapture) { this.stickId = e.pointerId; this.heldStick = -1; this.stick.active = true; }
     if (e.pointerId === this.stickId) {
       const R = 58;
       let dx = e.clientX - this.stick.ox, dy = e.clientY - this.stick.oy;
@@ -178,6 +181,7 @@ export class Input {
       if (e.button === 0 && this.pointerLocked) this.release('attack');
       if (e.button === 2 && this.pointerLocked) { this.release('dodge'); this.release('aim'); }
     }
+    if (e.pointerId === this.heldStick) this.heldStick = -1;
     if (e.pointerId === this.stickId) { this.endStick(); return; }
     const l = this.lookIds.get(e.pointerId);
     if (l) {
@@ -203,7 +207,7 @@ export class Input {
     return false;
   }
   /** Forget every finger on the stick and the view (a layout change moved the controls; nothing may stay held). */
-  cancelTouches() { this.endStick(); this.lookIds.clear(); this.pinchDist = 0; this.mouseLook = false; }
+  cancelTouches() { if (this.stickId >= 0) this.heldStick = this.stickId; this.endStick(); this.lookIds.clear(); this.pinchDist = 0; this.mouseLook = false; }
   private endStick() { this.stickId = -1; this.stick.active = false; this.stick.x = 0; this.stick.y = 0; }
 
   /** Call at the start of each frame, after reading the previous frame's edges is done. */

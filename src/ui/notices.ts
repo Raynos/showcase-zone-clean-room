@@ -94,7 +94,7 @@ export class Notices {
   tip(o: TipOpts): boolean {
     const fight = this.fighting();
     // the controls it teaches are away (a panel, a conversation, a cinematic): ask again
-    if (this.hud.away) return false;
+    if (this.hud.away || this.game.player.dead) return false;
     // the lane is free when nothing is on it and nothing that could show now is waiting (a headline held for after the fight does not count)
     if (this.cur || this.gap > 0 || this.q.some((n) => !fight || n.fight)) return false;
     if (fight && !o.at) return false;

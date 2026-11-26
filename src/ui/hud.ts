@@ -430,7 +430,7 @@ export class Hud {
       const st = this.game.state, lv = st.d.level, got: string[] = [];
       if (lv === SLOT3_LEVEL) got.push('Third skill open');
       if (lv === OVERDRIVE_LEVEL) got.push('Overdrive open');
-      if (st.perksFree > 0) got.push(st.perksFree === 1 ? '1 perk point' : `${st.perksFree} perk points`);
+      if (st.perksFree > 0) got.push(st.perksFree === 1 ? '1 perk point to spend' : `${st.perksFree} perk points to spend`);
       if (got.length) b2 = got.join(' · ');
     }
     this.notices.banner(b1, b2, cls);
@@ -447,6 +447,7 @@ export class Hud {
     void this.downEl.offsetWidth;
     this.downEl.classList.add('on'); this.root.classList.add('is-down'); this.downOn = true;
     this.notices.clear(); this.setTray(false); this.wheel.close(); this.releaseAll();
+    this.game.panels?.close(true);
   }
   /**
    * A first-time tip, in the notice lane. `at` names the control it teaches (an action, 'stick',
@@ -883,7 +884,8 @@ export class Hud {
       root.classList.toggle('broken', !!s && s.broken);
       if (!s) { fx.innerHTML = ''; continue; }
       bar.style.transform = `scaleX(${s.broken ? 1 : clamp01(s.stagger)})`;
-      const html = (s.broken ? `<span class="fx brk">${icon('broken', 12, 2.2)}Broken</span>` : '') + s.effects.map((e) => `<span class="fx ${e}">${icon(FX_ICON[e] ?? e, 13, 2.2)}</span>`).join('');
+      // the word BROKEN is the pop over the robot's head when it happens; here the state is the icon and the white bar
+      const html = (s.broken ? `<span class="fx brk" aria-label="Broken">${icon('broken', 12, 2.2)}</span>` : '') + s.effects.map((e) => `<span class="fx ${e}">${icon(FX_ICON[e] ?? e, 13, 2.2)}</span>`).join('');
       if (fx.innerHTML !== html) fx.innerHTML = html;
     }
   }
