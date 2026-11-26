@@ -274,6 +274,11 @@ recoil, reload), `ballistics.ts` (hit solving), `weakpoints.ts`,
   shoulder; a reload stays at the eyes with the weapon lowered and comes
   back up aimed. At the eyes the view narrows and the rifle shows a scope.
   Look speed while aimed is the setting (×0.8) times the zoom.
+- Riding a horse or on the zipline the hero cannot aim or fire (the
+  mount allows no attacks); the stance stays, a reload already started
+  finishes, and aim and fire come back on dismount.
+- Saved: the weapon in hand (so the stance) and the chosen special bolt.
+  Magazines are not saved; a loaded game starts with them full.
 - Recoil kicks the view up and sideways; it is real aim the player pulls
   back down. When firing stops the climb the player did not pull down
   recovers. A small camera punch per shot is visual only.
@@ -309,6 +314,23 @@ perfect aim, basic attacks only; seconds, then damage the camp tried to
 deal): three shielded Pallet Jacks: sword 6.5 / 87; weak points bow 5.6 / 0,
 crossbow 6.6 / 67, rifle 6.8 / 0; body shots 13.5 to 28.9. Four Crate Mites,
 which rush in: sword 4.1 / 0; weak points 5.2 to 5.9; body 6.3 to 9.6.
+
+Later bands (player one level over the camp, each class at its power for
+that level, log-linear between its weapon tiers; perfect aim on the most
+exposed weak point; seconds to clear; `shots/shooter2/ttk2.js`):
+
+| Target (player level)        | Sword | Bow  | Crossbow | Rifle |
+|------------------------------|-------|------|----------|-------|
+| Plumb Heights mixed camp (9) | 8.5   | 9.7  | 14.4     | 4.1   |
+| Slagworks mixed camp (12)    | 10.3  | 8.2  | 6.5      | 6.2   |
+| Rivet Row mixed camp (15)    | 10.6  | 9.2  | 9.1      | 8.9   |
+| Arc Field mixed camp (18)    | 10.6  | 9.0  | 11.9     | 8.2   |
+| Big Pallet, gate elite (6)   | 25.4  | 27.7 | 61.3     | 5.2   |
+| Vault Warden (12)            | 91.7  | 42.7 | 74.2     | 34.0  |
+
+The crossbow held on full auto against Big Pallet's shielded front lands
+one weak point in ten (bloom against a small target): a flank or bursts
+are the answer. The rifle row at level 6 is theoretical (it unlocks at 9).
 
 ### Weak points
 
