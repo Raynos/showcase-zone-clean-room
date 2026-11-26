@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Physics } from '../core/physics';
 import { foliageDepthMaterial } from '../gfx/foliage';
+import { CamOccluders, OCC_MIN } from '../core/camocc';
 import { Geo, type ColliderSpec } from '../gfx/geo';
 import { addLamp, bakeLamps, GroundOcc, lampLayer } from '../gfx/lighting';
 import { WorldMaterial } from '../gfx/material';
@@ -218,6 +219,8 @@ export class Chunks {
   private pending: Cell[] = [];
   private interior: string | null = null;
   group = new THREE.Group();
+  /** the drawn solid world the third-person lens may not pass through (core/camocc.ts), filled by build() */
+  readonly camOcc = new CamOccluders();
   /** A primitive stops drawing when it would cover fewer than about this many rendered pixels across. */
   lodPx = 2.5;
   /** the same, times this, in a landscape frame (see LOD_WIDE) */
@@ -250,7 +253,7 @@ export class Chunks {
   private surface: THREE.Mesh[] = [];
   /** Show the surface (null) or only the named groups whose name starts with the interior id. */
   show(interior: string | null) {
-    this.interior = interior;
+    this.interior = interior; this.camOcc.interior = interior;
     for (const m of this.surface) m.visible = !interior;
     for (const [name, m] of this.namedMeshes) m.visible = !!interior && name.startsWith(interior);
     for (const [name, m] of this.glowMeshes) m.visible = !!interior && name.startsWith(interior);
@@ -595,7 +598,36 @@ export class Chunks {
       }
     }
     occ?.finish();
+    this.collectCamOcc();
     this.pBox = []; this.pSt = []; this.pRef = []; this.pFlag = [];
+  }
+
+  /**
+   * Solid primitives big enough to hide the hero go to the camera's occluders, and so do a tree's trunk
+   * and limbs (the unswaying part of a foliage primitive); leaves, ground slabs and thin trim do not.
+   */
+  private collectCamOcc() {
+    const B = this.pBox, F = this.pFlag, R = this.pRef, occ = this.camOcc;
+    const names = new Map<Store, string>();
+    for (const [name, st] of this.extraStore) names.set(st, name);
+    for (let p = 0; p < F.length; p++) {
+      if (F[p] & P_FLAT) continue;
+      if (F[p] & P_LEAF) {
+        const SW = this.pSt[p].SW;
+        let sway = 0;
+        if (SW) for (let v = R[p * 4], e = v + R[p * 4 + 1]; v < e; v++) if (SW[v * 4] > sway) sway = SW[v * 4];
+        if (sway > 8) continue;
+      }
+      const b = p * 6, ex = B[b + 3] - B[b], ey = B[b + 4] - B[b + 1], ez = B[b + 5] - B[b + 2];
+      const big = Math.max(ex, ey, ez), small = Math.min(ex, ey, ez), mid = ex + ey + ez - big - small;
+      if (Math.sqrt(big * mid) < OCC_MIN) continue;
+      const st = this.pSt[p], P = st.P, I = st.I, group = F[p] & P_NAMED ? names.get(st) ?? '?' : '';
+      for (let i = R[p * 4 + 2], ie = i + R[p * 4 + 3]; i < ie; i += 3) {
+        const a = I[i] * 3, c = I[i + 1] * 3, d = I[i + 2] * 3;
+        occ.add(P[a], P[a + 1], P[a + 2], P[c], P[c + 1], P[c + 2], P[d], P[d + 1], P[d + 2], group);
+      }
+    }
+    occ.finish();
   }
 
   /** per render cell: lowest ground, and the top of whatever stands there */

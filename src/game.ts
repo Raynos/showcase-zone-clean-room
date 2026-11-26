@@ -169,6 +169,7 @@ export class Game {
     progress(0.86, 'SOWING GRASS');
     await tick();
     const st = this.chunks.build(this.physics);
+    this.cameraRig.occ = this.chunks.camOcc;
     if (this.dev) console.log('static world', st);
     this.scene.add(this.chunks.group);
     this.grass = new Grass(this.terrain, this.renderer.quality.grass);

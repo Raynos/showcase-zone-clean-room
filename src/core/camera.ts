@@ -1,11 +1,14 @@
 import * as THREE from 'three';
+import type { CamOccluders } from './camocc';
 import { CG, groups, RAY_WORLD, type Physics } from './physics';
 import { angleDiff, clamp, damp, dampAngle, lerp, smooth, vnoise, wrapAngle } from './util';
 
-const _v = new THREE.Vector3(), _dir = new THREE.Vector3(), _t = new THREE.Vector3();
+const _v = new THREE.Vector3(), _dir = new THREE.Vector3(), _t = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
 const _fq = new THREE.Quaternion(), _fe = new THREE.Euler(0, 0, 0, 'YXZ'), _fp = new THREE.Vector3(), _fd = new THREE.Vector3();
 /** radius of the ball swept for camera collision, metres */
 const LENS_R = 0.3;
+/** how far under the lens the drawn world must also be clear, metres (the bottom edge of the picture) */
+const DROP = 0.9;
 
 /** The player's camera setting. Switched only through `setView` (systems/view.ts). */
 export type View = 'third' | 'first';
@@ -173,7 +176,19 @@ export class CameraRig {
     return Math.abs(angleDiff(this.yaw + Math.PI, Math.atan2(p.x - pos.x, p.z - pos.z))) < cone;
   }
 
+  /** the drawn solid world (roofs, eaves, arches) the lens may not pass through; colliders alone miss it (core/camocc.ts) */
+  occ: CamOccluders | null = null;
+
   constructor(cam: THREE.PerspectiveCamera, private physics: Physics) { this.cam = cam; }
+
+  /**
+   * How far the lens may go from `o` along `d`, up to `len`: the nearer of the world colliders and the
+   * drawn solid world. Null when the way is clear.
+   */
+  private room(o: THREE.Vector3, d: THREE.Vector3, len: number, r: number): number | null {
+    const a = this.physics.spherecast(o, d, len, r, RAY_WORLD), b = this.occ ? this.occ.sweep(o, d, len, r) : null;
+    return a === null ? b : b === null ? a : Math.min(a, b);
+  }
 
   setAspect(aspect: number) {
     this.cam.aspect = aspect;
@@ -377,7 +392,12 @@ export class CameraRig {
     this.smoothT.z = damp(this.smoothT.z, _t.z, 18, dt);
     this.smoothT.y = damp(this.smoothT.y, _t.y, 9, dt);
     const pivot = this.target.copy(this.smoothT);
-    pivot.y += lerp(lerp(this.lift, this.bigLift, this.bigK), cfg.lift, sh);
+    const liftNow = lerp(lerp(this.lift, this.bigLift, this.bigK), cfg.lift, sh);
+    if (liftNow > 0) {
+      // the pivot rises from inside the hero: under a low eave, an awning or an arch it stops below it
+      const up = this.room(pivot, _up, liftNow + LENS_R, LENS_R * 0.8);
+      pivot.y += up === null ? liftNow : Math.max(0, Math.min(liftNow, up - LENS_R * 0.5));
+    } else pivot.y += liftNow;
     if (sh > 0.001) {
       // over the shoulder: the pivot moves out to the side (swept, so it never enters a wall) and the
       // lens looks straight down the aim from behind it, so the hero stands off the crosshair
@@ -386,7 +406,7 @@ export class CameraRig {
       const want = Math.max(cfg.frac * depth, HERO_HALF + cfg.clear * depth);
       const off = this.side * want * sh, sg = Math.sign(off) || 1, m = Math.abs(off);
       _v.set(Math.cos(this.yaw) * sg, 0, -Math.sin(this.yaw) * sg);
-      const room = this.physics.spherecast(pivot, _v, m, LENS_R * 0.8, RAY_WORLD);
+      const room = this.room(pivot, _v, m, LENS_R * 0.8);
       pivot.addScaledVector(_v, room === null ? m : Math.max(0, room - 0.02));
     }
 
@@ -394,7 +414,8 @@ export class CameraRig {
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
     _dir.set(Math.sin(this.yaw) * cp, sp, Math.cos(this.yaw) * cp);
     this.distWant = baseDist * lerp(1, this.bigDist, this.bigK) * lerp(1, 0.86, clamp(-this.pitch / 0.6, 0, 1));
-    // collision: sweep a ball the size of the lens from the pivot; pull in fast, ease out slowly
+    // collision: sweep a ball the size of the lens from the pivot against the colliders and the drawn
+    // solid world (roofs, eaves, arches carry no collider); pull in fast, ease back out slowly
     let maxD = this.distWant;
     const sweep = this.physics.spherecast(pivot, _dir, this.distWant, LENS_R, RAY_WORLD);
     if (sweep !== null) {
@@ -404,19 +425,31 @@ export class CameraRig {
         const hit = this.physics.raycast(pivot, _dir, this.distWant + 0.4, RAY_WORLD);
         if (hit) maxD = hit.dist - 0.35;
       }
-      // right down to the pivot if it must: the hero dissolves near the lens, a wall would not
-      maxD = clamp(maxD, 0.08, this.distWant);
     }
+    let drawn = this.occ ? this.occ.sweep(pivot, _dir, this.distWant, LENS_R) : null;
+    if (drawn !== null) maxD = Math.min(maxD, drawn - 0.05);
+    if (this.occ) {
+      // the bottom of the picture: an eave or a stall roof just under a lens that looks down over it
+      // would fill the lower third, so the line to a point under the lens must be clear as well
+      _v.copy(_dir).multiplyScalar(this.distWant); _v.y -= DROP;
+      const len = _v.length(); _v.multiplyScalar(1 / len);
+      const low = this.occ.sweep(pivot, _v, len, LENS_R * 0.6);
+      if (low !== null) { const d = (low / len) * this.distWant; maxD = Math.min(maxD, d - 0.05); drawn = Math.min(drawn ?? d, d); }
+    }
+    // right down to the pivot if it must: the hero dissolves near the lens, a wall would not
+    if (sweep !== null || drawn !== null) maxD = clamp(maxD, 0.08, this.distWant);
     const blocked = maxD < this.distWant - 0.05;
+    // in at once (a wall is never seen through); out again over about a second, so a post or an edge
+    // the line brushes past does not pump the lens in and out
     if (maxD < this.distCur) this.distCur = damp(this.distCur, maxD, 40, dt);
-    else this.distCur = damp(this.distCur, maxD, 4.5, dt);
+    else this.distCur = damp(this.distCur, maxD, maxD - this.distCur > 1.5 ? 3 : 2.2, dt);
     const cam = this.cam;
     cam.position.copy(pivot).addScaledVector(_dir, this.distCur);
     if (Math.abs(this.shoulder) > 0.01) {
       // the shoulder offset is collided too, so the lens never slides sideways into a wall
       const sg = Math.sign(this.shoulder);
       _v.set(Math.cos(this.yaw) * sg, 0, -Math.sin(this.yaw) * sg);
-      const room = this.physics.spherecast(cam.position, _v, Math.abs(this.shoulder), LENS_R * 0.8, RAY_WORLD);
+      const room = this.room(cam.position, _v, Math.abs(this.shoulder), LENS_R * 0.8);
       cam.position.addScaledVector(_v, room === null ? Math.abs(this.shoulder) : Math.max(0, room - 0.02));
     }
 

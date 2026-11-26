@@ -1,4 +1,5 @@
 import type { Game } from './game';
+import { startCamFade } from './systems/camfade';
 import { Coach } from './systems/coach';
 import { Guide } from './systems/guide';
 import { loadPieces } from './world/pieces';
@@ -78,4 +79,6 @@ export async function startSystems(game: Game) {
   // the living zone: cratefall events, other adventurers, zone chat
   const living = await opt('./systems/living.ts');
   try { living?.start?.(game); } catch (e) { console.warn('start failed ./systems/living.ts', e); }
+  // people and robots between the lens and the hero fade rather than block it
+  startCamFade(game);
 }
