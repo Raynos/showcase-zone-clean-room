@@ -11,6 +11,7 @@ import { SP } from '../gfx/fx';
 import { icon } from '../ui/icons';
 import { BANDS, BAND_GATES, bandAt, type Band } from '../world/layout';
 import type { Camp, Mob } from './mobs';
+import { bountiesOpen, enclosed, eventsOpen, screenBusy } from './intro';
 import type { Bounty, GrindSave } from './state';
 import '../ui/grind.css';
 
@@ -43,6 +44,8 @@ export class Grind {
   rare: Mob | null = null; private rareDef: RareDef | null = null; private rareT: number = RARE.first; private rareLife = 0;
   champ: Mob | null = null; private champRank = 0; private champName = ''; private champBand = 0; private champFar = 0;
   private refillT: number[] = [];
+  /** bounties have been dealt this session (they open with the first hand-in, systems/intro.ts) */
+  private opened = false;
   private tuneEl: HTMLElement; private tuneSig = '';
   private boostEl: HTMLElement | null = null;
   private rarePoi = { id: 'rare', x: 0, z: 0, icon: 'star', label: 'Rare', color: '#c79bff', big: true, show: () => !!this.rare && this.rare.alive };
@@ -292,13 +295,23 @@ export class Grind {
   // ------------------------------------------------------------------ bounties
   /** Keep three bounties for the band that fits the player; swap out any made for a band left behind. */
   ensureBounties() {
+    // none before the first job is handed in (systems/intro.ts)
+    if (!bountiesOpen(this.game)) return;
     const s = this.s, band = this.bandFor();
+    // an untouched bounty the player cannot work on yet (a ranged one, no ranged weapon) goes back in the pile
+    const ranged = this.hasRanged();
+    s.bounties = s.bounties.filter((b) => b.prog > 0 || b.kind !== 'ranged' || ranged);
     if (s.bountyBand !== band.id) {
       s.bounties = s.bounties.filter((b) => b.band >= band.id);
       s.bountyBand = band.id;
     }
     while (s.bounties.length + this.refillT.length < BOUNTY.slots) s.bounties.push(this.makeBounty(band, s.bounties));
     this.game.state.touch();
+  }
+  /** The player owns a bow, crossbow or rifle. */
+  private hasRanged(): boolean {
+    const st = this.game.state;
+    return st.d.weapons.some((id) => { const k = WEAPONS[id as WeaponId]?.kind; return k === 'bow' || k === 'crossbow' || k === 'rifle'; });
   }
   private makeBounty(band: Band, have: Bounty[]): Bounty {
     const g = this.game, s = this.s, lvl = Math.max(g.state.d.level, band.lo), kind = BAND_KIND[band.id], [one, many] = KIND_NAME[kind];
@@ -315,7 +328,9 @@ export class Grind {
     const gate = { 1: 'gatecrasher', 2: 'big_pallet', 3: 'plumb_prime', 4: 'slag_boss', 5: 'old_reliable', 6: 'foreman' }[band.id];
     const gateName = { 1: 'the Gatecrasher', 2: 'Big Pallet', 3: 'Plumb Line Prime', 4: 'Shift Boss Slag', 5: 'Old Reliable', 6: 'Foreman Unit 7' }[band.id];
     if (gate && (g.state.d.kills[gate] ?? 0) > 0) opts.push(() => ({ kind: 'elite', target: gate, n: 1, text: `Put ${gateName} down again`, w: 0.5 }));
-    const cand = opts.map((f) => f()).filter((o) => !used.has(o.kind));
+    // never one that needs a weapon the player does not own yet
+    const ranged = this.hasRanged();
+    const cand = opts.map((f) => f()).filter((o) => !used.has(o.kind) && (o.kind !== 'ranged' || ranged));
     let r = Math.random() * cand.reduce((a, o) => a + o.w, 0), o = cand[0];
     for (const c of cand) { r -= c.w; if (r <= 0) { o = c; break; } }
     const big = o.kind === 'elite' || o.kind === 'rare' ? 1.5 : 1;
@@ -365,7 +380,8 @@ export class Grind {
   /** The bounty nearest done, for the quest tracker. */
   trackerLine(): string {
     const bs = this.s.bounties;
-    if (!bs.length) return '';
+    // overworld business: not before the first hand-in, and not inside the vault, the gauntlet or the arena
+    if (!bs.length || !bountiesOpen(this.game) || enclosed(this.game)) return '';
     const b = [...bs].sort((a, c) => c.prog / c.n - a.prog / a.n)[0];
     return `<div class="q gr-bq"><div class="qt">${icon('skull', 12, 2.4)} Bounty${bs.length > 1 ? ` <i>+${bs.length - 1}</i>` : ''}</div><div class="qo">${esc(b.text)}${b.n > 1 ? ` <b>${b.prog}/${b.n}</b>` : ''}</div></div>`;
   }
@@ -461,7 +477,10 @@ export class Grind {
   // ------------------------------------------------------------------ the frame
   update(dt: number) {
     const g = this.game, st = g.state, p = g.player.pos;
-    if (!st.d.grind) this.ensureBounties();
+    if (!this.opened && bountiesOpen(g)) { this.opened = true; this.ensureBounties(); }
+    // bounties introduce themselves once, after the hand-in conversation has closed
+    if (this.opened && !st.flag('intro_bounties') && this.s.bounties.length && !screenBusy(g) && !enclosed(g)
+      && g.hud.tip({ title: 'Bounties', text: 'Side jobs that pay XP and scrip. The one nearest done shows under your quest; the board in town lists them all.', secs: 7 })) st.setFlag('intro_bounties');
     // streak heat drains after the grace
     this.since += dt;
     if (this.heat > 0 && this.since > STREAK.grace) {
@@ -483,8 +502,9 @@ export class Grind {
         if (this.rareLife <= 0 || g.interior) { if (!g.interior) this.say(`${m.name} wandered off.`, 'sys'); this.despawn(m); this.rare = null; this.rareT = rand(RARE.every[0], RARE.every[1]); }
         else if (Math.random() < dt * 6) { m.center(_v); g.fx.emit(_v, { count: 1, speed: [0.3, 1], up: 1.5, life: [0.5, 1], size: [0.06, 0.12], color: 0xc79bff, glow: 4, gravity: -1, sprite: SP.STAR, radius: m.radius }); }
       }
-    } else if (east) {
-      this.rareT -= dt;
+    } else if (east && eventsOpen(g)) {
+      // a named rare is zone news: it waits for zone events to have opened, and for the screen to be free
+      this.rareT = Math.max(this.rareT - dt, enclosed(g) || screenBusy(g) ? 0.01 : -1);
       if (this.rareT <= 0 && !this.spawnRare()) this.rareT = 30;
     }
     // champions
@@ -497,7 +517,7 @@ export class Grind {
         if (this.champFar > 20) { this.despawn(m); this.champ = null; this.s.bandKills[this.champBand] = Math.round(CHAMPION.every * 0.6); }
         else if (Math.random() < dt * 8) { m.center(_v); g.fx.emit(_v, { count: 1, speed: [0.4, 1.2], up: 2, life: [0.4, 0.8], size: [0.07, 0.14], color: 0xff5a3c, glow: 4, gravity: -1.5, sprite: SP.EMBER, radius: m.radius }); }
       }
-    } else if (east && g.mobs.inCombat <= 3) {
+    } else if (east && g.mobs.inCombat <= 3 && !enclosed(g) && !screenBusy(g)) {
       const b = bandAt(p.x, p.z);
       if (b && b.id >= this.bandFor().id - 1 && (this.s.bandKills[b.id] ?? 0) >= CHAMPION.every) { if (!this.spawnChampion(b)) this.s.bandKills[b.id] = CHAMPION.every - 5; }
     }

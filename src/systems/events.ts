@@ -10,6 +10,7 @@ import type { Game, System } from '../game';
 import { SP } from '../gfx/fx';
 import { BANDS, BAND_GATES, GATE, GAUNTLET, HALF, TITAN_GATE, VAULT_PORTAL, bandAt, ridgeAt, roadDist, type Band } from '../world/layout';
 import type { Cratefall, CrateDrop } from '../world/vista/traffic';
+import { enclosed, eventsOpen, noteLeftTown, screenBusy } from './intro';
 import type { Mob } from './mobs';
 import { icon } from '../ui/icons';
 import '../ui/living.css';
@@ -98,6 +99,10 @@ export class ZoneEvents implements System {
   count = 0;
   /** keep the beam out of the frame (measurement) */
   hidden = false;
+  /** the current event's banner and horn have played (they wait out a conversation or a cutscene) */
+  private announced = true;
+  /** the first cratefall's own introduction has been shown */
+  private introShown = false;
 
   constructor(private game: Game) {
     const g = game;
@@ -138,13 +143,8 @@ export class ZoneEvents implements System {
 
   /** the event is happening somewhere the player can be part of it */
   private live() { const g = this.game; return !g.interior; }
-  /** not now: inside, in the gauntlet's courts, under a boss */
-  private busy(): boolean {
-    const g = this.game;
-    if (g.interior || g.bossMob || g.hooks.arenaBusy?.()) return true;
-    const gs = (g.east as { gState?: string } | null)?.gState;
-    return !!gs && gs !== 'idle';
-  }
+  /** not now: inside, in the gauntlet's courts, under a boss (systems/intro.ts) */
+  private busy(): boolean { return enclosed(this.game); }
 
   // ------------------------------------------------------------------ where it lands
   /** The band the player can reach that fits their level. */
@@ -176,7 +176,8 @@ export class ZoneEvents implements System {
   pickAim(): { x: number; z: number } | null {
     const g = this.game;
     this.aimPt = null;
-    if (this.busy() || (this.ev && this.ev.phase !== 'opened' && this.ev.phase !== 'expired')) return null;
+    // the cratefall waits its turn: level 2 and a first trip out of town (systems/intro.ts)
+    if (!eventsOpen(g) || this.busy() || (this.ev && this.ev.phase !== 'opened' && this.ev.phase !== 'expired')) return null;
     const lvl = g.state.d.level, band = this.bandFor(lvl), p = g.player.pos;
     const inBand = bandAt(p.x, p.z)?.id === band.id;
     // where the player would come from: themselves when already out there, else the band's door
@@ -225,13 +226,25 @@ export class ZoneEvents implements System {
     };
     this.poi.x = drop.x; this.poi.z = drop.z; this.poi.label = gold ? 'Gold Supply Drop' : 'Supply Drop';
     this.beamM.uniforms.uColor.value.setHex(gold ? 0xffe066 : variant === 'storm' ? 0x9fd8ff : 0xffb43a);
-    // the horn, the banner
-    g.hud.banner(gold ? 'GOLD CRATEFALL' : 'CRATEFALL', `Supply drop inbound · ${band.name}`, 'lz-crate');
+    // the horn and the banner wait while a conversation, a menu or a cutscene has the screen
+    this.announced = false;
+    if (!screenBusy(g)) this.announce();
+    this.on.emit('start', this.ev);
+  }
+  /** The horn, the banner, the log line; the first cratefall of a save also says what it is. */
+  private announce() {
+    const g = this.game, e = this.ev;
+    this.announced = true;
+    if (!e || e.phase === 'opened' || e.phase === 'expired') return;
+    const gold = e.variant === 'gold', band = e.band;
+    if (e.first) g.hud.banner('CRATEFALL', `The freighter is dropping a supply crate · ${band.name}`, 'lz-crate');
+    else g.hud.banner(gold ? 'GOLD CRATEFALL' : 'CRATEFALL', `Supply drop inbound · ${band.name}`, 'lz-crate');
     g.sfx('wave_start', { vol: 0.9, pitch: 0.72 });
     g.sfx('lift_start', { vol: 0.6, pitch: 0.45, delay: 0.25 });
     g.haptic(30);
+    if (e.first) { g.cameraRig.shake(0.12); g.sfx('thunder', { vol: 0.35, pitch: 0.6, delay: 0.6 }); }
     g.hud.log(`Cratefall: a supply drop is coming down in ${band.name} (levels ${band.lo}-${band.hi}).`, 'quest');
-    this.on.emit('start', this.ev);
+    this.introShown = !e.first;
   }
   private landed(d: CrateDrop) {
     const e = this.ev;
@@ -388,7 +401,9 @@ export class ZoneEvents implements System {
   private restore() {
     let d: { x: number; z: number; band: number; level: number; variant: DropVariant; left: number; killed: number; guardN: number; trap: boolean; at: number } | null = null;
     try { const raw = localStorage.getItem(SAVE_KEY); d = raw ? JSON.parse(raw) : null; } catch { d = null; }
-    // a drop survives a reload, not an afternoon away
+    // a drop survives a reload, not an afternoon away; and a drop left by another save (a fresh start
+    // keeps local storage) is not shown to a player the cratefall has not been introduced to yet
+    if (!eventsOpen(this.game)) { this.forget(); return; }
     if (!d || !this.cf || Date.now() - d.at > 15 * 60 * 1000 || !(d.left > 5)) { this.forget(); return; }
     const band = BANDS.find((b) => b.id === d!.band);
     if (!band) return;
@@ -405,7 +420,15 @@ export class ZoneEvents implements System {
   // ------------------------------------------------------------------ per frame
   update(dt: number, rdt: number) {
     const g = this.game, cf = this.cf;
+    noteLeftTown(g);
     if (!cf) return;
+    // an announcement held back by a conversation or a cutscene plays once the screen is free; the first
+    // cratefall then says what it is (in the tip lane, when it has room)
+    if (!this.announced && !screenBusy(g)) this.announce();
+    if (this.announced && !this.introShown && this.ev && !screenBusy(g) && !this.busy()) {
+      if (this.ev.phase === 'opened' || this.ev.phase === 'expired') this.introShown = true;
+      else if (g.hud.tip({ title: 'Cratefall', text: 'A supply crate is falling where the beam stands. Beat its guards, then open it before the freighter takes it back.', secs: 8 })) this.introShown = true;
+    }
     // a pass has started: is its aimed crate our event?
     const passing = cf.nextPassIn() === 0;
     if (passing && !this.passing && this.aimPt) {
@@ -508,7 +531,8 @@ export class ZoneEvents implements System {
   }
 
   private drawCard(e: CrateEvent | null) {
-    const g = this.game, show = !!e && !g.interior && e.phase !== 'opened' && e.phase !== 'expired';
+    // the card is overworld news: not before the drop is announced, and not in the vault, the gauntlet or the arena
+    const g = this.game, show = !!e && this.announced && !this.busy() && e.phase !== 'opened' && e.phase !== 'expired';
     if (!show) { if (this.cardSig) { this.cardSig = ''; this.card.classList.remove('on'); } return; }
     const p = g.player.pos, dx = e!.x - p.x, dz = e!.z - p.z, d = Math.round(Math.hypot(dx, dz));
     // the arrow points the way on screen: the camera looks along -(sin yaw, cos yaw)
