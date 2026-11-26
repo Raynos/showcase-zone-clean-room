@@ -403,8 +403,8 @@ action. Three shapes, chosen by the screen alone:
      from the DOM; an open card also puts the two chips away).
   Robots are dots under the markers. An adventurer's dot is the blue of
   their nameplate. An area objective (a guide `Target` with `r`) is a
-  washed, dashed ring on the map and the minimap; standing inside it is
-  the marker; an objective that walks (an escort) is a dot with a beat
+  washed, dashed ring on the map and the minimap, and to someone inside
+  it the ring is the marker; one that walks (an escort) is a dot with a beat
   that eases after it.
 - **Fast travel** lives on the map. Every signal post is a marker: a lit
   one a disc in its colour with a beat, tapped to travel; a dark one a
