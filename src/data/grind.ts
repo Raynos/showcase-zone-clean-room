@@ -73,7 +73,9 @@ export const BOUNTY = {
   refresh: 40,
   /**
    * XP as a share of the level, scrip as kills' worth, and Field Training kills. At 0.05 the bot was
-   * paid 18-20% of levels 4-9 by bounties alone (QA, 2026-11-25); kills are meant to carry 70%.
+   * paid 18-20% of levels 4-9 by bounties alone (QA, 2026-11-25); kills are meant to carry 70%. At
+   * 0.025 bounties still paid 10-13% of levels 10-15 (QA, 2026-11-26): a share of the level grows
+   * with every level's length, so raising the band rate alone would push kills under 60%.
    */
-  xp: 0.025, scrip: 12, field: 15,
+  xp: 0.01, scrip: 12, field: 15,
 };

@@ -21,8 +21,10 @@ export const fieldXp = (level: number, min: number) => Math.round((killXp(level)
  * 5% of bands 1-3 (the town chain carries those) and 10% of bands 4-6 (where town quests thin out).
  * A band's share does not depend on its rate: both are priced from xpPerMin. In bands 1-3 a job's
  * minutes pay less than fighting, so a player who does them all takes about 2-3 minutes longer.
+ * Bands 4-6 halved to about 5% (QA, 2026-11-26): town quests still paid 9-12% of levels 10-15 and
+ * contracts 5-8%, so 10% from field quests left kills under 60% for a player who does them all.
  */
-export const FIELD_XP_SCALE = [0.19, 0.29, 0.36, 1.3, 1.65, 1.4];
+export const FIELD_XP_SCALE = [0.19, 0.29, 0.36, 0.65, 0.83, 0.7];
 const fieldQuestXp = (band: number, level: number, min: number) => Math.round((fieldXp(level, min) * FIELD_XP_SCALE[band - 1]) / 10) * 10;
 
 type P = [number, number];
