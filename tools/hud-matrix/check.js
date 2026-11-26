@@ -190,7 +190,8 @@
           boxes++;
           const cs = getComputedStyle(e);
           const own = [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim().length > 0);
-          const hit = e.matches('[data-a], [data-m], [data-t], .pn-slider, button, a[href], input') && cs.pointerEvents !== 'none';
+          // the conversation's whole-screen tap surface (.sc: a tap anywhere finishes the line) is not a button with edges
+          const hit = e.matches('[data-a], [data-m], [data-t], .pn-slider, button, a[href], input') && !e.matches('.sc') && cs.pointerEvents !== 'none';
           if (own) {
             const fs = parseFloat(cs.fontSize);
             if (fs < 10.95) push('tiny', name(e) + ' "' + e.textContent.trim().slice(0, 24) + '"', r, fs);

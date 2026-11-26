@@ -12,7 +12,6 @@
 
 .pn-scrim { position: absolute; inset: 0; z-index: 2; background: linear-gradient(180deg, rgba(6, 8, 11, .5), rgba(6, 8, 11, .82)); opacity: 0; transition: opacity var(--t-sheet); }
 .pn.on .pn-scrim { opacity: 1; pointer-events: auto; }
-.pn.dlg .pn-scrim { background: linear-gradient(180deg, rgba(6, 8, 11, 0) 38%, rgba(6, 8, 11, .7)); }
 
 /* ------------------------------------------------------------------ sheet */
 .pn-sheet { --c: var(--cut-sheet); position: absolute; z-index: 3; left: 0; right: 0; bottom: 0; height: 80%; max-height: calc(100% - var(--sat) - 50px); padding-bottom: var(--sab);
@@ -201,22 +200,6 @@ body.desktop .pn-kx { margin-right: -4px; }
 .pn-ctl em { padding: 3px 7px; font-size: 12px; font-weight: 800; white-space: nowrap; color: #d9d3c8; border-radius: 5px; background: linear-gradient(180deg, #2b323c, #171b21); box-shadow: 0 2px 0 #07090c, inset 0 1px 0 rgba(255, 255, 255, .16); }
 
 /* ------------------------------------------------------------------ dialogue */
-.pn-sheet.dialog .pn-body { flex: 0 1 auto; padding: 16px var(--gutter) 12px; }
-.pn-dhead { display: flex; align-items: center; gap: 12px; }
-.pd-disc { --rc: var(--orange); flex: none; width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; position: relative; color: var(--rc);
-  background: conic-gradient(from 215deg, color-mix(in srgb, var(--rc) 60%, #fff), color-mix(in srgb, var(--rc) 50%, #20252c) 22%, color-mix(in srgb, var(--rc) 80%, #fff) 46%, color-mix(in srgb, var(--rc) 35%, #0e1116) 70%, color-mix(in srgb, var(--rc) 60%, #fff) 88%, color-mix(in srgb, var(--rc) 60%, #fff)); box-shadow: 0 3px 8px rgba(0, 0, 0, .7), 0 0 16px color-mix(in srgb, var(--rc) 40%, transparent); }
-.pd-disc::before { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: radial-gradient(circle at 36% 22%, color-mix(in srgb, var(--rc) 35%, #4a5562), #1d222a 50%, #0b0e12); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .7), inset 0 2px 3px rgba(255, 255, 255, .25); }
-.pd-disc > * { position: relative; filter: drop-shadow(0 1px 1px #000); }
-.pn-dhead b { display: block; font-size: var(--fs-h); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; text-shadow: 0 2px 3px rgba(0, 0, 0, .7); }
-.pn-dhead small { font-size: var(--fs-cap); font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--orange); }
-.pn-dtext { position: relative; min-height: 86px; margin: 12px 0 10px; padding: 13px 32px 13px 16px; font-size: 16.5px; line-height: 1.42; color: #f6f1e7; border-radius: 3px var(--rad-2) var(--rad-2) 3px; background: var(--ink-0); box-shadow: var(--lit-well), 0 1px 0 rgba(255, 255, 255, .1), inset 3px 0 0 var(--orange); }
-.pn-dtext .ghost { visibility: hidden; }
-.pn-dtext .live { position: absolute; left: 16px; right: 32px; top: 13px; }
-.pn-dtext .more { position: absolute; right: 9px; bottom: 9px; color: var(--amber); opacity: 0; transform: rotate(90deg); }
-.pn-dtext.done .more { opacity: 1; animation: pn-bob 1s ease-in-out infinite; }
-.pn-dtext .pg { position: absolute; right: 30px; bottom: 7px; font-size: 11.5px; font-weight: 800; letter-spacing: .1em; color: var(--text-3); }
-@keyframes pn-bob { 0%, 100% { transform: rotate(90deg) translateX(0); } 50% { transform: rotate(90deg) translateX(3px); } }
-.pn-dch { display: grid; gap: 7px; }
 .pn-ch { min-height: 48px; padding: 6px 14px; display: flex; align-items: center; gap: 11px; font-size: 16px; font-weight: 700; transition: transform var(--t-press), filter var(--t-press); }
 .pn-ch span { flex: 1 1 0; min-width: 0; }
 .pn-ch .m { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 18px; font-weight: 900; color: #2a1406; background: radial-gradient(circle at 36% 26%, #fff3c4, var(--gold) 55%, #c98a1a); box-shadow: 0 0 0 1.5px #3a2a02, 0 2px 4px rgba(0, 0, 0, .6); }
@@ -410,10 +393,6 @@ body.desktop .pn-kx { margin-right: -4px; }
   .pn-foot .pn-acts .pn-btn { flex: 1 1 120px; }
   .pn-stats { grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); }
   .pn-sheet.map > .pn-body { margin: 0 2px 2px; }
-  .pn-sheet.dialog { top: auto; bottom: 20px; height: auto; max-height: calc(100% - 40px); min-height: 0; transform: translate(-50%, 24px); }
-  .pn.on .pn-sheet.dialog { transform: translate(-50%, 0); }
-  /* landscape: dock the dialogue to the right so the dialogue camera can frame the speaker on the left */
-  @media (orientation: landscape) { .pn-sheet.dialog { left: auto; right: calc(14px + var(--sar)); width: min(46%, 520px); transform: translate(0, 24px); } .pn.on .pn-sheet.dialog { transform: none; } }
   .pn-grab { height: 10px; }
   .pn-grab i { display: none; }
   .pn-body { padding-bottom: 18px; }
@@ -445,13 +424,6 @@ body.desktop .pn-kx { margin-right: -4px; }
   .pn-foot .pn-detail .dk { justify-content: flex-start; }
   .pn-sheet > .pn-tabs.on .pn-tab { min-height: var(--hit); }
   .pn-sheet > .pn-grab { height: 6px; }
-  .pn-sheet.dialog { max-height: calc(100% - 16px); bottom: 8px; }
-  .pn-dtext { min-height: 60px; font-size: 15px; margin: 8px 0; padding-top: 9px; padding-bottom: 9px; }
-  .pn-dtext .live { top: 9px; }
-  .pd-disc { width: 44px; height: 44px; }
-  /* the speaker's name on one line in the narrow dialogue column */
-  .pn-dhead > :not(.pd-disc) { min-width: 0; }
-  .pn-dhead b { font-size: 17px; letter-spacing: .03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 /* short phones (375x667 and smaller): reclaim height */
 @media (orientation: portrait) and (max-height: 700px) {
@@ -460,4 +432,86 @@ body.desktop .pn-kx { margin-right: -4px; }
   .tt-menu { gap: 8px; }
   .tt-btn.pri { min-height: 62px; }
   .ch-port { min-height: 150px; width: 108px; }
+}
+
+/* ------------------------------------------------------------------ conversation: a scene, not a sheet
+   The camera is on the speaker and the letterbox is down (systems/npcs.ts, through the rig's cinematic
+   hook). What is drawn here has no frame: the name and trade over one beat of large text at the foot of
+   the picture, the choices as a short stack at the thumb (under the words on a phone upright, at the
+   right on its side and on a desktop), and a quest's terms as a card in the headline's type. */
+.pn.dlg .pn-scrim { background: linear-gradient(180deg, rgba(6, 8, 11, 0) 30%, rgba(6, 8, 11, .5) 58%, rgba(6, 8, 11, .9)); }
+#ui:has(.pn.dlg.show) > .s-fps { visibility: hidden; }
+.pn > .pn-sheet.dialog { inset: 0; width: auto; height: auto; min-height: 0; max-height: none; padding: 0; background: none; clip-path: none; isolation: auto;
+  transform: none; opacity: 0; transition: opacity var(--t-sheet); }
+.pn.on > .pn-sheet.dialog { transform: none; opacity: 1; }
+.pn-sheet.dialog::before, .pn-sheet.dialog::after { display: none; }
+.pn-sheet.dialog > :not(.pn-body) { display: none; }
+.pn > .pn-sheet.dialog > .pn-body { display: block; flex: 1 1 auto; margin: 0; padding: 0; overflow: visible; touch-action: none; }
+
+.sc { --rc: var(--orange); position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 12px;
+  padding: calc(var(--sat) + 10px) calc(var(--sar) + 16px) calc(var(--sab) + 16px) calc(var(--sal) + 16px); color: #fff; text-align: center; }
+.sc-x { position: absolute; top: calc(var(--sat) + 8px); right: calc(var(--sar) + 10px); display: flex; align-items: center; gap: 8px; }
+.sc-x.press .pn-rb { filter: brightness(1.5); }
+.sc-say { position: relative; align-self: center; width: min(100%, 560px); padding-bottom: 14px; }
+.sc-who { display: flex; flex-direction: column; align-items: center; gap: 3px; margin-bottom: 8px; }
+.sc-who b { padding: 0 .5em 5px; font-size: 19px; font-weight: 800; letter-spacing: .13em; text-indent: .13em; text-transform: uppercase; line-height: 1.1; text-shadow: 0 2px 4px rgba(0, 0, 0, .95), 0 0 14px rgba(0, 0, 0, .7);
+  background: linear-gradient(90deg, transparent, var(--rc), transparent) bottom / 100% 1.5px no-repeat; }
+.sc-who small { font-size: 11.5px; font-weight: 800; letter-spacing: .18em; text-indent: .18em; text-transform: uppercase; color: var(--rc); text-shadow: 0 1px 3px #000, 0 0 10px rgba(0, 0, 0, .8); }
+.sc-line { margin: 0; min-height: 2.76em; font-size: 19px; font-weight: 600; line-height: 1.38; letter-spacing: .005em; color: #fbf7ee; text-shadow: 0 1px 2px #000, 0 0 3px rgba(0, 0, 0, .9), 0 0 16px rgba(0, 0, 0, .75); }
+.sc-line .off { visibility: hidden; }
+.sc-more { position: absolute; left: 0; right: 0; bottom: -4px; height: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--amber); opacity: 0; }
+.sc-more svg { transform: rotate(180deg); filter: drop-shadow(0 1px 2px #000); }
+.sc.wait .sc-more { opacity: 1; }
+.sc.wait .sc-more svg { animation: sc-bob 1s ease-in-out infinite; }
+@keyframes sc-bob { 0%, 100% { transform: rotate(180deg) translateY(0); } 50% { transform: rotate(180deg) translateY(-3px); } }
+
+.sc-side { align-self: center; width: min(100%, 440px); display: grid; gap: 10px; text-align: left; }
+.sc-side:empty { display: none; }
+.sc-ch { display: grid; gap: 7px; }
+.sc-ch .pn-ch { animation: sc-in var(--t-sheet) var(--ease) backwards; }
+.sc-ch .pn-ch:nth-child(2) { animation-delay: 30ms; } .sc-ch .pn-ch:nth-child(3) { animation-delay: 60ms; } .sc-ch .pn-ch:nth-child(n+4) { animation-delay: 90ms; }
+@keyframes sc-in { from { opacity: 0; transform: translateY(8px); } }
+.sc .pn-ch { min-height: 52px; padding: 6px 14px; font-size: 16.5px; }
+.sc .pn-ch em { margin-top: 1px; font-size: 11.5px; letter-spacing: .1em; }
+.sc .pn-ch.offer em { color: var(--gold); } .sc .pn-ch.ready em { color: #ffe9bf; }
+.sc .pn-ch.bye { justify-content: flex-start; text-align: left; min-height: var(--hit); }
+.sc .pn-ch.bye .m, .sc .pn-ch.svc .m { font-size: 0; }
+.sc .pn-ch.bye .m { background: #1c2128; color: var(--text-3); box-shadow: inset 0 0 0 1.5px #3a414b; }
+.sc .pn-ch.pri { min-height: 54px; font-size: 17px; }
+.sc .pn-ch.pri span { flex: 0 1 auto; }
+.sc .pn-ch kbd { flex: none; margin-left: auto; }
+.sc .pn-ch.pri kbd { margin-left: 4px; }
+/* a quest's terms, and its reward: the headline's type (gold, tracked, ruled), on a soft plate */
+.sc-card { padding: 11px 14px 12px; text-align: center; border-radius: var(--rad-3); background: rgba(8, 10, 14, .78); box-shadow: 0 0 0 1px rgba(255, 213, 106, .16), 0 6px 18px rgba(0, 0, 0, .5); animation: sc-in var(--t-sheet) var(--ease) backwards; }
+.sc-card > small { display: block; font-size: 11px; font-weight: 800; letter-spacing: .2em; text-indent: .2em; text-transform: uppercase; color: var(--amber); }
+.sc-card > b { display: block; margin: 3px 0 7px; padding: 0 0 6px; font-size: 18px; font-weight: 800; letter-spacing: .16em; text-indent: .16em; line-height: 1.15; text-transform: uppercase; color: var(--gold); text-shadow: 0 2px 3px rgba(0, 0, 0, .8);
+  background: linear-gradient(90deg, transparent, var(--gold), transparent) bottom / 100% 1px no-repeat; }
+.sc-card .ob { font-size: 14px; line-height: 1.4; color: #ece6da; }
+.sc-card .ob em { color: var(--amber); font-weight: 800; }
+.sc-card .pn-rew { justify-content: center; margin-top: 9px; }
+.sc-card.done > small { color: var(--green); }
+
+/* a phone on its side: the words at the foot of the left of the picture, the choices up the right edge */
+@media (orientation: landscape) {
+  .sc { display: grid; grid-template-columns: minmax(0, 1fr) min(40%, 330px); column-gap: 18px; align-items: end; justify-content: stretch; padding-bottom: calc(var(--sab) + 8px); }
+  .sc-say { grid-column: 1; grid-row: 1; justify-self: center; align-self: end; }
+  .sc-side { grid-column: 2; grid-row: 1; align-self: end; width: 100%; max-height: calc(100vh - var(--sat) - var(--sab) - 74px); }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  .sc-who { margin-bottom: 5px; } .sc-who b { font-size: 17px; }
+  .sc-line { font-size: 18px; line-height: 1.34; min-height: 2.68em; }
+  .sc .pn-ch { min-height: 46px; font-size: 15.5px; padding: 4px 12px; } .sc .pn-ch.pri { min-height: 48px; }
+  .sc-ch { gap: 6px; } .sc-side { gap: 7px; }
+  .sc-card { padding: 8px 12px 9px; } .sc-card > b { font-size: 16px; margin-bottom: 5px; padding-bottom: 5px; } .sc-card .ob { font-size: 13px; } .sc-card .pn-rew { margin-top: 6px; }
+}
+/* a desk: the words in the true centre, larger; the choices beside them */
+@media (min-width: 1100px) and (min-height: 600px) {
+  .sc { grid-template-columns: minmax(0, 1fr) minmax(0, 780px) minmax(0, 1fr); column-gap: 28px; padding-bottom: 6vh; }
+  .sc-say { grid-column: 2; width: 100%; }
+  .sc-side { grid-column: 3; justify-self: start; width: min(100%, 380px); }
+  .sc-who b { font-size: 24px; } .sc-who small { font-size: 13px; }
+  .sc-line { font-size: 26px; }
+  .sc .pn-ch { min-height: 54px; font-size: 18px; padding: 6px 16px; } .sc .pn-ch em { font-size: 12.5px; }
+  .sc-card > b { font-size: 21px; } .sc-card .ob { font-size: 15.5px; }
+  .sc-x { top: 22px; right: 26px; }
 }

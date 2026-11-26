@@ -20,6 +20,26 @@ const pnBase = async (G, g, o = {}) => {
   await G.secs(0.8); G.quiet();
 };
 const pnOpen = async (g, id, arg) => { g.panels.open(id, arg); await pnWait(450); };
+// Walk up to an NPC and start the real conversation (the NPC system puts the camera on them), then
+// finish the line: a conversation is judged with its words on screen, not mid-reveal. `acts` are
+// taps on the scene: ['offer'] opens the first job offered; 'end' taps through to the last beat.
+const pnTalk = async (g, id, acts = []) => {
+  const n = g.npcs.list.find((x) => x.id === id);
+  const yaw = n.baseYaw, x = n.x + Math.sin(yaw) * 2.3, z = n.z + Math.cos(yaw) * 2.3;
+  g.player.teleport(x, g.terrain.h(x, z), z, yaw + PN_PI);
+  g.cameraRig.snap(yaw + PN_PI, 0.14);
+  await pnWait(700);
+  g.npcs.startTalk(n);
+  await pnWait(1800);
+  const act = (a, v = '') => g.panels.view && g.panels.view.act(a, v);
+  for (const a of acts) {
+    if (a === 'offer') { const q = g.quests.forGiver(id).offer[0]; if (q) act('offer', q.id); }
+    else if (a === 'end') { for (let k = 0; k < 30 && !document.querySelector('.sc-side .sc-ch'); k++) { act('skip'); await pnWait(90); } }
+    await pnWait(300);
+  }
+  for (let k = 0; k < 3 && document.querySelector('.sc:not(.said)'); k++) { act('skip'); await pnWait(120); }
+  await pnWait(250);
+};
 const PN_STATES = [
   { n: 1, name: 'bag-items', what: 'Pack: the item grid with an item selected', hour: 11,
     async setup(G, g) { await pnBase(G, g); await pnOpen(g, 'bag'); const t = document.querySelector('.pn-body [data-a="sel"], .pn-body .pn-it[data-a]'); if (t) { g.panels.view.act(t.dataset.a, t.dataset.v, t); await pnWait(200); } } },
@@ -44,7 +64,7 @@ const PN_STATES = [
   { n: 11, name: 'settings-camera', what: 'Settings: camera, with the first-person sliders', hour: 11,
     async setup(G, g) { await pnBase(G, g); await pnOpen(g, 'menu', { tab: 'camera' }); } },
   { n: 12, name: 'dialogue', what: 'Talking to the Yardmaster: speaker, line, choices', hour: 11,
-    async setup(G, g) { await pnBase(G, g); g.panels.talk('quest1'); await pnWait(1400); } },
+    async setup(G, g) { await pnBase(G, g); await pnTalk(g, 'quest1'); } },
   { n: 13, name: 'shop', what: 'The armourer: weapons to buy, one selected', hour: 11,
     async setup(G, g) { await pnBase(G, g); await pnOpen(g, 'shop'); const t = document.querySelector('.pn-body .pn-it[data-a], .pn-body [data-a="sel"]'); if (t) { g.panels.view.act(t.dataset.a, t.dataset.v, t); await pnWait(200); } } },
   { n: 14, name: 'shop-sell', what: 'Selling salvage: the pack as a counter', hour: 11,
@@ -63,8 +83,9 @@ const PN_STATES = [
     async setup(G, g) { await pnBase(G, g); G.place(-30, 6, -PN_PI / 2); void g.panels.title(); await pnWait(900); } },
   { n: 21, name: 'death', what: 'Down: the fall and the way back', hour: 12.5,
     async setup(G, g) { await pnBase(G, g); G.place(40, 6, PN_PI / 2 + 0.3); G.cam(-PN_PI / 2 + 0.3, 0.1, 1); await G.secs(0.6); G.quiet(); g.state.d.hp = 0; g.combat.die(); await G.secs(1.3); } },
+  // G.quiet() mutes every later headline (tools/golden/lib.js); this state is the headline, so it takes the lane back
   { n: 22, name: 'level-up', what: 'The level-up moment', hour: 12.5,
-    async setup(G, g) { await pnBase(G, g, { level: 4 }); G.place(40, 6, PN_PI / 2 + 0.3); G.cam(-PN_PI / 2 + 0.3, 0.1, 1); await G.secs(3.2); G.quiet(); g.hud.notices.clear(); const lv = g.state.d.level; for (let i = 0; i < 400 && g.state.d.level === lv; i++) g.state.addXp(50); await G.secs(0.9); } },
+    async setup(G, g) { await pnBase(G, g, { level: 4 }); G.place(40, 6, PN_PI / 2 + 0.3); G.cam(-PN_PI / 2 + 0.3, 0.1, 1); await G.secs(3.2); G.quiet(); const lane = g.hud.notices; if (lane.__quiet) { delete lane.push; lane.__quiet = false; } lane.clear(); const lv = g.state.d.level; for (let i = 0; i < 400 && g.state.d.level === lv; i++) g.state.addXp(50); await G.secs(0.9); } },
   { n: 23, name: 'settings-aiming', what: 'Settings: aiming', hour: 11,
     async setup(G, g) { await pnBase(G, g); await pnOpen(g, 'menu', { tab: 'aiming' }); } },
   { n: 24, name: 'settings-display', what: 'Settings: display', hour: 11,
@@ -73,5 +94,11 @@ const PN_STATES = [
     async setup(G, g) { await pnBase(G, g); await pnOpen(g, 'menu', { tab: 'sound' }); } },
   { n: 26, name: 'settings-game', what: 'Settings: return to town, save, start over', hour: 11,
     async setup(G, g) { await pnBase(G, g); await pnOpen(g, 'menu', { tab: 'game' }); } },
+  { n: 27, name: 'dialogue-offer', what: 'A job offered: the last beat, its terms and reward, accept or not', hour: 11,
+    async setup(G, g) { await pnBase(G, g); await pnTalk(g, 'quest1', ['offer', 'end']); } },
+  { n: 28, name: 'dialogue-vendor', what: 'The armourer: her line and the counters she opens', hour: 11,
+    async setup(G, g) { await pnBase(G, g); await pnTalk(g, 'weapons'); } },
+  { n: 29, name: 'settings-comfort', what: 'Settings: motion, shake, bob and flashes', hour: 11,
+    async setup(G, g) { await pnBase(G, g); await pnOpen(g, 'menu', { tab: 'comfort' }); } },
 ];
 if (window.GOLDEN) window.GOLDEN.scenes = PN_STATES;

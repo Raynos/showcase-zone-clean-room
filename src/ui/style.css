@@ -401,6 +401,7 @@ body.desktop .ibtn small { display: block; }
 .note.head.danger .n-t { color: #ffd6cb; background-image: linear-gradient(90deg, transparent, #ff6a4a, transparent); } .note.head.danger .n-s { color: #ff9a80; }
 .note.head.zone .n-t { font-size: 15px; } .note.head.small .n-t { font-size: 15px; }
 .note.head.lz-crate .n-t { color: var(--gold); } .note.head.lz-crate .n-s { color: #ffe9bf; }
+.note.head.reward .n-t { color: var(--gold); background-image: linear-gradient(90deg, transparent, var(--gold), transparent); } .note.head.reward .n-s { font-size: 11.5px; letter-spacing: .12em; color: #ffe9bf; }
 .note.head.on { animation: notehead .5s cubic-bezier(.2, .9, .3, 1); }
 @keyframes notehead { 0% { transform: scale(1.14); opacity: 0; } 100% { transform: none; opacity: 1; } }
 /* a tip: what to do in a sentence; the control it is about pulses (.teach). A tap puts it away. */

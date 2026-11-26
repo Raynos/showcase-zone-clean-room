@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Btn } from '../core/input';
 import { clamp, clamp01, fmtNum } from '../core/util';
 import type { Game } from '../game';
+import { QUESTS } from '../data/quests';
 import { OVERDRIVE_LEVEL, SLOT3_LEVEL, WEAPONS } from '../data/weapons';
 import { BLAST_WALL } from '../world/layout';
 import { toggleView } from '../systems/view';
@@ -432,6 +433,11 @@ export class Hud {
       if (lv === OVERDRIVE_LEVEL) got.push('Overdrive open');
       if (st.perksFree > 0) got.push(st.perksFree === 1 ? '1 perk point to spend' : `${st.perksFree} perk points to spend`);
       if (got.length) b2 = got.join(' · ');
+    }
+    // a job handed in says what it paid under its name: the headline a level gets
+    if (b1 === 'QUEST COMPLETE' && !cls) {
+      const q = QUESTS.find((x) => x.name === b2);
+      if (q) { b2 = `${q.name} · +${fmtNum(q.xp)} XP · +${fmtNum(q.scrip)} scrip`; cls = 'reward'; }
     }
     this.notices.banner(b1, b2, cls);
   }
