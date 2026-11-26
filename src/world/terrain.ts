@@ -2,12 +2,16 @@ import * as THREE from 'three';
 import { clamp, clamp01 } from '../core/util';
 import { GU } from '../gfx/material';
 import { T } from '../gfx/textures';
+import { CASTER } from './chunks';
 import { HALF, LAKE, groundAt, heightRaw } from './layout';
 import { STORIES, STORY_GLSL, STORY_U } from './stories';
 
 export const TN = 250;          // cells per side
 export const TCELL = (HALF * 2) / TN; // 2 m
 const TV = TN + 1;
+/** rise per metre under which ground throws no shadow of its own (a sun six degrees up; lower than that it has no strength) */
+const CAST_SLOPE = 0.1;
+const _v = new THREE.Vector3();
 const MAP = 1024;
 
 export class Terrain {
@@ -270,11 +274,28 @@ ${STORY_GLSL}`)
       // off) 4 m blocks. A block on the slab's edge keeps the edge's middle vertex, as a fan about its
       // own centre, so a far slab meets a near one without a crack.
       const fine = CS * CS * 6, HB = CS / 2;
+      let castN = 0;
       const idx = new Uint16Array(fine + (HB * HB * 2 + HB * 4 * 3 + 8) * 3);
       let k = 0;
-      for (let j = 0; j < CS; j++) for (let i = 0; i < CS; i++) {
-        const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
-        idx[k++] = a; idx[k++] = d; idx[k++] = b; idx[k++] = a; idx[k++] = c; idx[k++] = d;
+      // The cells that can throw a shadow come first. A ray of sun that ends in shade left the ground through
+      // a slope steeper than the sun is high, so ground flatter than CAST_SLOPE (and not beside such a slope)
+      // shades nothing, and the shadow passes draw only the head of the list: none of it under the town.
+      const steep = (i: number, j: number) => {
+        const ix = clamp(cx * CS + i, 0, TN - 1), iz = clamp(cz * CS + j, 0, TN - 1);
+        const a = this.heights[iz * TV + ix], b = this.heights[iz * TV + ix + 1], c = this.heights[(iz + 1) * TV + ix], d = this.heights[(iz + 1) * TV + ix + 1];
+        return Math.max(a, b, c, d) - Math.min(a, b, c, d) > CAST_SLOPE * TCELL;
+      };
+      const castBox = new THREE.Box3();
+      for (let pass = 0; pass < 2; pass++) {
+        for (let j = 0; j < CS; j++) for (let i = 0; i < CS; i++) {
+          let casts = false;
+          for (let dj = -1; dj <= 1 && !casts; dj++) for (let di = -1; di <= 1; di++) if (steep(i + di, j + dj)) { casts = true; break; }
+          if (casts !== (pass === 0)) continue;
+          const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
+          idx[k++] = a; idx[k++] = d; idx[k++] = b; idx[k++] = a; idx[k++] = c; idx[k++] = d;
+          if (casts) for (const v of [a, b, c, d]) castBox.expandByPoint(_v.fromArray(pos, v * 3));
+        }
+        if (pass === 0) castN = k;
       }
       for (let j = 0; j < CS; j += 2) for (let i = 0; i < CS; i += 2) {
         const v = (di: number, dj: number) => (j + dj) * n + i + di;
@@ -309,11 +330,14 @@ ${STORY_GLSL}`)
       m.receiveShadow = true; m.castShadow = true;
       const box = g.boundingBox!;
       // (the far set from TERRAIN_FAR metres; a shadow is always thrown by the near one)
-      let far = false;
-      const set = (f: boolean) => { if (f !== far) { far = f; g.setDrawRange(f ? fine : 0, f ? coarse : fine); } };
-      m.onBeforeRender = (_r, _s, camera) => set(box.distanceToPoint(camera.position) > Terrain.FAR);
-      m.onBeforeShadow = () => set(false);
-      m.intersectsFrustum = (f) => (f as THREE.Frustum).intersectsBox(box);
+      // (and only by the head of it: the cells that can)
+      const casters = castN;
+      let drawn = 0;
+      g.setDrawRange(0, fine);
+      const set = (w: number) => { if (w !== drawn) { drawn = w; g.setDrawRange(w === 1 ? fine : 0, w === 1 ? coarse : w === 2 ? casters : fine); } };
+      m.onBeforeRender = (_r, _s, camera) => set(box.distanceToPoint(camera.position) > Terrain.FAR ? 1 : 0);
+      m.onBeforeShadow = () => set(2);
+      m.intersectsFrustum = (f) => (f === CASTER.frusta[0] || f === CASTER.frusta[1] ? casters > 0 && (f as THREE.Frustum).intersectsBox(castBox) : (f as THREE.Frustum).intersectsBox(box));
       m.matrixAutoUpdate = false;
       // after every other opaque mesh: the ground shader is the costliest per pixel and most of it
       // is covered by props, characters and grass. Only the sky (1000) draws later.
