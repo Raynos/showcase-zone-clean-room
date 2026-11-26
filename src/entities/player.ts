@@ -226,16 +226,30 @@ export class Player {
       else _gn.copy(h.normal);
       return _gn.y >= COS_WALK;
     }
-    // nothing under the centre (perched on an edge): go by what the capsule touches
+    // nothing under the centre (perched on an edge, or resting high on a steep face, where the
+    // contact is uphill of the centre): go by what the capsule touches. Built surfaces by their
+    // contact normal; the terrain by its own slope, never by a facet normal, and also when the
+    // controller reports ground through its snap with no contact at all (that was how a run of
+    // hops climbed a band ridge's 70-degree shoulder).
     const k = this.kcc, n = k.numComputedCollisions();
     let steep = false;
     for (let i = 0; i < n; i++) {
       const c = k.computedCollision(i);
       if (!c) continue;
+      const w = c.witness1;
+      if (c.collider && c.collider.shapeType() === RAPIER.ShapeType.TriMesh && Math.abs(w.y - g.terrain.h(w.x, w.z)) < 0.15) continue;
       if (c.normal1.y >= COS_WALK) return true;
       if (c.normal1.y > 0.05) { steep = true; _gn.set(c.normal1.x, c.normal1.y, c.normal1.z); }
     }
-    return !steep;
+    if (steep) return false;
+    // a plank or deck under the rim of the capsule (its edge) is footing, whatever the slope beneath it
+    for (let i = 0; i < 4; i++) {
+      const a = i * Math.PI / 2, r = RADIUS * 0.85;
+      const e = g.physics.raycast(_probe.set(p.x + Math.sin(a) * r, p.y + 0.45, p.z + Math.cos(a) * r), DOWN, 0.85, RAY_FOOT, this.collider);
+      if (e && !(e.collider.shapeType() === RAPIER.ShapeType.TriMesh && Math.abs(e.point.y - g.terrain.h(e.point.x, e.point.z)) < 0.12) && e.normal.y >= COS_WALK) return true;
+    }
+    if (p.y - g.terrain.h(p.x, p.z) < 1.6) { g.terrain.normal(p.x, p.z, _gn); return _gn.y >= COS_WALK; }
+    return true;
   }
   /** For mounts: is the ground under the capsule too steep to stand on (see WALK)? Its level downhill direction goes in `out`. */
   steepGround(out: THREE.Vector3): boolean {
