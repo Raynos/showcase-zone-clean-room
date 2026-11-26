@@ -1,0 +1,140 @@
+/* The Tally Book (ui/panels/tally.ts). Built on the panel family (components.css): its rows, bars, sections and
+   reward chips; what is here is only what the book adds. docs/HUD.md, "Tally Book". */
+
+/* ---------- how full the book is: a ring, a count, one line ---------- */
+.tb-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.tb-head > div { min-width: 0; }
+.tb-head .n { display: flex; align-items: baseline; gap: 7px; }
+.tb-head .n b { font-size: 30px; font-weight: 900; line-height: 1; letter-spacing: .01em; color: #fff; text-shadow: var(--ts); font-variant-numeric: tabular-nums; }
+.tb-head .n span { font-size: var(--fs-cap); font-weight: 800; letter-spacing: var(--track-cap); text-transform: uppercase; color: var(--text-2); }
+.tb-head small { display: block; margin-top: 5px; font-size: 12.5px; line-height: 1.3; color: var(--dim); }
+.tb-head.sm .n b { font-size: 24px; }
+.tb-ring { flex: none; }
+.tb-ring circle { fill: none; stroke-width: 5; }
+.tb-ring .tr { stroke: var(--ink-0); filter: drop-shadow(0 1px 0 rgba(255, 255, 255, .1)); }
+.tb-ring .fl { stroke: var(--gold); stroke-linecap: round; transition: stroke-dasharray .4s var(--ease); }
+.tb-ring.full .fl { stroke: var(--green); }
+.tb-ring text { font-size: 10.5px; font-weight: 900; fill: #fff; letter-spacing: 0; }
+
+/* ---------- the kinds of find: twelve tiles, four across on a phone, six in a window ---------- */
+.tb-cats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.tb-cat { position: relative; min-height: 54px; padding: 7px 8px 9px; box-sizing: border-box; border-radius: 10px; border: 1.5px solid transparent; display: grid; grid-template-columns: 17px minmax(0, 1fr); align-items: center; column-gap: 5px; row-gap: 3px;
+  color: var(--text-2); background: linear-gradient(180deg, #232931, #14181e) padding-box, var(--rim-soft) border-box; box-shadow: var(--lit); overflow: hidden; }
+.tb-cat svg { grid-row: 1; }
+.tb-cat span { grid-row: 1; font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-cat b { grid-column: 1 / -1; font-size: 15px; font-weight: 900; line-height: 1; color: var(--text); font-variant-numeric: tabular-nums; }
+.tb-cat b em { font-style: normal; font-size: 11.5px; font-weight: 700; color: var(--text-3); }
+/* how far along, as a line on the tile's foot */
+.tb-cat i { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255, 255, 255, .07); }
+.tb-cat i::after { content: ''; position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(var(--f, 0)); background: var(--gold); }
+.tb-cat.done i::after { background: var(--green); }
+/* a finished kind carries a tick in its corner: the state is a mark, not only the colour of the line */
+.tb-cat u { position: absolute; right: 5px; top: 5px; width: 14px; height: 14px; border-radius: 50%; display: grid; place-items: center; color: #06240f; background: var(--green); text-decoration: none; }
+.tb-cat.on { color: #ffe3bf; background: linear-gradient(180deg, #5a3413, #2a1808) padding-box, var(--rim-warm) border-box; box-shadow: var(--lit), 0 0 12px rgba(255, 154, 60, .3); }
+.tb-cat.on b { color: #fff; }
+.tb-cat.press { transform: scale(.96); filter: brightness(1.25); }
+body.desktop .tb-cat:hover:not(.on) { color: #fff; }
+
+/* ---------- entries: struck (a solid disc with a tick, the name in bold) or open (a dashed ring, the hint in lighter type) ---------- */
+.tb-area { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 14px 2px 6px; font-size: var(--fs-cap); font-weight: 800; letter-spacing: var(--track-cap); text-transform: uppercase; color: var(--text-2); }
+.tb-area b { font-weight: 800; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.tb-area.done b { color: var(--green); }
+.tb-list { border-radius: var(--rad-1); background: var(--ink-0); box-shadow: var(--lit-well), 0 1px 0 rgba(255, 255, 255, .08); }
+.tb-e { display: flex; align-items: flex-start; gap: 10px; min-height: 38px; padding: 9px 12px; box-sizing: border-box; border-top: 1px solid rgba(255, 255, 255, .06); }
+.tb-e:first-child { border-top: 0; }
+.tb-e .mk { flex: none; width: 18px; height: 18px; margin-top: 1px; box-sizing: border-box; border-radius: 50%; display: grid; place-items: center; border: 1.5px dashed #6c7480; color: transparent; }
+.tb-e span { font-size: 13.5px; line-height: 1.35; color: var(--text-2); }
+.tb-e.got .mk { border: 0; color: #06240f; background: var(--green); box-shadow: 0 0 8px rgba(110, 231, 160, .35); }
+.tb-e.got b { font-size: 14.5px; font-weight: 800; line-height: 1.35; letter-spacing: .02em; color: #fff; }
+
+/* ---------- by place ---------- */
+.tb-places { display: grid; gap: 8px; }
+.tb-places > div { display: grid; grid-template-columns: minmax(0, 1fr) 46%; align-items: center; gap: 12px; }
+.tb-places span { font-size: 14px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-places .pn-bar.kill { margin-top: 0; }
+
+/* ---------- rewards as chips ---------- */
+.pn-rew.tb-rw { margin-top: 8px; gap: 5px; }
+.pn-rew.tb-rw > span { height: 24px; padding: 0 9px 0 7px; font-size: 12.5px; border-radius: 12px; }
+.pn-rew.tb-rw > .rl { padding: 0 2px 0 0; }
+.pn-rew.tb-rw > .it { padding-left: 3px; color: var(--text); }
+.pn-rew.tb-rw .pn-it { width: 18px; border-width: 1px; border-radius: 5px; box-shadow: none; }
+.pn-rew.tb-rw .ttl { color: #dcd3ff; } .pn-rew.tb-rw .pk { color: var(--cyan); } .pn-rew.tb-rw .tn { color: var(--amber); } .pn-rew.tb-rw .fr { color: var(--text); }
+.pn-row.done .pn-rew.tb-rw > span:not(.rl) { opacity: .6; }
+
+/* ---------- sets ---------- */
+.tb-set .go { flex: none; width: 30px; display: grid; place-items: center; color: var(--text-3); }
+.tb-set.press { filter: brightness(1.2); }
+
+/* ---------- the freight track: its steps as pegs on one bar ---------- */
+.tb-track .grow > b em { margin-left: 8px; font-style: normal; font-size: 12.5px; font-weight: 700; color: var(--dim); }
+.tb-pegs { position: relative; height: 10px; margin: 12px 8px 20px 2px; border-radius: 5px; background: var(--ink-0); box-shadow: var(--lit-well), 0 1px 0 rgba(255, 255, 255, .08); }
+.tb-pegs > i { position: absolute; inset: 0; border-radius: 5px; transform-origin: 0 50%; background: linear-gradient(180deg, #ffd49a, var(--orange) 45%, var(--orange-deep)); }
+.tb-pegs span { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; box-sizing: border-box; border-radius: 50%; border: 2px solid #6c7480; background: #14181e; }
+.tb-pegs span.on { border-color: #fff; background: var(--green); }
+.tb-pegs span b { position: absolute; left: 50%; top: 15px; translate: -50% 0; font-size: 10.5px; font-weight: 800; color: var(--text-3); }
+.tb-pegs span.on b { color: var(--text); }
+.tb-track small { display: block; margin-top: 6px; font-size: 12px; color: var(--dim); }
+
+/* ---------- records: a card a run, with its medal row ---------- */
+.tb-recs { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 8px; }
+.tb-recs .pn-row { margin-bottom: 0; align-items: flex-start; }
+.tb-rec .grow { display: grid; gap: 9px; min-width: 0; }
+.tb-rec .rt { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.tb-rec .rt b { font-size: var(--fs-row); font-weight: 800; letter-spacing: .03em; }
+.tb-rec .bst { font-size: 18px; font-weight: 900; color: #fff; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tb-rec .bst em { margin-right: 6px; font-style: normal; font-size: var(--fs-cap); font-weight: 800; letter-spacing: var(--track-cap); text-transform: uppercase; color: var(--text-3); }
+.tb-rec .rule { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.tb-rec .rule em { flex: none; align-self: center; display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px 0 6px; border-radius: 10px; font-style: normal; font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #dcd3ff;
+  background: rgba(150, 124, 255, .16); box-shadow: inset 0 0 0 1px rgba(170, 148, 255, .5); }
+.tb-rec .rule span { font-size: 12.5px; line-height: 1.3; color: var(--text-2); }
+.tb-rec .wk { position: relative; padding: 7px 30px 8px 10px; border-radius: var(--rad-1); background: var(--ink-0); box-shadow: var(--lit-well), 0 1px 0 rgba(255, 255, 255, .08); }
+.tb-rec .wk .rl { font-size: var(--fs-cap); font-weight: 800; letter-spacing: var(--track-cap); text-transform: uppercase; color: var(--text-3); }
+.tb-rec .wk .pn-rew.tb-rw { margin-top: 5px; }
+.tb-rec .wk .pn-rew.tb-rw > span { background: #1a1f26; }
+.tb-rec .wk u { position: absolute; right: 8px; top: 8px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; color: #06240f; background: var(--green); text-decoration: none; }
+.tb-rec .grow > small { margin-top: 0; }
+.tb-rec .pn-bar.kill { margin-top: 0; }
+
+/* ---------- course medals: a table ---------- */
+.tb-table { border-radius: var(--rad-1); background: var(--ink-0); box-shadow: var(--lit-well), 0 1px 0 rgba(255, 255, 255, .08); }
+.tb-table > div { display: grid; grid-template-columns: minmax(0, 1fr) 62px 56px 66px; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border-top: 1px solid rgba(255, 255, 255, .06); }
+.tb-table > .th { min-height: 28px; border-top: 0; font-size: 10.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+.tb-table > div > :nth-child(n + 2) { text-align: right; justify-self: end; }
+.tb-table span { font-size: 14px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-table .th span { font-size: inherit; color: inherit; }
+.tb-table b { font-size: 15px; font-weight: 800; color: var(--text-off); font-variant-numeric: tabular-nums; }
+.tb-table .par { font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.tb-table .ms { display: inline-flex; gap: 3px; overflow: visible; }
+.tb-table .has > span:first-child { color: var(--text); } .tb-table .has b { color: #fff; }
+
+/* ---------- the exchange: a shop, priced in cogs ---------- */
+.tb-purse { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.tb-purse .wi { --wc: var(--gold); }
+.tb-purse .grow b { display: block; font-size: 19px; font-weight: 900; letter-spacing: .03em; color: #fff; }
+.tb-purse .grow small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--dim); }
+.tb-purse .at { flex: none; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #c7ffd9; background: rgba(110, 231, 160, .14); box-shadow: inset 0 0 0 1px rgba(110, 231, 160, .5); }
+.tb-trade .pn-note svg { vertical-align: -2px; }
+.pn-scrip.tb-cog { color: var(--gold); }
+.pn-btn.off .pn-scrip.tb-cog { color: #8f97a2; }
+.tb-trade .pn-row.maxed .grow, .tb-trade .pn-row.maxed > .wi, .tb-trade .pn-row.maxed > .pn-it { opacity: .6; }
+.pn-empty.sm { padding: 12px 22px 8px; }
+.pn-empty.sm .ei { width: 64px; height: 64px; }
+.tb-clock { margin-bottom: 10px; }
+
+/* ---------- a window: a phone on its side, a desktop ---------- */
+@media (min-width: 700px), (orientation: landscape) {
+  .tb-cats { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  /* the entries of a kind run in two columns */
+  .tb-groups { columns: 2; column-gap: 14px; }
+  .tb-groups .tb-area { break-after: avoid; } .tb-groups .tb-area:first-child { margin-top: 0; }
+  .tb-groups .tb-e { break-inside: avoid; }
+  .tb-places { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 18px; }
+  .tb-sets, .tb-trade { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 10px; align-items: start; }
+  .tb-sets > .tb-head, .tb-trade > .tb-purse, .tb-trade > .pn-note, .tb-trade > .pn-sec, .tb-trade > .pn-empty, .tb-sets > .pn-empty { grid-column: 1 / -1; }
+  .tb-after > .pn-acts.tb-clock { max-width: 320px; }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  .tb-head { margin-bottom: 10px; }
+  .tb-cat { min-height: 48px; padding: 5px 8px 8px; }
+}
