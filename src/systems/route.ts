@@ -115,3 +115,15 @@ export class Router {
     return { x: px_(n), z: pz_(n), label: gs[n >> 1].label, gate: true, left };
   }
 }
+
+/**
+ * The walking length from the player to (tx, tz), through the gates (what any distance shown to the player
+ * means: the waypoint, the crate card, a toast all say the same number). One router per game, made on first use.
+ */
+const ROUTERS = new WeakMap<object, Router>();
+export function routeLen(g: { player: { pos: { x: number; z: number } }; state: { flag(k: string): unknown; d: { level: number } } }, tx: number, tz: number): number {
+  let r = ROUTERS.get(g);
+  if (!r) { r = new Router((k) => g.state.flag(k), () => g.state.d.level); ROUTERS.set(g, r); }
+  const p = g.player.pos;
+  return r.nextHop(p.x, p.z, tx, tz).left;
+}

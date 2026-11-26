@@ -11,6 +11,7 @@ import { SP } from '../gfx/fx';
 import { BANDS, BAND_GATES, GATE, GAUNTLET, HALF, TITAN_GATE, VAULT_PORTAL, bandAt, ridgeAt, roadDist, type Band } from '../world/layout';
 import type { Cratefall, CrateDrop } from '../world/vista/traffic';
 import { enclosed, eventsOpen, noteLeftTown, screenBusy } from './intro';
+import { routeLen } from './route';
 import type { Mob } from './mobs';
 import { icon } from '../ui/icons';
 import '../ui/living.css';
@@ -534,7 +535,8 @@ export class ZoneEvents implements System {
     // the card is overworld news: not before the drop is announced, and not in the vault, the gauntlet or the arena
     const g = this.game, show = !!e && this.announced && !this.busy() && e.phase !== 'opened' && e.phase !== 'expired';
     if (!show) { if (this.cardSig) { this.cardSig = ''; this.card.classList.remove('on'); } return; }
-    const p = g.player.pos, dx = e!.x - p.x, dz = e!.z - p.z, d = Math.round(Math.hypot(dx, dz));
+    // (the walking length, through the gates, as the waypoint says it; the arrow still points straight at it)
+    const p = g.player.pos, dx = e!.x - p.x, dz = e!.z - p.z, d = Math.round(routeLen(g, e!.x, e!.z));
     // the arrow points the way on screen: the camera looks along -(sin yaw, cos yaw)
     const cy = g.cameraRig.yaw + Math.PI, rel = Math.atan2(dx, dz) - cy;
     const t = e!.phase === 'inbound' ? Math.max(0, Math.ceil(e!.eta)) : Math.max(0, Math.ceil(e!.left));

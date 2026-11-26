@@ -14,6 +14,7 @@ import { icon } from '../ui/icons';
 import { BANDS, BAND_GATES, bandAt, type Band } from '../world/layout';
 import type { Camp, Mob } from './mobs';
 import { bountiesOpen, enclosed, eventsOpen, screenBusy } from './intro';
+import { routeLen } from './route';
 import type { Bounty, GrindSave } from './state';
 import '../ui/grind.css';
 
@@ -399,12 +400,21 @@ export class Grind {
     g.fx.ring(_v.set(p.x, p.y + 0.15, p.z), 3, 0x7dffb0, 0.45, 2);
     this.refillT.push(BOUNTY.refresh);
   }
-  /** The bounty nearest done, for the quest tracker. */
+  /** the bounty the tracker shows, and since when (performance.now ms): held, so the line does not hop between them */
+  private shownId = -1; private shownAt = 0;
+  /**
+   * The bounty for the quest tracker: the one nearest done, but once one is shown it stays until it is paid or
+   * gone, or for 90 s at least before one further along takes its place (round two: the line changed three
+   * times in two minutes).
+   */
   trackerLine(): string {
     const bs = this.s.bounties;
     // overworld business: not before the first hand-in, and not inside the vault, the gauntlet or the arena
     if (!bs.length || !bountiesOpen(this.game) || enclosed(this.game)) return '';
-    const b = [...bs].sort((a, c) => c.prog / c.n - a.prog / a.n)[0];
+    const lead = [...bs].sort((a, c) => c.prog / c.n - a.prog / a.n)[0], now = performance.now();
+    const held = bs.find((x) => x.id === this.shownId);
+    const b = held && (now - this.shownAt < 90000 || held.prog / held.n >= lead.prog / lead.n) ? held : lead;
+    if (b.id !== this.shownId) { this.shownId = b.id; this.shownAt = now; }
     return `<div class="q gr-bq"><div class="qt">${icon('skull', 12, 2.4)} Bounty${bs.length > 1 ? ` <i>+${bs.length - 1}</i>` : ''}</div><div class="qo">${esc(b.text)}${b.n > 1 ? ` <b>${b.prog}/${b.n}</b>` : ''}</div></div>`;
   }
   /** Everything the board's Bounties tab shows. */
@@ -428,7 +438,7 @@ export class Grind {
     this.rare = m; this.rareDef = def; this.rareLife = RARE.life;
     this.rarePoi.label = def.name;
     const dx = x - p.x, dz = z - p.z, dir = Math.abs(dx) > Math.abs(dz) ? (dx > 0 ? 'east' : 'west') : dz > 0 ? 'north' : 'south';
-    g.hud.toast(`Rare spotted: ${def.name}`, 'secret', `${band.name}, ${Math.round(Math.hypot(dx, dz))} m ${dir} · marked on the map`, 'star');
+    g.hud.toast(`Rare spotted: ${def.name}`, 'secret', `${band.name}, ${Math.round(routeLen(g, x, z))} m ${dir} · marked on the map`, 'star');
     this.say(`Rare spotted: ${def.name}, ${def.line}, ${dir} of you in ${band.name}. It will not wait long.`, 'quest');
     g.sfx('secret', { vol: 0.8 });
     if (Math.random() < 0.7) setTimeout(() => this.chatter(pick([`${def.name} is up in ${band.name}, anyone?`, `just saw ${def.name} near the ${dir} camps`, `${def.name}! go go go`, `is that ${def.name}? it dropped me a tuning last time`])), 2500);
