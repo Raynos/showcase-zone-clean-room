@@ -169,7 +169,17 @@
     quiet() {
       const g = G.game, hud = g.hud;
       // toasts, headlines and tips all live in the HUD's notice lane (src/ui/notices.ts)
-      hud.notices?.clear();
+      // (cut, not faded: the frame is frozen a moment later, and a fade frozen part way is a headline in the shot)
+      const lane = hud.notices;
+      if (lane?.el) lane.el.style.transition = 'none';
+      lane?.clear();
+      if (lane?.el) { void lane.el.offsetWidth; lane.el.style.transition = ''; }
+      // a headline can arrive after this (a zone's name waits its turn in the lane): a quiet frame stays quiet
+      if (lane && lane.push && !lane.__quiet) {
+        lane.__quiet = true;
+        const push = lane.push.bind(lane);
+        lane.push = (n) => { if (n && n.kind === 'head') return; push(n); };
+      }
       for (const e of document.querySelectorAll('.log')) e.innerHTML = '';
     },
     hideDev() { const d = document.getElementById('dev'); if (d) d.style.display = 'none'; },

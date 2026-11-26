@@ -84,7 +84,8 @@ export function beyondH(x: number, z: number): number {
 // ---------------------------------------------------------------------------------------------
 /** rows of the skirt: distance outside the edge, segments along each side, segments round each corner */
 const ROWS: Array<[number, number, number]> = [[0, 250, 1], [4, 125, 2], [10, 84, 4]];
-for (const d of [18, 28, 40, 53, 66, 79, 92, 106, 120, 134, 147, 160, 173, 186, 199, 212, 226, 242]) ROWS.push([d, 72, Math.ceil((d * Math.PI / 2) / 7.5)]);
+// (the three ranks are sampled every 8 m across the grain: at 13 m a horn was four facets)
+for (const d of [18, 28, 38, 47, 55, 63, 71, 79, 87, 95, 103, 111, 119, 127, 135, 143, 151, 159, 167, 175, 183, 191, 199, 207, 215, 228, 242]) ROWS.push([d, d > 30 && d < 220 ? 96 : 72, Math.ceil((d * Math.PI / 2) / (d > 30 && d < 220 ? 6 : 7.5))]);
 /** side i: start corner and direction of travel; the outward normal is the side's own axis */
 const SIDES: Array<{ x: number; z: number; dx: number; dz: number; nx: number; nz: number }> = [
   { x: -HALF, z: HALF, dx: 1, dz: 0, nx: 0, nz: 1 }, { x: HALF, z: HALF, dx: 0, dz: -1, nx: 1, nz: 0 },
@@ -154,6 +155,15 @@ varying float vSnow;`)
   // (under a storm deck it is one more grey in the murk, not a white flag)
   col = mix(col, vec3(0.86, 0.9, 0.97) * mix(1.0, 0.3, uWet), snow * 0.94);
   diffuseColor.rgb = col * mix(1.0, 0.8, uWet);
+}`)
+      // crags inside each facet: the light falls on rock that is broken smaller than the mesh
+      .replace('#include <normal_fragment_begin>', /* glsl */ `#include <normal_fragment_begin>
+{
+  vec3 cp = vFogWorld;
+  vec2 c1 = texture2D(uNoise, cp.xz * 0.011 + cp.y * 0.006).rg - 0.5;
+  vec2 c2 = texture2D(uNoise, vec2(cp.x + cp.z, cp.y * 1.7) * 0.027 + 0.3).rg - 0.5;
+  vec3 dn = vec3(c1.x * 1.1 + c2.x * 0.7, 0.0, c1.y * 1.1 + c2.y * 0.7);
+  normal = normalize(normal + (viewMatrix * vec4(dn, 0.0)).xyz * 0.9);
 }`)
       // The ranges stand in clear air, not in the mist of the yard: most of what dims them is distance
       // alone (the fog's linear term, doubled out here), its colour deepening toward the sky's blue

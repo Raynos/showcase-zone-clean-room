@@ -555,7 +555,12 @@ export function scaffold(g: Geo, r: Rng, w = 5, levels = 2, d = 1.6) {
 export function smelterStack(g: Geo, h = 26, rb = 3.2): [number, number, number] {
   g.cyl(rb * 1.15, rb * 1.35, 5, 10, { at: [0, 2.5, 0], color: 0x9a5a42, layer: T.REDBRICK, uvScale: 0.3, col: true, grad: 0.6 });
   g.cyl(rb * 1.25, rb * 1.25, 0.5, 10, { at: [0, 5.2, 0], color: PAL.slateDark, layer: T.METAL, col: 'none' });
-  g.cyl(rb * 0.62, rb, h - 5.4, 12, { at: [0, 5.4 + (h - 5.4) / 2, 0], color: 0x4a4d54, layer: T.METAL, uvScale: 0.25, col: 'none', grad: 0.75 });
+  // the shaft is rusted iron, warm from the furnace under it: five lifts between the bands, each a little
+  // cooler than the one below (slate iron stood black against a dusk sky)
+  for (let i = 0; i < 5; i++) {
+    const t0 = i / 5, t1 = (i + 1) / 5, r0 = rb + (rb * 0.62 - rb) * t0, r1 = rb + (rb * 0.62 - rb) * t1, hh = (h - 5.4) / 5;
+    g.cyl(r1, r0, hh, 12, { at: [0, 5.4 + hh * (i + 0.5), 0], color: 0x8a4e3a, layer: T.METAL, uvScale: 0.25, col: 'none', grad: i ? 1 : 0.8, emit: [0.2, 0.13, 0.08, 0.05, 0.03][i] });
+  }
   for (let i = 1; i <= 4; i++) { const t = i / 5, r = rb + (rb * 0.62 - rb) * t; g.cyl(r + 0.1, r + 0.12, 0.35, 12, { at: [0, 5.4 + (h - 5.4) * t, 0], color: i % 2 ? PAL.orangeDeep : PAL.slateDark, layer: i % 2 ? T.STRIPE : T.METAL, uv: 'fit', col: 'none' }); }
   g.cyl(rb * 0.7, rb * 0.62, 0.7, 12, { at: [0, h + 0.3, 0], color: PAL.slateDeep, layer: T.METAL, col: 'none' });
   g.cyl(rb * 0.55, rb * 0.55, 0.12, 12, { at: [0, h + 0.62, 0], color: 0xff7a1a, emit: 2.6, col: 'none' });

@@ -26,6 +26,8 @@ export const GLOWLOOK = {
   rays: 0.07, raysRain: 0.3,
   /** streaks: brightness, half-angle of the mirror's lobe (radians), sideways spread */
   streak: 1.25, lobe: 0.085, side: 0.03,
+  /** indoors: gain of a fitting's streak, and how much of a ceiling panel's is held back */
+  inGain: 1.6, inRoof: 0.85,
   /** hero point lights */
   hero: 0.8,
 };
@@ -256,7 +258,7 @@ export function startGlow(game: Game) {
       const ty = Math.tan((game.camera.fov * Math.PI) / 360) / game.camera.zoom, tx = ty * game.camera.aspect;
       const T = Math.min(6, (tx / Math.max(0.22, fl + fwd.y * ty)) * 1.06), uScale = 0.5 / T;
       acc.fill(0);
-      const A = GLOWLOOK.streak;
+      const A = GLOWLOOK.streak, indoors = !!game.interior, IN_GAIN = GLOWLOOK.inGain, IN_ROOF = GLOWLOOK.inRoof;
       let tests = 0;
       const m = near.length;
       for (let q = 0; q < m; q++) {
@@ -271,7 +273,9 @@ export function startGlow(game: Game) {
         if (vis[k] < 0) { if (tests < 48) { vis[k] = seen(L[k * 7], L[k * 7 + 1], L[k * 7 + 2], cam); tests++; } else continue; }
         if (vis[k] < 0.02) continue;
         const He = Math.max(0.4, cam.y - (L[k * 7 + 1] - h));
-        const amp = A * vis[k] * Math.min(1.5, 0.3 + 0.8 * Math.sqrt(pow_[k])) * (1 - smooth(52, 84, D));
+        // (indoors the ceiling is one sheet of light panels: mirrored whole, the floor is milk. They are
+        // held back, so the floor shows the door, the ring and the wall strips as streaks of their colour)
+        const amp = A * vis[k] * Math.min(1.5, 0.3 + 0.8 * Math.sqrt(pow_[k])) * (1 - smooth(52, 84, D)) * (indoors ? IN_GAIN * (1 - IN_ROOF * smooth(5, 8.5, h)) : 1);
         smear(ta, D, He, h, wid[k], hue[k * 3], hue[k * 3 + 1], hue[k * 3 + 2], amp, uScale);
       }
       // re-test a few of the working set each frame, so a lamp that goes behind a wall lets go of its streak
