@@ -23,6 +23,8 @@ export const XP_PER_MIN = 10.7;
  * in the Heights, 12 in the Docks). That last step is worked out from the runs, not re-run. Band 1
  * went from 10.7 to 11.5 when "First Day on the Yard" was lifted to most of level 1, then to 15 when
  * levels 1-3 took 6.8 min of 10 (QA, 2026-11-26, 15d045e, fast travel in use; quests 39% of it).
+ * On the same build levels 4-6 took 21.4 of 26 (kills 82%) and 7-9 took 27.8 of 36 (kills 64%,
+ * contracts 17%, 14 fast-travel jumps); band 3 went from 18 to 22.
  * Levels 10-18 at 18 (QA, 2026-11-26, HEAD 4060d00, no boost, signal posts in use): levels 10-12 took
  * 17.7 min of 45, 13-15 26.8 of 54, 16-18 22.9 of 63; kills brought 63%, 74% and 59%. With bounties
  * cut to 0.4x (grind.ts) and field quests halved from band 4, these rates are modelled to land the
@@ -30,7 +32,7 @@ export const XP_PER_MIN = 10.7;
  * because each pays a share of a level that is now long. The last level (19) takes band 6's rate.
  * Modelled from the runs, not yet re-run.
  */
-export const XP_PER_MIN_BAND = [15, 23, 18, 41, 36, 45, 45];
+export const XP_PER_MIN_BAND = [15, 23, 22, 41, 36, 45, 45];
 /** The rate for climbing out of `level` (its band: 1-3, 4-6, ... 19). */
 export const xpPerMin = (level: number) => XP_PER_MIN_BAND[Math.min(6, Math.floor((Math.max(1, level) - 1) / 3))];
 /** XP needed to go from level L to L+1: PACE_MIN minutes of play at its band's rate. */
