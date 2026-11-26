@@ -211,14 +211,21 @@ export function crateBox(g: Geo, w: number, h: number, d: number, o: { at?: [num
   if (o.gold) return piece(g, 'crate-gold', { at: o.at, rot: [0, o.ry ?? 0, 0], scale: [w, h, d], lod: o.lod });
   const wood = o.color ?? CRATE_WOOD[Math.floor(r(1) * CRATE_WOOD.length)];
   const frame = _c.setHex(wood).multiplyScalar(o.alt ? 0.8 : 0.96).getHex(), edge = _c.setHex(wood).multiplyScalar(o.alt ? 0.55 : 0.68).getHex();
-  const bare = r(2) < 0.22, plain = r(3) < 0.18;
+  // (most have lost something: the plate, the corner irons, the dark edging)
+  const bare = r(2) < 0.22, plain = r(3) < 0.4, worn = r(7) < 0.5;
   // the plate is on one side: a square crate may show any of its four
   const turn = Math.abs(w - d) < 0.02 * (w + d) ? Math.floor(r(4) * 4) * (Math.PI / 2) : Math.floor(r(4) * 2) * Math.PI;
-  return piece(g, 'crate-haul', {
-    at: o.at, rot: [0, (o.ry ?? 0) + turn, 0], scale: [w, h, d], tone: 0.88 + r(5) * 0.24, lod: o.lod,
-    colors: { wood, frame, edge, label: CRATE_PLATE[Math.floor(r(6) * CRATE_PLATE.length)] },
-    skip: (name) => (bare && (name === 'label' || name === 'mark')) || (plain && name === 'bracket'),
-  });
+  const tone = 0.88 + r(5) * 0.24, at = o.at ?? [0, 0, 0], rot: [number, number, number] = [0, (o.ry ?? 0) + turn, 0];
+  // The boards, braces, irons and plate are trim that goes with distance. What they stand on is the body: a
+  // box painted as a crate (the kit's own boarded core is left out), which is all a far crate is, and
+  // all that throws a shadow.
+  if (!piece(g, 'crate-haul', {
+    at, rot, scale: [w, h, d], tone, lod: o.lod,
+    colors: { frame, edge, label: CRATE_PLATE[Math.floor(r(6) * CRATE_PLATE.length)] },
+    skip: (name) => name === 'wood' || (bare && (name === 'label' || name === 'mark')) || (plain && name === 'bracket') || (worn && name === 'edge'),
+  })) return false;
+  g.box(w * 0.912, h * 0.915, d * 0.912, { at: [at[0], at[1] + h * 0.5275, at[2]], rot, color: _c.setHex(wood).multiplyScalar(tone).getHex(), layer: o.alt ? T.CRATE2 : T.CRATE, uv: 'fit', col: 'none', grad: 0.82 });
+  return true;
 }
 /**
  * A block of crates s x h x s (base centre at the origin of the current transform) laid as courses
@@ -643,9 +650,9 @@ export function windowUnit(g: Geo, w: number, h: number, o: WinOpts = {}) {
   const sx = w / 0.95, sy = h / 1.2;
   if (h <= w * 2.2 && piece(g, 'window', {
     at: [0, -0.85 * sy, 0], scale: [sx, sy, 1],
-    colors: { frame, lintel: frame, glass: o.lit ? o.glow ?? 0xffb95e : 0x34505c, shutter: o.shutters ?? 0, slat: o.shutters ?? 0 },
+    colors: { frame, lintel: frame, glass: o.lit ? o.glow ?? 0xffb95e : 0x34505c, shutter: o.shutters ?? 0 },
     layers: o.lit ? { glass: T.FLAT } : undefined, emit: o.lit ? { glass: 0.5 } : undefined,
-    skip: (name) => o.shutters === undefined && (name === 'shutter' || name === 'slat'),
+    skip: (name) => o.shutters === undefined && name === 'shutter',
   })) {
     if (o.flowers && o.r) {
       g.box(w + 0.2, 0.2, 0.26, { at: [0, -h / 2 - 0.26, 0.2], color: 0x8a5e36, layer: T.PLANKS, uvScale: 0.6, col: 'none' });

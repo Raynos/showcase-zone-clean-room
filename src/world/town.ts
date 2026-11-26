@@ -134,7 +134,8 @@ function plaza(c: Ctx) {
   g.at(cx, 0, cz, 0, () => {
     // the basin: a ring of dressed limestone blocks over a course of fired tile
     const rim = piece(g, 'fountain-basin', { scale: [1.235, 0.98, 1.235], colors: { stone: STONE_L, course: 0xb99c84 } });
-    if (rim) g.colCyl(5.25, 0.8, { at: [0, 0.4, 0] });
+    // (the dressed ring is trim: this core inside it is the collider and throws the shadow)
+    if (rim) g.cylUp(4.95, 5.15, 0.55, 20, { color: STONE, layer: T.BRICK, uvScale: 0.5, col: 'none' }).colCyl(5.25, 0.8, { at: [0, 0.4, 0] });
     else {
       g.cylUp(5.0, 5.25, 0.8, 28, { color: STONE_L, layer: T.BRICK, uvScale: 0.5, col: true, grad: 0.7 });
       g.torus(5.02, 0.2, 6, 32, { at: [0, 0.82, 0], rot: [PI / 2, 0, 0], color: 0xe9e1d0, layer: T.BRICK, uvScale: 0.5, col: 'none' });
