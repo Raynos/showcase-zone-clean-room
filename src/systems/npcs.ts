@@ -45,11 +45,20 @@ interface Npc {
   waveT: number; waveCd: number; greeted: boolean; lineN: number; dist: number; acc: number; tick: number;
   hidden: boolean; wantHidden: boolean; homeT: number; fade: number; height: number; strikeDone: boolean;
   ipos: THREE.Vector3;
+  /** 0..1: melted out of someone else's conversation shot (stood between the lens and the speaker) */
+  shotK?: number;
 }
 
 function makePose(): HumanPose {
   return { time: 0, locomotion: 'ground', speed: 0, moveX: 0, moveZ: 0, vy: 0, landT: 9, weapon: 'none', drawn: false, action: null, actionT: 0, aimPitch: 0, lean: 0, rollT: 0, lookYaw: 0, lookPitch: 0, climbPhase: 0 };
 }
+/** distance on the ground from p to the segment a-b, carried on `over` metres past b */
+function segDist(px: number, pz: number, ax: number, az: number, bx: number, bz: number, over: number) {
+  const dx = bx - ax, dz = bz - az, L = Math.hypot(dx, dz) || 1, t = Math.max(0, Math.min(1 + over / L, ((px - ax) * dx + (pz - az) * dz) / (L * L)));
+  return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
+}
+/** how close the hero may stand to anyone before he is eased away, metres between centres */
+const SOFT_R = 0.75;
 function hash(s: string) { let h = 7; for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0; return Math.abs(h); }
 
 function makePath(pts: Array<[number, number]>): Path {
@@ -303,6 +312,18 @@ export class Npcs implements System {
       n.lineN++;
     }
     g.sfx('dialog_blip');
+    // ---- the hero's mark: never inside the speaker or on top of them. Closer than 2.3 m he steps back along
+    // the line between them to 2.3 m, where the close-up below has him just behind its lens (dissolved), unless
+    // the ground there is blocked; the cut to the close-up hides the step
+    {
+      const mx = pl.pos.x - n.x, mz = pl.pos.z - n.z, md = Math.hypot(mx, mz) || 1, want = Math.max(md, 2.3);
+      if (Math.abs(want - md) > 0.05 && g.hooks.mountState?.() !== 'horse') {
+        const x = n.x + (mx / md) * want, z = n.z + (mz / md) * want;
+        _v.set(n.x, n.y + 1.0, n.z); _v2.set(mx / md, 0, mz / md);
+        const hit = g.physics.raycast(_v, _v2, want + 0.4, RAY_WORLD);
+        if (!hit || hit.dist > want + 0.35) pl.teleport(x, Math.max(pl.pos.y, g.terrain.h(x, z)), z, Math.atan2(-mx, -mz));
+      }
+    }
     // ---- camera: the speaker's close-up. The hero is behind the lens in every size, so no shoulder or head of
     // his fills the frame, and first person gets the same picture from just in front of his own eyes
     const dx = n.x - pl.pos.x, dz = n.z - pl.pos.z, d = Math.max(0.6, Math.hypot(dx, dz));
@@ -449,7 +470,17 @@ export class Npcs implements System {
       n.dist = d;
       n.modeT += dt;
       n.chatCd -= dt; n.waveCd -= dt;
-      if (n.path) this.walk(n, dt, dx, dz, d);
+      // someone else's conversation: a walker near the pair waits for it to end rather than stroll through the shot
+      const tk = this.talking, nearTalk = !!tk && tk !== n && Math.hypot(n.x - tk.x, n.z - tk.z) < 6;
+      // a body: the hero slides round anyone he walks into instead of through them (not while riding: the horse is
+      // bigger), and never into a wall for it
+      if (d < SOFT_R && !n.hidden && n.rig && pl.controllable && g.hooks.mountState?.() !== 'horse') {
+        const k = SOFT_R - d, ux = d > 0.01 ? dx / d : 1, uz = d > 0.01 ? dz / d : 0;
+        _v.set(pl.pos.x, pl.pos.y + 1.0, pl.pos.z); _v2.set(ux, 0, uz);
+        if (!g.physics.raycast(_v, _v2, k + 0.4, RAY_WORLD)) { pl.pos.x += ux * k; pl.pos.z += uz * k; }
+      }
+      if (n.path && !nearTalk) this.walk(n, dt, dx, dz, d);
+      else if (n.path) { n.curSpeed = 0; n.pose.speed = 0; }
       n.ipos.set(n.x, n.y + 0.6, n.z);
       // townsfolk who go home at night slip away (and come back) only when nobody is close enough to see the pop
       if (n.homeT > 0 && (n.homeT -= dt) <= 0) n.wantHidden = !n.wantHidden;
@@ -459,6 +490,12 @@ export class Npcs implements System {
         else if (n.wantHidden) { n.fade -= dt / 0.9; if (n.fade <= 0) { n.hidden = true; n.fade = 0; this.setFade(n, 1); } else this.setFade(n, n.fade); }
         else { n.hidden = false; n.fade = 0.02; this.setFade(n, n.fade); }
       } else if (!n.hidden && n.fade < 1) { n.fade = Math.min(1, n.fade + dt / 0.9); this.setFade(n, n.fade); }
+      // in the talk shot (within 0.9 m of the line from the lens to the speaker, or just behind the speaker): melt away
+      const inShot = !!tk && tk !== n && !n.hidden && segDist(n.x, n.z, this.camPos.x, this.camPos.z, tk.x, tk.z, 1.6) < 0.9 ? 1 : 0;
+      if (inShot || (n.shotK ?? 0) > 0) {
+        n.shotK = damp(n.shotK ?? 0, inShot, 9, rdt);
+        if (n.shotK < 0.01 && !inShot) { n.shotK = 0; this.setFade(n, n.fade); } else this.setFade(n, Math.min(n.fade, 1 - n.shotK));
+      }
       const rig = n.rig;
       if (!rig) continue;
       const vis = !n.hidden && d < SHOW_DIST;
