@@ -266,7 +266,7 @@ export function startFinds(game: Game, info: DressInfo, plan: FindPlan) {
             game.fx.emit(_v, { count: 18, speed: [2, 6], life: [0.3, 0.7], size: [0.05, 0.12], color: 0xffc04a, color2: 0x3fe3ff, glow: 4, drag: 2, sprite: SP.STAR });
             game.fx.ring(_v, 2, 0xffc04a, 0.4, 2);
             game.sfx('collectible'); game.haptic(14);
-            game.hud.toast(`Cog ${cogTaken.filter(Boolean).length} / ${plan.cogs.length}`, 'secret', 'Cog collected');
+            if (!game.hooks.tallyFind?.(c.id)) game.hud.toast(`Cog ${cogTaken.filter(Boolean).length} / ${plan.cogs.length}`, 'secret', 'Cog collected');
             st.addXp(20 + 6 * st.d.level); st.save();
           }
         } else if (Math.random() < rdt * 3 && dx * dx + dz * dz < 900) {

@@ -244,7 +244,7 @@ export class Kit {
           g.fx.emit(_v, { count: 18, speed: [2, 6], life: [0.3, 0.7], size: [0.05, 0.12], color: 0xffc04a, color2: 0x3fe3ff, glow: 4, drag: 2, sprite: SP.STAR });
           g.fx.ring(_v, 2, 0xffc04a, 0.4, 2);
           g.sfx('collectible'); g.haptic(14);
-          g.hud.toast(c.label, 'secret', 'Cog collected');
+          if (!g.hooks.tallyFind?.(c.id)) g.hud.toast(c.label, 'secret', 'Cog collected');
           g.state.addXp(20 + 6 * g.state.d.level);
           g.state.save();
         }

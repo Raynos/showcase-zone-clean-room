@@ -90,7 +90,7 @@ const ACT_IDS = Object.keys(ACT) as ActionId[];
 const IDX = Object.fromEntries(ACT_IDS.map((k, i) => [k, i])) as Record<ActionId, number>;
 /** status effect id -> icon id */
 const FX_ICON: Record<string, string> = { shock: 'shock', burn: 'burn', jam: 'jam', guard: 'shield', mend: 'kit' };
-const MENUS: Array<[id: string, ic: string, label: string, key: string]> = [['bag', 'bag', 'Pack', 'I'], ['quests', 'quests', 'Quests', 'J'], ['map', 'map', 'Map', 'M'], ['char', 'char', 'Character', 'P'], ['menu', 'gear', 'Settings', 'Esc'], ['view', 'eye', 'View', '']];
+const MENUS: Array<[id: string, ic: string, label: string, key: string]> = [['bag', 'bag', 'Pack', 'I'], ['quests', 'quests', 'Quests', 'J'], ['map', 'map', 'Map', 'M'], ['char', 'char', 'Character', 'P'], ['tally', 'trophy', 'Tally', ''], ['menu', 'gear', 'Settings', 'Esc'], ['view', 'eye', 'View', '']];
 export type HudContext = 'explore' | 'fight' | 'ride';
 
 /**

@@ -382,7 +382,7 @@ export function hiddenCog(game: Game, id: string, x: number, y: number, z: numbe
     onEnter: () => {
       if (!game.state.markFound(id)) return;
       game.loot.item(m.position, 'cog', 1, 1.2);
-      game.hud.toast('Secret found', 'secret', 'A lost cog');
+      if (!game.hooks.tallyFind?.(id)) game.hud.toast('Secret found', 'secret', 'A lost cog');
       game.sfx('secret'); game.fx.ring(m.position, 2, 0xffc24a, 0.4, 2.5); game.haptic(20);
       m.visible = false; tr.enabled = false;
     },

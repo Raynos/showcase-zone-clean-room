@@ -113,7 +113,7 @@ export const QUESTS: QuestDef[] = [
     objectives: [{ on: 'kill:foreman', n: 1, text: 'Foreman Unit 7 dismissed' }] }),
   Q({ id: 'q_titan', tier: 3, name: 'Cratefall', giver: 'quest3', level: 18, requires: ['q_gauntlet'], xp: questXp(18, 0.13), scrip: 5000, items: [['heartcrate', 1]],
     intro: ['It started with one crate that would not stay stacked. Now it is fifteen metres tall and it has an arena.', 'The Crate Titan. Behind the boss portal at the end of the Titan road. There is nothing left to teach you. Go and end this.'],
-    mid: 'The boss portal is at the end of the Titan road, south-west Arc Field. Defeat the Crate Titan.', outro: ['It is down. It is actually down.', 'Brasswick owes you everything. The yard is yours, champion.'],
+    mid: 'The boss portal is at the end of the Titan road, south-west Arc Field. Defeat the Crate Titan.', outro: ['It is down. It is actually down.', 'Brasswick owes you everything. The yard is yours, champion.', 'And the yard never stops. There is overtime at the vault and the arena, backhaul on the board, and the Long Shift at the gauntlet. Your Tally Book keeps the score.'],
     objectives: [{ on: 'kill:titan', n: 1, text: 'Crate Titan destroyed' }] }),
   ...FIELD_QUESTS,
 ];

@@ -247,7 +247,7 @@ export class State {
   perk(id: string): number { return this.d.perks?.[id] ?? 0; }
   get perksSpent(): number { let n = 0; for (const k in this.d.perks ?? {}) n += this.d.perks![k]; return n; }
   /** perk points: one a level from 2, plus Field Training's bonus points earned by fighting (systems/grind.ts) */
-  get perksFree(): number { return Math.max(0, perkPoints(this.d.level) + (this.d.grind?.perks ?? 0) - this.perksSpent); }
+  get perksFree(): number { return Math.max(0, perkPoints(this.d.level) + (this.d.grind?.perks ?? 0) + ((this.d as { tally?: { perks?: number } }).tally?.perks ?? 0) - this.perksSpent); }
   treeSpent(tree: string): number { let n = 0; for (const k in this.d.perks ?? {}) if (PERK_BY_ID[k]?.tree === tree) n += this.d.perks![k]; return n; }
   canLearn(id: string): boolean { const p = PERK_BY_ID[id]; return !!p && this.perksFree > 0 && this.perk(id) < p.ranks && this.treeSpent(p.tree) >= perkGate(p); }
   learnPerk(id: string): boolean { if (!this.canLearn(id)) return false; (this.d.perks ??= {})[id] = this.perk(id) + 1; this.touch(); return true; }
