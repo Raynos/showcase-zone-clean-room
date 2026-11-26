@@ -274,6 +274,7 @@ export class Environment {
     // In landscape the frame is half as tall in pixels, so a shadow 80 m out is drawn as small as one
     // under 50 m out in portrait, while the cascades have nearly four times the width to cover. They
     // reach that much less far, and the ground map's stand-in for far shade takes over sooner.
+    GU.uHero.value = camera.position.distanceTo(focus);
     const reach = Math.round(renderer.quality.shadowDist * (camera.aspect > 1.2 ? this.shadowWide : 1));
     if (reach !== CASTER.dist) this.setShadowQuality(renderer.quality.shadowSize, reach);
     if (this.forcedHour !== null) {

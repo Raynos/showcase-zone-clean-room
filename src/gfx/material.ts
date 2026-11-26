@@ -21,6 +21,8 @@ export const GU = {
   uSheen: { value: 0 },
   /** near-lens dissolve: fully gone inside x metres of the camera, solid beyond y. Off (0, 0) until the game's camera sets it. */
   uNearFade: { value: new THREE.Vector2(0, 0) },
+  /** metres from the camera to the hero: foliage standing between the two is not drawn */
+  uHero: { value: 6 },
 };
 
 /**
@@ -200,7 +202,7 @@ export class WorldMaterial extends THREE.MeshStandardMaterial {
       sh.uniforms.uTime = GU.uTime; sh.uniforms.uWind = GU.uWind; sh.uniforms.uNoise = GU.uNoise;
       sh.uniforms.uWet = GU.uWet; sh.uniforms.uEmitBoost = GU.uEmitBoost; sh.uniforms.uCharFill = GU.uCharFill;
       sh.uniforms.uFlash = this.flash; sh.uniforms.uRim = this.rim; sh.uniforms.uEmitMul = this.emitMul;
-      sh.uniforms.uNearFade = GU.uNearFade;
+      sh.uniforms.uNearFade = GU.uNearFade; sh.uniforms.uHero = GU.uHero;
       sh.uniforms.uKeyRim = GU.uKeyRim; sh.uniforms.uSheen = GU.uSheen;
       if (wind) { ensureFoliage(); sh.uniforms.uLeaf = FOLIAGE.uLeaf; }
       if (!wind && !rim) { ensureDecals(); sh.uniforms.uDecal = DECALS.uDecal; sh.uniforms.uStory = SURF_U.uStory; sh.uniforms.uTrack = SURF_U.uTrack; }
@@ -230,15 +232,19 @@ precision highp sampler2DArray;
 uniform sampler2DArray uTexA; uniform sampler2DArray uTexN; uniform sampler2D uNoise;
 uniform vec4 uFlash; uniform vec4 uRim; uniform float uEmitBoost; uniform float uEmitMul; uniform float uWet; uniform vec3 uCharFill; uniform vec2 uNearFade; uniform vec3 uKeyRim; uniform float uSheen;
 varying float vLayer; varying float vEmit; varying vec2 vWUv;
-${wind ? 'varying float vSway; uniform sampler2D uLeaf; float gLeaf;' : ''}
+${wind ? 'varying float vSway; uniform sampler2D uLeaf; float gLeaf; uniform float uHero;' : ''}
 ${!wind && !rim ? 'uniform sampler2D uDecal;\n' + SURFACE_GLSL : ''}
 vec4 gTA; vec4 gTN;`)
         .replace('#include <map_fragment>', /* glsl */ `${wind ? /* glsl */ `if (vSway > 0.02) {
-  // leaves between the camera and the hero dissolve instead of filling the screen
+  // Leaves at the lens, and leaves standing in the way of the hero, are not drawn. A crown the camera has
+  // backed into opens in a round hole with a thin stippled edge (not a sheet of stipple across the
+  // screen); what is off to the side of the hero, or beyond them, stays whole.
   float nd = length(vViewPosition);
-  if (nd < 8.0) {
+  if (nd < max(4.4, uHero)) {
     float dn = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-    if (smoothstep(2.5, 8.0, nd) < dn) discard;
+    float side = length(vViewPosition.xy) / max(vViewPosition.z, 0.05);
+    float keep = smoothstep(3.0, 4.4, nd) * max(smoothstep(0.26, 0.42, side), smoothstep(uHero - 1.2, uHero - 0.2, nd));
+    if (keep < dn) discard;
   }
 }` : ''}
 {
