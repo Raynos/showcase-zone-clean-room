@@ -38,13 +38,17 @@ export interface OtDef {
 export const OT: Record<OtAct, OtDef> = {
   vault: {
     act: 'vault', name: 'Overtime: the Vault', place: 'Training Vault', level: 20, hp: 1.35, dmg: 1.25,
-    gold: 6 * 60, silver: 8 * 60, bronze: 11 * 60,
+    // pars (QA round four, a29ad1d): the competent bot cleared it clean in 4:35 under Thin Overalls;
+    // the careless bot died at 1:44, and a death ends the run, so no par reaches it
+    gold: 5 * 60 + 15, silver: 7 * 60, bronze: 10 * 60,
     pay: [0, 600, 900, 1300], weekly: [{ k: 'item', id: 'core', n: 2 }, { k: 'scrip', n: 800 }],
     firsts: { bronze: [{ k: 'title', t: 'Overtime Examiner' }], silver: [{ k: 'item', id: 'core', n: 2 }], gold: [{ k: 'title', t: 'Top of the Class' }, { k: 'tune', unique: true }] },
   },
   titan: {
     act: 'titan', name: 'Overtime: the Titan', place: "Titan's Arena", level: 20, hp: 1.4, dmg: 1.3,
-    gold: 5 * 60, silver: 7 * 60, bronze: 10 * 60,
+    // pars (QA round four, a29ad1d), modelled: the normal Titan falls in 249-305 s to every weapon
+    // class and overtime gives it 40% more health; the competent bot died at 2:58 under No Kits
+    gold: 6 * 60 + 30, silver: 8 * 60 + 30, bronze: 11 * 60,
     pay: [0, 900, 1400, 2000], weekly: [{ k: 'item', id: 'heartcrate', n: 1 }, { k: 'scrip', n: 1200 }],
     firsts: { bronze: [{ k: 'title', t: 'Night Crew' }], silver: [{ k: 'item', id: 'core', n: 3 }], gold: [{ k: 'title', t: 'Crate Breaker' }, { k: 'tune', unique: true }] },
   },
@@ -126,8 +130,10 @@ export const SHIFT = {
   eliteEvery: 5,
   /** seconds between waves, and the health it gives back */
   pause: 4, heal: 0.15,
-  /** medals by waves cleared in one shift */
-  bronze: 5, silver: 10, gold: 15,
+  /** medals by waves cleared in one shift. Bronze from QA round four (a29ad1d): the careless bot
+   *  cleared 3; the competent bot cleared 5 and then stepped off the court in wave 6 (silver and
+   *  gold are not measured) */
+  bronze: 3, silver: 10, gold: 15,
   /** the weekly target: waves cleared in one shift, this week */
   weekly: 10,
   /** the first time each milestone is reached */
