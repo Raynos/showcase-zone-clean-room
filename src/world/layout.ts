@@ -289,8 +289,8 @@ export function heightRaw(x: number, z: number): number {
 // ---------------------------------------------------------------------------------------------
 // Ground colour / cover
 // ---------------------------------------------------------------------------------------------
-export interface Ground { r: number; g: number; b: number; grass: number; dirt: number; rock: number; gravel: number }
-const _g: Ground = { r: 0, g: 0, b: 0, grass: 0, dirt: 0, rock: 0, gravel: 0 };
+export interface Ground { r: number; g: number; b: number; grass: number; dirt: number; rock: number; gravel: number; /** sand fused to glass (the Arc Field) */ glass: number }
+const _g: Ground = { r: 0, g: 0, b: 0, grass: 0, dirt: 0, rock: 0, gravel: 0, glass: 0 };
 function setRGB(o: Ground, hex: number, k = 1) { o.r = ((hex >> 16) & 255) / 255 * k; o.g = ((hex >> 8) & 255) / 255 * k; o.b = (hex & 255) / 255 * k; }
 function mixRGB(o: Ground, hex: number, t: number) {
   o.r = lerp(o.r, ((hex >> 16) & 255) / 255, t); o.g = lerp(o.g, ((hex >> 8) & 255) / 255, t); o.b = lerp(o.b, (hex & 255) / 255, t);
@@ -299,7 +299,7 @@ function mixRGB(o: Ground, hex: number, t: number) {
 export function groundAt(x: number, z: number, slope: number, h: number): Ground {
   const o = _g;
   const n = fbm(x * 0.02, z * 0.02, 3, 51), n2 = fbm(x * 0.08, z * 0.08, 2, 52), n3 = vnoise(x * 0.3, z * 0.3, 53);
-  o.dirt = 0; o.rock = 0; o.gravel = 0; o.grass = 1;
+  o.dirt = 0; o.rock = 0; o.gravel = 0; o.grass = 1; o.glass = 0;
   // meadow: golden wheat with amber and sage drifts
   setRGB(o, 0xb5975c);
   mixRGB(o, 0xc27c3c, smooth(0.5, 0.75, n) * 0.75);
@@ -312,7 +312,8 @@ export function groundAt(x: number, z: number, slope: number, h: number): Ground
     else if (b.id === 3) { mixRGB(o, 0xc8703a, 0.7); o.grass = smooth(0.5, 0.75, n2) * 0.5; o.dirt = 0.5; }
     else if (b.id === 4) { mixRGB(o, 0x4a474a, 0.88); o.grass = 0; o.gravel = 0.8; mixRGB(o, 0x7a3a1c, smooth(0.6, 0.85, n2) * 0.5); }
     else if (b.id === 5) { mixRGB(o, 0x77808a, 0.8); o.grass = smooth(0.62, 0.8, n) * 0.3; o.gravel = 0.9; }
-    else if (b.id === 6) { mixRGB(o, 0x8fa3b2, 0.82); o.grass = smooth(0.6, 0.8, n) * 0.25; o.dirt = 0.4; mixRGB(o, 0x5fb8c9, smooth(0.62, 0.9, n2) * 0.35); }
+    // (the Arc Field's ground is its own surface, drawn by the terrain: no turf and no earth show through it)
+    else if (b.id === 6) { mixRGB(o, 0x8fa3b2, 0.82); o.grass = 0; o.dirt = 1; o.glass = 1; }
   }
   // dirt on worn ground near roads
   const rd = roadDist(x, z);

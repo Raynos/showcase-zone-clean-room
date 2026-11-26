@@ -29,6 +29,10 @@ const GOLDEN_SCENES = [
       b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
       b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
       await G.until(() => g.started && !document.querySelector('.pn-title'), 900);
+      // the opening fly-in is its own moment: this frame is the first one of play, so cut it as it starts
+      await G.until(() => g.cine?.playing || g.state.d.playTime > 3, 240);
+      g.cine?.skip();
+      await G.frames(2);
       G.cam(-PI / 2 + PI, 0.16, 1);
       // long enough for the title camera to blend out and the BRASSWICK banner to be fully up
       await G.secs(1.7);

@@ -88,7 +88,8 @@ export class Terrain {
       spl[o] = Math.round(clamp01(g.dirt) * 255); spl[o + 1] = Math.round(clamp01(g.rock) * 255); spl[o + 2] = Math.round(clamp01(g.gravel) * 255);
       // the lake shore is sand: the same band groundAt colours pale
       const shore = Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r + 20 ? clamp01((LAKE.level + 1.3 - h) / 1.1) : 0;
-      spl[o + 3] = Math.round(shore * 255);
+      // (sand is the lower half of the channel; the upper half is sand fused to glass)
+      spl[o + 3] = Math.round(Math.max(shore * 0.5, clamp01(g.glass) * (1 - clamp01(g.rock))) * 255);
     }
     const mk = (d: Uint8Array, srgb: boolean) => {
       const t = new THREE.DataTexture(d, MAP, MAP, THREE.RGBAFormat);
@@ -176,7 +177,7 @@ ${STORY_GLSL}`)
   vec4 sA = mix(gA, eA, dW); vec4 sN = mix(gN, eN, dW);
   float vW = smoothstep(0.38, 0.62, sp.b + (edge + (vA.r - 0.5) * 0.5) * step(0.02, sp.b) * (1.0 - smoothstep(0.85, 1.0, sp.b)));
   sA = mix(sA, vA, vW); sN = mix(sN, vN, vW);
-  float nW = smoothstep(0.3, 0.7, sp.a + edge * step(0.02, sp.a) * (1.0 - smoothstep(0.85, 1.0, sp.a)));
+  float nW = smoothstep(0.15, 0.35, sp.a + edge * 0.5 * step(0.01, sp.a) * (1.0 - smoothstep(0.42, 0.5, sp.a)));
   sA = mix(sA, nA, nW); sN = mix(sN, vec4(0.5, 0.5, sN.b, 1.0), nW * 0.7);
   // rock: biplanar on the steep axis
   vec3 an = abs(wn);
@@ -205,6 +206,26 @@ ${STORY_GLSL}`)
     float leafy = max(lt.r, lt.g) - lt.b * 0.5 + (macro2 - 0.5) * 0.2;
     float lm = smoothstep(0.0, 0.08, leafy - mix(0.8, 0.22, st.a)) * (1.0 - rw);
     alb = mix(alb, lt.rgb * 1.1, lm); gTerrR = mix(gTerrR, 0.85, lm);
+  }
+  // The Arc Field: sand the coils have fused to slate glass. Pale where it is clean, burnt dark in
+  // drifts, and scarred by strikes: thin bright veins that wander and fork. Big shapes only, so it
+  // holds at phone size; it is smoother than any earth, so it takes the sky and the coils' light.
+  float glass = smoothstep(0.6, 0.9, sp.a) * (1.0 - rw);
+  if (glass > 0.001) {
+    float gd = length(vWPos - cameraPosition);
+    float ripple = texture(uTexA, vec3(uvD.yx * 0.45, ${T.SAND}.0)).r;
+    // it cooled in plates: two families of cracks, and each plate a shade of its own
+    vec2 c1 = texture2D(uNoise, vWPos.xz * 0.043 + 0.2).rg, c2 = texture2D(uNoise, vWPos.zx * 0.071 + 0.7).gb;
+    float crack = (1.0 - smoothstep(0.005, 0.017, min(abs(c1.x - 0.5), abs(c2.x - 0.5)))) * (1.0 - smoothstep(28.0, 60.0, gd));
+    float plate = mix(0.84, 1.16, step(0.5, c1.x)) * mix(0.92, 1.08, step(0.5, c2.x));
+    float drift = smoothstep(0.45, 0.51, macro2 * 0.75 + macro * 0.45 - 0.12 + (c1.y - 0.5) * 0.1);
+    float vq = texture2D(uNoise, vWPos.xz * 0.019 + 0.61).b + (c2.y - 0.5) * 0.04;
+    float vein = (1.0 - smoothstep(0.005, 0.02, abs(vq - 0.5))) * smoothstep(0.3, 0.5, macro);
+    vec3 ga = mix(vec3(0.125, 0.17, 0.225), vec3(0.045, 0.05, 0.065), drift * 0.9) * (0.7 + 0.6 * ripple) * plate;
+    ga *= 1.0 - crack * 0.6;
+    ga = mix(ga, vec3(0.45, 0.85, 0.95), vein * 0.85);
+    alb = mix(alb, ga, glass);
+    gTerrR = mix(gTerrR, mix(0.38, 0.85, max(drift, crack)), glass);
   }
   vec2 stTilt;
   storyGround(st, vWPos, alb, gTerrR, stTilt, 1.0 - rw, length(vWPos - cameraPosition));

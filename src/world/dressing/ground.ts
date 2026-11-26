@@ -1,9 +1,10 @@
 import { Rng, TAU, vnoise } from '../../core/util';
 import { CAMPS, ELITES } from '../../data/enemies';
 import { BEACONS } from '../east';
-import { BAND_GATES, BANDS, ROADS, ROAD_SAMPLES, bandAt, ridgeAt } from '../layout';
+import { T } from '../../gfx/textures';
+import { BAND_GATES, BANDS, PAL, ROADS, ROAD_SAMPLES, bandAt, ridgeAt } from '../layout';
 import { STORIES } from '../stories';
-import type { Ctx } from './kit';
+import { pallet, type Ctx } from './kit';
 
 /**
  * Ground stories (world/stories.ts): where vehicles and feet have gone, what has leaked and what
@@ -48,6 +49,54 @@ export function buildGround(c: Ctx) {
     S.line(arc);
   }
   for (const l of [...docks, ...yard, ...slag]) S.line(smoothLine(l, 2));
+  // ---- the docks' floor is worked ground: lorries drip where they run, the lanes were painted on
+  // the packed earth once and are half worn away, and things get left beside a lane (a pallet, a
+  // few boards; nothing with a collider, so nobody's way changes)
+  {
+    const rd = new Rng(909);
+    // a stroke of paint lying on the ground
+    const paint = (px: number, pz: number, ux: number, uz: number, len: number, w = 0.17) => {
+      const dh = c.h(px + ux * len / 2, pz + uz * len / 2) - c.h(px - ux * len / 2, pz - uz * len / 2);
+      if (Math.abs(dh) > len * 0.16 || ridgeAt(px, pz) > 0.3) return;
+      c.putY(px, c.h(px, pz), pz, Math.atan2(ux, uz), (g) => g.box(w, 0.04, len, { at: [0, 0.035, 0], rot: [-Math.atan2(dh, len), 0, 0], color: 0xc7a03c, col: 'none', jit: 0.08 }));
+    };
+    const turns: Array<Array<[number, number]>> = [];
+    for (const [cx, cz, R, a0, a1] of [[35, 178, 7, -1.2, 1.9], [37, 179, 9.5, -0.9, 1.4]]) { const arc: Array<[number, number]> = []; for (let a = a0; a <= a1; a += 0.5) arc.push([cx + Math.cos(a) * R, cz + Math.sin(a) * R]); turns.push(arc); }
+    [...docks, ...turns].forEach((l, li) => {
+      const pts = smoothLine(l, 2), lane = li < docks.length;
+      for (let k = 1; k < pts.length - 1; k++) {
+        const [x, z] = pts[k], dx = pts[k + 1][0] - pts[k - 1][0], dz = pts[k + 1][1] - pts[k - 1][1], L = Math.hypot(dx, dz) || 1;
+        const ux = dx / L, uz = dz / L, nx = -uz, nz = ux;
+        if (ridgeAt(x, z) > 0.3) continue;
+        if (rd.chance(0.3)) S.stamp(x + nx * rd.range(-1.3, 1.3), z + nz * rd.range(-1.3, 1.3), rd.range(0.8, 1.5), { stain: rd.range(0.85, 1) }, 200 + li * 40 + k, 0.6);
+        if (lane && k % 2 === 0) for (const s of [-1, 1]) {
+          if (vnoise(x * 0.09 + s * 3, z * 0.09, 77) < 0.3) continue;
+          paint(x + nx * s * 2.35, z + nz * s * 2.35, ux, uz, 1.9);
+        }
+        // a bay marked out beside the middle of the run: an outline and three strokes of hatching
+        if (lane && k === (pts.length >> 1)) {
+          const s = li % 2 ? 1 : -1, bx = x + nx * s * 6.2, bz = z + nz * s * 6.2;
+          if (c.free(bx, bz, 2.6, false)) {
+            for (const e of [-1, 1]) for (const t of [-1.5, 0, 1.5]) paint(bx + nx * e * 1.7 + ux * t * 1.25, bz + nz * e * 1.7 + uz * t * 1.25, ux, uz, 1.7);
+            for (const e of [-1, 1]) for (const t of [-0.85, 0.85]) paint(bx + ux * e * 2.72 + nx * t, bz + uz * e * 2.72 + nz * t, nx, nz, 1.6);
+            for (const t of [-1.3, 0, 1.3]) paint(bx + ux * t, bz + uz * t, (ux + nx) * 0.7071, (uz + nz) * 0.7071, 2.6, 0.2);
+          }
+        }
+        if (rd.chance(0.085)) {
+          const s = rd.chance(0.5) ? 1 : -1, px = x + nx * s * rd.range(3.5, 4.8), pz = z + nz * s * rd.range(3.5, 4.8);
+          if (!c.free(px, pz, 1.4, false)) continue;
+          c.putY(px, c.h(px, pz), pz, rd.range(0, TAU), (g) => {
+            pallet(g, 0, 0, rd.chance(0.5) ? 0xb98a55 : 0xa87a48);
+            if (rd.chance(0.45)) pallet(g, 0.135, rd.range(-0.4, 0.4), 0xc79a62);
+            for (let i = rd.int(1, 3); i > 0; i--) g.box(0.14, 0.035, rd.range(0.8, 1.3), { at: [rd.range(0.9, 1.6), 0.02, rd.range(-0.6, 0.6)], rot: [0, rd.range(0, TAU), 0], color: 0x9a744a, layer: T.PLANKS, col: 'none' });
+          });
+          S.stamp(px, pz, 1.6, { wear: 0.7 }, 300 + k);
+        }
+      }
+    });
+    // the crane's apron and the bays' ends: a spill or two that somebody sanded and left
+    for (const [x, z, rr] of [[38, 182, 1.9], [31, 173, 1.6], [44, 196, 1.7], [58, 152, 1.6], [74, 166, 1.9], [27, 203, 1.5]] as const) S.stamp(x, z, rr, { stain: 0.95 }, 400 + x, 0.7);
+  }
   // and wandering tracks across the working bands, wherever there is open ground
   for (const b of [2, 4, 5]) {
     const B = BANDS[b - 1];
@@ -99,6 +148,30 @@ export function buildGround(c: Ctx) {
   ring('L2', 8, 6, () => ({ stain: 0.9 }), [0.8, 1.6]);
   ring('L4', 14, 9, (i) => (i % 3 ? { scorch: 0.9 } : { stain: 0.9 }), [1.6, 3.2]);
   ring('L5', 12, 7, () => ({ stain: 0.9 }), [0.9, 1.8]);
+  // ---- the Arc Field: conduit trenches run from the Great Coil to the pylons it feeds (an iron
+  // channel with a live line down it, tied every few metres), and every pylon has burnt its footing
+  {
+    const coil = c.info.pylons.find((p) => Math.hypot(p.x - 56, p.z + 160) < 9);
+    const fed = coil ? c.info.pylons.filter((p) => { const d = Math.hypot(p.x - coil.x, p.z - coil.z); return d > 16 && d < 78 && bandAt(p.x, p.z)?.id === 6; }).slice(0, 10) : [];
+    for (const p of fed) {
+      const dx = p.x - coil!.x, dz = p.z - coil!.z, L = Math.hypot(dx, dz), ux = dx / L, uz = dz / L, yaw = Math.atan2(dx, dz);
+      const n = Math.floor((L - 8.2) / 2.6);
+      for (let i = 0; i < n; i++) {
+        const d0 = 6.6 + i * 2.6, mx = coil!.x + ux * (d0 + 1.3), mz = coil!.z + uz * (d0 + 1.3);
+        if (ridgeAt(mx, mz) > 0.3) continue;
+        const dh = c.h(coil!.x + ux * (d0 + 2.6), coil!.z + uz * (d0 + 2.6)) - c.h(coil!.x + ux * d0, coil!.z + uz * d0);
+        if (Math.abs(dh) > 0.5) continue;
+        const pitch = -Math.atan2(dh, 2.6);
+        c.put(mx, mz, yaw, (g) => {
+          g.box(0.62, 0.1, 2.64, { at: [0, 0.02, 0], rot: [pitch, 0, 0], color: 0x1d232a, layer: T.METAL, uvScale: 0.5, col: 'none' });
+          g.box(0.1, 0.05, 2.64, { at: [0, 0.075, 0], rot: [pitch, 0, 0], color: PAL.cyan, emit: 1.5, col: 'none' });
+          if (i % 2 === 0) g.box(0.9, 0.07, 0.2, { at: [0, 0.08, 0], color: 0x3a444e, layer: T.METAL, col: 'none' });
+        });
+      }
+      S.stamp(p.x, p.z, r.range(2.6, 4), { scorch: 0.85 }, 120 + (p.x | 0));
+    }
+    for (const p of c.info.pylons) if (bandAt(p.x, p.z)?.id === 6 && !fed.includes(p)) S.stamp(p.x + r.range(-1, 1), p.z + r.range(-1, 1), r.range(1.8, 3), { scorch: 0.8 }, 140 + (p.z | 0));
+  }
   // welders burn their ground; the arc field's camps are scorched by the pylons
   for (const cp of CAMPS) {
     if (cp.band === 4) S.stamp(cp.x + r.range(-1.5, 1.5), cp.z + r.range(-1.5, 1.5), r.range(2, 3.2), { scorch: 0.8 }, 90 + (cp.x | 0));

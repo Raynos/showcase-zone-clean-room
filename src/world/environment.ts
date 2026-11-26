@@ -30,7 +30,7 @@ const KEYS: Key[] = [
   { t: 7.7, zenith: 0x3a7ad8, horizon: 0xffdaac, haze: 0xeacaa2, light: 0xffc684, lightI: 3.3, hemiSky: 0x9fc0f0, hemiGround: 0x7c644a, hemiI: 0.88, fog: 0xf0d2aa, fogSun: 0xffca92, fogD: 0.00218, exposure: 1.0, sunset: 0.42, night: 0, cloudLit: 0xfff2da, cloudDark: 0x8c8ca2 },
   { t: 10.5, ...DAY },
   { t: 15.2, ...DAY },
-  { t: 17.0, zenith: 0x3070cc, horizon: 0xffd2a2, haze: 0xeac292, light: 0xffbe72, lightI: 3.2, hemiSky: 0x9fb8e8, hemiGround: 0x82664c, hemiI: 0.86, fog: 0xeecaa2, fogSun: 0xffc282, fogD: 0.00193, exposure: 1.0, sunset: 0.5, night: 0, cloudLit: 0xffeaca, cloudDark: 0x8c86a2 },
+  { t: 17.0, zenith: 0x3070cc, horizon: 0xffd2a2, haze: 0xeac292, light: 0xffbe72, lightI: 3.2, hemiSky: 0x9fb8e8, hemiGround: 0x82664c, hemiI: 0.86, fog: 0xeecaa2, fogSun: 0xffc282, fogD: 0.00105, exposure: 1.0, sunset: 0.5, night: 0, cloudLit: 0xffeaca, cloudDark: 0x8c86a2 },
   { t: 18.15, zenith: 0x34409c, horizon: 0xff8e58, haze: 0xca8a6a, light: 0xff8742, lightI: 4.2, hemiSky: 0x7478d0, hemiGround: 0x5c423a, hemiI: 0.74, fog: 0x9a70a0, fogSun: 0xff9252, fogD: 0.00200, exposure: 1.1, sunset: 1, night: 0.05, cloudLit: 0xffb282, cloudDark: 0x5c4c6a },
   { t: 19.1, zenith: 0x121c48, horizon: 0x8c526a, haze: 0x423a4e, light: 0xa2aaff, lightI: 0.75, hemiSky: 0x42528c, hemiGround: 0x241e26, hemiI: 0.85, fog: 0x423a5c, fogSun: 0xa26272, fogD: 0.00244, exposure: 1.25, sunset: 0.6, night: 0.6, cloudLit: 0xa27292, cloudDark: 0x1e1e36 },
   { t: 20.2, ...NIGHT },
@@ -171,6 +171,8 @@ export class Environment {
   farEvery = 1;
   /** share of the tier's shadow reach kept in landscape */
   shadowWide = 0.6;
+  /** thins or thickens all fog (a tuning handle; 1 in play) */
+  fogScale = 1;
   private farFresh = false; private farAge = 0;
   private farMatrix = new THREE.Matrix4();
   /**
@@ -421,6 +423,7 @@ export class Environment {
       // the rooms were tuned when this term was stuck at the dense air of a camera 40 m underground: keep that weight
       fogD = lerp(fogD, il.fogD, im); hf = lerp(hf, 0.0, im); linD = lerp(linD, il.fogD * 5, im);
     }
+    fogD *= this.fogScale; linD *= this.fogScale;
     this.fog.density = fogD;
     FOGX[0].set(this.sunDir.x, this.sunDir.y, this.sunDir.z, hf);
     fogSun.set(cB.r, cB.g, cB.b, 10);

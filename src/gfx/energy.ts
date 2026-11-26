@@ -28,13 +28,14 @@ export function barrierMat(color: number, size: [number, number]): THREE.ShaderM
         vec2 p = vUv * uSize;
         // chevrons marching upward
         float ch = abs(fract((p.y - abs(p.x - uSize.x * 0.5) * 0.7) * 0.45 - uTime * 0.5) - 0.5) * 2.0;
-        float stripes = smoothstep(0.55, 0.7, ch);
+        // (chevron lines, not bands: a gate is twenty metres of this, and a fill of it is a red fog over the scene behind)
+        float stripes = smoothstep(0.74, 0.86, ch);
         // hex-ish cell shimmer
         float n = texture2D(uNoise, p * 0.06 + vec2(0.0, uTime * 0.03)).g;
         float scan = smoothstep(0.92, 1.0, sin(p.y * 9.0 - uTime * 3.0) * 0.5 + 0.5);
         vec2 e = min(vUv, 1.0 - vUv) * uSize;
         float edge = smoothstep(0.35, 0.0, min(e.x, e.y));
-        float a = 0.1 + stripes * 0.22 + scan * 0.12 + edge * 0.9 + n * 0.12 + uHit * 0.6;
+        float a = 0.022 + stripes * (0.16 + 0.1 * n) + scan * 0.1 + edge * 0.9 + n * 0.03 + uHit * 0.6;
         // dissolve from the bottom up
         float d = texture2D(uNoise, p * 0.11).r * 0.35 + vUv.y * 0.65;
         float cut = smoothstep(uOpen * 1.25 - 0.15, uOpen * 1.25, d);
