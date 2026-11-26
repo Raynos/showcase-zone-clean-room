@@ -55,7 +55,9 @@ export const WEAK: Partial<Record<RobotKind, WeakDef[]>> = {
     { name: 'COIL', bone: 'core', off: [0, 0, 0], r: 0.26, mult: 2.0, color: VENT },
   ],
   // bosses: one each, smaller multiples
-  warden: [{ name: 'DIAL', bone: 'dial', off: [0, 0, 0.08], r: 0.38, mult: 1.8, color: EYE }],
+  // the dial 1.8 -> 2.4 (QA 2026-11-26, de4e747, competent bot at level 10, one weapon): Bandsaw 106 s,
+  // Tension Bow 254 s, Bolt Driver 306 s. Only aimed weapons gain from it; not re-run after the change
+  warden: [{ name: 'DIAL', bone: 'dial', off: [0, 0, 0.08], r: 0.38, mult: 2.4, color: EYE }],
   foreman: [
     { name: 'VISOR', bone: 'head', off: [0, 0.3, 0.42], r: 0.32, mult: 1.8, color: EYE },
     { name: 'WHISTLE', bone: 'head', off: [0, 0.13, 0.62], r: 0.2, mult: 2.0, color: VENT },
