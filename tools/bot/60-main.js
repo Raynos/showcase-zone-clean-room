@@ -48,7 +48,14 @@
     return { goalKey: 'rare', label: `chase the rare: ${m.name} (L${m.level})`, run: async () => {
       const r = await B.goTo(m.pos.x, m.pos.z, { r: 10, partialOk: 12, roadOnly: true, timeout: 60, until: () => !m.alive || m.aggro, fightRange: 12 });
       if (r === 'nopath' || r === 'stuck') { m.__skip = B.now() + 90; B.note(`cannot reach rare ${m.name}: ${r}`); return; }
-      await B.fight({ focus: m, prefer: (x) => x === m });
+      const hp0 = m.hp;
+      await B.fight({ focus: m, prefer: (x) => x === m, maxSec: 60 });
+      // a rare that took no damage in a minute of trying is out of reach (qa3: Pallet Royale stood behind a
+      // container wall near (39.5, 100) and the bot pressed into the wall for three minutes): leave it
+      if (m.alive && m.hp >= hp0) {
+        m.__skip = B.now() + 300;
+        B.note(`could not hurt rare ${m.name} in 60 s: it stands at (${m.pos.x.toFixed(1)}, ${m.pos.y.toFixed(1)}, ${m.pos.z.toFixed(1)}), ground ${G().terrain.h(m.pos.x, m.pos.z).toFixed(1)}, state ${m.state}, aggro ${!!m.aggro}; we are at (${G().player.pos.x.toFixed(1)}, ${G().player.pos.z.toFixed(1)})`);
+      }
       await B.afterFight();
     } };
   };

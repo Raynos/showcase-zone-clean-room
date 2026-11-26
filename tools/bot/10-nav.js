@@ -225,6 +225,9 @@
   B.goTo = async (gx, gz, opts = {}) => {
     const g = B.G(), pl = g.player, r = opts.r ?? 1.6;
     let path = null, idx = 0, planAt = -99, stuckN = 0, lastP = { x: pl.pos.x, z: pl.pos.z }, lastCheck = B.now(), replans = 0, offRoad = false;
+    // waypoints passed: a walk that passes none for 15 s is rocking in place (on a ledge, against a
+    // prop) even when it moves enough to fool the stuck check; it used to run out the 240 s clock
+    let passedAt = B.now(), rocking = 0;
     const t0 = B.now();
     try { return await go(); } finally { if (offRoad) { nav.offRoad = false; nav.invalidate(); } }
     async function go() { for (;;) {
@@ -254,7 +257,15 @@
       }
       // follow
       let wp = path.pts[Math.min(idx, path.pts.length - 1)];
-      while (idx < path.pts.length - 1 && Math.hypot(wp[0] - p.x, wp[1] - p.z) < 1.3) wp = path.pts[++idx];
+      while (idx < path.pts.length - 1 && Math.hypot(wp[0] - p.x, wp[1] - p.z) < 1.3) { wp = path.pts[++idx]; passedAt = B.now(); }
+      if (B.evading || g.input.uiCapture || !pl.controllable) passedAt = B.now();
+      if (B.now() - passedAt > 15) {
+        passedAt = B.now(); rocking++;
+        B.note(`walk to (${Math.round(gx)}, ${Math.round(gz)}): no waypoint passed in 15 s at (${Math.round(p.x)}, ${Math.round(p.z)}), blocking the way ahead`);
+        nav.blockAhead(p.x, p.z, wp[0] - p.x, wp[1] - p.z); path = null;
+        if (rocking >= 4) { B.stop(); return 'stuck'; }
+        continue;
+      }
       if (idx >= path.pts.length - 1 && Math.hypot(wp[0] - p.x, wp[1] - p.z) < 1.0) {
         if (path.partial) { B.stop(); return dGoal <= r + (opts.partialOk ?? 0) ? 'arrived' : 'nopath'; }
         // the grid goal was reached but not the exact point: finish in a straight line

@@ -43,10 +43,17 @@
     for (const id in UPG) { let t = 0; while (t + 1 < UPG[id].length && UPG[id][t + 1] <= c.level - 1) t++; d.upgrades[id] = t; }
     d.inv = { kit: 8, scrap: 12, wire: 8, servo: 4, ...(c.items || {}) };
     d.scrip = 150 * c.level;
-    for (const id of c.done) { const q = QUEST_BY_ID[id]; d.quests[id] = { state: 'done', prog: q.objectives.map((o) => o.n) }; }
+    // Borrowed Hooves is a level-1 side quest every player takes with the tour: done by any checkpoint past level 1
+    // (left out, a level-10 run spent its first two minutes riding the lake lap for a level-1 reward)
+    const done = c.level > 1 && !c.done.includes('q_horse') ? [...c.done, 'q_horse'] : c.done;
+    if (done.includes('q_horse')) d.flags.horse_whistle = 1;
+    for (const id of done) { const q = QUEST_BY_ID[id]; d.quests[id] = { state: 'done', prog: q.objectives.map((o) => o.n) }; }
     for (const id of c.active || []) { const q = QUEST_BY_ID[id]; d.quests[id] = { state: 'active', prog: q.objectives.map(() => 0) }; }
     for (const gt of c.gates) { d.flags['gate_' + gt] = 1; const e = GATE_ELITE[gt]; d.kills[e] = 1; d.contracts['c_' + e] = 1; }
     for (const f of c.flags || []) d.flags[f] = 1;
+    // the signal posts of the bands already played through (a player walks past each camp on the band's road)
+    d.field = d.field || { pts: {}, best: {}, quiet: {} };
+    d.field.posts = [1, 2, 3, 4, 5, 6].filter((b) => 3 * b < c.level).map((b) => 'b' + b);
     if (c.done.includes('q_vault')) { d.flags.vault_clear = 1; d.kills.warden = 1; d.contracts.c_warden = 1; }
     if (c.done.includes('q_storm')) { for (let i = 0; i < 4; i++) d.flags['beacon_' + i] = 1; d.flags.storm = 0; }
     for (const k of ['town', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'range', 'physics', 'climb', 'movers', 'hover', 'grapple', 'rock']) d.flags['seen_' + k] = 1;

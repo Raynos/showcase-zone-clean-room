@@ -146,8 +146,17 @@ function summary(r) {
   L.push('', 'quests (accepted -> turned in, in-game):');
   for (const id in r.quests) { const q = r.quests[id]; L.push(`  ${(q.name || id).padEnd(24)} ${at(q.accept).padEnd(11)} -> ${q.turnIn ? at(q.turnIn) : 'not turned in'}`); }
   if (r.deaths.length) { L.push('', 'deaths:'); for (const d of r.deaths) L.push(`  ${t(d.game)} L${d.level} ${d.where} (${d.pos.x}, ${d.pos.z}) killed by ${d.killer} while: ${d.goal}`); }
+  if (r.deathLog && r.deathLog.length) {
+    // the last 8 s of hits before each death: dmg, who (attack), distance, on screen, wind-up shown before it, attacker's age, robots aggro
+    L.push('', 'hits in the 8 s before each death (dmg by [attack] at m, on screen?, tell s, attacker age s, aggro):');
+    for (const d of r.deathLog) {
+      L.push(`  ${t(d.game)} L${d.level} (${d.pos.x}, ${d.pos.z})`);
+      for (const h of d.hits) L.push(`    -${h.dmg} (${h.hp}/${h.max}) ${h.by}${h.atk ? ' [' + h.atk + ']' : ''} at ${h.dist} m, ${h.seen ? 'on screen' : 'OFF SCREEN'}, tell ${h.tell ?? 'none'}, age ${h.age ?? '?'}, aggro ${h.aggro}`);
+    }
+  }
+  if (r.travel) L.push('', `fast travel: ${r.travel.jumps} jumps, ${r.travel.saved} m of walking saved`);
   if (r.stalls.length) { L.push('', 'stalls (3 in-game minutes without quest, level or kill progress):'); for (const s of r.stalls) L.push(`  ${t(s.game)} L${s.level} ${s.where} (${s.pos.x}, ${s.pos.y}, ${s.pos.z}) while: ${s.goal}\n      screenshot: ${s.shot || 'none'}`); }
-  const notes = r.notes.filter((n) => /cannot|could not|blocked|no path|leashed|wrong plate|error|not strong|died \d|no cover|did nothing|thrown|no lap|not in the saddle|did not come/.test(n.text));
+  const notes = r.notes.filter((n) => /cannot|could not|blocked|no path|leashed|wrong plate|error|not strong|died \d|no cover|did nothing|thrown|no lap|not in the saddle|did not come|no waypoint passed|did not happen|could not light the post|fast travel:/.test(n.text));
   if (notes.length) { L.push('', 'trouble noted:'); for (const n of notes.slice(0, 40)) L.push(`  ${t(n.game)} L${n.level} (${n.pos.x}, ${n.pos.z}) ${n.text}${n.n ? ' x' + n.n : ''}`); }
   return L.join('\n');
 }

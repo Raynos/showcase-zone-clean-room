@@ -97,6 +97,9 @@
         if (B.noPathRun >= 3) {
           // stranded up on the Rock's boardwalk: walk the planks down first
           if (B.rockDown && (await B.rockDown())) { B.note('was stranded on the Rock boardwalk: walked back down the planks'); return true; }
+          // boxed in on the grid but not in the world (qa3: between container stacks at (39.5, 100) the start cell's
+          // centre sat inside a prop, every camp was "no path" for 7 minutes, and the hero could walk off in any direction)
+          if (B.noPathRun % 3 === 0 && (await B.unbox())) { B.note(`no path from (${Math.round(g.player.pos.x)}, ${Math.round(g.player.pos.z)}) on the grid: stepped clear by eye and replanned`); B.nav.invalidate(); return true; }
           B.nav.invalidate(); B.note(`no path to ${B.noPathRun} camps in a row: replanning from scratch`); await B.sleep(2); return true;
         }
         B.campBad[camp.__i] = B.now() + 240; B.note(`cannot reach ${d.kind} camp at ${d.x},${d.z}: ${r}`); return true;
@@ -213,6 +216,17 @@
     }
     B.stop(); B.nav.invalidate();
     return true;
+  };
+  /** Walk a few metres by eye in whichever of eight directions lets us: true if we got 3 m clear. */
+  B.unbox = async () => {
+    const g = G(), p = g.player.pos, x0 = p.x, z0 = p.z;
+    for (let k = 0; k < 8; k++) {
+      const a = (k * 3 % 8) * Math.PI / 4, t0 = B.now(), sx = p.x, sz = p.z;
+      while (B.now() - t0 < 1.6) { B.move(Math.cos(a), Math.sin(a), 1, false); await B.tick(); }
+      B.stop();
+      if (Math.hypot(p.x - sx, p.z - sz) > 3 && Math.hypot(p.x - x0, p.z - z0) > 3) return true;
+    }
+    return false;
   };
   B.doReach = async (key) => {
     const g = G(), [x, z] = PLACES[key];
