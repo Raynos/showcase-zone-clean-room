@@ -9,6 +9,7 @@ import {
   bounce, glowPatch, ladderProp, lampPost, lanternBody, marketStall, pipeRun, pixelIcon, pixelText, planter, sack, signPost, slab, stringLights, toWorld, trough,
   wallLantern, well, windowUnit, workbench, wpos,
 } from './props';
+import { cogExchange } from './exchange';
 import { hasPiece, piece } from './pieces';
 import type { HouseOut, HouseSpec } from './props';
 import type { Terrain } from './terrain';
@@ -1346,6 +1347,12 @@ export function buildTown(chunks: Chunks, terrain: Terrain): TownInfo {
   npc(c, 'quest1', 'Foreman Tully', -35.6, 3.6, look(-35.6, 3.6, -30, 6));
   npc(c, 'quest3', 'Gate Warden', -2.4, 4.4, look(-2.4, 4.4, -12, 2));
   npc(c, 'folk2', 'Townsfolk', px + Math.cos(122 * PI / 180) * 13.8, Math.sin(122 * PI / 180) * 13.8, look(px + Math.cos(122 * PI / 180) * 13.8, Math.sin(122 * PI / 180) * 13.8, px, 0), 'sit');
+  // Old Bram's cog exchange (systems/tally.ts): his cart stands beside the bench he sits on, under a hanging cog
+  {
+    const bx = px + Math.cos(122 * PI / 180) * 13.8, bz = Math.sin(122 * PI / 180) * 13.8, yaw = look(bx, bz, px, 0);
+    const [sx, sz] = toWorld(bx, bz, yaw, -2.75, 0.1), g = c.chunks.solid(sx, sz);
+    g.at(sx, 0.05, sz, yaw, () => { const l = cogExchange(g); addLantern(c, g, l[0], l[1], l[2], PAL.amber); });
+  }
   npc(c, 'folk5', 'Porter', -10.4, 19.4, 2.2, 'carry');
   npc(c, 'folk6', 'Gate Guard', 0.4, -4.3, -PI / 2);
   npc(c, 'folk7', 'Gate Guard', -100.8, 3.9, PI / 2);
