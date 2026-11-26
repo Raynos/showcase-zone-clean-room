@@ -28,6 +28,7 @@ if (flag('help') || flag('h')) {
   --boost N           play with ?boost=N (XP times N, on the game's separate boost save slot): the fast
                       full-journey run. Pacing checks run without it.
   --until-level N     stop when the player reaches level N (one band's honest pacing check)
+  --keep-open         leave the browser session open when the run ends (it is closed by default)
   --list              list checkpoints and exit`);
   process.exit(0);
 }
@@ -127,6 +128,19 @@ function summary(r) {
     for (const f of r.fights) L.push(`  ${(f.name + ' (' + f.mobLevel + '/' + f.level + ')').padEnd(28)} ${t(f.sec).padEnd(7)} ${String(f.dmg).padEnd(5)} ${String(f.kits).padEnd(4)} ${String(f.deaths).padEnd(3)} ${String(Math.round(f.minHp * 100)).padStart(3)}%  ${f.result.padEnd(7)} ${Object.entries(f.tools).map(([k, v]) => k + ' ' + v).join(', ')}`);
   }
   if (r.xpBySrc) { const tot = Object.values(r.xpBySrc).reduce((a, b) => a + b, 0) || 1; L.push('', 'XP by source: ' + Object.entries(r.xpBySrc).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${Math.round(100 * v / tot)}%`).join(', ') + (r.boost > 1 ? ` (boosted x${r.boost})` : '')); }
+  if (r.campFights && r.campFights.length) {
+    // health lost per fight with commons (x max hp), by level: the careless harness's measure
+    const by = {};
+    for (const f of r.campFights) (by[f.lvl] = by[f.lvl] || []).push(f);
+    const med = (xs) => { const s = xs.slice().sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : 0; };
+    L.push('', 'fights with commons (health lost x max hp; kills a fight): level  fights  median lost  worst  median kills  deaths');
+    for (const l of Object.keys(by).map(Number).sort((a, b) => a - b)) { const xs = by[l]; L.push(`  L${String(l).padEnd(3)} ${String(xs.length).padEnd(7)} ${med(xs.map((f) => f.lost)).toFixed(2).padEnd(12)} ${Math.max(...xs.map((f) => f.lost)).toFixed(2).padEnd(6)} ${String(med(xs.map((f) => f.kills))).padEnd(13)} ${xs.filter((f) => f.died).length}`); }
+  }
+  if (r.grind) {
+    const G = r.grind, life = (xs) => xs.map((x) => `${x.name} L${x.level} at ${at(x.at)} ${x.result}`).join('; ') || 'none';
+    L.push('', `grind: camps cleared ${G.camps}, bounties paid ${G.bounties}, best streak ${G.bestStreak} kills (peak heat ${Math.round(G.bestHeat)}), field perks ${G.fieldPerks}, tuning cards ${G.tuneCards || 0} (Fit tapped ${G.tuneTaps || 0})`);
+    L.push(`  rares: ${life(G.rares)}`, `  champions: ${life(G.champs)}`);
+  }
   if (r.tools) L.push('', 'tools used: ' + Object.entries(r.tools).map(([k, v]) => k + ' ' + v).join(', '));
   if (r.perks && r.perks.length) L.push('perks learned: ' + r.perks.map((p) => p.id + ' (L' + p.level + ')').join(', '));
   L.push('', 'quests (accepted -> turned in, in-game):');
@@ -222,4 +236,7 @@ async function main() {
   console.log('summary: ' + summaryPath);
   process.exitCode = r.outcome.result === 'complete' ? 0 : 2;
 }
-main().catch((e) => { console.error('playthrough runner failed: ' + (e && e.message || e)); process.exit(1); });
+// every open session renders the game flat out: close ours when the run ends, however it ends
+// (--keep-open leaves it up, for a following --from resume)
+const closeSession = () => { if (flag('keep-open')) return; try { ab(['close']); } catch { /* already gone */ } };
+main().then(closeSession, (e) => { console.error('playthrough runner failed: ' + (e && e.message || e)); closeSession(); process.exit(1); });

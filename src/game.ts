@@ -91,6 +91,8 @@ export class Game {
   robotFactory: ((kind: RobotKind, look: RobotLook) => RobotRig) | null = null;
   onSprintStart: (() => void) | null = null;
   dev = new URLSearchParams(location.search).has('dev');
+  /** for tools/bot, on a build as on the dev server: the data tables it reads (a lazy chunk) */
+  readonly botData = () => import('./data/botdata');
   private fpsAcc = 0; private fpsN = 0; fps = 60;
   started = false;
   /** the WebGL context was lost: the game stops drawing and reloads once it can (boot) */

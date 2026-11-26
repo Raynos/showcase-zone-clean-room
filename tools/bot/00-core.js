@@ -11,6 +11,15 @@
   const B = (window.__pb = window.__pb || {});
   const TAU = Math.PI * 2;
   B.G = () => window.game;
+  /** The game's data tables and riding track: through the game's own lazy chunk, so a production
+   *  build works too; a page from before that hook falls back to the dev server's source. */
+  B.data = window.__pbData = async () => {
+    const g = window.game;
+    if (g && g.botData) return g.botData();
+    const src = (p) => import(/* @vite-ignore */ new URL('src/' + p, document.baseURI).href);
+    const [w, bal, q, k] = await Promise.all([src('data/weapons.ts'), src('data/balance.ts'), src('data/quests.ts'), src('world/west/kitB.ts')]);
+    return { ...w, ...bal, ...q, ...k };
+  };
   B.DEAD = B.DEAD || { name: 'dead' };
   B.ABORT = B.ABORT || { name: 'abort' };
   B.REPLAN = B.REPLAN || { name: 'replan' };
@@ -81,6 +90,26 @@
       console.log('[bot] fight: ' + JSON.stringify(out));
       B.fightRec = null;
     }
+  };
+  /**
+   * The reasons to keep fighting (src/systems/grind.ts), as met in play: named rares and champions
+   * spawned and killed (with where and when), camp clears, bounties paid, the best streak and tier,
+   * tuning offers and what became of them. Counted per run, from the game's own state.
+   */
+  B.trackGrind = () => {
+    const g = B.G(), gr = g.grind, sd = g.state.d.grind;
+    if (!gr || !sd) return;
+    const R = (B.rep.grind = B.rep.grind || { rares: [], champs: [], camps0: sd.camps, bounties0: sd.bountiesDone, bestTier: 0, bestHeat: 0, tunes: [], tuneCards: 0, tuneTaps: 0 });
+    const life = (mob, list, kind) => {
+      if (mob && mob.alive && mob !== B['__' + kind]) { B['__' + kind] = mob; list.push({ name: mob.name, level: mob.level, at: B.stamp(), atLevel: g.state.d.level, pos: { x: Math.round(mob.pos.x), z: Math.round(mob.pos.z) }, result: 'alive' }); B.note(`${kind} appeared: ${mob.name} L${mob.level}`); }
+      const cur = B['__' + kind], rec = list[list.length - 1];
+      if (cur && rec && rec.result === 'alive' && (!cur.alive || cur.state === 'dead')) { rec.result = cur.hp <= 0 ? 'killed' : 'gone'; rec.end = B.stamp(); B['__' + kind] = null; B.note(`${kind} ${rec.result}: ${rec.name}`); }
+    };
+    life(gr.rare, R.rares, 'rare'); life(gr.champ, R.champs, 'champion');
+    R.camps = sd.camps - R.camps0; R.bounties = sd.bountiesDone - R.bounties0; R.bestStreak = sd.best;
+    R.bestHeat = Math.max(R.bestHeat, gr.heat || 0);
+    R.fieldPerks = sd.perks;
+    if (sd.tunes.length !== (B.__tunesN || 0)) { if (sd.tunes.length > (B.__tunesN || 0)) R.tunes.push({ ...sd.tunes[sd.tunes.length - 1], at: B.stamp() }); B.__tunesN = sd.tunes.length; }
   };
   B.note = (text) => {
     const n = B.rep.notes, last = n[n.length - 1];
@@ -232,6 +261,7 @@
       }
       B.lastXp = xt; B.xpLevel = st.d.level;
       B.trackFight(dg);
+      B.trackGrind();
       // deaths
       if (pl.dead && !B.wasDead) {
         b.deaths++; L.deaths++; if (fr) fr.deaths++;

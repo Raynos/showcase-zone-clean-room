@@ -94,7 +94,11 @@
         // blacklisting them all left the bot standing in town for four minutes
         if (g.interior) return false;
         B.noPathRun = (B.now() - (B.lastCampNoPath || -99) < 8 ? (B.noPathRun || 0) : 0) + 1; B.lastCampNoPath = B.now();
-        if (B.noPathRun >= 3) { B.nav.invalidate(); B.note(`no path to ${B.noPathRun} camps in a row: replanning from scratch`); await B.sleep(2); return true; }
+        if (B.noPathRun >= 3) {
+          // stranded up on the Rock's boardwalk: walk the planks down first
+          if (B.rockDown && (await B.rockDown())) { B.note('was stranded on the Rock boardwalk: walked back down the planks'); return true; }
+          B.nav.invalidate(); B.note(`no path to ${B.noPathRun} camps in a row: replanning from scratch`); await B.sleep(2); return true;
+        }
         B.campBad[camp.__i] = B.now() + 240; B.note(`cannot reach ${d.kind} camp at ${d.x},${d.z}: ${r}`); return true;
       }
       cand = B.mobs(45, match)[0];
@@ -189,6 +193,24 @@
   };
   // the Rock's switchback boardwalk (src/world/west/rock.ts): its faces are too steep to stand on, so walk up the planks
   const ROCK_WALK = [[-164.5, -152.5], [-163.0, -155.4], [-159.6, -161.5], [-158.2, -169.5], [-160.6, -177.5], [-161.6, -185.5], [-162.2, -194.5]];
+  /**
+   * Back down the planks to the trail head. The nav grid judges the crag by its terrain (too steep
+   * everywhere), so from up on the boardwalk it finds no way anywhere: a bot left there replanned
+   * forever (qa2, level 7). Returns true if it walked.
+   */
+  B.rockDown = async () => {
+    const g = G(), p = g.player.pos;
+    if (Math.hypot(p.x - ROCK_WALK[0][0], p.z - ROCK_WALK[0][1]) < 2.5) return false;
+    let i = 0, best = 1e9;
+    ROCK_WALK.forEach(([x, z], k) => { const d = Math.hypot(p.x - x, p.z - z); if (d < best) { best = d; i = k; } });
+    if (best > 14) return false;
+    for (let k = i; k >= 0; k--) {
+      const [wx, wz] = ROCK_WALK[k], t0 = B.now();
+      while (B.d2({ x: wx, z: wz }, g.player.pos) > 1.2 && B.now() - t0 < 10) { B.moveTo(wx, wz, 1, false); B.look(wx, wz); await B.tick(); }
+    }
+    B.stop(); B.nav.invalidate();
+    return true;
+  };
   B.doReach = async (key) => {
     const g = G(), [x, z] = PLACES[key];
     if (key === 'rock') {
@@ -202,7 +224,7 @@
         if (seen()) break;
       }
       B.stop();
-      if (seen()) return;
+      if (seen()) { await B.rockDown(); return; }
     }
     const r = await B.goTo(x, z, { r: 4, partialOk: 30, until: () => !!g.state.d.flags['seen_' + key], fight: true });
     if (r === 'combat') { await B.fight(); return; }
@@ -249,7 +271,7 @@
 
   // ---------------------------------------------------------------- riding course
   let KB = null;
-  const kitB = async () => KB || (KB = await import(/* @vite-ignore */ new URL('src/world/west/kitB.ts', document.baseURI).href));
+  const kitB = async () => KB || (KB = await B.data());
   /** Borrowed Hooves: mount the loaner horse and ride one lap of the lake track, jumping the jump rings. */
   B.doRiding = async () => {
     const g = G(), pl = g.player, st = g.state;
@@ -347,6 +369,8 @@
       await B.doTown(w);
       return;
     }
+    const rj = B.rareJob && !B.careless() ? B.rareJob() : null;
+    if (rj) { B.goalKey = rj.goalKey; B.setGoal(rj.label); await rj.run(); return; }
     const active = qs.active().sort((a, b) => ORDER.indexOf(a.id) - ORDER.indexOf(b.id));
     for (const q of active) {
       if (qs.status(q.id) !== 'active') continue;

@@ -30,8 +30,9 @@
   window.__pbCheckpoint = async (name) => {
     const c = POINTS[name], g = window.game, st = g.state, d = st.d;
     if (!c) return 'unknown checkpoint: ' + name;
-    const { QUEST_BY_ID } = await import(/* @vite-ignore */ new URL('src/data/quests.ts', document.baseURI).href);
-    const { xpToNext } = await import(/* @vite-ignore */ new URL('src/data/balance.ts', document.baseURI).href);
+    // the game's own data chunk (works on a build); the dev server's source for a page from before it
+    const src = (p) => import(/* @vite-ignore */ new URL('src/' + p, document.baseURI).href);
+    const { QUEST_BY_ID, xpToNext } = g.botData ? await g.botData() : { ...(await src('data/quests.ts')), ...(await src('data/balance.ts')) };
     while (d.level < c.level) st.addXp((xpToNext(d.level) - d.xp) / (st.xpBoost || 1));
     for (const [id, lvl] of WEAPONS) if (lvl <= c.level) st.giveWeapon(id);
     const RANGED = ['trainer_bow', 'bolt_driver', 'tension_bow', 'twin_driver', 'arcstring', 'rail_rifle'];

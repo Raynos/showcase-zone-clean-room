@@ -466,10 +466,28 @@
     const g = G(), st = g.state;
     let quiet = B.now(), unreached = B.now(), bestNear = 1e9;
     const t0 = B.now();
+    // one record per fight with commons: health lost against max (kits drunk add back what they healed),
+    // the lowest point, kills, and what it was; elite and boss fights are logged by trackFight
+    const rec = { t0, hp0: st.d.hp, min: st.d.hp, dmg: 0, kills0: B.rep.kills, kinds: {}, elite: false, lvl: st.d.level, deaths0: B.rep.deaths.length };
+    let lastHp = st.d.hp;
+    const watch = () => {
+      const hp = st.d.hp; if (hp < lastHp) rec.dmg += lastHp - hp; lastHp = hp; rec.min = Math.min(rec.min, hp);
+      for (const m of B.hostiles(14)) { if (m.cls === 'elite' || m.isBoss) rec.elite = true; else if (!m.__fc) { m.__fc = 1; rec.kinds[m.kind + ' L' + m.level] = (rec.kinds[m.kind + ' L' + m.level] || 0) + 1; } }
+    };
+    const close = () => {
+      const k = B.rep.kills - rec.kills0;
+      if (k < 1 || rec.elite || g.interior) return;
+      (B.rep.campFights = B.rep.campFights || []).push({ at: B.stamp(), lvl: rec.lvl, sec: Math.round(B.now() - t0), kills: k, lost: Math.round(100 * rec.dmg / st.maxHp) / 100, low: Math.round(100 * rec.min / st.maxHp) / 100, died: B.rep.deaths.length > rec.deaths0, kinds: rec.kinds, style: B.cfg.style || 'competent' });
+    };
+    try {
+      return await fightLoop();
+    } finally { close(); }
+    async function fightLoop() {
     try {
       for (;;) {
         if (opts.until && opts.until()) return 'until';
         if (opts.maxSec && B.now() - t0 > opts.maxSec) return 'budget';
+        watch();
         const hs = B.hostiles(opts.range ?? 28);
         let m = B.pickTarget(hs, opts.prefer);
         if (!m && opts.focus && opts.focus.alive && opts.focus.targetable) { m = opts.focus; m.__d = B.d2(m.pos, g.player.pos); }
@@ -496,6 +514,7 @@
         await B.tick();
       }
     } finally { B.setAttack(false); B.curTarget = null; }
+    }
   };
 
   /** Break off: run for the nearest safe point, then let health come back. */

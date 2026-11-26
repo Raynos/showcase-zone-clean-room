@@ -25,18 +25,43 @@
   };
   B.shotDone = (id, path) => { const s = B.rep.stalls.find((x) => x.shotId === id); if (s) s.shot = path; B.shotQueue = B.shotQueue.filter((x) => x !== id); B.save(); };
   B.report = () => { B.scanQuests(); B.save(); return JSON.stringify(B.rep); };
+  /** The Fit or Keep card: wait for it to show, open it, tap Fit, and check the weapon's tuning changed. */
+  B.takeTuneCard = async () => {
+    const g = G(), sd = g.state.d.grind, o = sd.tunes[0], R = B.rep.grind || {};
+    const card = await B.rawUntil(() => document.querySelector('.gr-tune.on'), 3);
+    if (!card) { if (B.now() - (B.lastTuneMiss || -99) > 60) { B.lastTuneMiss = B.now(); B.note('tuning waiting but its card did not show out of combat'); } return; }
+    R.tuneCards = (R.tuneCards || 0) + 1;
+    if (!card.classList.contains('open')) { B.tapEl(card); await B.rawSleep(0.4); }
+    const fit = card.querySelector('button[data-k="take"]');
+    if (!fit || !fit.getClientRects().length) { B.note('tuning card opened with no Fit button'); return; }
+    B.tapEl(fit); await B.rawSleep(0.4);
+    R.tuneTaps = (R.tuneTaps || 0) + 1;
+    const now = g.state.d.wtraits && g.state.d.wtraits[o.weapon];
+    B.note(now === o.trait ? `tuning card: fitted ${o.trait} on ${o.weapon}` : `tuning card: Fit tapped but ${o.weapon} has ${now}, not ${o.trait}`);
+    B.tool('tuning fitted');
+  };
+  /** A named rare in reach is worth the detour; the game marks it on the map and says where. */
+  B.rareJob = () => {
+    const g = G(), m = g.grind && g.grind.rare, lvl = g.state.d.level;
+    if (!m || !m.alive || m.level > lvl + 3 || !B.bandOpen(B.bandAt(m.pos.x, m.pos.z))) return null;
+    if (B.d2(m.pos, g.player.pos) > 120 || (m.__skip || 0) > B.now()) return null;
+    return { goalKey: 'rare', label: `chase the rare: ${m.name} (L${m.level})`, run: async () => {
+      const r = await B.goTo(m.pos.x, m.pos.z, { r: 10, partialOk: 12, roadOnly: true, timeout: 60, until: () => !m.alive || m.aggro, fightRange: 12 });
+      if (r === 'nopath' || r === 'stuck') { m.__skip = B.now() + 90; B.note(`cannot reach rare ${m.name}: ${r}`); return; }
+      await B.fight({ focus: m, prefer: (x) => x === m });
+      await B.afterFight();
+    } };
+  };
   B.halt = (why) => { if (!B.done) B.finish('stopped', why); B.running = false; };
 
-  /** Read the shop tables from the dev server when it will serve them; the built-in copies cover a production build. */
+  /** Read the shop, xp and quest tables from the game (B.data); the copies in 30-ui.js are the fallback. */
   const loadData = async () => {
     try {
-      const w = await import(/* @vite-ignore */ new URL('src/data/weapons.ts', document.baseURI).href);
-      if (w && w.WEAPONS) { const d = {}; for (const id in w.WEAPONS) { const x = w.WEAPONS[id]; d[id] = [x.kind, x.level, x.price, x.power]; } B._wd = d; }
-      const bal = await import(/* @vite-ignore */ new URL('src/data/balance.ts', document.baseURI).href);
-      if (bal && bal.xpToNext) B._xpToNext = bal.xpToNext;
-      const q = await import(/* @vite-ignore */ new URL('src/data/quests.ts', document.baseURI).href);
-      if (q && q.QUESTS) { B.questNames = {}; for (const x of q.QUESTS) B.questNames[x.id] = x.name; }
-    } catch { /* production build: fall back to the tables in 30-ui.js */ }
+      const D = await B.data();
+      if (D.WEAPONS) { const d = {}; for (const id in D.WEAPONS) { const x = D.WEAPONS[id]; d[id] = [x.kind, x.level, x.price, x.power]; } B._wd = d; }
+      if (D.xpToNext) B._xpToNext = D.xpToNext;
+      if (D.QUESTS) { B.questNames = {}; for (const x of D.QUESTS) B.questNames[x.id] = x.name; }
+    } catch (e) { B.note('could not read the game data tables: ' + e.message); }
   };
 
   B.start = async (cfg) => {
@@ -77,7 +102,8 @@
         }
         if (g.panels && g.panels.current) await B.closeUi();
         // a tuning found for a weapon that already has one waits on the player's choice: fit the new one (as the card's first button does)
-        if (g.grind && g.state.d.grind && g.state.d.grind.tunes.length && g.mobs.inCombat === 0) { g.grind.chooseTune(true); B.tool('tuning fitted'); }
+        // through the card itself: the chip shows out of combat, a tap opens it, Fit takes the new tuning
+        if (g.grind && g.state.d.grind && g.state.d.grind.tunes.length && g.mobs.inCombat === 0) await B.takeTuneCard();
         if (!pl.controllable || g.cameraRig.cine) { B.stop(); await B.rawSleep(0.3); if (g.interior !== 'arena' && g.interior !== 'vault') continue; }
         if (B.cfg.maxGameSec && B.rep.gameSec > B.cfg.maxGameSec) { B.finish('stopped', 'time limit reached'); break; }
         if (B.cfg.untilLevel && g.state.d.level >= B.cfg.untilLevel) { B.finish('stopped', `reached level ${B.cfg.untilLevel} (--until-level)`); break; }
