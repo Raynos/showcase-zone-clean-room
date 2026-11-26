@@ -369,7 +369,7 @@ export class Hud {
     this.tracker = el('div', 'tracker'); S.tracker.appendChild(this.tracker);
     this.tracker.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.onMenu('quests'); });
     // the quest line is news when it changes, and steps back when it does not
-    new MutationObserver(() => { this.fresh.tracker = 7; }).observe(this.tracker, { childList: true, subtree: true, characterData: true });
+    new MutationObserver(() => { this.fresh.tracker = 7; this.dockSig = '~'; }).observe(this.tracker, { childList: true, subtree: true, characterData: true });
     this.logEl = el('div', 'log'); S.log.appendChild(this.logEl);
     const xp = el('div', 'xp', '<i></i><span></span>'); S.xp.appendChild(xp);
     this.xpFill = xp.querySelector('i')!; this.xpText = xp.querySelector('span')!;
@@ -480,6 +480,25 @@ export class Hud {
     // reads as a heading); under the minimap, the lane and the offer chip on a tall one
     return { x0: l, x1: w - r, y0: s.t + (f === 'portrait' ? Math.max(h * 0.3, 240) : h * 0.16), y1: f === 'landscape' ? Math.min(h * 0.6, h - s.b - 178 * this.kActs) : h * 0.6 };
   }
+  /**
+   * Where an off-screen waypoint sits on a phone held sideways: the end of the quest line's first
+   * row, so the arrow and its distance read as part of the quest they belong to instead of hanging
+   * a third of the way into the picture. HUD px. Null when there is no quest line to carry it.
+   */
+  wayDock(fresh = false): { x: number; y: number } | null {
+    // measured when asked afresh, when the layout changes (a turn of the phone) and when the quest line is rewritten
+    if (!fresh && this.dockSig === this.layoutSig) return this.dockAt;
+    this.dockSig = this.layoutSig; this.dockAt = null;
+    if (this.layout.form !== 'landscape') return null;
+    const q = this.tracker.querySelector('.q .qt') as HTMLElement | null;
+    if (!q) return null;
+    const r = q.getBoundingClientRect(), o = this.hud.getBoundingClientRect();
+    if (!r.width) return null;
+    return this.dockAt = { x: (this.mirror ? r.left + 8 : r.right - 46) - o.left, y: r.top + r.height / 2 - o.top };
+  }
+  private dockSig = '~'; private dockAt: { x: number; y: number } | null = null;
+  /** the quest line makes room for the docked waypoint */
+  wayDocked(on: boolean) { const c = this.slots.tracker.classList; if (c.contains('way') !== on) c.toggle('way', on); }
   private laneT = 0; private laneY = 0; private laneHold = 0; private laneUp = false; private timerY = 0;
   /**
    * The notice lane hangs under whatever holds the top centre: the target frame or the boss bar,

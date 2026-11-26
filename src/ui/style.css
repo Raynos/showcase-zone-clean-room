@@ -208,6 +208,9 @@
 .s-tracker.k-one .q:nth-child(n+2), .s-tracker.k-two .q:nth-child(n+3), .s-tracker.k-three .q:nth-child(n+4) { display: none; }
 .tracker .qt { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--amber); text-shadow: var(--tsh); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tracker .q.ready .qt { color: var(--gold); }
+/* an off-screen waypoint rides the end of the first quest's line on a phone held sideways (hud.wayDock) */
+.s-tracker.way .tracker .q:first-child .qt { padding-right: 58px; }
+[data-h=r].s-tracker.way > .tracker .q:first-child .qt { padding: 0 0 0 58px; }
 .tracker .qo { font-size: 11px; color: #ece6da; text-shadow: var(--tsh); line-height: 1.25; }
 .tracker .qo.done { color: var(--green); opacity: .8; }
 .tracker .qo b { color: #fff; }
@@ -398,10 +401,10 @@ body.desktop .ibtn small { display: block; }
 /* a level: the number, and under it what the level opened */
 .note.head.level .n-s { font-size: 11.5px; letter-spacing: .14em; color: #ffe9bf; }
 .note.head.level .n-t { font-size: 20px; color: var(--gold); background-image: linear-gradient(90deg, transparent, var(--gold), transparent); }
+.note.head.reward .n-t { color: var(--gold); background-image: linear-gradient(90deg, transparent, var(--gold), transparent); } .note.head.reward .n-s { font-size: 11.5px; letter-spacing: .12em; color: #ffe9bf; }
 .note.head.danger .n-t { color: #ffd6cb; background-image: linear-gradient(90deg, transparent, #ff6a4a, transparent); } .note.head.danger .n-s { color: #ff9a80; }
 .note.head.zone .n-t { font-size: 15px; } .note.head.small .n-t { font-size: 15px; }
 .note.head.lz-crate .n-t { color: var(--gold); } .note.head.lz-crate .n-s { color: #ffe9bf; }
-.note.head.reward .n-t { color: var(--gold); background-image: linear-gradient(90deg, transparent, var(--gold), transparent); } .note.head.reward .n-s { font-size: 11.5px; letter-spacing: .12em; color: #ffe9bf; }
 .note.head.on { animation: notehead .5s cubic-bezier(.2, .9, .3, 1); }
 @keyframes notehead { 0% { transform: scale(1.14); opacity: 0; } 100% { transform: none; opacity: 1; } }
 /* a tip: what to do in a sentence; the control it is about pulses (.teach). A tap puts it away. */

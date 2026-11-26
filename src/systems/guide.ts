@@ -25,6 +25,9 @@ export class Guide implements System {
     .gmark i { position: absolute; left: -9px; top: -9px; width: 18px; height: 18px; transform: rotate(45deg); background: #ffcf3a; border: 2px solid #15171a; box-shadow: 0 0 10px #ffcf3a99, inset 0 0 0 2px #fff6; border-radius: 3px; }
     .gmark u { position: absolute; left: -7px; top: -30px; width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 11px solid #ffcf3a; transform-origin: 7px 30px; filter: drop-shadow(0 1px 1px #000); display: none; }
     .gmark.edge u { display: block; }
+    .gmark.dock i { display: none; }
+    .gmark.dock u { left: -6px; top: -5px; border-left-width: 6px; border-right-width: 6px; border-bottom-width: 10px; transform-origin: 6px 5px; }
+    .gmark.dock b { left: 11px; top: -7px; width: auto; white-space: nowrap; text-align: left; }
     .gmark b { position: absolute; left: -40px; top: 13px; width: 80px; text-align: center; font-size: 11px; font-weight: 800; letter-spacing: .06em; color: #ffe9a8; text-shadow: 0 1px 2px #000, 0 0 4px #000; }`;
     document.head.appendChild(css);
     this.mark = el('div', 'gmark', '<u></u><i></i><b></b>');
@@ -107,10 +110,10 @@ export class Guide implements System {
   update(_dt: number, rdt: number) {
     const g = this.game;
     this.refreshT -= rdt;
-    if (this.refreshT <= 0) { this.refreshT = 0.5; this.target = this.pick(); if (this.target) { this.poi.x = this.target.x; this.poi.z = this.target.z; this.poi.label = this.target.label || 'Objective'; } }
+    if (this.refreshT <= 0) { this.refreshT = 0.5; this.target = this.pick(); if (this.target) { this.poi.x = this.target.x; this.poi.z = this.target.z; this.poi.label = this.target.label || 'Objective'; } g.hud.wayDock(true); }
     const t = this.target, p = g.player.pos;
     const d = t ? Math.hypot(t.x - p.x, t.z - p.z) : 0;
-    if (!t || d < 7 || !g.started || g.cameraRig.cine || g.panels?.isOpen || g.player.dead) { this.mark.classList.remove('on'); return; }
+    if (!t || d < 7 || !g.started || g.cameraRig.cine || g.panels?.isOpen || g.player.dead) { this.mark.classList.remove('on'); g.hud.wayDocked(false); return; }
     const y = t.y ?? g.terrain.h(t.x, t.z) + 2.2;
     _v.set(t.x, y, t.z).applyMatrix4(g.camera.matrixWorldInverse);
     const behind = _v.z > -0.3;
@@ -128,6 +131,11 @@ export class Guide implements System {
       if (sy > y1 - 1) sx = dx >= 0 ? x1 : x0;
       this.arrow.style.transform = `rotate(${Math.atan2(dx, -dy)}rad)`;
     }
+    // a phone held sideways has no free edge for it (the band starts a third of the way in): the quest line carries it
+    const dock = edge ? g.hud.wayDock() : null;
+    if (dock) { sx = dock.x; sy = dock.y; }
+    this.mark.classList.toggle('dock', !!dock);
+    g.hud.wayDocked(!!dock);
     this.mark.classList.toggle('edge', edge);
     this.mark.classList.add('on');
     this.mark.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
