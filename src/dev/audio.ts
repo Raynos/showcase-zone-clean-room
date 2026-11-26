@@ -11,6 +11,10 @@
  *   duckCheck()        music level under a big hit and under dialogue
  *   limiterCheck()     the limiter chain's small-signal gain (MAKEUP_COMP) and its ceiling
  *   leakTest(n)        n live sounds: voices, sources and live nodes before, during and after
+ *   tellCheck()        every telegraph through a phone speaker (300 Hz-9 kHz): spectral and envelope distance, pair by pair
+ *   windowCheck()      a mechanic's held window tone stopped on the audio clock: how long after the window it is gone
+ *   worstCheck()       the stack plus an elite tell and a music sting at the same instant, through the limiter
+ *   busCheck()         each settings slider moves only its own bus (the live engine's gain nodes)
  */
 import { CAT, TAKE_PITCH, audio, audioDebug, audioEngine, startVoice, type LoopName, type MusicState, type SfxName } from '../core/audio';
 import { Graph, MAKEUP_COMP } from '../core/audio/graph';
@@ -20,7 +24,8 @@ import { LAYERED, MUSIC_STATES, Music } from '../core/audio/music';
 import { LOOP_NORM, MUSIC_NORM, SFX_NORM } from '../core/audio/norm';
 import { SFX, SFX_NAMES, catOf, type Cat } from '../core/audio/sfx';
 import { NODES } from '../core/audio/nodes';
-import { fingerprint, fpDist, meter, type Meter } from '../../tools/audio/lab';
+import { fingerprint, fpDist, meter, phoneFp, type Meter } from '../../tools/audio/lab';
+import { TELL_SET } from '../core/audio/sfx-mech';
 
 const SR = 48000;
 const $ = (id: string) => document.getElementById(id)!;
@@ -31,16 +36,20 @@ const med = (a: number[]) => { const b = [...a].sort((x, y) => x - y); return b.
 
 /** Loudness targets by mix category: momentary-max LUFS of one sound at its trim, before the buses. */
 export const CAT_LUFS: Record<Cat, number> = {
-  ui: -26, dialog: -24, reward: -18, hero: -20, foley: -30, impact: -16, enemy: -20, tell: -18, idle: -30, world: -22, big: -13, amb: -32,
+  ui: -26, dialog: -24, reward: -18, hero: -20, foley: -30, impact: -16, enemy: -20, tell: -18, idle: -30, world: -22, big: -13, amb: -32, crowd: -31,
 };
 /** and the ceiling no trim may push a sound's peak past */
 const CAT_PEAK: Record<Cat, number> = {
-  ui: 0.5, dialog: 0.5, reward: 0.7, hero: 0.65, foley: 0.5, impact: 0.75, enemy: 0.6, tell: 0.7, idle: 0.4, world: 0.65, big: 0.85, amb: 0.5,
+  ui: 0.5, dialog: 0.5, reward: 0.7, hero: 0.65, foley: 0.5, impact: 0.75, enemy: 0.6, tell: 0.7, idle: 0.4, world: 0.65, big: 0.85, amb: 0.5, crowd: 0.35,
 };
 /** loops: integrated LUFS at level 1 (beds sit under the action; vehicles and close sources a little higher) */
 const LOOP_LUFS: Partial<Record<LoopName, number>> = {
   hover: -27, zipline: -27, grind: -27, gallop: -28, titan_core: -26, freighter: -24, fire: -29, lava: -30, storm: -27,
   rain: -28, rain_hard: -29, rain_metal: -29, wind: -28, fountain: -27, market: -28, lake: -29, clock: -31, day_bed: -28, night_bed: -28,
+  // mechanic states (telegraph bus): a window must be heard over the fight; a simmer sits under it
+  mt_vent_hold: -23, fist_hold: -23, mt_laser: -25, mt_tether: -24, mt_heat: -28, mt_fuse: -26, mt_link: -28, mt_ring: -26, mt_dazed: -27,
+  // world sources, heard close
+  tarp: -31, mast: -31, welder: -28, steam_vent: -29, crane: -29,
 };
 const LOOP_DEFAULT = -30;
 /** music: integrated LUFS at intensity 0 */
@@ -52,11 +61,17 @@ const BUS = { master: 0.9, sfx: 0.9, music: 0.5, ambience: 0.6 };
 function takesOf(name: SfxName) { const d = SFX[name]; return d.fixed ? 1 : Math.max(1, d.vars ?? 4); }
 function renderLen(name: SfxName) { return /whistle|boss_intro|victory|defeat|thunder|clock_chime|freighter|od_cast|levelup|level_up|quest_done/.test(name) ? 7 : 4; }
 
-async function renderSfx(name: SfxName, gain: number, take = 0, o: { len?: number; seconds?: number } = {}): Promise<Float32Array[]> {
+async function renderSfx(name: SfxName, gain: number, take = 0, o: { len?: number; seconds?: number; phone?: boolean } = {}): Promise<Float32Array[]> {
   const seconds = o.seconds ?? renderLen(name);
   (window as any).__prog = `${name} #${take}`;
   const ctx = new OfflineAudioContext(2, Math.ceil(SR * seconds), SR);
-  const g = new Graph(ctx, ctx.destination, false);
+  // a phone speaker: next to nothing under 300 Hz (two 12 dB/oct stages), rolled off above 9 kHz
+  let dest: AudioNode = ctx.destination;
+  if (o.phone) {
+    const f = [['highpass', 300], ['highpass', 300], ['lowpass', 9000]].map(([type, hz]) => { const b = ctx.createBiquadFilter(); b.type = type as BiquadFilterType; b.frequency.value = hz as number; b.Q.value = 0.707; return b; });
+    f[0].connect(f[1]); f[1].connect(f[2]); f[2].connect(ctx.destination); dest = f[0];
+  }
+  const g = new Graph(ctx, dest, false);
   const kit = new Kit(ctx, g.sfx);
   const pm = SFX[name].fixed ? 1 : TAKE_PITCH[take % TAKE_PITCH.length];
   // recipes may lead their own start a little (a whoosh into a hit): never schedule before zero
@@ -322,6 +337,133 @@ async function limiterCheck() {
   return { makeupComp: MAKEUP_COMP, measuredMakeup: r3(rows[0].gain * MAKEUP_COMP), rows };
 }
 
+/**
+ * Every tell, rendered at the window it is timed to and heard through a phone speaker: how far apart each
+ * pair is in spectrum (24 log bands 300 Hz-9 kHz, level-normalised, dB RMS) and in envelope (24 slices of a
+ * common 2.5 s frame, dB RMS, so length and rhythm both count). `mids` is the share of each tell's energy
+ * above 300 Hz before the speaker: identity carried where a phone can play it.
+ */
+async function tellCheck(n = 12) {
+  const fps: { name: string; fp: ReturnType<typeof phoneFp>; mids: number }[] = [];
+  for (const [name, len] of TELL_SET) {
+    const nm = name as SfxName;
+    if (!SFX[nm]) continue;
+    const full = await renderSfx(nm, SFX_NORM[nm] ?? 0.4, 0, { len: len || undefined, seconds: 4 });
+    const ph = await renderSfx(nm, SFX_NORM[nm] ?? 0.4, 0, { len: len || undefined, seconds: 4, phone: true });
+    const m = meter(full, SR);
+    fps.push({ name, fp: phoneFp(ph, SR), mids: r1(100 - m.bands[0] - m.bands[1]) });
+  }
+  const pairs: { a: string; b: string; spec: number; env: number; d: number }[] = [];
+  for (let i = 0; i < fps.length; i++) for (let j = i + 1; j < fps.length; j++) {
+    const A = fps[i].fp, B = fps[j].fp;
+    let s = 0, e = 0;
+    for (let k = 0; k < A.spec.length; k++) s += (A.spec[k] - B.spec[k]) ** 2;
+    for (let k = 0; k < A.env.length; k++) e += (A.env[k] - B.env[k]) ** 2;
+    const spec = r1(Math.sqrt(s / A.spec.length)), env = r1(Math.sqrt(e / A.env.length));
+    pairs.push({ a: fps[i].name, b: fps[j].name, spec, env, d: r1(spec + 0.5 * env) });
+  }
+  pairs.sort((x, y) => x.d - y.d);
+  const near = fps.map((f) => { const p = pairs.filter((q) => q.a === f.name || q.b === f.name)[0]; return { name: f.name, mids: f.mids, nearest: p ? (p.a === f.name ? p.b : p.a) : '', d: p?.d ?? 0, spec: p?.spec ?? 0, env: p?.env ?? 0 }; });
+  return { tells: fps.length, pairs: pairs.length, closest: pairs.slice(0, n), minSpec: pairs.reduce((m, p) => Math.min(m, p.spec), 99), minEnv: pairs.reduce((m, p) => Math.min(m, p.env), 99), near };
+}
+
+/**
+ * A held window tone (the vent's, the planted fist's) as the engine stops it: the window closes `after`
+ * seconds on, the stop is scheduled on the audio clock with the 6 ms fade. Reports when it is 40 dB down.
+ */
+async function windowCheck() {
+  const rows = [];
+  for (const [name, after] of [['mt_vent_hold', 0.0], ['mt_vent_hold', 0.083], ['fist_hold', 0.05]] as [LoopName, number][]) {
+    const ctx = new OfflineAudioContext(1, SR * 3, SR);
+    const g = new Graph(ctx, ctx.destination, false);
+    const kit = new Kit(ctx, g.tell);
+    const inst = LOOP_BUILDERS[name](ctx, kit, g.tell);
+    const og = inst.out.gain;
+    og.setValueAtTime(LOOP_NORM[name] ?? 0.25, 0); inst.set(1, 1, 0);
+    // the engine: decided at t = 1.0 that the window ends `after` seconds later
+    const t0 = 1.0, end = t0 + after;
+    og.cancelScheduledValues(t0); og.setValueAtTime(LOOP_NORM[name] ?? 0.25, t0); og.setTargetAtTime(0, end, 0.006);
+    const d = (await ctx.startRendering()).getChannelData(0);
+    const rms = (a: number, b: number) => { let q = 0; for (let i = a; i < b; i++) q += d[i] * d[i]; return Math.sqrt(q / Math.max(1, b - a)); };
+    const ref = rms(Math.floor(SR * 0.5), Math.floor(SR * 0.95)), win = Math.floor(SR * 0.005);
+    let gone = -1;
+    for (let i = Math.floor(end * SR); i < d.length - win; i += win) if (rms(i, i + win) < ref * 0.01) { gone = i; break; }
+    rows.push({ loop: name, windowEndS: r3(end), minus40dBAfterMs: gone < 0 ? -1 : Math.round(((gone + win) / SR - end) * 1000), pass: gone >= 0 && (gone + win) / SR - end < 0.05 });
+  }
+  return rows;
+}
+
+/**
+ * The worst case for clipping: the camp fight of stackCheck (music, storm, eight robots, the slam) with an
+ * elite's tells on the telegraph bus and a reward sting landing at the same instant as the slam.
+ */
+async function worstCheck(seconds = 9) {
+  const ctx = new OfflineAudioContext(2, Math.ceil(SR * seconds), SR);
+  const g = new Graph(ctx, ctx.destination, true);
+  g.master.gain.value = BUS.master; g.sfx.gain.value = BUS.sfx; g.music.gain.value = BUS.music; g.amb.gain.value = BUS.ambience;
+  const kit = new Kit(ctx, g.sfx);
+  const mus = new Music(ctx, g.music, g.revIn, MUSIC_NORM);
+  mus.setIntensity(2); mus.setState('band5', 0.05); mus.advance(seconds);
+  for (const [name, lv] of [['rain', 0.45], ['rain_hard', 0.8], ['rain_metal', 0.7], ['storm', 0.7], ['wind', 0.6], ['rivets', 0.8], ['welder', 0.7], ['steam_vent', 0.6]] as [LoopName, number][]) {
+    const inst = LOOP_BUILDERS[name](ctx, kit, g.amb);
+    inst.out.gain.setValueAtTime(lv * (LOOP_NORM[name] ?? 0.25), 0); inst.set(1, lv, 0);
+  }
+  // the elite's held states on the telegraph bus through the fight
+  for (const [name, lv, p] of [['mt_heat', 0.9, 1.5], ['mt_tether', 1, 1.8]] as [LoopName, number, number][]) {
+    const inst = LOOP_BUILDERS[name](ctx, kit, g.tell);
+    inst.out.gain.setValueAtTime(lv * (LOOP_NORM[name] ?? 0.25), 0); inst.set(p, lv, 0);
+  }
+  let seed = 99;
+  const rnd = () => { seed = (Math.imul(seed, 1103515245) + 12345) | 0; return ((seed >>> 8) & 0xffff) / 0x10000; };
+  const pool: SfxName[] = ['tell_slam', 'tell_melee', 'tell_shot', 'rv_welder_alert', 'rv_riveter_hurt', 'rv_pallet_hurt', 'rv_mite_alert', 'enemy_bolt', 'enemy_swipe',
+    'imp_blade_plate', 'impH_blade_heavy', 'imp_blade_light', 'hit_guard', 'swing_heavy', 'swing_light', 'explosion', 'rstep_heavy', 'shot_by', 'mt_plate_deflect', 'mt_open_hit'];
+  let n = 0;
+  for (let t = 0.3; t < seconds - 1.5; t += 0.035) {
+    if (rnd() > 0.12) continue;
+    const name = pool[Math.floor(rnd() * pool.length)];
+    const d = 2 + rnd() * 9, ref = CAT[catOf(name)].ref, gain = (SFX_NORM[name] ?? 0.4) * (ref / Math.max(ref, d));
+    startVoice(g, kit, name, t, { gain, pm: 0.95 + rnd() * 0.1, pan: rnd() * 1.4 - 0.7, take: Math.floor(rnd() * 4), send: 1 + d / 30 });
+    n++;
+  }
+  // at 6 s, all at once: the boss slam stack, the elite's vent tell landing, the laser lock firing, a gold medal sting
+  const at: [SfxName, number, number?][] = [['titan_slam', 0], ['explosion_big', 0.004], ['impH_blade_titan', 0.01], ['kill_big', 0.02], ['thunder', 0.03],
+    ['mt_vent_release', 0], ['mt_vent_tell', -1.2, 1.2], ['mt_laser_lock', -1.3, 1.3], ['fist_slam', 0.01], ['medal_gold', 0], ['boss_intro', 0.02]];
+  for (const [name, dt, len] of at) startVoice(g, kit, name, 6 + dt, { gain: SFX_NORM[name] ?? 0.5, pm: 1, take: 0, len });
+  g.musicDuck.gain.setTargetAtTime(Math.pow(10, -5 / 20), 6, 0.015); g.musicDuck.gain.setTargetAtTime(1, 6.6, 0.18);
+  let gr = 0;
+  for (let t = 1.0; t < seconds - 0.02; t += 0.02) void ctx.suspend(t).then(() => { gr = Math.min(gr, g.comp!.reduction); void ctx.resume(); });
+  const buf = await ctx.startRendering();
+  const ch = [buf.getChannelData(0), buf.getChannelData(1)];
+  const m = meter(ch, SR, Math.floor(SR * 0.3));
+  const hit = meter([ch[0].subarray(SR * 6, SR * 7), ch[1].subarray(SR * 6, SR * 7)], SR);
+  let over = 0;
+  for (const c of ch) for (let i = 0; i < c.length; i++) if (Math.abs(c[i]) > 0.989) over++;
+  return { voices: n + at.length, peakDb: m.peakDb, clip: m.clip, over0989: over, lufsI: m.lufsI, lufsMmax: m.lufsM, instantPeakDb: hit.peakDb, instantLufsM: hit.lufsM, maxGrDb: r1(gr) };
+}
+
+/** Each slider: set it alone to 0.3 on the live engine and read every bus gain: only its own may move. */
+async function busCheck() {
+  audio.unlock();
+  const eng: any = audioEngine;
+  for (let i = 0; i < 20 && !eng.g; i++) await sleep(100);
+  const g = eng.g as Graph | undefined;
+  if (!g) return { ready: false };
+  const keys = ['master', 'sfx', 'music', 'ambience', 'voice'] as const;
+  const nodes: Record<string, GainNode> = { master: g.master, sfx: g.sfx, music: g.music, ambience: g.amb, voice: g.voice, tell: g.tell };
+  const base = { master: 1, sfx: 1, music: 1, ambience: 1, voice: 1 };
+  // the context may be suspended here (no gesture): apply the levels at once instead of on the audio clock
+  const read = async () => { eng.applyVolumes?.(true); await sleep(50); return Object.fromEntries(Object.entries(nodes).map(([k, n]) => [k, r3(n.gain.value)])); };
+  const rows = [];
+  for (const k of keys) {
+    audio.setVolumes(base); const a = await read();
+    audio.setVolumes({ ...base, [k]: 0.3 }); const b = await read();
+    const moved = Object.keys(nodes).filter((n) => Math.abs(a[n] - b[n]) > 0.01);
+    rows.push({ slider: k, moved: moved.join(' '), only: moved.length === 1 && moved[0] === k, ...b });
+  }
+  audio.setVolumes(BUS);
+  return { ready: true, ctx: eng.ctx?.state, rows, note: 'tell feeds sfx (the Effects slider moves tells); dialog voices feed voice' };
+}
+
 // ------------------------------------------------------------------ live
 async function leakTest(n = 500, gapMs = 20) {
   audio.unlock();
@@ -340,7 +482,7 @@ async function leakTest(n = 500, gapMs = 20) {
   return { ready: audio.ready, before, during, maxVoices, maxSources, maxNodes, after, started: after.played - before.played, dropped: after.dropped - before.dropped, stolen: after.stolen - before.stolen, nodesMade: NODES.made, nodesFreed: NODES.freed };
 }
 
-Object.assign(window, { audio, audioEngine, audioCalibrate, audioReport, takesCheck, similarCheck, loopReport, musicReport, stackCheck, duckCheck, limiterCheck, leakTest, renderSfx, meter, SR });
+Object.assign(window, { audio, audioEngine, audioCalibrate, audioReport, takesCheck, similarCheck, loopReport, musicReport, stackCheck, duckCheck, limiterCheck, leakTest, tellCheck, windowCheck, worstCheck, busCheck, renderSfx, meter, SR });
 
 // ------------------------------------------------------------------ UI
 const GROUPS: [string, string[]][] = [
@@ -351,6 +493,9 @@ const GROUPS: [string, string[]][] = [
   ['Shooter', ['shot_', 'aim_', 'reload_', 'dry_', 'bow_', 'arrow_', 'xbow_', 'rifle_', 'bolt_']],
   ['Robot voices', ['rv_']],
   ['Telegraphs', ['tell_']],
+  ['Mechanics', ['mt_', 'exam_', 'fist_']],
+  ['Field, outposts, Tally, After Hours', ['post_', 'ft_', 'map_', 'fq_', 'sting_', 'tally_', 'ah_', 'ot_', 'medal_', 'ls_', 'open_']],
+  ['Voices and crowds', ['voice_', 'adv_', 'smith_']],
   ['Enemies', ['enemy_', 'mite_', 'pallet_', 'drone_', 'welder_', 'rivet_', 'sentry_', 'elite_', 'explosion', 'sparks', 'servo', 'shockwave']],
   ['Bosses', ['titan_', 'warden_', 'boss_']],
   ['Cratefall', ['freighter_', 'drop_', 'crate_', 'gold_']],
@@ -427,6 +572,7 @@ function build() {
   };
   add('audioReport()', audioReport); add('audioCalibrate()', () => audioCalibrate()); add('musicReport()', () => musicReport());
   add('loopReport()', loopReport); add('stackCheck()', () => stackCheck()); add('limiterCheck()', limiterCheck); add('leakTest(500)', () => leakTest());
+  add('tellCheck()', () => tellCheck()); add('windowCheck()', windowCheck); add('worstCheck()', () => worstCheck()); add('busCheck()', busCheck);
 
   // frame loop: drive audio.update, loops and the meters
   let an: AnalyserNode | null = null, data: Float32Array | null = null, hold = 0, lastT = performance.now();

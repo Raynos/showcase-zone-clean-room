@@ -67,7 +67,7 @@ async function main() {
       console.log('wrote src/core/audio/norm.ts');
       return;
     }
-    const fns = cmd === 'report' ? ['limiterCheck', 'audioReport', 'loopReport', 'musicReport', 'stackCheck', 'duckCheck', 'takesCheck', 'similarCheck'] : [cmd];
+    const fns = cmd === 'report' ? ['limiterCheck', 'audioReport', 'loopReport', 'musicReport', 'stackCheck', 'worstCheck', 'duckCheck', 'takesCheck', 'similarCheck', 'tellCheck', 'windowCheck', 'busCheck'] : [cmd];
     const all = {};
     let text = '';
     for (const fn of fns) {
@@ -81,6 +81,8 @@ async function main() {
         text += '\nall effects\n' + table(r.rows, ['name', 'cat', 'gain', 'lufsM', 'peakDb', 'crestDb', 'durMs', 'centroid', 'bands', 'dc', 'clip', 'flags']);
       } else if (fn === 'takesCheck') text += `identical takes: ${r.same.length}\n` + table(r.rows);
       else if (fn === 'similarCheck') text += `pairs ${r.pairs}, under ${r.thr}: ${r.under}\n` + table(r.closest);
+      else if (fn === 'tellCheck') text += `tells ${r.tells}, pairs ${r.pairs}, min spectral ${r.minSpec} dB, min envelope ${r.minEnv} dB\nclosest pairs\n` + table(r.closest) + '\neach tell and its nearest\n' + table(r.near);
+      else if (fn === 'busCheck') text += `ctx ${r.ctx} · ${r.note}\n` + table(r.rows ?? []);
       else if (fn === 'limiterCheck') text += `MAKEUP_COMP ${r.makeupComp}, measured ${r.measuredMakeup}\n` + table(r.rows);
       else if (Array.isArray(r)) text += table(r);
       else text += table([r]);

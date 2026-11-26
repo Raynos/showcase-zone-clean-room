@@ -183,6 +183,36 @@ export function fingerprint(ch: Float32Array[], fs: number): { spec: number[]; e
   return { spec: specN, env: env.map((v) => Math.max(-50, v - em)), dur: len / fs };
 }
 
+/**
+ * A fingerprint as a phone plays it, for telling telegraphs apart: 24 log bands from 300 Hz to 9 kHz
+ * (dB, level-normalised) and the envelope in 24 slices of a fixed 2.5 s frame from the onset (dB), so a
+ * long swell and a short click differ by their length as well as their shape.
+ */
+export function phoneFp(ch: Float32Array[], fs: number): { spec: number[]; env: number[] } {
+  const mono = new Float32Array(ch[0].length);
+  for (const c of ch) for (let i = 0; i < c.length; i++) mono[i] += c[i] / ch.length;
+  let peak = 0;
+  for (let i = 0; i < mono.length; i++) peak = Math.max(peak, Math.abs(mono[i]));
+  const [s, e] = span([mono], peak);
+  const P = spectrum(mono, s, e + 1);
+  const NB = 24, lo = Math.log(300), hi = Math.log(9000), spec = new Array(NB).fill(0);
+  for (let k = 1; k < P.length; k++) {
+    const f = (k * fs) / 2048;
+    if (f < 300 || f >= 9000) continue;
+    spec[Math.min(NB - 1, Math.floor(((Math.log(f) - lo) / (hi - lo)) * NB))] += P[k];
+  }
+  const sd = spec.map((v) => 10 * Math.log10(v + 1e-12)), mx = Math.max(...sd);
+  const env: number[] = [], NS = 24, win = Math.floor(fs * 2.5 / NS);
+  for (let j = 0; j < NS; j++) {
+    let q = 0;
+    const a = s + j * win, b = Math.min(mono.length, a + win);
+    for (let i = a; i < b; i++) q += mono[i] * mono[i];
+    env.push(10 * Math.log10(q / Math.max(1, win) + 1e-12));
+  }
+  const em = Math.max(...env);
+  return { spec: sd.map((v) => Math.max(-50, v - mx)), env: env.map((v) => Math.max(-40, v - em)) };
+}
+
 /** Distance between fingerprints, dB-ish: spectral shape, envelope shape and length all count. */
 export function fpDist(a: { spec: number[]; env: number[]; dur: number }, b: { spec: number[]; env: number[]; dur: number }): number {
   let s = 0, e = 0;
