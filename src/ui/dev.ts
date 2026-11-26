@@ -7,8 +7,11 @@ import { BAND_GATES, GAUNTLET, VAULT_PORTAL } from '../world/layout';
 export function installDev(game: Game) {
   const css = document.createElement('style');
   css.textContent = `
-  #dev { position: fixed; left: 8px; top: calc(232px + env(safe-area-inset-top, 0px)); z-index: 60; font: 700 11px/1 system-ui, sans-serif; color: #fff; pointer-events: auto; }
-  #dev > button { background: #000a; color: #7ff0ff; border: 1px solid #7ff0ff66; border-radius: 8px; padding: 7px 9px; font: inherit; letter-spacing: .1em; }
+  /* out of the player's layout: on the top edge between the frame-rate digits and the notice lane, which no HUD slot uses */
+  #dev { position: fixed; left: calc(150px + env(safe-area-inset-left, 0px)); top: calc(3px + env(safe-area-inset-top, 0px)); z-index: 60; font: 700 11px/1 system-ui, sans-serif; color: #fff; pointer-events: auto; }
+  @media (orientation: portrait) { #dev { left: 178px; } }
+  #dev > button { background: #0006; color: #7ff0ffb0; border: 1px solid #7ff0ff40; border-radius: 6px; padding: 4px 6px; font: 700 9px/1 system-ui, sans-serif; letter-spacing: .1em; }
+  #dev.open > button { background: #000c; color: #7ff0ff; }
   #dev .dd { display: none; margin-top: 6px; background: #0b0f14ee; border: 1px solid #ffffff22; border-radius: 10px; padding: 8px; width: 236px; max-height: 60vh; overflow-y: auto; }
   #dev.open .dd { display: block; }
   #dev h5 { margin: 8px 0 5px; font-size: 9px; letter-spacing: .18em; color: #ffb04a; }

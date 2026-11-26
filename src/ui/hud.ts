@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Btn } from '../core/input';
 import { clamp, clamp01, fmtNum } from '../core/util';
 import type { Game } from '../game';
-import { WEAPONS } from '../data/weapons';
+import { OVERDRIVE_LEVEL, SLOT3_LEVEL, WEAPONS } from '../data/weapons';
 import { BLAST_WALL } from '../world/layout';
 import { toggleView } from '../systems/view';
 import { icon } from './icons';
@@ -14,10 +14,15 @@ import './style.css';
 const _v = new THREE.Vector3();
 export const el = (tag: string, cls = '', html = ''): HTMLElement => { const e = document.createElement(tag); if (cls) e.className = cls; if (html) e.innerHTML = html; return e; };
 
-interface Plate { root: HTMLElement; name: HTMLElement; bar: HTMLElement | null; fill: HTMLElement | null; mark: HTMLElement | null; used: boolean; key: string; sig: string; stag?: HTMLElement | null }
+interface Plate { root: HTMLElement; name: HTMLElement; bar: HTMLElement | null; fill: HTMLElement | null; mark: HTMLElement | null; used: boolean; key: string; sig: string; stag?: HTMLElement | null;
+  /** laid out this frame: the anchor on screen, the scale, the box size at scale 1, who gives way to whom, a bar alone */
+  x: number; y: number; sc: number; w: number; h: number; pri: number; op: number; thin: boolean; shown: boolean }
 export interface PlateInfo { name: string; level?: number; hp?: number; cls?: string; title?: string; mark?: '' | 'y' | 'g' | 't'; markText?: string; scale?: number;
   /** robots: status icons (shock, burn, jam), the stagger meter (elites) and the broken state */
-  fx?: string[]; stagger?: number; broken?: boolean }
+  fx?: string[]; stagger?: number; broken?: boolean;
+  /** robots only: true on the target, false on the rest. The target and the elites carry a full plate;
+   *  any other robot shows a thin health bar once it is in the fight and nothing before. */
+  focus?: boolean }
 interface Dmg { el: HTMLElement; t: number; x: number; y: number; z: number; vx: number; vy: number; life: number; crit: boolean }
 export type ActionId = 'attack' | 'dodge' | 'jump' | 'skill1' | 'skill2' | 'skill3' | 'overdrive' | 'swap' | 'kit' | 'target' | 'mount'
   /** shooter stance: main fire, the other thumb's fire (only while aiming), aim down sights, reload */
@@ -110,6 +115,7 @@ export class Hud {
   private floatEl!: HTMLElement; private reticle!: HTMLElement; private lowHp!: HTMLElement;
   private timerEl!: HTMLElement; private timerT = 0; private timerSig = '';
   private plates = new Map<string, Plate>();
+  private plateList: Plate[] = []; private plateBoxes: number[] = [];
   private dmgs: Dmg[] = []; private dmgPool: HTMLElement[] = [];
   acts = {} as Record<ActionId, ActBtn>;
   private actsEl!: HTMLElement; private barEl!: HTMLElement; private actsSig = ''; private mirror = false;
@@ -418,7 +424,30 @@ export class Hud {
   /** News for a moment. Where it shows, and whether it shows now, is the notice lane's call (notices.ts). */
   toast(text: string, kind = 'info', sub = '', ic = '') { this.notices.toast(text, kind, sub, ic); }
   /** A headline: a level, a quest done, a zone's name, an encounter's call-out. */
-  banner(b1: string, b2 = '', cls = '') { this.notices.banner(b1, b2, cls); }
+  banner(b1: string, b2 = '', cls = '') {
+    // a level says what it opened, in the one line under the number
+    if (cls.includes('level')) {
+      const st = this.game.state, lv = st.d.level, got: string[] = [];
+      if (lv === SLOT3_LEVEL) got.push('Third skill open');
+      if (lv === OVERDRIVE_LEVEL) got.push('Overdrive open');
+      if (st.perksFree > 0) got.push(st.perksFree === 1 ? '1 perk point' : `${st.perksFree} perk points`);
+      if (got.length) b2 = got.join(' · ');
+    }
+    this.notices.banner(b1, b2, cls);
+  }
+  /**
+   * The fall. The world is already grey and slow (combat's); this says what happened, that nothing
+   * is lost and how long until the hero stands again, and takes the controls off the screen. It
+   * leaves by itself when the hero is back on his feet.
+   */
+  private downEl: HTMLElement | null = null; private downOn = false;
+  downed(title: string, sub: string) {
+    if (!this.downEl) { this.downEl = el('div', 'death'); this.root.appendChild(this.downEl); }
+    this.downEl.innerHTML = `<div class="d-k">${icon('skull', 15, 2.2)}<span>Systems down</span></div><div class="d-t">${title}</div><div class="d-s">${sub}</div><div class="d-bar"><i></i></div><div class="d-n">Nothing is lost. You stand up with full health.</div>`;
+    void this.downEl.offsetWidth;
+    this.downEl.classList.add('on'); this.root.classList.add('is-down'); this.downOn = true;
+    this.notices.clear(); this.setTray(false); this.wheel.close(); this.releaseAll();
+  }
   /**
    * A first-time tip, in the notice lane. `at` names the control it teaches (an action, 'stick',
    * 'prompt', 'tracker', 'mini', 'menu'): that control pulses while the tip is up. Returns false
@@ -926,37 +955,71 @@ export class Hud {
   plate(key: string, pos: { x: number; y: number; z: number }, info: PlateInfo) {
     const s = this.scr;
     if (!this.project(pos, s)) return;
+    // a robot that is neither the target nor an elite: a bar when it is hurt or hunting, else nothing
+    const thin = info.focus === false && (info.cls ?? 'normal') === 'normal';
+    if (thin && info.hp === undefined) return;
     let p = this.plates.get(key);
     if (!p) {
       const root = el('div', 'plate');
       const name = el('div', 'pn'); root.appendChild(name);
       this.floatEl.appendChild(root);
-      p = { root, name, bar: null, fill: null, mark: null, used: true, key, sig: '' };
+      p = { root, name, bar: null, fill: null, mark: null, used: true, key, sig: '', x: 0, y: 0, sc: 1, w: 64, h: 5, pri: 0, op: 1, thin: false, shown: true };
       this.plates.set(key, p);
     }
     p.used = true;
-    const sig = info.name + '|' + (info.level ?? '') + '|' + (info.cls ?? '') + '|' + (info.title ?? '') + '|' + (info.mark ?? '') + (info.markText ?? '') + (info.hp !== undefined ? 'h' : '') + (info.stagger !== undefined ? 's' : '') + (info.broken ? 'B' : '') + (info.fx?.join(',') ?? '');
+    const sig = (thin ? '-' : '') + (info.focus ? '+' : '') + info.name + '|' + (info.level ?? '') + '|' + (info.cls ?? '') + '|' + (info.title ?? '') + '|' + (info.mark ?? '') + (info.markText ?? '') + (info.hp !== undefined ? 'h' : '') + (info.stagger !== undefined ? 's' : '') + (info.broken ? 'B' : '') + (info.fx?.join(',') ?? '');
     if (sig !== p.sig) {
-      p.sig = sig;
-      p.root.className = 'plate ' + (info.cls ?? '');
+      p.sig = sig; p.thin = thin;
+      p.root.className = 'plate ' + (info.cls ?? '') + (thin ? ' thin' : '') + (info.focus ? ' focus' : '');
       let html = '';
-      if (info.mark) html += `<div class="mark ${info.mark}">${info.markText ?? '!'}</div>`;
-      html += `<div class="pn">${info.level !== undefined ? `<span class="pl">${info.level}</span>` : ''}${info.name}</div>`;
-      if (info.title) html += `<div class="pt">${info.title}</div>`;
-      if (info.hp !== undefined) html += `<div class="pb"><i></i></div>`;
-      if (info.stagger !== undefined) html += `<div class="${info.broken ? 'broken' : ''}"><div class="stg ps" style="display:block;width:64px;margin:2px auto 0"><i></i></div></div>`;
-      if (info.fx?.length || info.broken) html += `<div class="tfx" style="justify-content:center;margin-top:3px">${info.broken ? `<span class="fx brk">${icon('broken', 11, 2.2)}</span>` : ''}${(info.fx ?? []).map((e) => `<span class="fx ${e}">${icon(FX_ICON[e] ?? e, 11, 2.2)}</span>`).join('')}</div>`;
+      if (thin) html = `<div class="pb"><i></i></div>`;
+      else {
+        if (info.mark) html += `<div class="mark ${info.mark}">${info.markText ?? '!'}</div>`;
+        html += `<div class="pn">${info.level !== undefined ? `<span class="pl">${info.level}</span>` : ''}${info.name}</div>`;
+        if (info.title) html += `<div class="pt">${info.title}</div>`;
+        if (info.hp !== undefined) html += `<div class="pb"><i></i></div>`;
+        if (info.stagger !== undefined) html += `<div class="${info.broken ? 'broken' : ''}"><div class="stg ps" style="display:block;width:64px;margin:2px auto 0"><i></i></div></div>`;
+        if (info.fx?.length || info.broken) html += `<div class="tfx" style="justify-content:center;margin-top:3px">${info.broken ? `<span class="fx brk">${icon('broken', 11, 2.2)}</span>` : ''}${(info.fx ?? []).map((e) => `<span class="fx ${e}">${icon(FX_ICON[e] ?? e, 11, 2.2)}</span>`).join('')}</div>`;
+      }
       p.root.innerHTML = html;
       p.fill = p.root.querySelector('.pb:not(.ps) i'); p.stag = p.root.querySelector('.ps i');
+      p.w = p.root.offsetWidth || 64; p.h = p.root.offsetHeight || 5;
     }
     if (p.fill && info.hp !== undefined) p.fill.style.transform = `scaleX(${clamp01(info.hp)})`;
     if (p.stag && info.stagger !== undefined) p.stag.style.transform = `scaleX(${clamp01(info.stagger)})`;
-    const sc = clamp(9 / s.d, 0.55, 1.1) * (info.scale ?? 1);
-    p.root.style.transform = `translate(${s.x.toFixed(1)}px,${s.y.toFixed(1)}px) scale(${sc.toFixed(3)}) translate(-50%,-100%)`;
-    p.root.style.opacity = s.d > 42 ? String(clamp01(1 - (s.d - 42) / 12)) : '1';
+    p.x = s.x; p.y = s.y;
+    p.sc = clamp(9 / s.d, 0.55, 1.1) * (info.scale ?? 1);
+    p.op = s.d > 42 ? clamp01(1 - (s.d - 42) / 12) : 1;
+    // who keeps its place when two meet: the target, an elite, someone with a job for you, the nearer one
+    p.pri = (info.focus ? 500 : thin ? 100 : info.focus === false ? 400 : info.mark ? 300 : 200) - Math.min(99, s.d);
   }
+  /**
+   * Place this frame's plates so that no two overlap: in order of rank each keeps its spot, steps up
+   * clear of the ones already placed, or (a crowd) is left out for the frame. The boxes kept are what
+   * the damage numbers steer round.
+   */
   endPlates() {
-    for (const [k, p] of this.plates) if (!p.used) { p.root.remove(); this.plates.delete(k); }
+    const L = this.plateList, B = this.plateBoxes;
+    L.length = 0; B.length = 0;
+    for (const [k, p] of this.plates) { if (!p.used) { p.root.remove(); this.plates.delete(k); } else L.push(p); }
+    L.sort((a, b) => b.pri - a.pri);
+    for (const p of L) {
+      const w = p.w * p.sc + 6, h = p.h * p.sc + 3;
+      let y = p.y, ok = p.op > 0.02;
+      for (let n = 0; ok && n < 4; n++) {
+        let hit = -1;
+        for (let i = 0; i < B.length; i += 4) if (Math.abs(B[i] - p.x) < (B[i + 2] + w) / 2 && y > B[i + 1] - B[i + 3] && y - h < B[i + 1]) { hit = i; break; }
+        if (hit < 0) break;
+        if (n === 3) ok = false; else y = B[hit + 1] - B[hit + 3] - 1;
+      }
+      // a step of more than a plate and a half reads as belonging to someone else: leave it out
+      if (ok && p.y - y > Math.max(30, h * 1.6)) ok = false;
+      if (ok) B.push(p.x, y, w, h);
+      if (ok !== p.shown) { p.shown = ok; if (!ok) p.root.style.opacity = '0'; }
+      if (!ok) continue;
+      p.root.style.transform = `translate(${p.x.toFixed(1)}px,${y.toFixed(1)}px) scale(${p.sc.toFixed(3)}) translate(-50%,-100%)`;
+      p.root.style.opacity = p.op >= 1 ? '1' : p.op.toFixed(2);
+    }
   }
   setReticle(pos: { x: number; y: number; z: number } | null, size = 1) {
     if (!pos || !this.project(pos, this.scr)) { this.reticle.classList.remove('on'); return; }
@@ -997,6 +1060,7 @@ export class Hud {
     const g = this.game, st = g.state, d = st.d;
     // the viewport or the input changed under us (a rotation whose resize event has not come yet, a first touch on a laptop)
     if (innerWidth !== this.w || innerHeight !== this.h || g.input.isTouch !== this.touchWas) this.resize();
+    if (this.downOn && !this.game.player.dead) { this.downOn = false; this.downEl!.classList.remove('on'); this.root.classList.remove('is-down'); }
     // bars
     const hp = Math.max(0, Math.round(d.hp)), mhp = st.maxHp;
     this.hpFrac = mhp > 0 ? hp / mhp : 1;
@@ -1061,7 +1125,14 @@ export class Hud {
       if (k >= 1) { m.el.remove(); this.dmgPool.push(m.el); this.dmgs.splice(i, 1); continue; }
       if (!this.project(m, s)) { m.el.style.opacity = '0'; continue; }
       m.vy += 190 * dt;
-      const ox = m.vx * m.t, oy = m.vy * m.t * 0.5 - 20;
+      const ox = m.vx * m.t; let oy = m.vy * m.t * 0.5 - 20;
+      // a number never climbs over a plate: it stops under the plate's foot and slides out sideways
+      const B = this.plateBoxes, hh = m.crit ? 17 : 12;
+      for (let b = 0; b < B.length; b += 4) {
+        if (B[b + 3] < 12) continue;
+        const px = s.x + ox, py = s.y + oy;
+        if (Math.abs(px - B[b]) < B[b + 2] / 2 + 14 && py - hh < B[b + 1] && py + hh > B[b + 1] - B[b + 3]) oy = B[b + 1] + hh + 2 - s.y;
+      }
       const pop = m.t < 0.12 ? 0.6 + (m.t / 0.12) * (m.crit ? 0.9 : 0.6) : (m.crit ? 1.5 : 1.2) - Math.min(1, (m.t - 0.12) / 0.2) * (m.crit ? 0.5 : 0.2);
       m.el.style.transform = `translate(${(s.x + ox).toFixed(1)}px,${(s.y + oy).toFixed(1)}px) translate(-50%,-50%) scale(${pop.toFixed(2)})`;
       m.el.style.opacity = k > 0.7 ? String(1 - (k - 0.7) / 0.3) : '1';

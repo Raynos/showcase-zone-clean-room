@@ -78,8 +78,11 @@ export class Notices {
   }
 
   banner(b1: string, b2 = '', cls = '') {
-    const zone = b1 === this.game.zoneName, danger = cls.includes('danger');
-    const fight = !zone && (danger || this.encounter());
+    const zone = b1 === this.game.zoneName, danger = cls.includes('danger'), level = cls.includes('level');
+    // the fall owns the screen (hud.downed): the lane says nothing over it
+    if (danger && this.game.player.dead) { this.hud.downed(b1, b2); return; }
+    // a level is a moment: it lands on the kill that earned it, not after the fight
+    const fight = !zone && (danger || level || this.encounter());
     const hold = zone ? 8 : cls.includes('level') ? 90 : cls.includes('small') ? 10 : cls.includes('lz-crate') ? 20 : 45;
     this.push({ key: 'h:' + keyOf(b1), title: b1, sub: b2, ic: '', kind: 'head', cls: cls + (zone ? ' zone' : ''), pri: fight ? 5 : 4, secs: 3, fight, hold, age: 0, feed: false });
   }
@@ -110,7 +113,7 @@ export class Notices {
     const same = this.q.findIndex((x) => x.key === n.key);
     if (same >= 0) { n.age = this.q[same].age; this.q[same] = n; return; }
     // what the fight needs does not wait behind news
-    if (c && n.pri >= 5 && c.pri < 5) {
+    if (c && (n.pri >= 5 && c.pri < 5 || c.kind === 'tip' && n.kind === 'head')) {
       if (this.shown < 1.2 && (c.kind === 'tip' || c.kind === 'head')) this.q.unshift(c); else this.drop(c, false);
       this.show(n); return;
     }

@@ -411,7 +411,7 @@ export class Game {
       if (d > 40 || (!m.aggro && d > 24 && m.hp >= m.maxHp && m.cls === 'normal')) continue;
       _v.set(m.pos.x, m.pos.y + m.lift + m.fly + m.height + 0.35, m.pos.z);
       const tough = m.cls === 'elite' && (m.aggro || m.hp < m.maxHp);
-      hud.plate('m' + m.id, _v, { name: m.name, level: m.level, hp: m.aggro || m.hp < m.maxHp ? m.hpFrac : undefined, cls: m.cls, fx: m.effects(), stagger: tough ? m.staggerFrac : undefined, broken: m.broken });
+      hud.plate('m' + m.id, _v, { name: m.name, level: m.level, hp: m.aggro || m.hp < m.maxHp ? m.hpFrac : undefined, cls: m.cls, fx: m.effects(), stagger: tough ? m.staggerFrac : undefined, broken: m.broken, focus: m === this.combat.target });
     }
     for (const f of this.plateFns) f();
     hud.endPlates();
