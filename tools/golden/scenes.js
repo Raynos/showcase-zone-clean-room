@@ -85,11 +85,13 @@ const GOLDEN_SCENES = [
     n: 8, name: 'crate-fields-fight', what: 'Crate Fields fight, midday: grass, robots', hour: 12.5,
     async setup(G, g) {
       G.noCamps(); G.clearMobs();
-      G.place(50, -20, 1.36);
-      G.cam(1.36 + PI - 0.2, 0.12, 1);
-      const a = G.spawn('mite', 54.6, -17.2, { level: 1, aggro: true });
-      G.spawn('mite', 54.2, -22.4, { level: 2, aggro: true });
-      G.spawn('mite', 59.5, -15.5, { level: 1 });
+      // (east of where this frame was first staged: the Tallyline Post now stands on that ground, and a camp
+      // is safe ground, so the fight is on its far side, the crate stack still over the hero's left shoulder)
+      G.place(80, 0, 2.1);
+      G.cam(2.1 + PI - 0.2, 0.12, 1);
+      const a = G.spawn('mite', 85.3, -1.0, { level: 1, aggro: true });
+      G.spawn('mite', 81.5, -4.6, { level: 2, aggro: true });
+      G.spawn('mite', 90.0, -3.1, { level: 1 });
       await G.settleMobs();
       g.combat.target = a; g.player.invuln = 60;
       await G.secs(0.7); G.quiet();

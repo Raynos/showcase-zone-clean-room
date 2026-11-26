@@ -1,3 +1,4 @@
+import { OUTPOSTS, POSTS_OFF } from '../../data/outposts';
 import * as THREE from 'three';
 import type { Game } from '../../game';
 import type { Geo } from '../../gfx/geo';
@@ -113,26 +114,37 @@ export function buildBeams(game: Game): THREE.Mesh | null {
     for (const l of info.lamps) if (Math.hypot(l.x - a.x, l.z - a.z) < 34 && l.y > best) { best = l.y; lx = l.x; lz = l.z; }
     c.setHex(hex);
     const v = pos.length / 3;
-    for (const t of [0, 1]) for (const sd of [-1, 1]) { pos.push(lx, top + t * 110, lz); side.push(sd, t); col.push(c.r, c.g, c.b); }
+    for (const t of [0, 1]) for (const sd of [-1, 1]) { pos.push(lx, top + t * 110, lz); side.push(sd, t, 1); col.push(c.r, c.g, c.b); }
+    idx.push(v, v + 1, v + 2, v + 1, v + 3, v + 2);
+  }
+  // each camp's signal mast throws a thin shaft of its band's colour, a third the height of a landmark's: the
+  // mark you steer by across the band after dark
+  if (!POSTS_OFF) for (const o of OUTPOSTS) {
+    let best: { x: number; y: number; z: number } | null = null;
+    for (const l of info.lamps) if (Math.hypot(l.x - o.x, l.z - o.z) < 9 && (!best || l.y > best.y)) best = l;
+    if (!best) continue;
+    c.setHex(o.color).multiplyScalar(0.8);
+    const v = pos.length / 3;
+    for (const t of [0, 1]) for (const sd of [-1, 1]) { pos.push(best.x, best.y + 0.6 + t * 38, best.z); side.push(sd, t, 0.3); col.push(c.r, c.g, c.b); }
     idx.push(v, v + 1, v + 2, v + 1, v + 3, v + 2);
   }
   if (!idx.length) return null;
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('aSide', new THREE.Float32BufferAttribute(side, 2));
+  g.setAttribute('aSide', new THREE.Float32BufferAttribute(side, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   g.setIndex(idx);
   const mat = new THREE.ShaderMaterial({
     uniforms: { uEmitBoost: GU.uEmitBoost, uTime: GU.uTime },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
     vertexShader: /* glsl */ `
-      attribute vec2 aSide; attribute vec3 color;
+      attribute vec3 aSide; attribute vec3 color;
       varying vec3 vCol; varying vec2 vS;
       void main() {
         vec3 toCam = cameraPosition - position;
         vec3 right = normalize(vec3(toCam.z, 0.0, -toCam.x));
-        vec3 p = position + right * aSide.x * mix(2.2, 6.5, aSide.y);
-        vCol = color; vS = aSide;
+        vec3 p = position + right * aSide.x * mix(2.2, 6.5, aSide.y) * aSide.z;
+        vCol = color; vS = aSide.xy;
         gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
       }`,
     fragmentShader: /* glsl */ `

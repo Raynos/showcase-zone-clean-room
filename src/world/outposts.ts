@@ -13,10 +13,10 @@ import { FOLK, type FolkDef } from '../systems/npcs/cast';
 import { DailyBoards } from '../systems/objectives/daily';
 import { FieldRunner } from '../systems/objectives/runner';
 import { Travel, arrival } from '../systems/travel';
-import { Ctx, burrow, capacitorBank, drum, floodlight, ingots, ladleCar, palletStack, pipeRack, rangePole, rivetPile, sandbags, tarpPile, tripod } from './dressing/kit';
+import { Ctx, burrow, capacitorBank, drum, ingots, ladleCar, palletStack, pipeRack, rangePole, rivetPile, sandbags, tarpPile, tripod } from './dressing/kit';
 import { FLORA_KEEPOUT } from './flora';
 import { PAL } from './layout';
-import { bench, crateStack, lanternBody, marketStall, pixelText } from './props';
+import { anvil, bench, cloth, crate, crateStack, lanternBody, marketStall, pixelText } from './props';
 import type { NpcSpot } from './town';
 
 /**
@@ -39,40 +39,54 @@ function wp(o: { x: number; z: number; yaw: number }, lx: number, lz: number): [
 }
 
 // ------------------------------------------------------------------ the kit pieces of a camp
-/** Lattice signal mast: four tapering legs, ring frames, a lamp housing in the band's colour and a long pennant. Returns the lamp's local height. */
+const tone = (c: number, k: number) => new THREE.Color(c).multiplyScalar(k).getHex();
+type P3 = [number, number, number];
+/** A straight rod or cable between two points. */
+function rod(g: Geo, a: P3, b: P3, r: number, color: number, layer: number = T.METAL) {
+  g.tube([a, b], r, 4, { curve: false, div: 1, color, layer, col: 'none' });
+}
+/**
+ * Lattice signal mast: four tapering legs painted in lifts (cream and the band's colour by turns, as a
+ * survey or radio mast is), cross-braced below, with lit frames near the top, a caged lamp in the band's
+ * colour under a hood and a whip aerial. Light steel throughout: it stands against a bright sky at the
+ * edge of a fight and must read as a mast, not a slab. Returns the lamp's local height.
+ */
 function signalMast(g: Geo, H: number, color: number): number {
-  const b = 0.9, t = 0.26, lean = Math.atan2(b - t, H);
+  const b = 1.0, t = 0.24, lifts = 5, paint = tone(color, 0.8);
+  const rad = (f: number) => b + (t - b) * f;
+  const leg = (i: number, f: number): P3 => { const a = (i / 4) * TAU + TAU / 8; return [Math.cos(a) * rad(f), H * f, Math.sin(a) * rad(f)]; };
   for (let i = 0; i < 4; i++) {
-    const a = (i / 4) * TAU + TAU / 8, cx = Math.cos(a), cz = Math.sin(a), len = Math.hypot(H, b - t);
-    g.box(0.26, len, 0.26, { at: [cx * (b + t) / 2, H / 2, cz * (b + t) / 2], rot: [-cz * lean, 0, cx * lean], color: 0x5b6470, layer: T.METAL, col: 'none', grad: 0.7 });
+    const a = (i / 4) * TAU + TAU / 8, cx = Math.cos(a), cz = Math.sin(a);
+    for (let k = 0; k < lifts; k++) {
+      const f0 = k / lifts, f1 = (k + 1) / lifts, r0 = rad(f0), r1 = rad(f1), dy = H / lifts, lean = Math.atan2(r0 - r1, dy);
+      g.box(0.15, Math.hypot(dy, r0 - r1) + 0.02, 0.15, { at: [cx * (r0 + r1) / 2, H * (f0 + f1) / 2, cz * (r0 + r1) / 2], rot: [-cz * lean, 0, cx * lean], color: k % 2 ? paint : PAL.cream, layer: T.METAL, col: 'none', grad: 0.85 });
+    }
   }
-  // a solid riser up the middle carries the cable and gives the mast a body at a distance
-  g.box(0.2, H, 0.2, { at: [0, H / 2, 0], color: DARK, layer: T.METAL, col: 'none', grad: 0.6 });
-  const rings = 5;
-  for (let k = 1; k <= rings; k++) {
-    const f = k / (rings + 0.3), r = b + (t - b) * f, y = H * f, s = r * Math.SQRT2;
-    // the upper frames are lit in the band's colour: the mast reads as that band's from across the zone
-    const lit = k >= rings - 2;
-    for (let i = 0; i < 4; i++) { const a = (i / 4) * TAU; g.box(s + 0.1, lit ? 0.22 : 0.1, lit ? 0.22 : 0.1, { at: [Math.cos(a) * r * 0.7071, y, Math.sin(a) * r * 0.7071], rot: [0, -a + Math.PI / 2, 0], color: lit ? color : k % 2 ? PAL.orange : 0x5b6470, emit: lit ? 1.6 : 0, layer: lit ? T.FLAT : T.METAL, col: 'none' }); }
+  // frames where the lifts meet: the upper two are lit in the band's colour, so the mast is that band's from across the zone
+  for (let k = 1; k < lifts; k++) {
+    const r = rad(k / lifts), y = H * (k / lifts), lit = k >= lifts - 2, th = lit ? 0.16 : 0.08;
+    for (let i = 0; i < 4; i++) { const a = (i / 4) * TAU; g.box(r * Math.SQRT2 + 0.1, th, th, { at: [Math.cos(a) * r * 0.7071, y, Math.sin(a) * r * 0.7071], rot: [0, -a + Math.PI / 2, 0], color: lit ? color : PAL.steel, emit: lit ? 1.6 : 0, layer: lit ? T.FLAT : T.METAL, col: 'none' }); }
   }
-  // the head: a grated deck, a lamp housing in the band's colour under a hood, a whip aerial
-  g.box(1.3, 0.12, 1.3, { at: [0, H, 0], color: PAL.slate, layer: T.GRATE, uvScale: 0.6, col: 'none' });
-  g.cyl(0.7, 0.78, 0.3, 10, { at: [0, H + 0.21, 0], color: DARK, layer: T.METAL, col: 'none' });
-  g.cyl(0.72, 0.72, 1.5, 12, { at: [0, H + 1.1, 0], color, emit: 3.8, layer: T.FLAT, col: 'none' });
-  for (let i = 0; i < 4; i++) { const a = (i / 4) * TAU; g.box(0.08, 1.5, 0.08, { at: [Math.cos(a) * 0.74, H + 1.1, Math.sin(a) * 0.74], color: DARK, col: 'none' }); }
-  g.cone(0.95, 0.65, 10, { at: [0, H + 2.15, 0], color: DARK, layer: T.METAL, col: 'none' });
-  g.cyl(0.03, 0.045, 2.2, 5, { at: [0, H + 3.5, 0], color: DARK, col: 'none' });
-  g.sphere(0.12, 6, 5, { at: [0, H + 4.65, 0], color: PAL.red, emit: 2.6, col: 'none' });
-  // a dish on one side, a long pennant on the other
-  g.cyl(0.5, 0.12, 0.2, 10, { at: [0.55, H - 1.6, 0], rot: [0, 0, -Math.PI / 2 + 0.3], color: PAL.cream, layer: T.METAL, col: 'none' });
-  g.box(1.6, 0.06, 0.06, { at: [-0.9, H - 0.7, 0], color: DARK, col: 'none' });
-  g.box(0.05, 4.6, 1.4, { at: [-1.62, H - 3.05, 0], color, emit: 0.25, layer: T.CANVAS, uvScale: 0.7, col: 'none', grad: 0.75 });
-  g.box(0.06, 0.4, 1.42, { at: [-1.62, H - 0.92, 0], color: PAL.cream, layer: T.CANVAS, col: 'none' });
-  // hazard bands at the foot, a concrete footing
-  for (const y of [0.9, 1.25]) g.box(1.9 - y * 0.18, 0.14, 1.9 - y * 0.18, { at: [0, y, 0], color: y < 1 ? PAL.yellow : DARK, layer: T.STRIPE, uvScale: 0.6, col: 'none' });
+  // cross-bracing on the three lower lifts, where the lattice is wide enough to see through
+  for (let k = 0; k < 3; k++) for (let i = 0; i < 4; i++) {
+    const up = (i + k) % 2 === 0;
+    rod(g, leg(up ? i : i + 1, k / lifts), leg(up ? i + 1 : i, (k + 1) / lifts), 0.035, PAL.steel);
+  }
+  // the head: a grated deck, the caged lamp under its hood, a whip aerial with a red tip
+  g.box(1.1, 0.1, 1.1, { at: [0, H, 0], color: PAL.slateLight, layer: T.GRATE, uvScale: 0.6, col: 'none' });
+  g.cyl(0.56, 0.62, 0.24, 10, { at: [0, H + 0.17, 0], color: PAL.slate, layer: T.METAL, col: 'none' });
+  g.cyl(0.52, 0.52, 1.3, 10, { at: [0, H + 0.95, 0], color, emit: 3.8, layer: T.FLAT, col: 'none' });
+  for (let i = 0; i < 4; i++) { const a = (i / 4) * TAU; g.box(0.06, 1.3, 0.06, { at: [Math.cos(a) * 0.55, H + 0.95, Math.sin(a) * 0.55], color: PAL.slate, col: 'none' }); }
+  g.cone(0.8, 0.55, 10, { at: [0, H + 1.87, 0], color: paint, layer: T.METAL, col: 'none', grad: 0.8 });
+  g.cyl(0.025, 0.04, 2.4, 5, { at: [0, H + 3.3, 0], color: PAL.slateLight, col: 'none' });
+  g.sphere(0.11, 6, 5, { at: [0, H + 4.55, 0], color: PAL.red, emit: 2.6, col: 'none' });
+  // a dish on one side; the pennant flies from the aerial (the camp builds it, in cloth that moves)
+  g.cyl(0.46, 0.1, 0.18, 10, { at: [0.5, H - 1.5, 0], rot: [0, 0, -Math.PI / 2 + 0.3], color: PAL.cream, layer: T.METAL, col: 'none' });
+  // a hazard band at the foot, a concrete footing
+  g.box(2.0, 0.14, 2.0, { at: [0, 0.57, 0], color: PAL.yellow, layer: T.STRIPE, uvScale: 0.6, col: 'none' });
   g.box(2.1, 0.5, 2.1, { at: [0, 0.25, 0], color: PAL.concrete, layer: T.CONCRETE, uvScale: 0.4, col: 'none', grad: 0.7 });
   g.colCyl(1.1, 3, { at: [0, 1.5, 0] });
-  return H + 1.1;
+  return H + 0.95;
 }
 /** The fast-travel terminal at the mast's foot: a slanted screen in the band's colour on a steel cabinet. */
 function terminal(g: Geo, color: number) {
@@ -106,8 +120,8 @@ function giverTable(g: Geo, color: number) {
 }
 /** A camp lamp: an iron pole with an arm and a caged lantern in the band's colour. */
 function campLamp(g: Geo, color: number) {
-  g.cylUp(0.06, 0.09, 3.1, 6, { color: DARK, layer: T.METAL, col: 'none', grad: 0.7 });
-  g.box(0.62, 0.05, 0.05, { at: [0.28, 3.05, 0], color: DARK, col: 'none' });
+  g.cylUp(0.06, 0.09, 3.1, 6, { color: PAL.slate, layer: T.METAL, col: 'none', grad: 0.8 });
+  g.box(0.62, 0.05, 0.05, { at: [0.28, 3.05, 0], color: PAL.slate, col: 'none' });
   lanternBody(g, 0.52, 2.98, 0, color);
   g.colCyl(0.15, 3, { at: [0, 1.5, 0] });
 }
@@ -119,6 +133,143 @@ function flavour(g: Geo, band: number, r: Rng) {
   else if (band === 4) { ingots(g, r, 3); g.at(1.4, 0, 0.2, 0, () => drum(g, 0x7a4a30)); }
   else if (band === 5) { rivetPile(g, r, 1); g.cyl(0.7, 0.7, 0.8, 12, { at: [1.6, 0.7, 0], rot: [Math.PI / 2, 0, 0], color: PAL.woodDark, layer: T.PLANKS, col: true }); g.cyl(0.45, 0.45, 0.82, 10, { at: [1.6, 0.7, 0], rot: [Math.PI / 2, 0, 0], color: 0x2b2f36, layer: T.RUBBER, col: 'none' }); }
   else { capacitorBank(g, 3); }
+}
+
+/** A yard light: a timber pole with a cross-arm and two lamp heads turned on the yard. */
+function yardLight(g: Geo, h: number) {
+  g.cylUp(0.09, 0.13, h, 6, { color: PAL.wood, layer: T.BARK, uvScale: 0.8, col: 'none', grad: 0.75 });
+  g.box(1.5, 0.1, 0.1, { at: [0, h - 0.15, 0], color: PAL.woodDark, layer: T.PLANKS, col: 'none' });
+  for (const sx of [-0.55, 0.55]) {
+    g.box(0.46, 0.32, 0.24, { at: [sx, h - 0.3, 0.12], rot: [0.5, 0, 0], color: PAL.slate, layer: T.METAL, col: 'none' });
+    g.box(0.38, 0.24, 0.04, { at: [sx, h - 0.36, 0.24], rot: [0.5, 0, 0], color: 0xfff0c8, emit: 2.4, col: 'none' });
+  }
+  g.colCyl(0.2, h, { at: [0, h / 2, 0] });
+}
+/** The camp fire: an iron bowl on three legs, coals and a few tongues of flame (it lights the ground through the lamp bake). */
+function brazier(g: Geo) {
+  for (let i = 0; i < 3; i++) { const a = (i / 3) * TAU + 0.3; g.box(0.06, 0.66, 0.06, { at: [Math.cos(a) * 0.3, 0.32, Math.sin(a) * 0.3], rot: [Math.sin(a) * 0.22, 0, -Math.cos(a) * 0.22], color: 0x4a4038, layer: T.METAL, col: 'none' }); }
+  g.cyl(0.5, 0.3, 0.36, 8, { at: [0, 0.78, 0], color: 0x5a4438, layer: T.METAL, uvScale: 0.6, col: 'none', grad: 0.7 });
+  g.cyl(0.42, 0.42, 0.05, 8, { at: [0, 0.95, 0], color: 0xff7a1a, emit: 2.6, col: 'none' });
+  for (const [x, z, h, c] of [[0.1, 0.05, 0.42, 0xffb347], [-0.14, 0.1, 0.3, 0xff8a2a], [0.02, -0.16, 0.34, 0xffa53a]] as const) g.cone(0.11, h, 4, { at: [x, 0.97 + h / 2, z], color: c, emit: 3.2, col: 'none' });
+  g.colCyl(0.5, 1, { at: [0, 0.5, 0] });
+}
+/** Where the camp sleeps: a tarp pitched off two poles against the back wall, two bedrolls laid out under it and one still rolled. */
+function leanTo(g: Geo, color: number) {
+  const W = 3.2, tarp = tone(color, 0.72);
+  for (const sx of [-1, 1]) {
+    g.box(0.08, 1.85, 0.08, { at: [sx * W / 2, 0.92, 1.0], color: PAL.wood, layer: T.PLANKS, col: 'none' });
+    g.box(0.08, 0.7, 0.08, { at: [sx * W / 2, 0.35, -1.0], color: PAL.wood, layer: T.PLANKS, col: 'none' });
+    rod(g, [sx * W / 2, 1.85, 1.0], [sx * (W / 2 + 0.9), 0, 1.9], 0.015, 0xd9c8a2, T.CANVAS);
+  }
+  // the sheet, front edge high; a cream strip sewn down its middle
+  g.box(W + 0.3, 0.04, 2.36, { at: [0, 1.28, 0], rot: [-0.52, 0, 0], color: tarp, layer: T.CANVAS, uvScale: 0.6, col: 'none', grad: 0.85 });
+  g.box(0.5, 0.045, 2.37, { at: [0, 1.285, 0], rot: [-0.52, 0, 0], color: PAL.cream, layer: T.CANVAS, uvScale: 0.6, col: 'none' });
+  for (const [x, c] of [[-0.85, 0x6f7f52], [0.3, 0x4f6f8a]] as const) {
+    g.box(0.72, 0.07, 1.8, { at: [x, 0.04, 0], color: 0xcbb98f, layer: T.CANVAS, uvScale: 1.6, col: 'none' });
+    g.box(0.74, 0.07, 1.0, { at: [x, 0.09, 0.35], color: c, layer: T.CANVAS, uvScale: 1.2, col: 'none' });
+    g.cyl(0.11, 0.11, 0.6, 6, { at: [x, 0.16, -0.72], rot: [0, 0, Math.PI / 2], color: PAL.cream, layer: T.CANVAS, col: 'none' });
+  }
+  g.cyl(0.2, 0.2, 0.72, 8, { at: [1.25, 0.2, -0.4], rot: [0, 0.3, Math.PI / 2], color: PAL.rust, layer: T.CANVAS, uvScale: 1.2, col: 'none' });
+  g.colBox(W, 0.5, 1.6, { at: [0, 0.25, -0.2] });
+}
+/** A water butt with its lid off, a bucket and a ladle hooked on the rim. */
+function waterButt(g: Geo) {
+  g.cyl(0.46, 0.4, 1.05, 8, { at: [0, 0.52, 0], color: 0x4f7f9a, layer: T.METAL, uvScale: 0.6, col: 'none', grad: 0.8 });
+  for (const y of [0.3, 0.8]) g.cyl(0.475, 0.455, 0.06, 8, { at: [0, y, 0], color: PAL.slate, col: 'none' });
+  g.cyl(0.4, 0.4, 0.02, 8, { at: [0, 1.0, 0], color: 0x8fd6ea, emit: 0.15, col: 'none' });
+  g.cyl(0.2, 0.15, 0.3, 6, { at: [0.7, 0.15, 0.2], color: PAL.slateLight, layer: T.METAL, col: 'none' });
+  g.box(0.03, 0.4, 0.03, { at: [-0.42, 1.12, 0.1], rot: [0, 0, 0.25], color: PAL.wood, col: 'none' });
+  g.colCyl(0.48, 1.05, { at: [0, 0.52, 0] });
+}
+/** A crate used as a table: a lantern, a mug, a hand of cards. */
+function crateTable(g: Geo, color: number) {
+  crate(g, 0.8);
+  lanternBody(g, -0.18, 0.8, -0.12, color, 0.7);
+  g.cyl(0.06, 0.05, 0.11, 6, { at: [0.2, 0.855, 0.12], color: PAL.cream, col: 'none' });
+  g.box(0.2, 0.012, 0.14, { at: [0.12, 0.807, -0.2], rot: [0, 0.5, 0], color: 0xf3e3c8, col: 'none' });
+  g.box(0.36, 0.3, 0.36, { at: [0.75, 0.15, 0.1], rot: [0, 0.3, 0], color: PAL.wood, layer: T.CRATE2, uv: 'fit', col: 'none' });
+}
+/**
+ * What makes the camp its band's: the trade's own gear at the front of the yard.
+ * The Fields have freight and tally boards, the Docks a crane's cast-offs, the Heights survey gear, the
+ * Slagworks heat shields, Rivet Row plate and rivets, the Arc Field insulators.
+ */
+function feature(g: Geo, band: number, color: number) {
+  if (band === 1) {
+    // an A-frame tally board chalked in fives, a sack truck loaded for the road
+    for (const k of [-1, 1]) g.box(1.1, 1.5, 0.05, { at: [0, 0.72, k * 0.28], rot: [k * -0.36, 0, 0], color: 0x4f6a5c, layer: T.FLAT, col: 'none', grad: 0.85 });
+    g.box(1.16, 0.08, 0.12, { at: [0, 1.44, 0], color: PAL.wood, layer: T.PLANKS, col: 'none' });
+    for (let row = 0; row < 3; row++) for (let i = 0; i < 4; i++) g.box(0.03, 0.2, 0.012, { at: [-0.34 + i * 0.1 + (row % 2) * 0.3, 1.12 - row * 0.3, 0.14 + row * 0.11], rot: [-0.36, 0, 0], color: PAL.cream, emit: 0.2, col: 'none' });
+    for (let row = 0; row < 3; row++) g.box(0.4, 0.025, 0.012, { at: [-0.19 + (row % 2) * 0.3, 1.12 - row * 0.3, 0.145 + row * 0.11], rot: [-0.36, 0, 0.5], color: PAL.cream, emit: 0.2, col: 'none' });
+    g.colBox(1.1, 1.4, 0.7, { at: [0, 0.7, 0] });
+    g.at(1.7, 0, 0.3, -0.4, () => {
+      for (const sx of [-0.2, 0.2]) g.box(0.04, 1.3, 0.04, { at: [sx, 0.66, -0.12], rot: [0.2, 0, 0], color: PAL.red, layer: T.METAL, col: 'none' });
+      g.box(0.5, 0.03, 0.36, { at: [0, 0.06, 0.18], color: PAL.slate, layer: T.METAL, col: 'none' });
+      g.cyl(0.13, 0.13, 0.5, 8, { at: [0, 0.13, -0.02], rot: [0, 0, Math.PI / 2], color: PAL.slateDeep, layer: T.RUBBER, col: 'none' });
+      g.ico(0.34, 0, { at: [0, 0.3, 0.18], scale: [1, 0.6, 0.8], color: 0xd9c8a2, layer: T.CANVAS, uvScale: 1.5, col: 'none' });
+      g.ico(0.32, 0, { at: [0.02, 0.62, 0.14], scale: [1, 0.6, 0.8], color: 0xcbb98f, layer: T.CANVAS, uvScale: 1.5, col: 'none' });
+    });
+  } else if (band === 2) {
+    // a crane's cast-offs: its hook block, a coil of hoist cable, a length of jib laid on blocks to sit on
+    g.box(0.7, 0.95, 0.36, { at: [0, 0.5, 0], rot: [0, 0, 0.12], color: PAL.yellow, layer: T.STRIPE, uvScale: 0.7, col: 'none', grad: 0.8 });
+    g.cyl(0.26, 0.26, 0.4, 8, { at: [0.02, 0.78, 0], rot: [Math.PI / 2, 0, 0], color: PAL.slate, layer: T.METAL, col: 'none' });
+    g.torus(0.26, 0.07, 5, 8, { at: [-0.1, 0.08, 0.5], rot: [Math.PI / 2, 0, 0], arc: Math.PI * 1.4, color: PAL.slateLight, layer: T.METAL, col: 'none' });
+    for (const [y, R] of [[0.1, 0.62], [0.27, 0.56]] as const) g.torus(R, 0.09, 5, 10, { at: [1.5, y, 0.5], rot: [Math.PI / 2, 0, 0], color: 0x6a727c, layer: T.METAL, col: 'none' });
+    g.at(-0.4, 0, 2.0, 0.25, () => {
+      for (const y of [0.3, 0.8]) for (const z of [-0.25, 0.25]) g.box(4.2, 0.1, 0.1, { at: [0, y, z], color: PAL.yellow, layer: T.METAL, col: 'none', grad: 0.9 });
+      for (let i = 0; i < 6; i++) { const x0 = -2.1 + i * 0.7, hi = i % 2; rod(g, [x0, hi ? 0.8 : 0.3, 0.25], [x0 + 0.7, hi ? 0.3 : 0.8, 0.25], 0.03, PAL.yellow); }
+      for (const x of [-1.6, 1.6]) g.box(0.4, 0.25, 0.8, { at: [x, 0.125, 0], color: PAL.woodDark, layer: T.PLANKS, col: 'none' });
+      g.colBox(4.2, 0.9, 0.6, { at: [0, 0.45, 0] });
+    });
+    g.colBox(0.8, 1, 0.5, { at: [0, 0.5, 0] });
+  } else if (band === 3) {
+    // the benchmark the camp is named for, a plane table with the sheet pinned out, a levelling staff
+    g.box(0.5, 1.15, 0.5, { at: [0, 0.57, 0], color: PAL.concrete, layer: T.CONCRETE, uvScale: 0.5, col: 'none', grad: 0.75 });
+    g.cone(0.36, 0.3, 4, { at: [0, 1.3, 0], rot: [0, Math.PI / 4, 0], color: PAL.concrete, layer: T.CONCRETE, col: 'none' });
+    g.box(0.52, 0.14, 0.52, { at: [0, 0.82, 0], color, emit: 0.3, col: 'none' });
+    g.cyl(0.1, 0.1, 0.03, 8, { at: [0, 0.5, 0.26], rot: [Math.PI / 2, 0, 0], color: 0xc9973a, layer: T.BRASS, col: 'none' });
+    g.colBox(0.5, 1.4, 0.5, { at: [0, 0.7, 0] });
+    g.at(1.7, 0, 0.4, 0.5, () => {
+      for (let i = 0; i < 3; i++) { const a = (i / 3) * TAU + 0.5; g.box(0.05, 1.1, 0.05, { at: [Math.cos(a) * 0.26, 0.52, Math.sin(a) * 0.26], rot: [Math.sin(a) * -0.42, 0, Math.cos(a) * 0.42], color: 0xc49052, layer: T.PLANKS, col: 'none' }); }
+      g.box(0.9, 0.04, 0.7, { at: [0, 1.06, 0], color: PAL.woodLight, layer: T.PLANKS, col: 'none' });
+      g.box(0.76, 0.01, 0.56, { at: [0, 1.085, 0], color: 0xf3e3c8, col: 'none' });
+      g.box(0.5, 0.012, 0.012, { at: [0.05, 1.095, 0.05], rot: [0, 0.4, 0], color: PAL.red, col: 'none' });
+      g.box(0.4, 0.05, 0.05, { at: [-0.1, 1.12, -0.1], rot: [0, -0.5, 0], color: 0xc9973a, layer: T.BRASS, col: 'none' });
+      g.colCyl(0.4, 1.1, { at: [0, 0.55, 0] });
+    });
+    for (let i = 0; i < 5; i++) g.box(0.09, 0.56, 0.03, { at: [-0.9, 0.28 + i * 0.56, 0.1 - i * 0.06], rot: [-0.1, 0, 0], color: i % 2 ? PAL.red : PAL.white, col: 'none' });
+  } else if (band === 4) {
+    // heat shields: three copper screens stood between the yard and the works, a quench trough behind them
+    for (let i = 0; i < 3; i++) g.at((i - 1) * 1.75, 0, Math.abs(i - 1) * -0.35, (i - 1) * -0.3, () => {
+      g.box(1.6, 2.3, 0.07, { at: [0, 1.2, 0], rot: [-0.1, 0, 0], color: 0xb5652e, layer: T.PLATE, uvScale: 0.5, col: 'none', grad: 0.5 });
+      g.box(1.4, 1.9, 0.02, { at: [0, 1.25, 0.05], rot: [-0.1, 0, 0], color: 0xe89a4c, layer: T.METAL, uvScale: 0.3, emit: 0.1, col: 'none', grad: 0.55 });
+      for (const sx of [-0.6, 0.6]) rod(g, [sx, 1.9, -0.2], [sx, 0, -1.0], 0.035, PAL.slate);
+      g.colBox(1.6, 2.3, 0.3, { at: [0, 1.15, -0.1] });
+    });
+    g.at(0.4, 0, 1.3, 0.2, () => { g.box(1.5, 0.4, 0.6, { at: [0, 0.2, 0], color: 0x4a3a34, layer: T.METAL, col: true }); g.box(1.36, 0.02, 0.46, { at: [0, 0.39, 0], color: 0x8fd6ea, emit: 0.15, col: 'none' }); rod(g, [-0.5, 0.4, 0], [0.5, 0.75, 0.3], 0.02, PAL.slateLight); });
+  } else if (band === 5) {
+    // plate and rivets: two hull plates racked for the line, an anvil, a keg of rivets with a hot one on top
+    for (const k of [0, 1]) g.at(k * 0.5 - 0.3, 0, k * -0.45, 0, () => {
+      g.box(2.2, 2.0, 0.09, { at: [0, 1.05, 0], rot: [-0.2, 0, 0], color: k ? 0x6e8296 : 0x7a8794, layer: T.PLATE, uvScale: 0.5, col: 'none', grad: 0.7 });
+      for (let i = 0; i < 6; i++) for (const y of [0.3, 1.8]) g.box(0.07, 0.07, 0.04, { at: [-0.95 + i * 0.38, y, 0.06 - (y - 1.05) * 0.2], color: 0xc9d2da, layer: T.METAL, col: 'none' });
+    });
+    for (const sx of [-1.2, 1.3]) g.box(0.1, 1.5, 1.1, { at: [sx, 0.75, -0.5], color: PAL.woodDark, layer: T.PLANKS, col: 'none' });
+    g.colBox(2.6, 2, 1.1, { at: [0, 1, -0.4] });
+    g.at(1.2, 0, 1.4, 0.4, () => anvil(g));
+    g.at(-0.9, 0, 1.3, 0, () => { g.cyl(0.32, 0.28, 0.6, 8, { at: [0, 0.3, 0], color: PAL.wood, layer: T.PLANKS, uvScale: 0.9, col: 'none' }); g.cyl(0.27, 0.27, 0.04, 8, { at: [0, 0.6, 0], color: 0x8a939e, layer: T.METAL, col: 'none' }); g.box(0.07, 0.07, 0.16, { at: [0.05, 0.65, 0], rot: [0.2, 0.5, 0], color: 0xff8a3a, emit: 1.8, col: 'none' }); g.colCyl(0.32, 0.6, { at: [0, 0.3, 0] }); });
+  } else {
+    // insulators: three porcelain stacks on a rack, each with a live cap, and a spare string laid by
+    for (const sx of [-1, 1]) g.box(0.1, 0.5, 0.9, { at: [sx * 1.15, 0.25, 0], color: PAL.woodDark, layer: T.PLANKS, col: 'none' });
+    g.box(2.5, 0.08, 0.9, { at: [0, 0.54, 0], color: PAL.wood, layer: T.PLANKS, col: 'none' });
+    for (let i = 0; i < 3; i++) {
+      const x = (i - 1) * 0.8;
+      g.cyl(0.07, 0.07, 1.0, 6, { at: [x, 1.08, 0], color: PAL.slate, layer: T.METAL, col: 'none' });
+      for (let d = 0; d < 4; d++) g.cyl(0.12, 0.26, 0.11, 8, { at: [x, 0.72 + d * 0.22, 0], color: d % 2 ? 0xe9eef2 : 0xcfe6ee, layer: T.TILE, uvScale: 0.5, col: 'none' });
+      g.cyl(0.11, 0.11, 0.08, 6, { at: [x, 1.62, 0], color, emit: 2.2, col: 'none' });
+    }
+    g.colBox(2.5, 1.6, 0.9, { at: [0, 0.8, 0] });
+    for (let d = 0; d < 5; d++) g.cyl(0.2, 0.1, 0.1, 6, { at: [-0.6 + d * 0.3, 0.2, 1.1], rot: [0, 0.2, Math.PI / 2], color: 0xe9eef2, layer: T.TILE, uvScale: 0.5, col: 'none' });
+  }
 }
 
 // ------------------------------------------------------------------ build (static)
@@ -139,9 +290,23 @@ export function build(game: Game) {
     // the mast on its own levelled footing, so it stands plumb on any slope
     const [mx, mz] = wp(o, -4.2, -2.8);
     let lampY = 0;
-    const deck = ctx.plinth(mx, mz, o.yaw, 2.4, 2.4, (g) => { lampY = signalMast(g, 14, o.color); }, { lift: 0.05 });
+    const H = 13;
+    const deck = ctx.plinth(mx, mz, o.yaw, 2.4, 2.4, (g) => { lampY = signalMast(g, H, o.color); }, { lift: 0.05 });
     const top = deck + lampY;
-    addGlow(mx, top, mz, o.color, { power: 3.4, size: 1.8, rays: 1, reach: 26 });
+    // three guy lines off the back and the side, clear of the yard, each to a concrete deadman
+    for (const a of [2.36, 3.93, 5.5]) {
+      const R = 6.2, [ax, az] = wp(o, -4.2 + Math.cos(a) * R, -2.8 + Math.sin(a) * R), ay = ctx.h(ax, az);
+      const ex = -Math.cos(a) * R * 0.96, ey = deck + H * 0.74 - ay, ez = -Math.sin(a) * R * 0.96;
+      ctx.putY(ax, ay, az, o.yaw, (g) => {
+        g.box(0.5, 0.4, 0.5, { at: [0, 0.12, 0], rot: [0, a, 0], color: PAL.concrete, layer: T.CONCRETE, col: 'none' });
+        rod(g, [0, 0.3, 0], [ex, ey, ez], 0.022, PAL.slateLight);
+        // the Arc Field's guys carry strain insulators
+        if (o.band === 6) for (const f of [0.3, 0.36, 0.42]) g.ico(0.13, 0, { at: [ex * f, 0.3 + (ey - 0.3) * f, ez * f], scale: [1, 0.7, 1], color: 0xe9eef2, layer: T.TILE, col: 'none' });
+      });
+    }
+    // the band's pennant from the aerial, in cloth that moves with the wind
+    ctx.putY(mx, deck + H + 4.3, mz, o.yaw + 0.5, (g) => cloth(g, 2.5, 1.0, o.color, 'flag', 0.55, PAL.cream), true);
+    addGlow(mx, top, mz, o.color, { power: 4.2, size: 2.6, rays: 1, reach: 26 });
     lamps?.push({ x: mx, y: top, z: mz, color: o.color });
     put(-4.2, -1.3, 0, (g) => terminal(g, o.color));
     put(0, 1.4, 0, (g) => giverTable(g, o.color));
@@ -153,9 +318,14 @@ export function build(game: Game) {
     put(0, -6.2, 0, (g) => sandbags(g, r, 5, 2));
     put(-7.4, -1.2, Math.PI / 2 - 0.25, (g) => sandbags(g, r, 4, 2));
     put(8.4, -0.6, -Math.PI / 2 + 0.2, (g) => sandbags(g, r, 3.5, 2));
-    put(-7.0, -5.0, 0.7, (g) => floodlight(g, 6, 0xfff0c8));
-    put(-1.6, -4.4, 0.2, (g) => flavour(g, o.band, r));
-    put(2.2, -5.0, -0.3, (g) => tarpPile(g, r, 1.1, o.color));
+    put(-7.0, -5.0, 0.7, (g) => yardLight(g, 5.4));
+    put(-1.9, -4.5, 0.2, (g) => flavour(g, o.band, r));
+    // people live here: a fire with seats pulled up, bedrolls under a tarp, water, a crate for a table by the bench
+    put(0.8, -2.3, 0, (g) => { brazier(g); g.at(-1.15, 0, -0.5, 0.4, () => crate(g, 0.5)); g.at(1.0, 0, -0.75, -0.3, () => g.cyl(0.24, 0.26, 0.44, 8, { at: [0, 0.22, 0], color: PAL.wood, layer: T.BARK, uvScale: 1, col: true })); });
+    put(2.1, -5.0, 0, (g) => leanTo(g, o.color));
+    put(7.1, -3.9, 0.3, (g) => waterButt(g));
+    put(-2.4, 2.9, 0.25, (g) => crateTable(g, o.color));
+    put(8.0, 3.9, -0.5, (g) => feature(g, o.band, o.color));
     // the camp's name on a sign at the way in
     put(-6.4, 5.6, 0.4, (g) => {
       g.cylUp(0.08, 0.1, 2.6, 6, { at: [-1.5, 0, 0], color: PAL.woodDark, layer: T.PLANKS, col: 'none' });
@@ -175,6 +345,7 @@ export function build(game: Game) {
     let lampY = 0;
     const deck = ctx.plinth(mx, mz, o.yaw, 2.4, 2.4, (g) => { lampY = signalMast(g, 11, o.color); }, { lift: 0.05 });
     addGlow(mx, deck + lampY, mz, o.color, { power: 3, size: 1.6, rays: 1, reach: 22 });
+    ctx.putY(mx, deck + 11 + 4.3, mz, o.yaw + 0.5, (g) => cloth(g, 2.2, 0.9, o.color, 'flag', 0.55, PAL.cream), true);
     const [tx, tz] = wp(o, 0, 0.3);
     ctx.put(tx, tz, o.yaw, (g) => terminal(g, o.color));
   }
