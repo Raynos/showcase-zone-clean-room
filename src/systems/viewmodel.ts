@@ -63,6 +63,9 @@ function aimQ(out: THREE.Quaternion, z: THREE.Vector3, y: THREE.Vector3, roll: n
   return out;
 }
 
+/** Seconds a weapon newly in the hand takes to come up into its hold. */
+const DRAW_T = 0.36;
+
 /**
  * The first-person view model of the shooter stance (docs/COMBAT.md, "First person"). The weapon
  * stays the hero's own model in the hero's own hand, but while the picture is taken from the eyes it
@@ -84,6 +87,8 @@ export class ViewModel {
   private lagX = 0; private lagY = 0; private lastYaw = 0; private lastPitch = 0; private bob = 0;
   /** the weapon object last placed, so it can be handed back to the hand cleanly */
   private placed: THREE.Object3D | null = null;
+  /** the weapon last in the hand, and how long it has been there: a swap brings the new one up from under the picture */
+  private drawn: THREE.Object3D | null = null; private drawT = 9;
 
   constructor(private game: Game, private sh: Shooter) {}
 
@@ -97,6 +102,9 @@ export class ViewModel {
     const grip = w?.object.parent ?? null;
     const inHand = !!w && !!grip && (grip === pl.rig?.sockets.handR || grip === pl.rig?.sockets.handL);
     const loc = pl.pose.locomotion;
+    if (!inHand) this.drawn = null;
+    else if (this.drawn !== w!.object) { this.drawn = w!.object; this.drawT = 0; }
+    this.drawT += dt;
     const want = g.combat.stance === 'shooter' && !!kind && inHand && w!.kind === kind && !pl.dead && (loc === 'ground' || loc === 'air') && !g.combat.skillRunning ? 1 : 0;
     this.k = want ? Math.min(1, this.k + dt * 6) : Math.max(0, this.k - dt * 6);
     const k = this.k * cr.eyeAmount;
@@ -156,8 +164,11 @@ export class ViewModel {
     _p.x += R.side * rl - 0.04 * spr + this.lagX * 0.6 * (1 - rel) + Math.sin(this.bob) * 0.006 * bobK;
     _p.y += -R.dip * rl - 0.06 * spr + this.lagY * 0.6 * (1 - rel) - Math.abs(Math.cos(this.bob)) * 0.008 * bobK;
     _p.z += P.kick.back * kick + 0.02 * spr;
+    // the draw: up from under the picture's lower edge and in from the side, muzzle low, rolling level as it arrives
+    const du = clamp01(this.drawT / DRAW_T), up = (1 - du * du * (3 - 2 * du)) * (1 - rel);
+    _p.y -= (tv * z0 * 0.9 + 0.08) * up; _p.x += 0.05 * up;
     // rotations in view space: muzzle up for the kick and a reload, down and in for a sprint, rolled to reload
-    _qa.setFromEuler(_e.set(P.kick.up * kick + R.tip * rl - 0.55 * spr + this.lagY * 0.5, this.lagX * 0.8 + 0.5 * spr, R.roll * rl));
+    _qa.setFromEuler(_e.set(P.kick.up * kick + R.tip * rl - 0.55 * spr + this.lagY * 0.5 - 0.6 * up, this.lagX * 0.8 + 0.5 * spr, R.roll * rl - 0.4 * up));
     // rotate about the grip
     _q.premultiply(_qa);
 

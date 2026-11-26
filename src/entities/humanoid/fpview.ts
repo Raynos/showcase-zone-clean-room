@@ -246,10 +246,12 @@ export function fpHold(out: FpArms, h: FpHold): FpArms {
 // ---- moves that used to hide the body -------------------------------------------------------------
 
 /** The moves whose arms are posed to the lens: a dodge roll, a knockdown and getting up from it, dying, and riding. */
-export type FpMove = 'roll' | 'down' | 'dead' | 'ride';
+export type FpMove = 'roll' | 'down' | 'dead' | 'ride' | 'zip' | 'board';
 export const FP_MOVES: readonly FpMove[] = ['roll', 'down', 'dead', 'ride'];
 function moveOf(hp: HumanPose): FpMove | null {
   const l = hp.locomotion as string;
+  if (l === 'zipline') return 'zip';
+  if (l === 'board' && !hp.drawn && !(hp.action ?? '').startsWith('boardTrick')) return 'board';
   return l === 'roll' ? 'roll' : l === 'down' ? 'down' : l === 'dead' ? 'dead' : l === 'ride' && !hp.drawn ? 'ride' : null;
 }
 const DOWN_FALL = 0.3, DOWN_LIE = 0.8, DOWN_END = 1.2;      // types.ts DOWN
@@ -294,6 +296,21 @@ function moveHand(m: FpMove, hp: HumanPose, deadT: number, s: number, p: THREE.V
     const r = bell(deadT, 0, 0.25, 0.3, 0.9), f = smooth(0.3, 1.0, deadT);
     p.set(g * (0.085 + 0.05 * f), -0.34 + 0.15 * r - 0.35 * f, 0.36);
     z.set(-g * 0.2, 0.8 - 1.2 * f, 0.5 + 0.3 * f); y.set(-g, 0, 0);
+  } else if (m === 'zip') {
+    // hanging from the trolley: both fists over its bar along the top edge of the picture, however wide it is, the
+    // wire's hum in them. The elbows are up and out (a held pull-up), so the forearms leave by the top corners and
+    // only the fists and the bar are in the picture
+    const tx = hp.fpTan?.x ?? 0.334, ty = hp.fpTan?.y ?? 0.73, d = 0.52, hum = Math.sin(hp.time * 37 + s) * 0.0018;
+    z.set(-g * 0.45, -0.5, 0.74).normalize(); y.set(-g, 0, 0);
+    // (the bar lies through the grip, 0.06 along the hand from the wrist)
+    p.set(g * Math.min(0.13, 0.5 * tx * d), 0.56 * ty * d + hum, d).addScaledVector(z, -0.06);
+  } else if (m === 'board') {
+    // on the board: arms out for balance, palms down at the picture's lower corners, one dipping as the board leans
+    const ty = hp.fpTan?.y ?? 0.73, lean = clamp(hp.lean ?? 0, -1, 1), d = s === L ? 0.52 : 0.47;
+    const sway = Math.sin(hp.time * 2.1 + s * 1.7) * 0.01 + Math.sin(hp.time * 5.3 + s) * 0.004 * clamp(hp.speed / 6, 0, 1);
+    const tx = hp.fpTan?.x ?? 0.334;
+    p.set(g * Math.min(0.22, 0.7 * tx * d), -0.86 * ty * d + sway - g * lean * 0.05, d);
+    z.set(g * 0.3, 0.12 + g * lean * 0.25, 1); y.set(-g, 0.3, 0);
   } else {
     // riding: both fists on the reins over the horse's withers, under the picture while the eyes look ahead
     // (the eyes ride above the rider's, systems/view.ts FP_RIDE), giving with its stride
@@ -328,14 +345,16 @@ export function fpMove(P: Pose, hp: HumanPose, dt: number, eye: THREE.Vector3 | 
   for (let s = 0; s < 2; s++) {
     const g = s === L ? 1 : -1;
     moveHand(out.move, hp, out.deadT, s, _p, _z, _b);
-    if (!ride) { _p.z += 0.08; _p.x = g * Math.max(Math.abs(_p.x), edge * tx * _p.z); }
+    if (!ride && out.move !== 'zip' && out.move !== 'board') { _p.z += 0.08; _p.x = g * Math.max(Math.abs(_p.x), edge * tx * _p.z); }
     _h.copy(_p).applyQuaternion(_fq).add(eye);
     out.handPos[s].lerp(_v.copy(_h).sub(_tc).applyQuaternion(_tqi), K);
     _z.applyQuaternion(_fq); _b.applyQuaternion(_fq);
     basisZY(_q, _z, _b);
     out.handQ[s].slerp(_q.premultiply(_tqi), K);
-    out.elbow[s].lerp(_v.set(g * (ride ? 0.6 : 0.8), ride ? -1 : -0.8, -0.2), K);
-    if (shK > 0) out.shoulder[s].lerp(_v.set(g * 0.19, -0.25, -0.06).applyQuaternion(_fq).add(eye).sub(_tc).applyQuaternion(_tqi), shK);
+    // elbows down and out; on the wire they hang out to the sides, so the forearms come in from the picture's edges
+    if (out.move === 'zip') out.elbow[s].lerp(_v.set(g, 0.7, -0.5), K);
+    else out.elbow[s].lerp(_v.set(g * (ride ? 0.6 : 0.8), ride ? -1 : -0.8, -0.2), K);
+    if (shK > 0) out.shoulder[s].lerp((out.move === 'zip' ? _v.set(g * 0.26, 0.1, -0.1) : _v.set(g * 0.19, -0.25, -0.06)).applyQuaternion(_fq).add(eye).sub(_tc).applyQuaternion(_tqi), shK);
   }
   return out;
 }

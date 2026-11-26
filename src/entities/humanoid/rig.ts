@@ -16,7 +16,7 @@
  */
 import * as THREE from 'three';
 import { GU, WorldMaterial } from '../../gfx/material';
-import { instantiate } from '../../gfx/models';
+import { hasModel, instantiate } from '../../gfx/models';
 import { AnimState, evaluate, L, R, SK } from './anim';
 import { applyFit, fitLook } from './fit';
 import { FpArms, fpHold, fpMove, fpPresent, fpShoulders, fpSteady } from './fpview';
@@ -45,6 +45,15 @@ const FP_NECKLINE = { y: 1.42, yIn: 1.32, x: 0.17, arm: 1.27 };
  * length from a phone's lens they filled a third of the picture. A dedicated first-person arm is an art job.
  */
 const FP_ARM = { fore: 0.62, hand: 0.7 };
+/**
+ * The hero's own first-person arms (art/people/fparms.py) are built slim, so only the glove is brought
+ * down, about the grip: the body's hand is a third larger than life so it reads from behind at five metres.
+ */
+const FP_GLOVE = 0.78;
+/** ...and the forearm's girth, a touch: built for the outfit to read, a forearm's length from the lens it is still a lot of picture. */
+const FP_FORE = 0.86;
+/** Seconds a melee weapon newly in the hand takes to come up into the picture (a swap; a swing that draws it does not wait). */
+const FP_DRAW = 0.34;
 
 const damp1 = (a: number, b: number, k: number) => a + (b - a) * Math.min(1, k);
 
@@ -100,7 +109,7 @@ export type HumanoidDevRig = HumanoidRig & {
   /** The low-detail surface in its current pose as plain geometry in root space: what a far, unskinned stand-in is made of. */
   bake(): THREE.BufferGeometry;
   /** first person, for measuring: give `mats` an array and it receives the eye camera's bone matrices; `armsN` is the arms' index count */
-  fpDev: { mats: Float32Array | null; armsN: number; arm: { fore: number; hand: number } };
+  fpDev: { mats: Float32Array | null; armsN: number; arm: { fore: number; hand: number }; mesh: THREE.SkinnedMesh | null };
 };
 
 export function makeHumanoid(look: HumanLook): HumanoidDevRig {
@@ -147,6 +156,10 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
 
   // ---- first person: the eye camera skips the head's triangles (moved to the end of a private index) and the cloth
   let fpFn: ((cam: THREE.Camera) => FpDraw) | null = null;
+  let fpMesh: THREE.SkinnedMesh | null = null;
+  /** the zipline's trolley handle, part of the first-person arms: between the fists on the wire, folded to nothing otherwise */
+  let zipBar: THREE.Bone | null = null;
+  let fpHeld: THREE.Object3D | null = null, fpDrawT = 9;
   let fpGeo: THREE.BufferGeometry | null = null, fpBody = 0, fpArmsN = 0;
   const buildFp = () => {
     const src = inst.mesh.geometry, ix = src.index!, si = src.getAttribute('skinIndex'), sw = src.getAttribute('skinWeight');
@@ -170,13 +183,15 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
     }
     const geo = new THREE.BufferGeometry();
     for (const k in src.attributes) geo.setAttribute(k, src.attributes[k]);
-    const n = src.getAttribute('position').count, all = limbs.concat(front, neck, back);
+    // with a pair of first-person arms the eye draws none of the body's own, so they go behind the front
+    const n = src.getAttribute('position').count, all = fpMesh ? front.concat(limbs, neck, back) : limbs.concat(front, neck, back);
     geo.setIndex(new THREE.BufferAttribute(n > 65535 ? new Uint32Array(all) : new Uint16Array(all), 1));
     geo.boundingSphere = src.boundingSphere ? src.boundingSphere.clone() : null;
     geo.boundingBox = src.boundingBox ? src.boundingBox.clone() : null;
-    fpGeo = geo; fpArmsN = limbs.length; fpBody = limbs.length + front.length; fpDev.armsN = fpArmsN;
+    fpGeo = geo; fpArmsN = fpMesh ? 0 : limbs.length; fpBody = fpMesh ? front.length : limbs.length + front.length; fpDev.armsN = fpArmsN;
   };
   const fpAsk = (cam: THREE.Camera): FpDraw => (fpFn ? fpFn(cam) : 'full');
+  const fpMats: WorldMaterial[] = [];
   eyeCull(inst.mesh, (cam, geo) => {
     if (!fpFn || !fpGeo) return Infinity;
     // the private index takes over from the next frame (the draw list for this one is already made)
@@ -200,7 +215,7 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
   const skel = inst.mesh.skeleton, boneI = (b: THREE.Object3D) => skel.bones.indexOf(b as THREE.Bone);
   const foreI = armF.map(boneI);
   const handI = hand.map((h) => { const out: number[] = []; h.traverse((o) => { const i = boneI(o); if (i >= 0) out.push(i); }); return out; });
-  const fpDev = { mats: null as Float32Array | null, armsN: 0, arm: FP_ARM as { fore: number; hand: number } };
+  const fpDev = { mats: null as Float32Array | null, armsN: 0, arm: FP_ARM as { fore: number; hand: number }, mesh: null as THREE.SkinnedMesh | null };
   let fpSaved: Float32Array | null = null, fpTouched = false;
   const _mA = new THREE.Matrix4(), _mB = new THREE.Matrix4(), _gp = new THREE.Vector3();
   {
@@ -208,7 +223,7 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
     inst.mesh.onBeforeRender = function (r, s, cam, geo, mat, grp) {
       before.call(this, r, s, cam, geo, mat, grp);
       const bm = skel.boneMatrices;
-      if (!bm || fpArmK < 0.01 || fpAsk(cam) === 'full') return;
+      if (!bm || fpMesh || fpArmK < 0.01 || fpAsk(cam) === 'full') return;
       if (!fpSaved || fpSaved.length !== bm.length) fpSaved = new Float32Array(bm.length);
       fpSaved.set(bm); fpTouched = true;
       const A = fpDev.arm, thin = 1 + (A.fore - 1) * fpArmK, small = 1 + (A.hand - 1) * fpArmK;
@@ -228,6 +243,58 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
       skel.boneMatrices.set(fpSaved); fpTouched = false;
       if (skel.boneTexture) skel.boneTexture.needsUpdate = true;
     };
+  }
+  // ---- first person: the hero's own pair of arms for the lens (art/people/fparms.py), bound to this body's
+  // bones, so whatever poses his arms poses them. The eye camera draws them in place of the body's arms; no
+  // other camera does, and no shadow pass. Their gloves are brought down about the grip (FP_GLOVE) in their
+  // own skeleton's matrices, so the fingers stay closed round what they hold and the body's are untouched.
+  const idx: Array<THREE.Bone[] | null> = [null, null];
+  if (look.kind === 'hero' && hasModel('fparms')) {
+    const fa = instantiate('fparms', fit.palette, undefined, 2.4, { shadowDist: Infinity, lodDist: Infinity });
+    const src = fa.mesh.skeleton;
+    const bones: THREE.Bone[] = [], inv: THREE.Matrix4[] = [];
+    src.bones.forEach((b, i) => {
+      let mine = B[b.name];
+      if (!mine) {
+        // a bone only these arms have (the index finger's chain): hung on this body's bone of the same parent
+        mine = new THREE.Bone(); mine.name = b.name; mine.position.copy(b.position); mine.quaternion.copy(b.quaternion);
+        B[b.parent!.name].add(mine);
+        B[b.name] = mine;
+      }
+      bones.push(mine);
+      const j = skel.bones.indexOf(mine);
+      inv.push((j >= 0 ? skel.boneInverses[j] : src.boneInverses[i]).clone());
+    });
+    for (let s = 0; s < 2; s++) { const n = s === L ? 'L' : 'R'; if (B[`idxA_${n}`]) idx[s] = [B[`idxA_${n}`], B[`idxB_${n}`], B[`idxC_${n}`]]; }
+    const fskel = new THREE.Skeleton(bones, inv);
+    const fm = new THREE.SkinnedMesh(fa.mesh.geometry, fa.material);
+    fm.name = 'fparms';
+    fm.position.copy(inst.mesh.position); fm.quaternion.copy(inst.mesh.quaternion); fm.scale.copy(inst.mesh.scale);
+    inst.mesh.parent!.add(fm);
+    fm.bind(fskel, inst.mesh.bindMatrix);
+    fm.frustumCulled = false; fm.castShadow = false; fm.receiveShadow = true; fm.visible = false;
+    fa.material.rim.value.w = 0.4;
+    const foreJ = [armF[L], armF[R], armU[L], armU[R]].map((b) => bones.indexOf(b));
+    const gloveI = hand.map((h) => { const out: number[] = []; h.traverse((o) => { const i = bones.indexOf(o as THREE.Bone); if (i >= 0) out.push(i); }); return out; });
+    const base = fskel.update.bind(fskel);
+    fskel.update = () => {
+      base();
+      const bm = fskel.boneMatrices, small = fpDev.arm.hand, thin = fpDev.arm.fore;
+      if (!bm) return;
+      if (thin !== 1) for (const i of foreJ) if (i >= 0) _mA.multiplyMatrices(bones[i].matrixWorld, _mB.makeScale(thin, 1, thin)).multiply(inv[i]).toArray(bm, i * 16);
+      for (let s = 0; s < 2; s++) {
+        grip[s].getWorldPosition(_gp);
+        _mB.makeTranslation(-_gp.x, -_gp.y, -_gp.z).premultiply(_mA.makeScale(small, small, small)).premultiply(_mA.makeTranslation(_gp.x, _gp.y, _gp.z));
+        for (const j of gloveI[s]) _mA.multiplyMatrices(_mB, bones[j].matrixWorld).multiply(inv[j]).toArray(bm, j * 16);
+      }
+      if (fskel.boneTexture) fskel.boneTexture.needsUpdate = true;
+    };
+    eyeCull(fm, (cam) => { const d = fpAsk(cam); return d === 'body' || d === 'arms' ? Infinity : 0; }, () => true);
+    fpMesh = fm; fpDev.mesh = fm; fpDev.arm = { fore: FP_FORE, hand: FP_GLOVE };
+    zipBar = B.zipbar ?? null;
+    if (zipBar) zipBar.scale.setScalar(0);
+    fpMats.push(fa.material);
+    meshes++;
   }
   const eyeRest = (() => {
     root.updateWorldMatrix(true, true);
@@ -270,7 +337,7 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
   const rig: HumanoidDevRig = {
     root,
     sockets: { handR: grip[R], handL: grip[L], back, head: headSock, chest, hips },
-    materials: clothMat ? [mat, clothMat] : [mat],
+    materials: clothMat ? [mat, clothMat, ...fpMats] : [mat, ...fpMats],
     weapon: null,
     setShadow(on) { shadowOn = on; if (!on) inst.mesh.castShadow = false; },
     stats: { meshes, tris },
@@ -308,6 +375,7 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
       const P = evaluate(pose, st, dt);
       const fp = pose.fp ?? 0;
       fpArmK = fp;
+      if (fpMesh) fpMesh.visible = fp > 0 && !!fpFn;
       // the shooter stance's named hold over the arms (shootpose.ts); the eyes have their own (fpHold)
       if (pose.shoot && fp < 1) shootPose(P, pose, nodes, pose.shootK ?? 1);
       // first person: a spin or the leap keeps the torso square to the lens
@@ -319,6 +387,14 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
       fpLift = damp1(fpLift, (pose.fp ?? 0) * (pose.drawn && (pose.weapon === 'sword' || pose.weapon === 'spear') && pose.locomotion !== 'dead' ? 1 : 0), dt * (pose.action && pose.drawn ? 60 : 8));
       const sc = body.scale.y || 1;
       fpPresent(P, pose, fpLift < 0.002 ? 0 : fpLift, eyeRest.y / sc, eyeRest.z / sc, arms, sc, dt);
+      // a melee weapon that has just come to the hand without a swing (a swap) is brought up from under the picture
+      const held = weapon && pose.drawn && pose.weapon !== 'none' && pose.locomotion !== 'dead' ? weapon.object : null;
+      if (held !== fpHeld) { fpHeld = held; fpDrawT = held && !pose.action ? 0 : 9; }
+      fpDrawT += dt;
+      if (fpLift > 0.002 && fpDrawT < FP_DRAW) {
+        const u = fpDrawT / FP_DRAW, up = (1 - u * u * (3 - 2 * u)) * fpLift;
+        for (let s = 0; s < 2; s++) if (s === R || pose.weapon === 'spear') { arms.handPos[s].y -= 0.44 * up; arms.handPos[s].z -= 0.07 * up; arms.handPos[s].x -= 0.05 * up; }
+      }
       // first person with a ranged weapon: the weapon is on the view (systems/viewmodel.ts) and the hands go to it
       if (pose.fpHold) fpHold(arms, pose.fpHold);
       // ...and whichever it is, the shoulders sit under and outside the lens
@@ -349,6 +425,21 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
         thigh[s].quaternion.copy(_q1);
         shin[s].quaternion.copy(_q3.copy(_q1).invert()).multiply(_q2);
         foot[s].quaternion.copy(_q3.copy(_q2).invert()).multiply(P.footQ[s]);
+      }
+      // on the wire, the trolley's handle lies through both fists (first-person arms only)
+      if (zipBar) {
+        const on = fp > 0.5 && pose.locomotion === 'zipline' && arms.moveK > 0.3;
+        if (on) {
+          const par = zipBar.parent!;
+          grip[L].getWorldPosition(_a); grip[R].getWorldPosition(_b);
+          _inv.copy(par.matrixWorld).invert();
+          _a.applyMatrix4(_inv); _b.applyMatrix4(_inv);
+          zipBar.position.copy(_a).add(_b).multiplyScalar(0.5);
+          _side.copy(_a).sub(_b).normalize();
+          _back.set(0, 1, 0).addScaledVector(_side, -_side.y).normalize();
+          zipBar.quaternion.setFromRotationMatrix(_inv.makeBasis(_side, _back, _c0.crossVectors(_side, _back)));
+          zipBar.scale.setScalar(1);
+        } else if (zipBar.scale.x !== 0) zipBar.scale.setScalar(0);
       }
       // weapon placement
       const inHand = !!weapon && pose.drawn && pose.weapon !== 'none' && pose.locomotion !== 'dead';
@@ -406,6 +497,20 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
         // the thumb folds from beside the palm to round a grip, or down across the fingers of an empty fist
         thumb[s].quaternion.slerpQuaternions(_q0, (holding ? thumbGrip : thumbFist)[s], c);
         if (act === 'point' && s === R && !holding) { fingA[s].rotation.y = -k * 0.2; fingB[s].rotation.y = k * 0.5; fingC[s].rotation.y = k * 0.35; }
+        const ix = idx[s];
+        if (ix) {
+          // the index finger (first-person arms only): with the others, but along the guard of a gun or a crossbow until the
+          // shot, and hooked on a bowstring's nock rather than closed on it
+          let ci = c;
+          if (inHand && s === R) {
+            const wk = weapon!.kind;
+            if (wk === 'rifle' || wk === 'crossbow') ci = /^(rifle|xbow)/.test(act) ? 0.78 : 0.46;
+            else if (wk === 'bow') ci = 0.7;
+          }
+          ix[0].rotation.y = -k * (0.1 + 1.4 * ci - 0.5);
+          ix[1].rotation.y = -k * (0.15 + 1.55 * ci - 0.75);
+          ix[2].rotation.y = -k * (0.1 + 0.9 * ci - 0.45);
+        }
       }
 
       // ---- face

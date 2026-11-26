@@ -18,7 +18,7 @@ MODELS = {
     'mite': 'robots.mite', 'pallet': 'robots.pallet', 'drone': 'robots.drone', 'sentry': 'robots.sentry',
     'riveter': 'robots.riveter', 'welder': 'robots.welder', 'foreman': 'robots.foreman',
     'warden': 'robots.warden', 'titan': 'robots.titan',
-    'rook': 'people.rook', 'folk': 'people.folk', 'adv': 'people.adv',
+    'rook': 'people.rook', 'folk': 'people.folk', 'adv': 'people.adv', 'fparms': 'people.fparms',
     'swords': 'weapons.swords', 'spears': 'weapons.spears', 'bows': 'weapons.bows', 'guns': 'weapons.guns',
     'board': 'mounts.board',
 }

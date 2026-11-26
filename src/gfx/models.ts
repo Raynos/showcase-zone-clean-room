@@ -32,7 +32,7 @@ const HEADROOM = 0.8;
 /** Every model the game uses, one art/ script each (art/build.py). */
 export const MODEL_NAMES = [
   'mite', 'pallet', 'drone', 'sentry', 'riveter', 'welder', 'foreman', 'warden', 'titan',
-  'rook', 'folk', 'adv',
+  'rook', 'folk', 'adv', 'fparms',
   'swords', 'spears', 'bows', 'guns', 'board',
 ] as const;
 export type ModelName = (typeof MODEL_NAMES)[number];

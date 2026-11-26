@@ -291,20 +291,23 @@ agent's file (see below).
     a ghost. A dither pattern instead of fading would read as intent.
 16. **fixed.** Scoped, the eyes draw none of the hero.
 17. **fixed.** The rifle stays low until the scope has the picture.
-18. **open.** The swap frames now show no hands for a beat, then the new
-    weapon's hold. The draw itself is not animated for the eye.
+18. **impr.** A weapon newly in the hand comes up from under the picture
+    over a third of a second, muzzle low, rolling level (`viewmodel.ts`
+    `DRAW_T`; melee in `rig.ts` `FP_DRAW`). The old weapon is not seen going
+    away: the swap is instant in the simulation.
 19. **impr.** Shoulders under the lens for holds. The crossbow's rear sight
     now sits lower and right of the axis, so the target shows above it.
 20. **impr.** On a horse the eyes ride 0.3 m higher and take half the
     gallop's head motion (span 0.21 m down to 0.12 m). Ahead, only the ears
     show at the bottom edge. Looking down is all mane, and looking sideways
     shows a rein hand.
-21. **open.** The lower frame is clean, but the board is not drawn: its
-    nose is 50 degrees under the eye, outside a phone's field of view. It
-    needs a crouched rider pose or an art pass.
-22. **open.** Tried: both hands at the top of the picture on the bar. Under
-    the zipline's speed blur, Rook's sleeves read as pale blobs, so it was
-    taken out. It needs a first-person arm model and the trolley in view.
+21. **impr.** A stylised frame: both hands out for balance, palms down at
+    the picture's lower corners, one dipping as the board leans (`fpview.ts`
+    `board`). The board's nose is still outside a phone's field of view.
+22. **impr.** With the first-person arms (`art/people/fparms.py`): both
+    fists over the trolley's bar along the top edge, elbows up and out so
+    only fists and bar are in the picture. The bar is part of the arms'
+    model. Portrait covers 13%; judge it on the phone at speed.
 23. **open.** Minor.
 24. **impr.** See comfort: bob is now 0.6 by default.
 25. **fixed.** See comfort.
