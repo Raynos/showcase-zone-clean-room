@@ -271,13 +271,14 @@ export class Game {
     const real = SFX_ALIAS[name] ?? name;
     if (name === 'jump_double') o = { ...o, pitch: 1.35 };
     this.audio.play(real, o);
+    if (this.audio.cue) { this.audio.cue(name, o); return; }   // the audio director resolves gameplay names with context
   }
   /** Music, ambience loops and thunder follow where the player is and what is happening. */
   musicOverride: string | null = null;
   private ambT = 0; private lastMusic = '';
   private updateAmbience(rdt: number) {
     const a = this.audio;
-    if (!a) return;
+    if (!a || a.ownsAmbience) return;   // the audio director (core/audio/director.ts) owns music and ambience once running
     this.ambT -= rdt;
     if (this.ambT > 0) return;
     this.ambT = 0.4;
