@@ -38,7 +38,8 @@ def bake_transforms(objs):
     """World transform into the vertices; shape keys and animation are left at rest."""
     for o in objs:
         if o.data.shape_keys:
-            only([o]); bpy.ops.object.shape_key_remove(all=True, apply_mix=False)
+            # (the rest pose: a cloth's breeze keys are dropped, not mixed in)
+            o.shape_key_clear()
         o.animation_data_clear()
         if o.data.users > 1: o.data = o.data.copy()
         m = o.matrix_world.copy()

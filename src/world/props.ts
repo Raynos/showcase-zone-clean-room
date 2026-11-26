@@ -3,7 +3,7 @@ import { Rng } from '../core/util';
 import { Geo, type PrimOpts } from '../gfx/geo';
 import { T } from '../gfx/textures';
 import { PAL } from './layout';
-import { piece } from './pieces';
+import { hasPiece, piece } from './pieces';
 
 /**
  * Reusable prop builders. Every function draws at the origin of the Geo's current transform
@@ -369,10 +369,19 @@ export function marketStall(g: Geo, r: Rng, color: number = PAL.orange, goods: '
   const wood = 0xa9753f, dark = 0x6e4a2a;
   g.box(3.0, 0.9, 0.9, { at: [0, 0.45, 0.4], layer: T.PLANKS, color: wood, uvScale: 0.9, col: true, grad: 0.75 });
   g.box(3.2, 0.08, 1.1, { at: [0, 0.94, 0.4], layer: T.PLANKS, color: 0xc49052, uvScale: 0.9, col: 'none' });
-  for (const sx of [-1.5, 1.5]) for (const sz of [-0.9, 0.9]) g.box(0.1, sz > 0 ? 2.5 : 3.0, 0.1, { at: [sx, sz > 0 ? 1.25 : 1.5, sz], layer: T.PLANKS, color: dark, col: 'none' });
-  // awning slopes down toward the customer
-  g.box(3.5, 0.06, 2.3, { at: [0, 2.78, 0.05], rot: [0.26, 0, 0], layer: T.CANVAS, color, uvScale: 0.66, col: 'none' });
-  g.box(3.5, 0.3, 0.04, { at: [0, 2.36, 1.14], layer: T.CANVAS, color, uvScale: 0.66, col: 'none' });
+  // the authored canopy: a low ridge tent of scalloped panels in the stall's colour and linen, over two plain
+  // slopes that are all a far stall shows; without it, a flat awning that slopes down toward the customer
+  const tent = hasPiece('canopy');
+  for (const sx of [-1.5, 1.5]) for (const sz of [-0.9, 0.9]) { const ph = tent ? 2.62 : sz > 0 ? 2.5 : 3.0; g.box(0.1, ph, 0.1, { at: [sx, ph / 2, sz], layer: T.PLANKS, color: dark, col: 'none' }); }
+  if (tent) {
+    const deep = _c.setHex(color).multiplyScalar(0.62).getHex();
+    piece(g, 'canopy', { at: [0, 2.56, 0], colors: { stripe: color, edge: deep } });
+    for (const s of [-1, 1]) g.box(3.3, 0.04, 1.26, { at: [0, 2.97, s * 0.58], rot: [s * 0.42, 0, 0], layer: T.CANVAS, color, uvScale: 0.66, col: 'none' });
+    g.box(3.0, 0.08, 0.08, { at: [0, 3.2, 0], layer: T.PLANKS, color: dark, col: 'none' });
+  } else {
+    g.box(3.5, 0.06, 2.3, { at: [0, 2.78, 0.05], rot: [0.26, 0, 0], layer: T.CANVAS, color, uvScale: 0.66, col: 'none' });
+    g.box(3.5, 0.3, 0.04, { at: [0, 2.36, 1.14], layer: T.CANVAS, color, uvScale: 0.66, col: 'none' });
+  }
   // back shelf
   g.box(3.0, 0.06, 0.4, { at: [0, 1.5, -0.8], layer: T.PLANKS, color: wood, col: 'none' });
   g.box(3.0, 1.2, 0.05, { at: [0, 1.0, -0.98], layer: T.PLANKS, color: dark, uvScale: 0.9, col: 'none' });
@@ -399,6 +408,8 @@ export function marketStall(g: Geo, r: Rng, color: number = PAL.orange, goods: '
 /** Hanging shop sign on a bracket sticking out along +X from the wall mount at origin. Sign faces ±Z. */
 export function hangingSign(g: Geo, icon: string, color: number = PAL.orange, s = 1) {
   const iron = 0x343a44;
+  // the tinker's: a cast wrench on a plate, hung by chains from an iron arm
+  if (icon === 'gear' && piece(g, 'shop-sign', { at: [0.7 * s, -1.16 * s, 0], scale: s * 0.95, colors: { sign: color } })) return;
   g.box(1.25 * s, 0.07 * s, 0.07 * s, { at: [0.62 * s, 0, 0], color: iron, layer: T.METAL, col: 'none' });
   g.box(0.6 * s, 0.05 * s, 0.05 * s, { at: [0.26 * s, 0.2 * s, 0], rot: [0, 0, -0.72], color: iron, layer: T.METAL, col: 'none' });
   for (const x of [0.4, 1.0]) g.box(0.03 * s, 0.22 * s, 0.03 * s, { at: [x * s, -0.13 * s, 0], color: iron, layer: T.METAL, col: 'none' });
@@ -608,7 +619,7 @@ export function slab(g: Geo, pts: P3[], down: P3, top: { color: number; layer: n
   }
 }
 
-export interface RoofOpts { color?: number; layer?: number; ov?: number; ovG?: number; thick?: number; gable?: { color: number; layer: number } | null; trim?: number; uvScale?: number }
+export interface RoofOpts { color?: number; layer?: number; ov?: number; ovG?: number; thick?: number; gable?: { color: number; layer: number } | null; trim?: number; uvScale?: number; /** laid with the authored clay tiles (a hero house) */ tiles?: boolean }
 /** Gable roof, ridge along local Z, wall plate at y=0. Body is w (x) by d (z); h is ridge height. */
 export function gableRoof(g: Geo, w: number, d: number, h: number, o: RoofOpts = {}) {
   const ov = o.ov ?? 0.45, ovG = o.ovG ?? 0.35, t = o.thick ?? 0.16, color = o.color ?? PAL.orangeDeep, layer = o.layer ?? T.ROOF, trim = o.trim ?? 0x86633f;
@@ -616,6 +627,8 @@ export function gableRoof(g: Geo, w: number, d: number, h: number, o: RoofOpts =
   const top = { color, layer, uvScale: o.uvScale ?? 0.42 }, under = { color: trim };
   slab(g, [[W, ye, zF], [W, ye, zB], [0, h, zB], [0, h, zF]], [0, -t, 0], top, under);
   slab(g, [[-W, ye, zB], [-W, ye, zF], [0, h, zF], [0, h, zB]], [0, -t, 0], top, under);
+  // real tiles over the painted ones, course by course (trim: the slab is the roof from across the square)
+  if (o.tiles) piece(g, 'roof-tiles', { at: [0, ye + 0.02, (zF + zB) / 2], scale: [(2 * W + 0.1) / 4.634, (h - ye + 0.06) / 1.298, (zF - zB + 0.1) / 5.321], colors: { tile: color } });
   // ridge cap: a run of rounded capping tiles in the roof's own clay or slate, a shade darker
   const capC = new THREE.Color(color).multiplyScalar(0.78).getHex();
   g.cyl(0.17, 0.17, zF - zB + 0.12, 7, { at: [0, h + 0.02, (zF + zB) / 2], rot: [Math.PI / 2, 0, 0], scale: [1, 1, 0.7], color: capC, layer: layer, uvScale: 0.42, col: 'none' });
@@ -713,6 +726,8 @@ export interface HouseSpec {
   shutters?: number; flowers?: boolean;
   dormers?: number; chimney?: [number, number];
   balcony?: boolean; awning?: number; sign?: string; signCol?: number;
+  /** a hero house: the roof is laid with the authored clay tiles */
+  tiles?: boolean;
   /** Open shop front: the ground floor is recessed this many metres behind posts. */
   open?: number;
   lit?: number;
@@ -851,14 +866,14 @@ export function house(g: Geo, r: Rng, sp: HouseSpec): HouseOut {
   g.push().translate(0, wallH, jet / 2);
   const gab = { color: wall, layer: T.PLASTER as number };
   if (kind === 'front') {
-    gableRoof(g, w, dU, rh, { color: roofCol, gable: gab, trim: timber });
+    gableRoof(g, w, dU, rh, { color: roofCol, gable: gab, trim: timber, tiles: sp.tiles });
     // gable dressing: collar beam, king post, attic window, barge boards
     g.box(w * 0.5, 0.16, 0.1, { at: [0, rh * 0.5, dU / 2 + 0.03], color: timber, layer: T.TIMBER, uvScale: 0.5, col: 'none' });
     g.box(0.16, rh - 0.1, 0.1, { at: [0, rh / 2, dU / 2 + 0.02], color: timber, layer: T.TIMBER, uvScale: 0.5, col: 'none' });
     if (rh > 2.2) { g.push().translate(0, rh * 0.26, dU / 2 + 0.03); windowUnit(g, 0.7, 0.7, { lit: r.chance(lit), frame: timber, bars: false }); g.pop(); out.windows++; }
   } else if (kind === 'side') {
     g.push().rotateY(Math.PI / 2);
-    gableRoof(g, dU, w, rh, { color: roofCol, gable: gab, trim: timber });
+    gableRoof(g, dU, w, rh, { color: roofCol, gable: gab, trim: timber, tiles: sp.tiles });
     g.pop();
     const nd = sp.dormers ?? 0, slope = rh / (dU / 2);
     for (let i = 0; i < nd; i++) {

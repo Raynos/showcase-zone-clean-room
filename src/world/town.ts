@@ -9,7 +9,7 @@ import {
   bounce, glowPatch, ladderProp, lampPost, lanternBody, marketStall, pipeRun, pixelIcon, pixelText, planter, sack, signPost, slab, stringLights, toWorld, trough,
   wallLantern, well, windowUnit, workbench, wpos,
 } from './props';
-import { piece } from './pieces';
+import { hasPiece, piece } from './pieces';
 import type { HouseOut, HouseSpec } from './props';
 import type { Terrain } from './terrain';
 
@@ -696,7 +696,7 @@ function weaponsShop(c: Ctx) {
   const x = -48, w = 10, d = 10, z = -FRONT - d / 2;
   placeHouse(c, x, z, 0, {
     w, d, floors: 2, h0: 3.3, base: 'stone', wall: 0xf0dfc2, roof: 'side', roofCol: 0xd9641a, dormers: 2, open: 2.7, awning: PAL.orange,
-    sign: 'sword', signCol: PAL.rust, chimney: [3.4, -2.5], wins: 3, shutters: 0x2b7f8c, lit: 0.8,
+    sign: 'sword', signCol: PAL.rust, chimney: [3.4, -2.5], wins: 3, shutters: 0x2b7f8c, lit: 0.8, tiles: true,
   }, (g) => {
     const zf = d / 2, zb = zf - 2.7;
     // counter
@@ -738,7 +738,7 @@ function weaponsShop(c: Ctx) {
 function tinkerShop(c: Ctx) {
   const x = -48, w = 10, d = 10, z = FRONT + d / 2;
   placeHouse(c, x, z, PI, {
-    w, d, floors: 2, h0: 3.7, base: 'brick', wall: 0xead9c0, roof: 'front', roofCol: 0xc8551c, open: 3.1, sign: 'gear', signCol: PAL.teal,
+    w, d, floors: 2, h0: 3.7, base: 'brick', wall: 0xead9c0, roof: 'front', roofCol: 0xc8551c, open: 3.1, sign: 'gear', signCol: PAL.teal, tiles: true,
     chimney: [-3.3, 0.6], wins: 2, shutters: PAL.orangeDeep, lit: 0.85, roofH: 4.2,
   }, (g) => {
     const zf = d / 2, zb = zf - 3.1, h0 = 3.7;
@@ -754,7 +754,9 @@ function tinkerShop(c: Ctx) {
     g.push().translate(2.5, 0.12, zb + 0.55); workbench(g, 2.6); g.pop();
     // tool wall
     g.box(3.6, 1.5, 0.08, { at: [2.4, 2.3, zb + 0.1], color: 0x9a6f44, layer: T.PLANKS, uvScale: 1.0, emit: 0.14, col: 'none' });
-    for (let i = 0; i < 6; i++) {
+    // (three racks of spanners on pegs; without the kit, six stick tools)
+    if (hasPiece('tool-rack')) for (let i = 0; i < 3; i++) piece(g, 'tool-rack', { at: [1.2 + i * 1.2, 1.72, zb + 0.14], scale: 1.05, tone: 0.94 + i * 0.05 });
+    else for (let i = 0; i < 6; i++) {
       g.box(0.07, 0.6 + (i % 3) * 0.14, 0.05, { at: [1.0 + i * 0.55, 2.3, zb + 0.13], rot: [0, 0, (i % 2 ? 0.2 : -0.15)], color: i % 2 ? 0x9a6a3c : PAL.steel, layer: T.METAL, col: 'none' });
       g.box(0.24, 0.14, 0.07, { at: [1.0 + i * 0.55 + (i % 2 ? -0.06 : 0.05), 2.62 + (i % 3) * 0.07, zb + 0.13], color: i % 3 ? PAL.steel : PAL.orange, layer: T.METAL, col: 'none' });
     }
@@ -783,7 +785,7 @@ function tinkerShop(c: Ctx) {
 function tavern(c: Ctx) {
   const x = -61.75, w = 12.5, d = 11, z = FRONT + d / 2;
   placeHouse(c, x, z, PI, {
-    w, d, floors: 3, base: 'stone', wall: 0xf4e6cf, roof: 'side', roofCol: 0xe0702a, dormers: 3, jetty: 0.5, balcony: true, sign: 'mug', signCol: PAL.orangeDeep,
+    w, d, floors: 3, base: 'stone', wall: 0xf4e6cf, roof: 'side', roofCol: 0xe0702a, dormers: 3, jetty: 0.5, balcony: true, sign: 'mug', signCol: PAL.orangeDeep, tiles: true,
     chimney: [4.2, -2.2], wins: 5, shutters: 0x466a78, flowers: true, door: { x: 0, double: true, color: 0x8a5a34 }, winsG: [-4.2, -2.4, 2.4, 4.2], lit: 0.9,
   }, (g) => {
     const zf = d / 2;
