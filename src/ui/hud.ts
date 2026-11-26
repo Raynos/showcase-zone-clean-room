@@ -7,6 +7,7 @@ import { BLAST_WALL } from '../world/layout';
 import { toggleView } from '../systems/view';
 import { icon } from './icons';
 import { formFor, OUTSIDE, pickLayout, SLOT_IDS, type Form, type Layout, type Place, type SlotId, type Stance } from './layout';
+import { Notices, type TipOpts } from './notices';
 import { QuickWheel, type QuickItem } from './quick';
 import './style.css';
 
@@ -103,7 +104,9 @@ export class Hud {
   private logEl!: HTMLElement; private xpFill!: HTMLElement; private xpText!: HTMLElement;
   private stick!: HTMLElement; private stickNub!: HTMLElement;
   private ibtn!: HTMLElement; private ibtnLabel!: HTMLElement; private ibtnIcon!: HTMLElement;
-  private toasts!: HTMLElement; private bannerEl!: HTMLElement;
+  /** every toast, banner and tip: one lane, a queue, and what a fight lets through (notices.ts) */
+  readonly notices: Notices;
+  private streakEl!: HTMLElement; private streakSig = ''; private streakTier = 0; private pointed: HTMLElement | null = null;
   private floatEl!: HTMLElement; private reticle!: HTMLElement; private lowHp!: HTMLElement;
   private timerEl!: HTMLElement; private timerT = 0; private timerSig = '';
   private plates = new Map<string, Plate>();
@@ -126,11 +129,10 @@ export class Hud {
   /** draw callback for the minimap (set by the map module) */
   drawMini: ((ctx: CanvasRenderingContext2D, size: number) => void) | null = null;
   /** set by the chat module: open the chat panel, and the emotes as wheel items */
-  chatApi: { open: () => void; emotes: () => QuickItem[] } | null = null;
+  chatApi: { open: () => void; emotes: () => QuickItem[]; recent?: (secs: number) => string[] } | null = null;
   readonly wheel: QuickWheel;
   private miniT = 0; private lastHp = -1; private lastEn = -1; private lastXp = -1; private lastScrip = -1; private lastLvl = -1;
-  private tLast = -1; private lastZone = ''; private lastClock = ''; private lastInteract = ''; private bannerQueue: Array<[string, string, string]> = []; private bannerT = 0;
-  private w = 1; private h = 1;
+  private tLast = -1; private lastZone = ''; private lastClock = ''; private lastInteract = ''; private w = 1; private h = 1;
   visible = true;
   private veiled = false;
 
@@ -174,6 +176,7 @@ export class Hud {
       else if (k === 'pick') { g.sfx('ui_click', { vol: 0.5 }); g.haptic(10); }
       else if (k === 'deny') g.sfx('ui_deny', { vol: 0.4 });
     };
+    this.notices = new Notices(game, this);
     this.build();
     this.resize();
     // a rotation re-lays the HUD at once (the resize event can trail it on some browsers)
@@ -220,7 +223,7 @@ export class Hud {
     for (const [id] of MENUS) { const b = this.menuBtns[id]; if (b.parentElement !== (id === 'view' ? this.micro : host)) (id === 'view' ? this.micro : host).appendChild(b); }
     this.setTray(false);
     this.wheel.close();
-    this.actsSig = ''; this.freshSig = ''; this.layoutActs();
+    this.actsSig = ''; this.freshSig = ''; this.laneT = 0; this.layoutActs();
     const st = L.stick;
     if (st) {
       this.stickRest.x = this.mirror ? this.w - this.safe.r - st.x * this.kActs : this.safe.l + st.x * this.kActs;
@@ -232,8 +235,17 @@ export class Hud {
   /** Place one slot's wrapper: anchor on the safe rect, inward offsets, width, scale, mirror. */
   private place(id: SlotId, p: Place) {
     const s = this.slots[id], st = s.style;
+    // a slot that flows under another lives inside it, and takes its place, width and scale from it
+    const host = p.under ? this.slots[p.under] : OUTSIDE.includes(id) ? this.root : this.hud;
+    if (s.parentElement !== host) host.appendChild(s);
     if (p.hide) { st.display = 'none'; return; }
     st.display = '';
+    if (p.under) {
+      s.className = 'slot s-' + id + ' k-under' + (p.cls ? ' ' + p.cls.split(' ').map((c) => 'k-' + c).join(' ') : '');
+      s.dataset.h = host.dataset.h ?? 'l'; s.dataset.v = 't';
+      st.left = st.right = st.top = st.bottom = st.width = st.transform = st.transformOrigin = '';
+      return;
+    }
     const k = p.acts ? this.kActs : this.kUi, v = p.at[0], h0 = p.at[1];
     const h = this.mirror && h0 !== 'c' ? (h0 === 'l' ? 'r' : 'l') : h0;
     // arrangement classes carry a k- prefix so they never meet the HUD's own classes (.bar, .up...)
@@ -287,8 +299,10 @@ export class Hud {
     // the hero: level, health, energy, buffs. A thin bar on a phone, a unit frame over the hotbar on a desktop.
     const u = this.unit = el('div', 'unit');
     u.innerHTML = `<div class="buffs"></div><b class="u-lv"></b><div class="u-bars"><div class="u-top"><span class="u-name"></span><span class="u-hp"></span></div>
-      <div class="bar hp"><i class="lag"></i><i class="fill"></i></div><div class="bar en"><i class="fill"></i></div></div>`;
+      <div class="bar hp"><i class="lag"></i><i class="fill"></i></div><div class="bar en"><i class="fill"></i></div></div>
+      <div class="streak">${icon('burn', 11, 2.4)}<b></b><span></span><i><i></i></i><em></em></div>`;
     S.status.appendChild(u);
+    this.streakEl = u.querySelector('.streak')!;
     this.lvl = u.querySelector('.u-lv')!; this.nameEl = u.querySelector('.u-name')!; this.hpText = u.querySelector('.u-hp')!;
     this.hpFill = u.querySelector('.hp .fill')!; this.hpLag = u.querySelector('.hp .lag')!;
     this.enFill = u.querySelector('.en .fill')!; this.buffs = u.querySelector('.buffs')!;
@@ -376,8 +390,9 @@ export class Hud {
     S.prompt.appendChild(this.ibtn);
 
     this.timerEl = el('div', 'ctimer', '<div class="cl"></div><div class="ct"></div><div class="cs"></div>'); S.timer.appendChild(this.timerEl);
-    this.toasts = el('div', 'toasts'); S.toasts.appendChild(this.toasts);
-    this.bannerEl = el('div', 'banner', '<div class="b1"></div><div class="rule"></div><div class="b2"></div>'); S.banner.appendChild(this.bannerEl);
+    // the notice lane: one toast, headline or tip at a time (notices.ts). A tap puts a tip away.
+    S.banner.appendChild(this.notices.el);
+    this.notices.el.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.notices.dismissTip(); });
   }
 
   setVisible(v: boolean) { if (v !== this.visible) { this.visible = v; this.hud.classList.toggle('hidden', !v); if (!v) { this.setTray(false); this.wheel.close(); } } }
@@ -400,13 +415,99 @@ export class Hud {
   }
 
   // ---- messages ----
-  toast(text: string, kind = 'info', sub = '', ic = '') {
-    const t = el('div', 'toast ' + kind, `${ic ? icon(ic, 18) : ''}<div>${text}${sub ? `<small>${sub}</small>` : ''}</div>`);
-    this.toasts.appendChild(t);
-    while (this.toasts.children.length > 4) this.toasts.firstElementChild!.remove();
-    setTimeout(() => t.remove(), 2800);
+  /** News for a moment. Where it shows, and whether it shows now, is the notice lane's call (notices.ts). */
+  toast(text: string, kind = 'info', sub = '', ic = '') { this.notices.toast(text, kind, sub, ic); }
+  /** A headline: a level, a quest done, a zone's name, an encounter's call-out. */
+  banner(b1: string, b2 = '', cls = '') { this.notices.banner(b1, b2, cls); }
+  /**
+   * A first-time tip, in the notice lane. `at` names the control it teaches (an action, 'stick',
+   * 'prompt', 'tracker', 'mini', 'menu'): that control pulses while the tip is up. Returns false
+   * when the lane is busy or a fight is on and the tip is not about a control; ask again later.
+   */
+  tip(o: TipOpts): boolean { return this.notices.tip(o); }
+  /** true while the controls on screen are touch controls: tips word themselves by this, not by the pointer last seen */
+  get touchUi() { return this.layout.form !== 'desktop'; }
+  get bossUp() { return this.bossOn; }
+  /**
+   * The part of the view an edge marker may sit in (the quest waypoint when its target is off
+   * screen): inside the HUD's columns, so a marker never lands on the quest line, the minimap or
+   * the action cluster. Screen px.
+   */
+  freeBand(): { x0: number; x1: number; y0: number; y1: number } {
+    const f = this.layout.form, w = this.w, h = this.h, s = this.safe;
+    // [stick side, thumb side] insets
+    let a = 34, b = 34;
+    if (f === 'landscape') { a = 224 * this.kUi; b = 176 * this.kActs; }
+    else if (f === 'desktop') b = 290 * this.kUi;
+    const l = (this.mirror ? b : a) + s.l, r = (this.mirror ? a : b) + s.r;
+    // top: above the clear middle on a wide screen (the top centre is the lane's, and a marker under it
+    // reads as a heading); under the minimap, the lane and the offer chip on a tall one
+    return { x0: l, x1: w - r, y0: s.t + (f === 'portrait' ? Math.max(h * 0.3, 240) : h * 0.16), y1: f === 'landscape' ? Math.min(h * 0.6, h - s.b - 178 * this.kActs) : h * 0.6 };
   }
-  banner(b1: string, b2 = '', cls = '') { this.bannerQueue.push([b1, b2, cls]); }
+  private laneT = 0; private laneY = 0; private laneHold = 0; private laneUp = false; private timerY = 0;
+  /**
+   * The notice lane hangs under whatever holds the top centre: the target frame or the boss bar,
+   * and a course or wave timer where the lane would otherwise cross it. It steps down at once and
+   * comes back up only when they have been gone a while: in the shooter stance the target comes
+   * and goes with the aim.
+   */
+  private laneStep(dt: number) {
+    // the timer slot's lines: the course or wave timer, and a channel bar another system mounted there (the crate's)
+    const ts = this.slots.timer, kids = ts.children;
+    let tm = false;
+    for (let i = 0; i < kids.length; i++) if (kids[i].classList.contains('on')) tm = true;
+    const tf = this.tframe.classList.contains('on'), bs = this.bossOn, up = tf || bs || tm;
+    if (up) this.laneHold = 1.5; else if (this.laneHold > 0) this.laneHold -= dt;
+    if ((this.laneT -= dt) > 0 && up === this.laneUp) return;
+    this.laneT = 0.12; this.laneUp = up;
+    const s = this.slots.banner;
+    // (a frame the layout has hidden measures zero)
+    const bottom = Math.max(tf ? this.tframe.getBoundingClientRect().bottom : 0, bs ? this.boss.getBoundingClientRect().bottom : 0);
+    // on a phone the timer is the next line under the frame or the boss bar: it gives way when one grows a row (stagger, effects)
+    const ty = this.layout.form !== 'desktop' && tm && bottom > 0 ? Math.max(0, Math.round(bottom + 3 - ts.offsetTop)) : 0;
+    if (ty !== this.timerY) { this.timerY = ty; ts.style.translate = ty ? `0 ${ty}px` : ''; }
+    let y = this.laneY;
+    if (up) {
+      const top = s.offsetTop;
+      y = bottom > 0 ? Math.max(0, Math.round(bottom + 4 - top)) : 0;
+      if (tm) {
+        let r0 = 1e9, r1 = 0;
+        for (let i = 0; i < kids.length; i++) if (kids[i].classList.contains('on')) { const r = kids[i].getBoundingClientRect(); if (r.height > 0) { r0 = Math.min(r0, r.top); r1 = Math.max(r1, r.bottom); } }
+        const hgt = Math.max(34, this.notices.el.offsetHeight);
+        if (r1 > 0 && top + y < r1 + 2 && top + y + hgt > r0 - 2) y = Math.max(0, Math.round(r1 + 4 - top));
+      }
+    } else if (this.laneHold <= 0) y = 0;
+    if (y !== this.laneY) { this.laneY = y; s.style.translate = y ? `0 ${y}px` : ''; }
+  }
+  /** hidden for a cinematic, or stepped out under a panel or a conversation */
+  get away() { return !this.visible || this.veiled; }
+  /** Pulse a control while a tip teaches it. */
+  pointAt(at: string | null) {
+    this.pointed?.classList.remove('teach'); this.pointed = null;
+    if (!at) return;
+    if (at === 'attack' && this.stance === 'shooter') at = 'fire';
+    const a = this.acts[(LEGACY_ID[at] ?? at) as ActionId];
+    const e = a ? a.root : at === 'stick' ? this.stick : at === 'prompt' ? this.ibtn : at === 'menu' ? this.hub : at === 'tracker' ? this.tracker : at === 'mini' ? this.mini.parentElement : null;
+    if (e) { e.classList.add('teach'); this.pointed = e; }
+  }
+  /**
+   * The kill streak, in the HUD's own type at the far end of the health bar: the count, the XP
+   * multiplier, a hairline that runs down as the streak cools. Null puts it away.
+   */
+  setStreak(s: { n: number; mul: number; heat: number; tier: number; name?: string; drain?: boolean } | null) {
+    const e = this.streakEl, sig = s ? `${s.n}|${s.mul.toFixed(2)}|${s.tier}|${s.drain ? 1 : 0}|${Math.round(s.heat * 40)}` : '';
+    if (sig === this.streakSig) return;
+    this.streakSig = sig;
+    e.classList.toggle('on', !!s);
+    if (!s) { this.streakTier = 0; return; }
+    e.dataset.t = String(s.tier);
+    e.children[1].textContent = String(s.n);
+    e.children[2].textContent = '×' + s.mul.toFixed(2);
+    (e.children[3].firstElementChild as HTMLElement).style.transform = `scaleX(${clamp01(s.heat)})`;
+    e.classList.toggle('drain', !!s.drain);
+    if (s.tier > this.streakTier) { e.children[4].textContent = s.name ?? ''; e.classList.remove('pop'); void e.offsetWidth; e.classList.add('pop'); }
+    this.streakTier = s.tier;
+  }
   log(text: string, kind = 'sys') {
     const d = el('div', kind, text);
     this.logEl.appendChild(d);
@@ -430,10 +531,12 @@ export class Hud {
     if (label) { this.ibtnLabel.textContent = label; this.ibtnIcon.innerHTML = icon(ic, 20); }
   }
   /** A skill's name, shown for a moment over the health bar: the first-use hint that replaces button labels. */
-  caption(text: string) {
+  caption(text: string, kind = '') {
+    // a desktop names its skills on hover; it keeps the caption for refusals only
+    if (this.layout.form === 'desktop' && kind !== 'warn') return;
     this.capEl.textContent = text;
-    this.capEl.classList.remove('on'); void this.capEl.offsetWidth; this.capEl.classList.add('on');
-    this.capT = 1.5;
+    this.capEl.className = 'capn ' + kind; void this.capEl.offsetWidth; this.capEl.classList.add('on');
+    this.capT = kind === 'warn' ? 1.8 : 1.5;
   }
   /**
    * Older per-button call, kept for systems that restyle a button for a while: mounts show and
@@ -544,7 +647,9 @@ export class Hud {
   openWheel() {
     const r = this.acts.swap.root.getBoundingClientRect();
     const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-    this.wheel.open(cx, cy, cx > this.w / 2 ? -1 : 1, this.wheelItems());
+    // the menu glyph is in the corner above the chip on a landscape phone: the fan stays clear of it
+    const hub = this.hub.getBoundingClientRect(), near = hub.width > 0 && Math.abs(hub.left + hub.width / 2 - cx) < 120;
+    this.wheel.open(cx, cy, cx > this.w / 2 ? -1 : 1, this.wheelItems(), near ? hub.bottom : 0);
   }
 
   /** Left-handed layout: buttons on the left, stick on the right. */
@@ -874,7 +979,7 @@ export class Hud {
     this.ctx = this.riding !== 'none' ? 'ride' : this.calm < 2.5 ? 'fight' : 'explore';
     for (const k in f) { const key = k as keyof typeof f; if (f[key] > 0) f[key] -= dt; }
     // health is shown while it matters: hurt, energy spent, in a fight, or just changed
-    const st = g.state, need = this.ctx === 'fight' || this.hpFrac < 0.999 || st.d.energy < st.maxEnergy - 0.5 || f.status > 0;
+    const st = g.state, need = this.ctx === 'fight' || this.hpFrac < 0.999 || st.d.energy < st.maxEnergy - 0.5 || f.status > 0 || !!this.streakSig;
     const sig = this.ctx + (this.aiming ? 'A' : '') + (need ? 'S' : '') + (f.xp > 0 ? 'X' : '') + (f.scrip > 0 ? 'C' : '') + (f.zone > 0 ? 'Z' : '') + (f.tracker > 0 ? 'T' : '') + (this.hpFrac < 0.999 ? 'H' : '');
     if (sig === this.freshSig) return;
     this.freshSig = sig;
@@ -945,16 +1050,8 @@ export class Hud {
     if (this.miniT <= 0 && this.drawMini) { this.miniT = 1 / 15; this.drawMini(this.mini.getContext('2d')!, 208); }
     if (this.timerT > 0) { this.timerT -= dt; if (this.timerT <= 0) this.timerEl.classList.remove('on'); }
     if ((this.buffT -= dt) <= 0) { this.buffT = 0.1; this.feedBuffs(); }
-    // banners
-    this.bannerT -= dt;
-    if (this.bannerT <= 0 && this.bannerQueue.length) {
-      const [b1, b2, cls] = this.bannerQueue.shift()!;
-      this.bannerEl.className = 'banner ' + cls;
-      (this.bannerEl.children[0] as HTMLElement).textContent = b1; (this.bannerEl.children[2] as HTMLElement).textContent = b2;
-      void this.bannerEl.offsetWidth;
-      this.bannerEl.classList.add('on');
-      this.bannerT = 3.2;
-    }
+    this.notices.update(dt);
+    this.laneStep(dt);
     // damage numbers
     const s = this.scr;
     for (let i = this.dmgs.length - 1; i >= 0; i--) {

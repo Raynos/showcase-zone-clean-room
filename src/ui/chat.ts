@@ -95,6 +95,8 @@ export class Chat {
     hud.chatApi = {
       open: () => this.toggle(true),
       emotes: () => EMOTES.map(([id, label, ic]) => ({ id, icon: ic, label, run: () => { this.onEmote?.(id); } })),
+      // the notice lane asks what the feed has just said, so it does not say it twice
+      recent: (secs) => { const now = g.time, out: string[] = []; for (let i = this.msgs.length - 1; i >= 0 && now - this.msgs[i].t <= secs; i--) out.push(this.msgs[i].text); return out; },
     };
   }
 

@@ -43,7 +43,6 @@ export class Grind {
   rare: Mob | null = null; private rareDef: RareDef | null = null; private rareT: number = RARE.first; private rareLife = 0;
   champ: Mob | null = null; private champRank = 0; private champName = ''; private champBand = 0; private champFar = 0;
   private refillT: number[] = [];
-  private el: HTMLElement; private elMul: HTMLElement; private elN: HTMLElement; private elBar: HTMLElement; private elTier: HTMLElement; private elSig = '';
   private tuneEl: HTMLElement; private tuneSig = '';
   private boostEl: HTMLElement | null = null;
   private rarePoi = { id: 'rare', x: 0, z: 0, icon: 'star', label: 'Rare', color: '#c79bff', big: true, show: () => !!this.rare && this.rare.alive };
@@ -52,17 +51,14 @@ export class Grind {
 
   constructor(private game: Game) {
     const g = game, ev = g.state.events;
-    // the streak meter hangs in the timer slot (the course timer only runs in the peaceful west)
-    this.el = document.createElement('div'); this.el.className = 'gr-streak';
-    this.el.innerHTML = '<div class="gr-st-h"><b></b><span></span></div><div class="gr-st-bar"><i></i></div><div class="gr-st-t"></div>';
-    this.elMul = this.el.querySelector('b')!; this.elN = this.el.querySelector('span')!; this.elBar = this.el.querySelector('i')!; this.elTier = this.el.querySelector('.gr-st-t')!;
-    g.hud.slots.timer.appendChild(this.el);
-    // tuning offers: a card over the action bar, only while nothing is fighting us
+    // the streak is drawn by the HUD, at the end of the health bar (hud.setStreak)
+    // tuning offers: a one-line chip at the edge that opens into the choice on a tap, only while nothing is fighting us
     this.tuneEl = document.createElement('div'); this.tuneEl.className = 'gr-tune';
     this.tuneEl.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
       const b = (e.target as Element).closest('button') as HTMLElement | null;
-      if (b) { e.preventDefault(); this.chooseTune(b.dataset.k === 'take'); }
+      if (b) { e.preventDefault(); this.tuneEl.classList.remove('open'); this.chooseTune(b.dataset.k === 'take'); }
+      else { this.tuneEl.classList.toggle('open'); g.sfx('ui_click', { vol: 0.5 }); }
     });
     g.hud.hud.appendChild(this.tuneEl);
     // the reviewer's boost is always on show
@@ -145,7 +141,6 @@ export class Grind {
       g.sfx(t >= 3 ? 'trophy' : t === 2 ? 'pb' : 'quest_progress', { vol: 0.7 + t * 0.08 });
       if (t >= 2) g.cameraRig.shake(0.06 * t);
       g.haptic(12 * t);
-      this.el.classList.remove('pop'); void this.el.offsetWidth; this.el.classList.add('pop');
       if (t >= 3) { this.say(`${name}! ${this.streakN} kills without a break: XP ×${streakMul(this.heat).toFixed(2)}.`, 'combat'); if (Math.random() < 0.5) this.chatter(pick(['someone is having a day out east', 'that was a lot of robots very fast', 'save some for the rest of us']) + '.'); }
       this.progress('streak', null, t);
     }
@@ -511,20 +506,8 @@ export class Grind {
     if (this.fxT <= 0) { this.fxT = 0.1; this.drawStreak(); this.drawTune(); }
   }
   private drawStreak() {
-    const on = this.heat > 0.05 && this.streakN >= 2;
-    const mul = streakMul(this.heat), t = this.tier;
-    const left = this.since < STREAK.grace ? 1 : 0;
-    const sig = on ? `${mul.toFixed(2)}|${this.streakN}|${t}|${left}|${Math.round(this.heat * 4)}` : '';
-    if (sig === this.elSig) return;
-    this.elSig = sig;
-    this.el.classList.toggle('on', on);
-    if (!on) return;
-    this.el.dataset.t = String(t);
-    this.elMul.textContent = `×${mul.toFixed(2)}`;
-    this.elN.textContent = `${this.streakN} streak`;
-    this.elBar.style.transform = `scaleX(${clamp(this.heat / STREAK.cap, 0, 1)})`;
-    this.el.classList.toggle('drain', !left);
-    this.elTier.textContent = t ? STREAK.tiers[t - 1][1] : 'Streak';
+    const on = this.heat > 0.05 && this.streakN >= 2, t = this.tier;
+    this.game.hud.setStreak(on ? { n: this.streakN, mul: streakMul(this.heat), heat: clamp(this.heat / STREAK.cap, 0, 1), tier: t, name: t ? STREAK.tiers[t - 1][1] : '', drain: this.since >= STREAK.grace } : null);
   }
 }
 

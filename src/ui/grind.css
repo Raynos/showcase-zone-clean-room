@@ -1,36 +1,36 @@
-/* Reasons per kill (src/systems/grind.ts): the streak meter, the tuning choice and the boost chip.
-   Colours and surfaces come from tokens.css; the card frame is the bevelled .bev from components.css. */
+/* Reasons per kill (src/systems/grind.ts): the tuning offer, the boost note and the bounty line.
+   The streak is drawn by the HUD itself (hud.setStreak; .streak in style.css). The offer and the
+   note follow docs/HUD.md, "Overlays": bare type or one glass chip at the edge, nothing in the middle
+   until the player asks for it. */
 
-/* ---- streak meter: hangs in the timer slot under the top bar */
-.gr-streak { position: relative; width: 156px; margin: 0 auto; padding: 4px 10px 6px; text-align: center; opacity: 0; transform: translateY(-4px);
-  transition: opacity var(--t-fast), transform var(--t-fast) var(--ease); font-family: var(--font-display); color: var(--text); pointer-events: none;
-  --sc: var(--amber); }
-.gr-streak.on { opacity: 1; transform: none; }
-.gr-streak[data-t="1"] { --sc: var(--amber); }
-.gr-streak[data-t="2"] { --sc: var(--orange); }
-.gr-streak[data-t="3"] { --sc: var(--red); }
-.gr-streak[data-t="4"] { --sc: var(--purple); }
-.gr-st-h { display: flex; align-items: baseline; justify-content: center; gap: 7px; }
-.gr-st-h b { font-size: 22px; font-weight: 900; line-height: 1; letter-spacing: .02em; color: var(--sc); text-shadow: var(--ts), 0 0 12px color-mix(in srgb, var(--sc) 55%, transparent); font-variant-numeric: tabular-nums; }
-.gr-st-h span { font-size: var(--fs-cap); font-weight: 800; letter-spacing: var(--track-cap); text-transform: uppercase; color: var(--text-2); text-shadow: var(--ts); font-variant-numeric: tabular-nums; }
-.gr-st-bar { height: 4px; margin-top: 4px; border-radius: 2px; background: var(--ink-0); box-shadow: var(--lit-well); overflow: hidden; }
-.gr-st-bar i { display: block; height: 100%; transform-origin: left; background: linear-gradient(90deg, var(--amber), var(--sc)); box-shadow: 0 0 8px var(--sc); transition: transform .12s linear; }
-.gr-streak.drain .gr-st-bar i { opacity: .7; }
-.gr-st-t { margin-top: 3px; font-size: 10px; font-weight: 900; letter-spacing: var(--track-wide); text-transform: uppercase; color: var(--sc); text-shadow: var(--ts); }
-.gr-streak.pop { animation: gr-pop .45s var(--ease-back); }
-@keyframes gr-pop { 0% { transform: scale(1.35); } 100% { transform: none; } }
+/* ---- the reviewer's boost: a note under the scrip in the HUD's bare type; it steps out of a fight */
+.gr-boost { position: absolute; right: 0; top: 100%; display: inline-flex; align-items: center; gap: 3px; margin-top: 3px; color: var(--purple);
+  font-size: 9.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; text-shadow: var(--tsh); pointer-events: none; transition: opacity .4s; }
+.gr-boost svg { width: 10px; height: 10px; }
+.gr-boost b { font-weight: 800; }
+.gr-boost span { display: none; }
+.hud[data-form=desktop] .gr-boost span { display: inline; color: var(--dim); font-weight: 700; }
+.hud:is([data-ctx=fight], .boss-on):not([data-form=desktop]) .gr-boost { opacity: 0; }
+[data-h=l] > .gr-boost { right: auto; left: 0; }
 
-/* ---- the reviewer's boost chip, beside the scrip */
-.gr-boost { position: absolute; right: 0; top: 100%; display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; height: 20px; padding: 0 8px; border-radius: var(--rad-pill);
-  background: var(--ink-0); box-shadow: inset 0 0 0 1px var(--purple), 0 0 10px #c79bff55; color: var(--purple); font-family: var(--font-display);
-  font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; pointer-events: none; }
-.gr-boost b { color: var(--text); font-weight: 900; }
-.gr-boost span { color: var(--dim); font-weight: 700; letter-spacing: .06em; }
-
-/* ---- tuning offer: keep the fitted tuning, or fit the new one */
-.gr-tune { position: absolute; z-index: 30; left: 50%; bottom: calc(var(--sab) + 284px); width: min(330px, calc(100vw - 32px)); transform: translate(-50%, 10px);
-  opacity: 0; pointer-events: none; transition: opacity var(--t-sheet), transform var(--t-sheet) var(--ease); color: var(--text); font-family: var(--font-text); }
-.gr-tune.on { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+/* ---- tuning offer. Closed, it is one chip at the thumb-side edge under the menu glyph: "Tuning found"
+   and the tuning's name. A tap opens the choice: keep the fitted tuning, or fit the new one. */
+.gr-tune { position: absolute; z-index: 30; right: calc(var(--sar) + 8px); top: calc(var(--sat) + 58px); opacity: 0; pointer-events: none; transform: translateX(8px);
+  transition: opacity var(--t-sheet), transform var(--t-sheet) var(--ease); color: var(--text); font-family: var(--font-text); }
+.gr-tune.on { opacity: 1; transform: none; pointer-events: auto; }
+.hud.lefty .gr-tune:not(.open) { right: auto; left: calc(var(--sal) + 8px); }
+/* portrait: under the notice lane, at the thumb-side edge */
+.hud[data-form=portrait] .gr-tune:not(.open) { top: calc(var(--sat) + 178px); }
+.hud[data-form=desktop] .gr-tune:not(.open) { top: auto; bottom: calc(var(--sab) + 96px); right: calc(var(--sar) + 14px); }
+.gr-tune:not(.open) .bev { min-height: 44px; padding: 6px 15px 6px 13px; border-radius: 22px; clip-path: none; background: var(--glass-2);
+  box-shadow: inset 0 0 0 1.25px rgba(255, 207, 90, .7), 0 0 14px rgba(255, 207, 90, .16); display: flex; flex-direction: column; justify-content: center; cursor: pointer; }
+.gr-tune:not(.open) .bev::before { display: none; }
+.gr-tune:not(.open) :is(.gr-tu-w, .gr-tu-row:not(.new), .pn-acts, .gr-tu-row span, .gr-tu-row em) { display: none; }
+.gr-tune:not(.open) .gr-tu-k { font-size: 9.5px; letter-spacing: .14em; color: var(--gold); text-shadow: var(--tsh); }
+.gr-tune:not(.open) .gr-tu-row { padding: 0; margin: 0; background: none; box-shadow: none; }
+.gr-tune:not(.open) .gr-tu-row b { font-size: 12.5px; color: #fff; text-shadow: var(--tsh); }
+/* open: the choice, in the middle because the player asked for it */
+.gr-tune.open { right: auto; left: 50%; top: 50%; width: min(330px, calc(100vw - 32px)); transform: translate(-50%, -50%); }
 .gr-tune .bev { --c: 14px; --bw: 1.5px; padding: 12px 14px 12px; }
 .gr-tu-k { display: flex; align-items: center; gap: 5px; font-size: var(--fs-cap); font-weight: 800; letter-spacing: var(--track-cap); text-transform: uppercase; color: var(--orange); }
 .gr-tu-w { margin: 3px 0 8px; font-size: var(--fs-row); font-weight: 800; }
@@ -44,20 +44,21 @@
 .gr-tu-row.uniq { box-shadow: var(--lit-well), inset 0 0 0 1px var(--r-epic); }
 .gr-tu-row.uniq b, .gr-tu-row.uniq em { color: var(--r-epic); }
 .gr-tune .pn-acts .pn-btn { flex: 1 1 0; min-width: 0; padding: 0 10px; font-size: 13px; }
-@media (orientation: landscape) { .gr-tune { bottom: auto; } }
+/* landscape: the open card is compact so it clears the health bar */
+@media (orientation: landscape) {
+  .gr-tune.open { width: min(320px, 44vw); }
+  .gr-tune.open .bev { padding: 9px 12px 10px; }
+  .gr-tune.open .gr-tu-w { margin: 1px 0 6px; font-size: 15px; }
+  .gr-tune.open .gr-tu-w small { display: inline; margin-left: 6px; }
+  .gr-tune.open .gr-tu-row { padding: 5px 9px; margin-bottom: 5px; }
+  .gr-tune.open .gr-tu-row span { font-size: 12px; line-height: 1.3; }
+  .gr-tune.open .pn-acts { margin-top: 6px; }
+}
 
-/* ---- quest tracker line */
+/* ---- quest tracker line: the bounty reads whole, on as many lines as it needs (no ellipsis) */
 .gr-bq .qt { color: var(--gold); }
 .gr-bq .qt i { font-style: normal; color: var(--dim); }
-.s-tracker.k-one .gr-bq .qo, .s-tracker.k-two .gr-bq .qo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gr-bq .qt svg { vertical-align: -2px; }
 
-/* landscape: the tuning card sits high and compact so it leaves the sticks and the bar clear */
-@media (orientation: landscape) {
-  .gr-tune { width: min(300px, 40vw); top: calc(var(--sat) + 48px); }
-  .gr-tune .bev { padding: 9px 12px 10px; }
-  .gr-tu-w { margin: 1px 0 6px; font-size: 15px; }
-  .gr-tu-w small { display: inline; margin-left: 6px; }
-  .gr-tu-row { padding: 5px 9px; margin-bottom: 5px; }
-  .gr-tu-row span { font-size: 12px; line-height: 1.3; }
-  .gr-tune .pn-acts { margin-top: 6px; }
-}
+/* the quick wheel and the menu tray open over the same corner: the chip steps out while either is open */
+#ui:has(.qw.on, .tray.on) .gr-tune:not(.open) { opacity: 0; pointer-events: none; }

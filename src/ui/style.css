@@ -40,7 +40,9 @@
 @keyframes lowbar { 50% { filter: brightness(1.5); } }
 .bar.en { height: 3px; margin-top: 3px; }
 .bar.en .fill { background: linear-gradient(180deg, #a8f8ff, #2fc4e6); }
-/* a phone: the level hangs outside a centred bar, the number shows only while hurt */
+/* a phone: a hairline pair, as thin as the references draw it; the level hangs outside a centred bar, the number shows only while hurt */
+.s-status:not(.k-unit) .bar.hp { height: 4px; border-radius: 2px; }
+.s-status:not(.k-unit) .bar.en { height: 2px; margin-top: 2px; border-radius: 1px; }
 .s-status[data-h=c]:not(.k-unit) .u-lv { position: absolute; right: 100%; margin-right: 7px; }
 .s-status:not(.k-unit) .u-top { display: block; position: absolute; left: 100%; top: 50%; translate: 0 -50%; margin-left: 7px; opacity: 0; transition: opacity .3s; }
 .s-status:not(.k-unit) .u-name, .s-status:not(.k-unit) .u-hp i { display: none; }
@@ -65,6 +67,29 @@
 .buff { width: 19px; height: 19px; border-radius: 50%; background: var(--glass-2); box-shadow: inset 0 0 0 1px var(--hair-2); display: grid; place-items: center; color: var(--cyan); position: relative; }
 .buff.bad { color: var(--red); }
 .buff b { position: absolute; right: -3px; bottom: -4px; font-size: 9px; font-weight: 800; text-shadow: 0 1px 2px #000; color: #fff; }
+/* the kill streak (hud.setStreak): a count and its multiplier at the far end of the health bar, a hairline
+   under them that runs down as the streak cools. Over a bar at the bottom of the screen, under one at the top. */
+.streak { position: absolute; right: 0; bottom: calc(100% + 6px); display: flex; align-items: baseline; gap: 3px; white-space: nowrap; --sc: #ffe3bf; color: var(--sc);
+  text-shadow: var(--tsh); opacity: 0; transform: translateY(3px); transition: opacity .3s, transform .3s; pointer-events: none; }
+.streak.on { opacity: 1; transform: none; }
+.streak[data-t="1"] { --sc: var(--amber); } .streak[data-t="2"] { --sc: var(--orange); } .streak[data-t="3"] { --sc: #ff6a4a; } .streak[data-t="4"] { --sc: var(--purple); }
+.streak svg { align-self: center; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, .8)); }
+.streak b { font-size: 13px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.streak span { margin-left: 2px; font-size: 9.5px; font-weight: 700; line-height: 1; letter-spacing: .04em; color: #ece6da; font-variant-numeric: tabular-nums; }
+.streak > i { position: absolute; left: 0; right: 0; bottom: -4px; height: 1.5px; border-radius: 1px; background: rgba(6, 8, 11, .55); overflow: hidden; }
+.streak > i i { display: block; height: 100%; background: var(--sc); transform-origin: left; transition: transform .12s linear; }
+.streak.drain > i i { opacity: .55; }
+.streak em { position: absolute; right: 0; bottom: calc(100% + 3px); font-style: normal; font-size: 9px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; opacity: 0; }
+.streak.pop { animation: streakpop .45s cubic-bezier(.2, 1.5, .4, 1); transform-origin: right center; }
+.streak.pop em { animation: streakname 1.8s forwards; }
+@keyframes streakpop { 0% { transform: scale(1.45); } 100% { transform: none; } }
+@keyframes streakname { 0% { opacity: 0; } 12% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
+.s-status[data-v=t] .streak { bottom: auto; top: calc(100% + 11px); }
+.s-status[data-v=t] .streak em { bottom: auto; top: 0; right: calc(100% + 6px); }
+.s-status[data-h=r] .streak { right: auto; left: 0; } .s-status[data-h=r] .streak em { right: auto; left: 0; }
+.s-status[data-v=t][data-h=r] .streak em { left: calc(100% + 6px); }
+.s-status.k-unit .streak { right: auto; left: calc(100% + 12px); bottom: 5px; } .s-status.k-unit .streak b { font-size: 16px; } .s-status.k-unit .streak span { font-size: 11px; }
+.s-status.k-unit .streak em { right: auto; left: 0; font-size: 10px; }
 
 /* ---------- experience: a hairline, shown when it moves ---------- */
 .xp { position: relative; height: 2px; border-radius: 1px; background: rgba(6, 8, 11, .5); }
@@ -156,10 +181,7 @@
 /* a boss takes the top centre. On a phone the target frame goes (the boss bar is the target control, and
    the plates carry an add's health); on a desktop it steps down under the bar. The timer steps down too. */
 .hud.boss-on:not([data-form=desktop]) .s-target { display: none !important; }
-.hud.boss-on :is(.s-target, .s-timer) { translate: 0 calc(60px * var(--ku, 1)); }
-.hud[data-form=portrait].boss-on .s-tip { translate: 0 calc(60px * var(--ku, 1)); }
-/* portrait: a tip card takes the toasts' place, so they step down beneath it while it shows */
-#ui[data-form=portrait]:has(.s-tip .coach.on) > .s-toasts { translate: 0 calc(96px * var(--ku, 1)); }
+.hud.boss-on[data-form=desktop] :is(.s-target, .s-timer) { translate: 0 calc(60px * var(--ku, 1)); }
 
 /* ---------- minimap ---------- */
 .mini { position: relative; width: 96px; pointer-events: auto; }
@@ -192,6 +214,9 @@
 .hud[data-ctx=fight]:not([data-form=desktop]) .s-tracker:not(.fresh) .tracker,
 .hud.boss-on:not([data-form=desktop]) .s-tracker:not(.fresh) .tracker { opacity: 0; pointer-events: none; }
 
+/* the feed flows under the quest line on a phone (layout.ts `under`): one column of bare text */
+.slot.k-under { position: relative; width: 100%; }
+
 /* ---------- log (the plain fallback; ui/chat.ts replaces it with the chat feed) ---------- */
 .log { position: relative; width: 100%; display: flex; flex-direction: column; gap: 2px; }
 .log div { font-size: 11px; line-height: 1.25; text-shadow: var(--tsh); animation: logfade 7s forwards; }
@@ -220,7 +245,8 @@
 .abtn .ico svg { width: calc(var(--d) * .46); height: calc(var(--d) * .46); }
 /* the primary */
 #ui .abtn.atk { --tint: #2a1406; }
-.abtn.atk .face { background: radial-gradient(circle at 50% 28%, rgba(255, 205, 140, .95), rgba(247, 141, 48, .93) 52%, rgba(206, 88, 18, .93)); box-shadow: inset 0 0 0 1.5px rgba(255, 238, 214, .9), 0 0 22px rgba(255, 122, 26, .32), 0 2px 8px rgba(0, 0, 0, .35); }
+/* warm glass, not a painted disc: the ground shows through it, as it does through the references' primary */
+.abtn.atk:not(.in-bar) .face { background: radial-gradient(circle at 50% 28%, rgba(255, 205, 140, .74), rgba(247, 141, 48, .64) 52%, rgba(206, 88, 18, .62)); box-shadow: inset 0 0 0 1.5px rgba(255, 238, 214, .85), 0 0 18px rgba(255, 122, 26, .22), 0 2px 8px rgba(0, 0, 0, .3); }
 .abtn.atk .ico { filter: drop-shadow(0 1px 0 rgba(255, 226, 190, .6)); }
 .abtn.atk .ico svg { width: calc(var(--d) * .44); height: calc(var(--d) * .44); stroke-width: 2.2; }
 /* a reload sweeps the primary, and the reload button counts it down */
@@ -333,6 +359,10 @@
 /* ---------- a skill's name, the first few times it is used ---------- */
 .capn { width: 100%; text-align: center; font-size: 12px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; color: #dffbff; text-shadow: 0 0 10px rgba(94, 240, 255, .6), 0 1px 2px #000; opacity: 0; white-space: nowrap; }
 .capn.on { animation: capn 1.5s forwards; }
+/* a refusal ("Not enough energy"): the same line by the thumbs, in the warning colour */
+.capn.warn { color: #ffb39e; letter-spacing: .1em; text-shadow: 0 0 10px rgba(255, 90, 60, .55), 0 1px 2px #000; }
+.capn.warn.on { animation-duration: 1.8s; }
+.slot[data-h=l] > .capn { text-align: left; } .slot[data-h=r] > .capn { text-align: right; }
 @keyframes capn { 0% { opacity: 0; transform: translateY(5px); } 12% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
 
 /* ---------- the context prompt (Talk, Open, Salvage) ---------- */
@@ -345,25 +375,51 @@
 .ibtn small { color: var(--dim); font-size: 10px; font-weight: 700; box-shadow: inset 0 0 0 1px var(--stroke-2); border-radius: 4px; padding: 1px 5px; display: none; }
 body.desktop .ibtn small { display: block; }
 
-/* ---------- toasts ---------- */
-.toasts { position: relative; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.toast { padding: 6px 16px; font-size: 13px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; background: linear-gradient(90deg, #14171c00, #14171cdd 18%, #14171cdd 82%, #14171c00); text-shadow: 0 1px 2px #000;
-  animation: toast 2.8s forwards; text-align: center; display: flex; gap: 8px; align-items: center; justify-content: center; }
-.toast small { display: block; font-size: 10px; color: var(--dim); letter-spacing: .12em; font-weight: 700; }
-.toast.good { color: var(--green); } .toast.warn { color: #ff8a6a; } .toast.loot { color: var(--gold); } .toast.quest { color: var(--amber); } .toast.pb { color: var(--cyan); } .toast.secret { color: var(--purple); }
-@keyframes toast { 0% { opacity: 0; transform: translateY(10px) scale(.9); } 8% { opacity: 1; transform: none; } 82% { opacity: 1; } 100% { opacity: 0; transform: translateY(-8px); } }
-.s-toasts.k-three .toast:nth-last-child(n+4) { display: none; }
-.banner { position: relative; text-align: center; pointer-events: none; opacity: 0; }
-.banner.on { animation: banner 3.6s forwards; }
-.banner .b1 { font-size: 34px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: #fff; text-shadow: 0 0 22px #ff9a3c, 0 2px 4px #000; }
-.banner .b2 { font-size: 12px; font-weight: 700; letter-spacing: .34em; text-transform: uppercase; color: var(--amber); margin-top: 2px; text-shadow: 0 1px 3px #000; }
-.banner .rule { width: 0; height: 2px; margin: 6px auto; background: linear-gradient(90deg, transparent, var(--orange), transparent); animation: rule 3.6s forwards; }
-.banner.danger .b1 { text-shadow: 0 0 22px #ff3c1a, 0 2px 4px #000; } .banner.danger .b2 { color: #ff8a6a; }
-.banner.level .b1 { font-size: 44px; color: var(--gold); text-shadow: 0 0 30px #ffcf5a, 0 2px 4px #000; }
-/* landscape: the banner sits under the target bar, so it is a size smaller */
-.s-banner.k-small .banner .b1 { font-size: 28px; } .s-banner.k-small .banner.level .b1 { font-size: 34px; }
-@keyframes banner { 0% { opacity: 0; transform: scale(1.25); letter-spacing: .5em; } 12% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes rule { 0% { width: 0; } 20% { width: min(70vw, 360px); } 100% { width: min(70vw, 360px); } }
+/* ---------- the notice lane (ui/notices.ts): every toast, headline and tip, one at a time ----------
+   Bare type in the quest line's family: an icon and a title in the kind's colour, a quieter line
+   under it, a soft shade behind so it reads over sky. No panel. */
+.s-banner { z-index: 5; }
+.note { position: relative; width: 100%; text-align: center; opacity: 0; transform: translateY(-5px); transition: opacity .3s, transform .3s; pointer-events: none; }
+.note.on { opacity: 1; transform: none; transition: opacity .16s, transform .22s cubic-bezier(.2, 1.3, .4, 1); }
+.note::before { content: ''; position: absolute; inset: -8px 6% -10px; z-index: -1; background: radial-gradient(closest-side, rgba(8, 10, 14, .46), rgba(8, 10, 14, 0)); }
+.note .n-t { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; font-size: 12.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; line-height: 1.2; color: #fff; text-shadow: var(--tsh); }
+.note .n-t span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note .n-t svg { flex: none; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, .8)); }
+.note .n-s { margin-top: 1px; font-size: 10.5px; font-weight: 700; letter-spacing: .04em; line-height: 1.25; color: #ece6da; text-shadow: var(--tsh); }
+.note.solo .n-s { display: none; }
+.note.good .n-t { color: var(--green); } .note.warn .n-t { color: #ff9a80; } .note.loot .n-t { color: var(--gold); } .note.quest .n-t { color: var(--amber); }
+.note.pb .n-t { color: var(--cyan); } .note.secret .n-t { color: var(--purple); } .note.level .n-t { color: var(--gold); }
+/* a headline (a level, a quest done, a zone, an encounter's call-out): the same line a size up, on a hairline */
+.note.head .n-t { font-size: 17px; letter-spacing: .2em; padding: 0 0 4px .2em; background: linear-gradient(90deg, transparent, var(--hair), transparent) bottom / 100% 1px no-repeat; }
+.note.head .n-t span { white-space: normal; }
+.note.head .n-s { margin-top: 4px; font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--amber); }
+.note.head.level .n-t { font-size: 20px; color: var(--gold); background-image: linear-gradient(90deg, transparent, var(--gold), transparent); }
+.note.head.danger .n-t { color: #ffd6cb; background-image: linear-gradient(90deg, transparent, #ff6a4a, transparent); } .note.head.danger .n-s { color: #ff9a80; }
+.note.head.zone .n-t { font-size: 15px; } .note.head.small .n-t { font-size: 15px; }
+.note.head.lz-crate .n-t { color: var(--gold); } .note.head.lz-crate .n-s { color: #ffe9bf; }
+.note.head.on { animation: notehead .5s cubic-bezier(.2, .9, .3, 1); }
+@keyframes notehead { 0% { transform: scale(1.14); opacity: 0; } 100% { transform: none; opacity: 1; } }
+/* a tip: what to do in a sentence; the control it is about pulses (.teach). A tap puts it away. */
+.note.tip.on { pointer-events: auto; }
+.note.tip .n-t { font-size: 9.5px; letter-spacing: .22em; color: var(--cyan); }
+.note.tip .n-s { margin-top: 2px; font-size: 12px; font-weight: 600; letter-spacing: 0; line-height: 1.3; color: #fff; }
+.note.tip .n-s svg { vertical-align: -2.5px; margin: 0 1px; color: var(--cyan); }
+/* in a fight a tip is its sentence only: the lane is under the target frame, and stays over the horizon */
+#ui:is([data-ctx=fight]):not([data-form=desktop]) .note.tip .n-t { display: none; }
+/* the quest waypoint (systems/guide.ts) is navigation: it waits out a fight on a phone, as the quest line does */
+.hud:is([data-ctx=fight], .boss-on):not([data-form=desktop]) .gmark.on { opacity: 0; }
+.note kbd { font: inherit; font-weight: 800; font-size: .9em; padding: 0 5px; border-radius: 4px; background: var(--glass-2); box-shadow: inset 0 0 0 1px var(--hair); }
+#ui[data-form=desktop] .note .n-t { font-size: 14px; } #ui[data-form=desktop] .note .n-s { font-size: 12px; }
+#ui[data-form=desktop] .note.head .n-t { font-size: 24px; } #ui[data-form=desktop] .note.head.level .n-t { font-size: 28px; } #ui[data-form=desktop] .note.head .n-s { font-size: 12px; }
+#ui[data-form=desktop] .note.tip .n-t { font-size: 10.5px; } #ui[data-form=desktop] .note.tip .n-s { font-size: 13.5px; }
+/* the lane has the top centre to itself until a target frame, a boss bar or a course timer is up; then it
+   steps down under whichever reaches lowest (hud.ts laneStep measures them) */
+/* a landscape phone has the least height: its headlines are a size down */
+.s-banner.k-small .note.head .n-t { font-size: 15px; } .s-banner.k-small .note.head.level .n-t { font-size: 17px; }
+.s-banner.k-small .note.head .n-s { margin-top: 3px; }
+/* a tip's pointer: the control it teaches pulses (hud.pointAt) */
+#ui .teach { outline: 2px solid var(--cyan); outline-offset: 4px; animation: teach 1.1s ease-in-out infinite; }
+@keyframes teach { 50% { outline-offset: 10px; outline-color: rgba(94, 240, 255, .2); } }
 
 /* ---------- world-anchored ---------- */
 .float { position: absolute; left: 0; top: 0; pointer-events: none; }
@@ -390,13 +446,18 @@ body.desktop .ibtn small { display: block; }
 @keyframes lowhp { 50% { opacity: .55; } }
 
 /* ---------- course timer ---------- */
-.ctimer { position: relative; text-align: center; opacity: 0; transition: opacity .2s; padding: 4px 18px 6px;
-  background: linear-gradient(90deg, #14171c00, #14171ccc 20%, #14171ccc 80%, #14171c00); }
+.ctimer { position: relative; text-align: center; opacity: 0; transition: opacity .2s; padding: 2px 18px 4px; text-shadow: var(--tsh); }
 .ctimer:not(.on) { position: absolute; left: 0; right: 0; }
 .ctimer.on { opacity: 1; }
 .ctimer .cl { font-size: 10px; font-weight: 800; letter-spacing: .22em; text-transform: uppercase; color: var(--cyan); }
 .ctimer .ct { font-size: 24px; font-weight: 800; letter-spacing: .04em; line-height: 1; text-shadow: 0 2px 4px #000; }
 .ctimer .cs { font-size: 11px; font-weight: 700; letter-spacing: .1em; color: var(--amber); text-transform: uppercase; }
+/* on a phone the label, the time and the note share one line, the target frame's next line */
+.s-timer.k-small .ctimer { display: flex; align-items: baseline; justify-content: center; gap: 7px; padding: 0 8px; white-space: nowrap; }
+.s-timer.k-small .ctimer .cl { font-size: 9.5px; letter-spacing: .16em; }
+.s-timer.k-small .ctimer .ct { font-size: 15px; }
+.s-timer.k-small .ctimer .cs { font-size: 9.5px; }
+.s-timer.k-small .ctimer .cs:empty { display: none; }
 
 /* ---------- quick wheel (ui/quick.ts) ----------
    A fan of the rare actions on the inward side of the weapon chip. */

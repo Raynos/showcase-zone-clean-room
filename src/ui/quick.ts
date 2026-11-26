@@ -42,13 +42,14 @@ export class QuickWheel {
   }
 
   /** Open at a point; `dir` is -1 when the fan opens leftward (the chip is on the right edge), 1 rightward. */
-  open(cx: number, cy: number, dir: number, items: QuickItem[]) {
+  open(cx: number, cy: number, dir: number, items: QuickItem[], top = 0) {
     const H = innerHeight, W = innerWidth;
     // the fan is centred on the chip where it fits, and slid along the edge where it does not; the finger's
     // own start stays the origin its direction is read from
     this.ox = cx; this.oy = cy;
     const reach = Math.sin(ARC * Math.PI / 2) * R + 34;
-    this.cx = Math.max(24, Math.min(W - 24, cx)); this.cy = Math.max(reach, Math.min(H - reach, cy)); this.dir = dir;
+    // `top` is the bottom of whatever sits in the corner above the chip (the menu glyph): the fan's first item clears it
+    this.cx = Math.max(24, Math.min(W - 24, cx)); this.cy = Math.max(reach + top, Math.min(H - reach, cy)); this.dir = dir;
     this.fill(items);
     if (!this.isOpen) { this.isOpen = true; this.onFx('open'); }
     this.root.classList.add('on');

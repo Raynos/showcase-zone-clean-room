@@ -36,8 +36,11 @@ built on the study in `docs/HUD-STUDY.md`. Code: `src/ui/hud.ts`,
    quest line stays while exploring and goes in a fight.
 8. **The middle belongs to the game.** On a landscape phone and a desktop
    the HUD draws nothing between 30 and 70% of the width and 22 and 75%
-   of the height, except prompts, toasts, banners, tip cards, combat text
-   and the crosshair.
+   of the height, except the interaction prompt, combat text, the
+   crosshair, the quest waypoint (a marker in the world) and a choice
+   the player opened. This binds every system
+   that draws over the view, not only the HUD's own frames: see
+   "Overlays".
 9. **Every element earns its place.** If it is on screen, a player needs
    it now, in this context.
 10. **One system.** Phone landscape, phone portrait and desktop are three
@@ -80,9 +83,10 @@ mount can be called (the kit takes the seat when hurt), and as Dismount
 while riding. Desktop: hotbar, key X.
 
 **Emote, chat.** Emote is in the wheel and in the chat panel. Chat is one
-glyph in the stick-side bottom corner while exploring, with up to three
-lines above the stick that fade after nine seconds; in a fight the glyph
-and the zone's talk go and only loot, quest and warning lines show.
+glyph in the stick-side bottom corner while exploring. Its last lines are
+the feed: up to three single lines under the quest line, in the same
+column and type, that fade after nine seconds. In a fight the glyph and
+the zone's talk go and the feed is two lines of loot, quest and warning.
 Desktop: a chat window, bottom left, with tabs.
 
 **View toggle.** In the wheel and in Settings. Desktop: micro menu.
@@ -124,12 +128,101 @@ its two tricks and the flip. The context seat is Dismount. Attack and
 skills are gone until the hero is on foot.
 
 **Talking, and panels.** The whole HUD is hidden while a dialogue is open,
-and on a phone under any full-screen panel. Toasts and banners still show.
+and on a phone under any full-screen panel. The notice lane still shows;
+a tip does not (its control is away).
 
 **Boss.** The boss bar takes the top centre. On a phone the target frame
 goes (the plates carry an add's health, and the boss bar is the target
 control); on a desktop it steps down under the bar. The quest line and
-chat go, as in any fight.
+chat go, as in any fight. The notice lane hangs under the bar.
+
+## Overlays
+
+Everything that appears for a moment, whichever system raises it, goes
+through one of the lanes below. No system draws its own toast, card or
+meter (`tools/hud-matrix` fails a stray one).
+
+**The lanes.**
+
+- **Notice lane** (`ui/notices.ts`, the `banner` slot). Top centre. One
+  item at a time: a toast, a headline or a tip. The rest wait in a queue
+  of four, highest priority first; an item that overflows or waits too
+  long is dropped, and a toast that is dropped is written to the feed. The
+  same message again ("Mites broken: 3/5" then "4/5") replaces in place.
+- **Top-centre stack.** The target frame or the boss bar, then the timer
+  slot's line (a course or wave timer, the crate's channel bar), then the
+  notice lane. The HUD measures them and hangs each under the one above
+  (`laneStep` in `hud.ts`), so they never cross; with all three up on a
+  landscape phone the lane ends at 30% of the height.
+- **Caption** (the `caption` slot). A refusal ("Not enough energy") and a
+  skill's name on first use. Immediate; the last one wins. Over the
+  health bar on a landscape phone, beside the hero's feet on the stick
+  side in portrait, over the unit frame on a desktop: never on the hero.
+- **Feed** (the `log` slot, under the quest line). Loot, quest and chat
+  lines, one line each, cut with an ellipsis; the chat panel has the rest.
+- **Left column.** The quest line, with the cratefall line above it and
+  the feed under it. One column of bare text on the stick side.
+- **Health bar's end.** The kill streak (`hud.setStreak`).
+- **Edge chip.** An offer that needs a choice (the tuning offer): one
+  44 pt chip under the menu glyph; a tap opens the choice in the middle.
+- **World.** Damage text, plates, the reticle, hurt arcs, wind-up arrows.
+
+**One family.** Bare type with the quest line's shadow, 11 to 13 pt, an
+icon and the title in the kind's colour, a quieter line under it. A
+headline is the same line a size up on a hairline. No panels, no bands.
+
+**In a fight** the lane carries only what the fight needs: a warning to
+act on, an encounter's own call-outs (a boss, a vault chamber, the
+gauntlet), and a first-time tip that points at a control. Rewards and news
+become feed lines. Headlines wait for the fight to end.
+
+| Overlay               | Lane        | Pri | Max | In a fight         |
+|-----------------------|-------------|-----|-----|--------------------|
+| Damage and XP text    | world       | -   | 40  | shows              |
+| Plates, reticle       | world       | -   | -   | shows              |
+| Hurt arcs             | round hero  | -   | 5   | shows              |
+| Wind-up arrows        | screen edge | -   | 4   | shows              |
+| Low-health vignette   | screen edge | -   | 1   | shows              |
+| Refusal, skill name   | caption     | now | 1   | shows              |
+| Warning to act on     | notice      | 5   | 1   | shows              |
+| Encounter call-out    | notice      | 5   | 1   | shows              |
+| Boss intro, DOWN      | notice      | 5   | 1   | shows              |
+| Level up, quest done  | notice      | 4   | 1   | waits; feed line   |
+| Zone name             | notice      | 4   | 1   | waits 8 s          |
+| Cratefall, rare, etc. | notice      | 4   | 1   | waits 10 to 20 s   |
+| Tip about a control   | notice      | 3   | 1   | shows, sentence    |
+| Tip, other            | notice      | 3   | 1   | waits              |
+| Quest, secret toast   | notice      | 3   | 1   | feed line          |
+| Quest count toast     | notice      | 3   | 1   | quest line only    |
+| Loot, good, pb toast  | notice      | 2   | 1   | feed line          |
+| Info toast            | notice      | 1   | 1   | feed line          |
+| Loot, chat, sightings | feed        | -   | 3   | 2; no chat         |
+| Quest line            | left column | -   | 1   | on change, 7 s     |
+| Cratefall line        | left column | -   | 1   | only at the drop   |
+| Wave or course timer  | top stack   | -   | 1   | shows, one line    |
+| Crate channel bar     | top stack   | -   | 1   | shows              |
+| Kill streak           | health bar  | -   | 1   | shows              |
+| XP-boost note         | under scrip | -   | 1   | hidden             |
+| Tuning offer          | edge chip   | -   | 1   | hidden             |
+| Quest waypoint        | free band   | -   | 1   | hidden             |
+| Interaction prompt    | prompt      | -   | 1   | shows              |
+
+**Tips** (`systems/coach.ts`) are worded for the controls on screen
+(`hud.touchUi`), not for the pointer last seen: touch wording with the
+control's own glyph on a phone layout, key caps on a desktop. A tip that
+teaches a control names it in `at`; the HUD pulses that control while the
+tip is up (`.teach`). A tap on a tip puts it away.
+
+**The streak** is a flame, the count and the XP multiplier at the far end
+of the health bar, with a hairline that runs down as it cools; the tier's
+name shows for two seconds when a tier is reached. Over the bar where the
+bar is at the bottom, under it where it is at the top.
+
+**The waypoint** (`systems/guide.ts`) keeps to `hud.freeBand()`: inside
+the HUD's columns, so an off-screen target's arrow never lands on the
+quest line or the cluster. On a wide screen the band's top is above the
+clear middle, and an arrow that would land on its bottom edge (over the
+hero) goes to the nearer side.
 
 ## Layouts
 
@@ -231,18 +324,27 @@ chip; none of those is drawn now.
 **Slots.** `hud.slots[id]` is a wrapper placed by the layout table; other
 modules mount their own element with `hud.mount(id, el)` or append to the
 wrapper. Ids: `status xp mini tracker menu chat scrip fps target boss
-timer banner toasts bar micro cast caption prompt log tip`. Who mounts
-what:
+timer banner bar micro cast caption prompt log`. A slot with `under` in
+its table entry lives inside another and flows beneath it (the feed under
+the quest line). Who mounts what:
 
-| Slot      | Holds                                            |
-|-----------|--------------------------------------------------|
-| `tracker` | Quest line; the cratefall event card above it    |
-| `timer`   | Course and event timer; the kill-streak meter    |
-| `scrip`   | Scrip on change; the XP-boost chip under it      |
-| `chat`    | The chat glyph (`ui/chat.ts`)                    |
-| `log`     | Chat and loot lines; on a desktop the chat window |
-| `fps`     | The frame-rate digits (`ui/perf.ts`)             |
-| `tip`     | Coach cards (`systems/coach.ts`)                 |
+| Slot      | Holds                                             |
+|-----------|---------------------------------------------------|
+| `tracker` | Quest line; the cratefall line above; the feed    |
+| `timer`   | Course or wave timer; the crate's channel bar     |
+| `banner`  | The notice lane (`ui/notices.ts`)                 |
+| `scrip`   | Scrip on change; the XP-boost note under it       |
+| `chat`    | The chat glyph (`ui/chat.ts`)                     |
+| `log`     | The feed; on a desktop the chat window            |
+| `fps`     | The frame-rate digits (`ui/perf.ts`)              |
+
+**Transient feedback.** Systems call, and the HUD places:
+`hud.toast(text, kind, sub, icon)`, `hud.banner(title, sub, cls)`,
+`hud.tip({ title, text, at })` (false when the lane cannot take it yet),
+`hud.caption(text, 'warn')`, `hud.log(text, kind)` for a feed line,
+`hud.setStreak({ n, mul, heat, tier, name, drain } | null)`, and
+`hud.freeBand()` for an edge marker. `hud.notices.state` says what is on
+the lane; `hud.notices.clear()` empties it for a capture.
 
 A wrapper carries `k-<class>` arrangement classes, `data-h` (l, c, r) and
 `data-v` (t, m, b) for the side it ended up on, and `fresh` while its
@@ -264,7 +366,10 @@ every frame (mounts use it).
 `hud.openWheel()` opens it at the chip. Chat registers its items through
 `hud.chatApi = { open, emotes }`.
 
-**Testing.** `tools/hud-matrix.sh` stages fifteen states at five sizes
-and checks overlaps, clipping, safe areas, the clear centre, touch sizes
-(44 pt; 40 for chips and glyphs), 8 pt between buttons, and the budget.
+**Testing.** `tools/hud-matrix.sh` stages seventeen states at five sizes
+and checks overlaps, clipping, safe areas, the clear centre (the notice
+lane may reach 28% of the height under a target frame), touch sizes
+(44 pt; 40 for chips and glyphs), 8 pt between buttons, the budget, a
+fight's two feed lines, and that no system draws a toast, card or meter
+of its own.
 `?safe=t,r,b,l` fakes the insets on any build.

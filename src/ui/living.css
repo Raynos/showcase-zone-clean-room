@@ -2,37 +2,42 @@
    the inspect card), zone chat (the feed in the HUD's log slot and its panel), and the emote wheel.
    Colours and surfaces come from tokens.css; frames reuse the bevelled .bev from components.css. */
 
-/* ------------------------------------------------------------------ cratefall banner */
-.banner.lz-crate .b1 { color: #fff3d0; text-shadow: 0 0 24px #ffb43a, 0 0 6px #ff8a1a, 0 2px 4px #000; }
-.banner.lz-crate .b2 { color: var(--gold); }
-.banner.lz-crate .rule { background: linear-gradient(90deg, transparent, var(--gold), transparent); }
-
-/* ------------------------------------------------------------------ event card (above the quest tracker) */
-.lz-evcard { display: none; position: relative; margin-bottom: 7px; padding: 6px 9px 7px; pointer-events: auto; cursor: pointer;
-  background: linear-gradient(90deg, #1a140a00, #1a140ae0 26%); border-right: 2px solid var(--gold); text-align: right; }
-[data-h=l] > .lz-evcard { text-align: left; border-right: 0; border-left: 2px solid var(--gold); background: linear-gradient(270deg, #1a140a00, #1a140ae0 26%); }
+/* ------------------------------------------------------------------ the cratefall line (above the quest line)
+   (docs/HUD.md, overlays) the quest line's own type in gold: a diamond, the name and the clock, then the way
+   and the state. No panel. In a fight on a phone it shows only at the drop itself (.near, events.ts). */
+.lz-evcard { display: none; position: relative; margin-bottom: 6px; padding-left: 11px; pointer-events: auto; cursor: pointer; }
+.lz-evcard::before { content: ''; position: absolute; left: 1px; top: 4px; width: 5px; height: 5px; transform: rotate(45deg); background: var(--gold); box-shadow: 0 0 0 1px #000a, 0 0 6px var(--gold); }
+[data-h=r] > .lz-evcard { text-align: right; padding: 0 11px 0 0; }
+[data-h=r] > .lz-evcard::before { left: auto; right: 1px; }
 .lz-evcard.on { display: block; }
-.lz-evcard.pop { animation: lz-pop .5s var(--ease-back); }
-.lz-evcard.gold { border-color: #ffe066; box-shadow: inset -12px 0 18px -14px #ffe066; }
-.lz-evcard.ready { animation: lz-ready 1.2s ease-in-out infinite; }
-.lz-ev-h { display: flex; align-items: center; justify-content: flex-end; gap: 5px; font-size: 11px; font-weight: 900; letter-spacing: .14em; color: var(--gold); text-shadow: 0 1px 2px #000, 0 0 8px #ff9a3c88; }
-[data-h=l] > .lz-evcard .lz-ev-h { justify-content: flex-start; }
-.lz-ev-h svg { flex: none; filter: drop-shadow(0 0 4px #ffb43a); }
-.lz-ev-h span { margin-left: 4px; padding: 0 5px; border-radius: 7px; background: #000a; color: #fff; letter-spacing: .06em; font-variant-numeric: tabular-nums; }
-.lz-ev-r { margin-top: 2px; font-size: 11px; font-weight: 700; color: #f3ede2; text-shadow: 0 1px 2px #000; white-space: nowrap; }
-.lz-ev-r i { display: inline-grid; place-items: center; width: 14px; height: 14px; margin-right: 4px; vertical-align: -3px; color: var(--cyan); }
+.lz-evcard.pop { animation: lz-pop .4s ease-out; }
+.lz-evcard.ready .lz-ev-h b { animation: lz-ready 1.2s ease-in-out infinite; }
+.lz-ev-h { display: flex; align-items: baseline; gap: 6px; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--gold); text-shadow: var(--tsh); }
+[data-h=r] > .lz-evcard .lz-ev-h { justify-content: flex-end; }
+.lz-evcard.gold .lz-ev-h { color: #ffe680; }
+.lz-ev-h svg { display: none; }
+.lz-ev-h b { font-weight: 800; }
+.lz-ev-h span { color: #fff; letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+.lz-ev-r { font-size: 11px; line-height: 1.25; color: #ece6da; text-shadow: var(--tsh); white-space: nowrap; }
+.lz-ev-r i { display: inline-grid; place-items: center; width: 13px; height: 13px; margin-right: 3px; vertical-align: -2.5px; color: var(--cyan); }
 .lz-ev-r i svg { transform: rotate(-90deg); }
-.lz-ev-s { font-size: 9.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #ffd9a8b0; text-shadow: 0 1px 2px #000; }
-@keyframes lz-pop { 0% { transform: translateX(14px) scale(.9); opacity: 0; } 100% { transform: none; opacity: 1; } }
-@keyframes lz-ready { 0%, 100% { filter: none; } 50% { filter: brightness(1.3) drop-shadow(0 0 6px #ffcf5a); } }
+.lz-ev-s { display: none; }
+.hud[data-form=desktop] .lz-ev-s { display: block; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #ffd9a8b0; text-shadow: var(--tsh); }
+.hud:is([data-ctx=fight], .boss-on):not([data-form=desktop]) .lz-evcard:not(.near) { display: none; }
+@keyframes lz-pop { 0% { transform: translateX(-8px); opacity: 0; } 100% { transform: none; opacity: 1; } }
+@keyframes lz-ready { 50% { color: #fff; text-shadow: 0 0 8px var(--gold), 0 1px 2px #000; } }
 
-/* ------------------------------------------------------------------ channel bar (opening the crate) */
-.lz-chan { position: absolute; left: 50%; top: 58%; width: 210px; transform: translate(-50%, 8px); opacity: 0; pointer-events: none; transition: opacity .12s, transform .12s; text-align: center; }
-.lz-chan.on { opacity: 1; transform: translate(-50%, 0); }
-.lz-chan-t { font-size: 11px; font-weight: 900; letter-spacing: .16em; text-transform: uppercase; color: var(--gold); text-shadow: 0 1px 2px #000, 0 0 8px #000; margin-bottom: 4px; }
-.lz-chan-b { height: 9px; border-radius: 5px; background: #000b; box-shadow: 0 0 0 1px #000, inset 0 1px 2px #000; overflow: hidden; }
-.lz-chan-b i { display: block; height: 100%; background: linear-gradient(180deg, #fff1c4, #ffb43a 55%, #c96a1e); transform-origin: left; transform: scaleX(0); box-shadow: 0 0 10px #ffb43a; }
-.hud[data-form=landscape] .lz-chan { top: 62%; }
+/* ------------------------------------------------------------------ channel bar (opening the crate)
+   mounted in the HUD's timer slot: a line of the top-centre stack, under the target frame and over the notice
+   lane, which the HUD keeps apart (hud.ts laneStep). Never on the hero, never on the caption by the thumbs. */
+.lz-chan { position: absolute; left: 50%; top: 0; width: 170px; transform: translate(-50%, 6px); opacity: 0; pointer-events: none; transition: opacity .12s, transform .12s; text-align: center; }
+.lz-chan.on { position: relative; left: auto; margin: 0 auto; opacity: 1; transform: none; }
+.lz-chan-t { font-size: 10px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: var(--gold); text-shadow: var(--tsh); margin-bottom: 4px; }
+.lz-chan-b { height: 5px; border-radius: 3px; background: rgba(6, 8, 11, .62); box-shadow: 0 0 0 1px rgba(0, 0, 0, .5); overflow: hidden; }
+.lz-chan-b i { display: block; height: 100%; background: linear-gradient(90deg, var(--orange), #fff1c4); transform-origin: left; transform: scaleX(0); }
+.hud[data-form=portrait] .lz-chan { width: 200px; }
+.hud[data-form=desktop] .lz-chan { width: 240px; }
+.hud[data-form=desktop] .lz-chan-b { height: 7px; }
 
 /* ------------------------------------------------------------------ plates */
 .plate.lz-adv .pn { color: #8dffbf; }
@@ -73,15 +78,17 @@
 #ui .lz-cb .badge:empty { display: none; }
 .hud[data-ctx=fight] .lz-cb, .hud.boss-on .lz-cb { opacity: 0; pointer-events: none; }
 .lz-feed-lines { position: relative; width: 100%; display: flex; flex-direction: column; gap: 1px; pointer-events: none; }
-.lz-fl { font-size: 11.5px; line-height: 1.3; color: #ece6da; text-shadow: 0 1px 2px #000, 0 0 6px #000c; animation: lz-in .25s ease-out; transition: opacity 1.2s;
-  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* one line each, cut with an ellipsis: the whole of it is in the chat panel */
+.lz-fl { font-size: 11px; line-height: 1.3; color: #ece6da; text-shadow: var(--tsh); animation: lz-in .25s ease-out; transition: opacity 1.2s;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .lz-fl.old { opacity: 0; }
 .lz-fl b { font-weight: 800; }
 .lz-fl .ch { font-size: 9.5px; font-weight: 900; letter-spacing: .08em; margin-right: 3px; }
 .lz-fl:nth-last-child(n+4), .s-log.k-two .lz-fl:nth-last-child(n+3) { display: none; }
 [data-h=r] > .lz-feed-lines { text-align: right; }
 .hud:is([data-ctx=fight], .boss-on) .lz-fl:not(.k-loot, .k-quest, .k-warn) { display: none; }
-.hud[data-form=desktop] .lz-feed-lines { display: none; }
+/* a fight's budget for the column is two lines: the last two of the kinds a fight shows, whatever the zone is chatting about */
+.hud:is([data-ctx=fight], .boss-on) .lz-fl:nth-last-child(n+3 of :is(.k-loot, .k-quest, .k-warn)) { display: none; }.hud[data-form=desktop] .lz-feed-lines { display: none; }
 
 /* channel colours, used in the feed and the panel */
 .c-zone { color: #ffd9a8; } .c-trade { color: #7dffb0; } .c-group { color: #8fd6ff; } .c-sys { color: #c9c2b4; } .c-me { color: var(--cyan); }

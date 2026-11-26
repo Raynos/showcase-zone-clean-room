@@ -114,7 +114,8 @@ export class ZoneEvents implements System {
     this.chanEl = document.createElement('div'); this.chanEl.className = 'lz-chan';
     this.chanEl.innerHTML = '<div class="lz-chan-t"></div><div class="lz-chan-b"><i></i></div>';
     this.chanText = this.chanEl.querySelector('.lz-chan-t')!; this.chanFill = this.chanEl.querySelector('i')!;
-    g.hud.hud.appendChild(this.chanEl);
+    // a line of the HUD's top-centre stack (under the target frame, over the notice lane): the HUD keeps them apart
+    g.hud.slots.timer.appendChild(this.chanEl);
     this.poi = { id: 'cratefall', x: 0, z: 0, icon: 'star', label: 'Supply Drop', color: '#ffcf5a', big: true, show: () => !!this.ev && this.live() && this.ev.phase !== 'opened' && this.ev.phase !== 'expired' };
     g.pois.push(this.poi);
     // the drop's own prompt
@@ -520,7 +521,8 @@ export class ZoneEvents implements System {
     if (sig === this.cardSig) return;
     const fresh = !this.cardSig;
     this.cardSig = sig;
-    this.card.className = 'lz-evcard on' + (e!.variant === 'gold' ? ' gold' : '') + (e!.phase === 'clear' ? ' ready' : '') + (fresh ? ' pop' : '');
+    // `near`: the player is at the drop, so the line stays up through its fight (the HUD hides it in any other)
+    this.card.className = 'lz-evcard on' + (e!.variant === 'gold' ? ' gold' : '') + (e!.phase === 'clear' ? ' ready' : '') + (fresh ? ' pop' : '') + (d < 45 ? ' near' : '');
     this.card.innerHTML = `<div class="lz-ev-h">${icon('star', 13, 2.4)}<b>CRATEFALL</b><span>${mm}:${ss}</span></div>`
       + `<div class="lz-ev-r"><i style="transform:rotate(${(rel * 180 / Math.PI).toFixed(0)}deg)">${icon('dash', 12, 2.6)}</i>${d} m · ${what}</div>`
       + `<div class="lz-ev-s">${tag} · ${e!.band.name}</div>`;

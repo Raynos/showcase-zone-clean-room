@@ -118,12 +118,14 @@ export class Guide implements System {
     let sx: number, sy: number;
     if (!behind) { _v.applyMatrix4(g.camera.projectionMatrix); sx = (_v.x * 0.5 + 0.5) * w; sy = (-_v.y * 0.5 + 0.5) * h; }
     else { const l = Math.hypot(_v.x, _v.y) || 1; sx = w / 2 + (_v.x / l) * w; sy = h * 0.4 - (_v.y / l) * h; if (Math.abs(_v.x) < 0.5) sx = w / 2 + (_v.x >= 0 ? 1 : -1) * w; }
-    // keep it inside the free band of the HUD
-    const x0 = 34, x1 = w - 34, y0 = h * 0.2, y1 = h * 0.6, cx = w / 2, cy = (y0 + y1) / 2;
+    // keep it inside the free band of the HUD: the HUD says where its columns end (hud.freeBand)
+    const { x0, x1, y0, y1 } = g.hud.freeBand(), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
     const edge = behind || sx < x0 || sx > x1 || sy < y0 || sy > y1;
     if (edge) {
       const dx = sx - cx, dy = sy - cy, k = Math.min((x1 - cx) / Math.max(1e-3, Math.abs(dx)), (y1 - cy) / Math.max(1e-3, Math.abs(dy)), 1);
       sx = cx + dx * k; sy = cy + dy * k;
+      // the bottom of the band is over the hero: an arrow that lands there goes to the nearer side
+      if (sy > y1 - 1) sx = dx >= 0 ? x1 : x0;
       this.arrow.style.transform = `rotate(${Math.atan2(dx, -dy)}rad)`;
     }
     this.mark.classList.toggle('edge', edge);

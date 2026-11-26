@@ -9,18 +9,19 @@
  * shooter). There is one layout per pair: no variants.
  *
  * The rule the seats obey on a landscape phone (tools/hud-matrix/check.js checks it): nothing but
- * prompts, toasts and banners touches the middle of the view, 30 to 70% of the width by 22 to 75%
- * of the height; buttons are 44 px or more with 12 px or more between them.
+ * the interaction prompt touches the middle of the view, 30 to 70% of the width by 22 to 75% of the
+ * height; buttons are 44 px or more with 12 px or more between them. Toasts, headlines and tips
+ * share one lane above that middle (the `banner` slot, notices.ts).
  */
 import type { ActionId } from './hud';
 
 export type SlotId =
   | 'status' | 'xp' | 'mini' | 'tracker' | 'menu' | 'chat' | 'scrip' | 'fps'
-  | 'target' | 'boss' | 'timer' | 'banner' | 'toasts'
-  | 'bar' | 'micro' | 'cast' | 'caption' | 'prompt' | 'log' | 'tip';
-export const SLOT_IDS: SlotId[] = ['status', 'xp', 'mini', 'tracker', 'menu', 'chat', 'scrip', 'fps', 'target', 'boss', 'timer', 'banner', 'toasts', 'bar', 'micro', 'cast', 'caption', 'prompt', 'log', 'tip'];
+  | 'target' | 'boss' | 'timer' | 'banner'
+  | 'bar' | 'micro' | 'cast' | 'caption' | 'prompt' | 'log';
+export const SLOT_IDS: SlotId[] = ['status', 'xp', 'mini', 'tracker', 'menu', 'chat', 'scrip', 'fps', 'target', 'boss', 'timer', 'banner', 'bar', 'micro', 'cast', 'caption', 'prompt', 'log'];
 /** Slots that live outside the HUD layer, so they still show while the HUD is hidden (panels, cinematics). */
-export const OUTSIDE: SlotId[] = ['banner', 'toasts', 'fps'];
+export const OUTSIDE: SlotId[] = ['banner', 'fps'];
 
 /** Which edge or centre of the safe rect a slot hangs from: t/m/b then l/c/r. */
 export type Anchor = 'tl' | 'tc' | 'tr' | 'ml' | 'mc' | 'mr' | 'bl' | 'bc' | 'br';
@@ -41,6 +42,8 @@ export interface Place {
   cls?: string;
   /** scale the offsets and size with the action cluster instead of the frames */
   acts?: boolean;
+  /** flow under that slot, inside it: no offsets of its own (the feed under the quest line) */
+  under?: SlotId;
 }
 /** A button's seat: px inward from its edge of the safe rect, px up from the safe bottom, diameter. */
 export type Seat = [id: ActionId, x: number, y: number, d: number];
@@ -96,21 +99,24 @@ const LAND: Layout = {
     mini: { at: 'tl', x: 8, y: 8, cls: 'small' },
     fps: { at: 'tl', x: 90, y: 9 },
     tracker: { at: 'tl', x: 8, y: 98, w: 180, cls: 'one' },
-    log: { at: 'bl', x: 10, y: 168, w: 190, wf: 0.25, cls: 'up three' },
+    // the feed is the quest line's own column: loot and news as lines under it, never over the ground by the stick
+    log: { at: 'tl', under: 'tracker', cls: 'three' },
     chat: { at: 'bl', x: 6, y: 6 },
     menu: { at: 'tr', x: 6, y: 6 },
     scrip: { at: 'tr', x: 56, y: 19 },
     target: { at: 'tc', y: 8, w: 220, wf: 0.3 },
     boss: { at: 'tc', y: 6, w: 300, wf: 0.36 },
-    timer: { at: 'tc', y: 52 },
-    banner: { at: 'tc', y: 64, w: -1, cls: 'small' },
-    toasts: { at: 'tc', y: 118, w: 300, wf: 0.34, cls: 'three' },
+    // one line on a phone (style.css), the target frame's next line
+    timer: { at: 'tc', y: 38, cls: 'small' },
+    // the notice lane: every toast, headline and tip, one at a time, at the top centre; it steps down under the
+    // target frame, the boss bar or the timer while one is up (hud.ts laneStep)
+    banner: { at: 'tc', y: 12, w: 340, wf: 0.4, cls: 'small' },
     status: { at: 'bc', y: 9, w: 200 },
     xp: { at: 'bc', y: 4, w: 200, cls: 'thin' },
-    caption: { at: 'bc', y: 44, w: 200 },
+    // over the health bar, and over the streak's tier name at the bar's end
+    caption: { at: 'bc', y: 62, w: 200 },
     cast: HIDE, bar: HIDE, micro: HIDE,
     prompt: { at: 'mr', x: 236, y: 6 },
-    tip: { at: 'bc', y: 60, w: 240, wf: 0.32 },
   },
   acts: {
     seats: [
@@ -131,8 +137,6 @@ const LAND: Layout = {
  * up one arc. The other thumb's fire button shows only while aiming.
  */
 const LAND_SHOOT = derive(LAND, 'landscape-shooter', {
-  // the other thumb's fire button takes the loot lines' place above the stick: they step up, two at most
-  slots: { log: { at: 'bl', x: 10, y: 228, w: 190, wf: 0.25, cls: 'up two', acts: true } },
   acts: {
     seats: [
       ['fire', 108, 80, 72], ['dodge', 40, 44, 50], ['jump', 36, 110, 48],
@@ -161,20 +165,20 @@ const PORTRAIT: Layout = {
   slots: {
     status: { at: 'tl', x: 12, y: 10, w: 150 },
     xp: { at: 'tl', x: 12, y: 30, w: 150, cls: 'thin' },
-    caption: { at: 'bc', y: 344, w: 220, acts: true },
-    tracker: { at: 'tl', x: 10, y: 44, w: 190, cls: 'one' },
+    // a skill's name, a refusal: beside the hero's feet on the stick side, over the ground and never over the hero
+    caption: { at: 'bl', x: 14, y: 206, w: 180, acts: true },
+    tracker: { at: 'tl', x: 10, y: 50, w: 190, cls: 'one' },
     mini: { at: 'tr', x: 8, y: 8, cls: 'small' },
     menu: { at: 'tr', x: 86, y: 6 },
     chat: { at: 'bl', x: 6, y: 6 },
     fps: { at: 'tr', x: 138, y: 9 },
     scrip: { at: 'tr', x: 138, y: 25 },
-    target: { at: 'tc', y: 100, w: 230, wf: 0.6 },
-    boss: { at: 'tc', y: 100, w: -28 },
-    timer: { at: 'tc', y: 146 },
-    tip: { at: 'tl', x: 10, y: 150, w: 300, wf: 0.6 },
-    log: { at: 'bl', x: 10, y: 200, w: 230, wf: 0.58, cls: 'up three', acts: true },
-    toasts: { at: 'tc', yf: 0.285, w: 460, wf: 0.92 },
-    banner: { at: 'tc', yf: 0.2, w: -1 },
+    // the top of the screen is a stack: health, the quest line with the feed under it, the target, the notice lane
+    log: { at: 'tl', under: 'tracker', cls: 'two' },
+    target: { at: 'tc', y: 120, w: 230, wf: 0.6 },
+    boss: { at: 'tc', y: 120, w: -28 },
+    timer: { at: 'tc', y: 166, cls: 'small' },
+    banner: { at: 'tc', y: 122, w: -44 },
     prompt: { at: 'br', x: 12, y: 296, acts: true },
     cast: HIDE, bar: HIDE, micro: HIDE,
   },
@@ -190,7 +194,6 @@ const PORTRAIT: Layout = {
   stick: { x: 92, y: 124, zx: 0.5, zy: 0.5 },
 };
 const PORTRAIT_SHOOT = derive(PORTRAIT, 'portrait-shooter', {
-  slots: { log: { at: 'bl', x: 10, y: 290, w: 190, wf: 0.47, cls: 'up two', acts: true } },
   acts: {
     seats: [
       ['fire', 98, 100, 76], ['dodge', 32, 50, 50], ['jump', 28, 124, 48],
@@ -218,13 +221,13 @@ const DESKTOP: Layout = {
     bar: { at: 'bc', y: 22 },
     status: { at: 'bc', y: 88, w: 380, cls: 'unit' },
     cast: { at: 'bc', y: 150, w: 220 },
-    caption: HIDE,
+    // refusals only ("Not enough energy"): a desktop names its skills on hover
+    caption: { at: 'bc', y: 184, w: 320 },
     xp: { at: 'bc', y: 10, w: 380, cls: 'thin text' },
     target: { at: 'tc', y: 16, w: 320 },
     boss: { at: 'tc', y: 12, w: 440 },
     timer: { at: 'tc', y: 84 },
-    banner: { at: 'tc', y: 120, w: -1 },
-    toasts: { at: 'tc', y: 210, w: 420 },
+    banner: { at: 'tc', y: 22, w: 560 },
     mini: { at: 'tr', x: 14, y: 14, cls: 'big info' },
     fps: { at: 'tr', x: 150, y: 14 },
     tracker: { at: 'tr', x: 12, y: 184, w: 250, cls: 'three' },
@@ -234,7 +237,6 @@ const DESKTOP: Layout = {
     menu: HIDE,
     scrip: { at: 'br', x: 16, y: 58 },
     prompt: { at: 'bc', y: 230 },
-    tip: { at: 'tl', x: 16, y: 16, w: 330 },
   },
   acts: {
     seats: [],
