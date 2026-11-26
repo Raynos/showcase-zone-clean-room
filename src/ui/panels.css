@@ -12,6 +12,8 @@
 
 .pn-scrim { position: absolute; inset: 0; z-index: 2; background: linear-gradient(180deg, rgba(6, 8, 11, .5), rgba(6, 8, 11, .82)); opacity: 0; transition: opacity var(--t-sheet); }
 .pn.on .pn-scrim { opacity: 1; pointer-events: auto; }
+/* A closed sheet takes no input. In landscape it rests centred and invisible, and its body would swallow taps meant for the title. */
+.pn:not(.on) .pn-sheet, .pn:not(.on) .pn-sheet * { pointer-events: none !important; }
 
 /* ------------------------------------------------------------------ sheet */
 .pn-sheet { --c: var(--cut-sheet); position: absolute; z-index: 3; left: 0; right: 0; bottom: 0; height: auto; min-height: 52%; max-height: min(84%, calc(100% - var(--sat) - 50px)); padding-bottom: var(--sab);
