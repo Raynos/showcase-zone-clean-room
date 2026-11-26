@@ -1,0 +1,1 @@
+var e={warden:{none:1,sword:.9,spear:.8,bow:1.25,crossbow:1.6,rifle:.5},titan:{none:1,sword:1.25,spear:1.1,bow:1.1,crossbow:1,rifle:.45}};export{e as t};

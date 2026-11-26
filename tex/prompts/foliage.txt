@@ -1,0 +1,14 @@
+Use your image generation tool to paint a square 1024x1024 sprite sheet for a video game and save it as foliage.png in the current directory.
+
+Subject: four separate foliage clumps for building stylised trees, arranged in a 2 by 2 grid. Each clump sits in the middle of its own quadrant, fills about three quarters of that quadrant, and has clear empty background all around it; nothing touches the edge of its quadrant or the edge of the image.
+- Top-left: a dense, rounded clump of about fifteen overlapping maple-like autumn leaves in orange, with pointed lobes, each leaf with a pale midrib.
+- Top-right: a wider, looser, more ragged clump of about twelve maple-like autumn leaves in golden yellow and amber, with a few leaves sticking out at the edge.
+- Bottom-left: a conifer bough seen from the side: a fan-shaped spray of dense dark teal-green needles on short twigs, drooping downward, wider at the bottom than the top.
+- Bottom-right: a small rounded tuft of about ten small oval leaves in rust red, as for a shrub.
+Every clump is lit from above: the upper leaves are lighter and warmer, the lower leaves darker and cooler, with a little dark gap showing between some leaves.
+
+Background: perfectly flat, pure magenta (#FF00FF) everywhere outside the clumps. No gradient, no shadow, no glow, no outline around the clumps, no ground. Do not use magenta, pink or purple anywhere in the foliage.
+
+Style: a hand-painted stylised game texture, as in a top-tier stylised fantasy MMO. Chunky readable leaf shapes with crisp clean silhouettes, visible confident brushwork, rich but natural colour with small hue shifts. No photographic noise, no photo-realism, no text, no logo, no watermark.
+
+After saving, reply with one line stating the file path and its size in pixels. If you have no image generation tool available, say so plainly and do not draw the image with code.

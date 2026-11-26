@@ -1,0 +1,19 @@
+{
+  "name": "CRATEFALL — The Proving Yard",
+  "short_name": "CRATEFALL",
+  "description": "A mobile action RPG zone: Brasswick, the blast wall and the Crate Titan.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "any",
+  "background_color": "#14171c",
+  "theme_color": "#14171c",
+  "categories": ["games"],
+  "icons": [
+    { "src": "icons/app-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/app-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/app-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,0 +1,1 @@
+function e(e){let t=e.state.d,n=t.field??={};return n.posts??=[],n.pts??={},n.best??={},n.quiet??={},n.daily??={day:0,prog:{},paid:{}},n}function t(){let e=new Date;return Math.floor((e.getTime()-e.getTimezoneOffset()*6e4)/864e5)}export{t as n,e as t};
