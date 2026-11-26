@@ -143,6 +143,21 @@ def soup(objs):
     return np.concatenate(P), np.array(tri, dtype=np.int64), np.array(nor), np.array(col), np.array(role, dtype=np.int64)
 
 
+def sizeable(P, tri, role, roles):
+    """Mask of triangles to keep: a role with "minExtent" loses every island smaller than that (louvres, nail heads, lettering)."""
+    keep = np.ones(len(tri), dtype=bool)
+    if not any(r.get('minExtent') for r in roles): return keep
+    ids = islands(tri, len(P))
+    for ri, r in enumerate(roles):
+        lim = r.get('minExtent')
+        if not lim: continue
+        for isl in np.unique(ids[role == ri]):
+            m = (ids == isl) & (role == ri)
+            pts = P[np.unique(tri[m])]
+            if float((pts.max(axis=0) - pts.min(axis=0)).max()) < lim: keep &= ~m
+    return keep
+
+
 def boxify(P, tri, nor, src, role, roles, lo=0.72, hi=1.3):
     """
     The cheap level of a board: for every role marked "box", each island that is near enough a box
@@ -360,14 +375,26 @@ def to_object(name, P, tri, nor, rgb, part):
     return obj
 
 
-def visible(P, tri, rays=48, reach=None):
+def visible(P, tri, rays=48, reach=None, floor=None, wall=None):
     """
+    `floor` (a height) and `wall` (a depth, blender y) are what the piece will stand on and hang
+    against: neither is part of it, both hide what faces them, and nothing behind the wall is kept.
     Triangles that can be seen from outside the piece: a ray from somewhere on the triangle gets
     away without hitting anything. Board backs, the faces boxes press together and whatever is
     sealed inside go; nothing that could ever be looked at does.
     """
-    bvh = BVHTree.FromPolygons([Vector(p) for p in P], [tuple(int(i) for i in t) for t in tri], all_triangles=True)
-    if reach is None: reach = float(np.linalg.norm(P.max(axis=0) - P.min(axis=0))) * 2
+    pts = [Vector(p) for p in P]; polys = [tuple(int(i) for i in t) for t in tri]
+    lo, hi = P.min(axis=0), P.max(axis=0); pad = float(np.linalg.norm(hi - lo)) * 4 + 1
+    def sheet(a, b, c, d):
+        n = len(pts); pts.extend(Vector(v) for v in (a, b, c, d)); polys.append((n, n + 1, n + 2)); polys.append((n, n + 2, n + 3))
+    if floor is not None:
+        z = floor - 0.004
+        sheet((lo[0] - pad, lo[1] - pad, z), (hi[0] + pad, lo[1] - pad, z), (hi[0] + pad, hi[1] + pad, z), (lo[0] - pad, hi[1] + pad, z))
+    if wall is not None:
+        y = wall + 0.004
+        sheet((lo[0] - pad, y, lo[2] - pad), (hi[0] + pad, y, lo[2] - pad), (hi[0] + pad, y, hi[2] + pad), (lo[0] - pad, y, hi[2] + pad))
+    bvh = BVHTree.FromPolygons(pts, polys, all_triangles=True)
+    if reach is None: reach = float(np.linalg.norm(hi - lo)) * 2
     hemi = _hemisphere(rays, seed=3)
     rnd = random.Random(11)
     bary = [(1 / 3, 1 / 3)] + [(rnd.random(), rnd.random()) for _ in range(14)]
@@ -376,6 +403,8 @@ def visible(P, tri, rays=48, reach=None):
         a, b, c = (Vector(P[i]) for i in tri[ti])
         n = (b - a).cross(c - a)
         if n.length < 1e-12: continue
+        if wall is not None and min(a.y, b.y, c.y) >= wall - 1e-4: continue
+        if floor is not None and max(a.z, b.z, c.z) <= floor + 1e-4: continue
         n.normalize()
         t = n.orthogonal().normalized(); bt = n.cross(t)
         mid = (a + b + c) / 3

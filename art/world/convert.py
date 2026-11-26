@@ -17,14 +17,15 @@ The manifest is kept outside the repository, next to the source meshes:
           "fit": [x, y, z],        size to stretch the piece to, metres, game axes (null keeps an axis in proportion)
           "scale": s, "yaw": deg,  applied before fit
           "origin": "base" | "keep" | "centre",
-          "angle": 38, "dissolve": 0.6, "ratio": 1.0, "ao": metres, "cool": [r, g, b] (the tint occlusion darkens toward), "grime": [height, strength], "small": 0.2,
+          "angle": 38, "dissolve": 0.6, "ratio": 1.0, "floor": true|false (stands on the ground, which hides its underside; default for origin "base"), "wall": z (hangs on a wall at that depth: nothing behind it is kept),
+          "ao": metres, "cool": [r, g, b] (the tint occlusion darkens toward), "grime": [height, strength], "small": 0.2,
           "mats": [["<material regex>", {role}], ...]     first match wins; no match keeps the source colour on a layer guessed from the name
       } } }
 
 A role: {"name", "layer" (a T layer name in src/gfx/textures.ts), "color" "#rrggbb", "emit", "uv" (tiles per metre),
 "lod" (size multiplier for the distance level-of-detail; under 1 also makes the part trim, which casts no shadow, unless "cast": true), "jit" (tone drift between islands), "ao" (depth of occlusion),
 "ratio" (edge-collapse for this role alone), "drop": true, "split": true (each island its own part), "whole": true
-(never clustered as small), "vcol": true (keep the source's vertex colours as tone), "show": true (never dropped as hidden: decals that lie on a face), "box": true (each island
+(never clustered as small), "vcol": true (keep the source's vertex colours as tone), "minExtent": metres (islands smaller than this are dropped), "show": true (never dropped as hidden: decals that lie on a face), "box": true (each island
 that is nearly a box becomes one: the cheap level of a board)}.
 
 Pieces are cached one file each, so naming pieces rebuilds only those; the .glb is always
@@ -155,6 +156,8 @@ def convert(name, spec, root, presets=None):
         static.thin(o, spec.get('dissolve', 0.6), r.get('ratio', spec.get('ratio', 1.0)))
         static.normals(o, r.get('angle', spec.get('angle', 38.0)))
     P, tri, nor, src, role = static.soup(split)
+    big = static.sizeable(P, tri, role, roles)
+    tri, nor, src, role = tri[big], nor[big], src[big], role[big]
     P, tri, nor, src, role, boxed = static.boxify(P, tri, nor, src, role, roles)
 
     # placement: yaw and scale, then stretch to fit, then the origin (blender axes: z up, -y front)
@@ -183,7 +186,9 @@ def convert(name, spec, root, presets=None):
     ao_dist = spec.get('ao', float(min(0.6, max(0.12, 0.14 * max(size)))))
     rgb, ao = static.shade(P, tri, nor, src, role, roles, ao_dist, seed=sum(map(ord, name)), grime=tuple(spec.get('grime', (0.35, 0.16))), rays=spec.get('rays', 24), cool=tuple(spec.get('cool', (0.80, 0.80, 1.0))))
     if spec.get('hidden', True):
-        keep = static.visible(P, tri)
+        # what it stands on hides its underside (unless it hangs: "floor": false); "wall": z, game axes, is the wall it is fixed to
+        stands = spec.get('floor', origin == 'base')
+        keep = static.visible(P, tri, floor=float(P[:, 2].min()) if stands else None, wall=-spec['wall'] if 'wall' in spec else None)
         for ri, r in enumerate(roles):
             if r.get('show'): keep |= role == ri
         tri, nor, src, role, rgb = tri[keep], nor[keep], src[keep], role[keep], rgb[keep]

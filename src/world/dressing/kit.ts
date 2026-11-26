@@ -6,6 +6,7 @@ import { T } from '../../gfx/textures';
 import { FLORA_KEEPOUT, freeGround } from '../flora';
 import { FLATS, HALF, LAKE, PAL, ROCK } from '../layout';
 import { BEACONS } from '../east';
+import { hasPiece, piece } from '../pieces';
 import { crate, crateBox } from '../props';
 import { STORIES } from '../stories';
 
@@ -205,6 +206,11 @@ export class Ctx {
 // Props. Every function draws at the Geo's current origin, ground at y = 0, "front" toward +Z.
 // =============================================================================================
 const DARK = 0x2c3138;
+/** a colour moved `t` of the way to another (sRGB, which is what paint mixing by eye wants) */
+function mixHex(a: number, b: number, t: number): number {
+  const ch = (s: number) => Math.round(((a >> s) & 255) + ((((b >> s) & 255) - ((a >> s) & 255)) * t));
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
 const cols = <T>(r: Rng, a: readonly T[]) => r.pick(a);
 
 /** Wooden shipping pallet, 1.2 x 1.0. */
@@ -215,6 +221,16 @@ export function pallet(g: Geo, y = 0, ry = 0, color = 0xb98a55) {
   g.pop();
 }
 export function palletStack(g: Geo, r: Rng, n = 4) {
+  if (n >= 3 && hasPiece('pallets')) {
+    // the authored stack: the same draws from the dice as the boards below, so everything placed after it stays where it was
+    let ry = 0, color = 0;
+    for (let i = 0; i < n; i++) { ry = r.range(-0.12, 0.12); color = cols(r, [0xb98a55, 0xc79a62, 0xa87a48]); }
+    piece(g, 'pallets', { rot: [0, ry, 0], scale: [1, (n * 0.135) / 0.54, 1], colors: { wood: color } });
+    // (the boards are trim and go with distance; this is what is left, and what throws the shadow)
+    g.box(1.1, n * 0.135 - 0.03, 0.9, { at: [0, n * 0.0675, 0], rot: [0, ry, 0], color: 0x6b4c2e, layer: T.PLANKS, col: 'none' });
+    g.colBox(1.2, n * 0.135, 1.0, { at: [0, n * 0.0675, 0] });
+    return;
+  }
   for (let i = 0; i < n - 1; i++) {
     const ry = r.range(-0.12, 0.12);
     g.box(1.2, 0.045, 1.0, { at: [0, i * 0.135 + 0.112, 0], rot: [0, ry, 0], color: cols(r, [0xb98a55, 0xc79a62, 0xa87a48]), layer: T.PLANKS, col: 'none', jit: 0.1 });
@@ -286,6 +302,15 @@ export function burrow(g: Geo, r: Rng, s = 1) {
 /** ISO shipping container, 2.4 wide, 2.6 tall, doors on +Z. */
 export function container(g: Geo, len = 6, color: number = PAL.orange, o: { col?: boolean; open?: boolean; label?: number } = {}) {
   const w = 2.4, h = 2.6;
+  // the authored box: corrugated sides, cast corners, lock rods, paint chipped to the steel; it takes this one's colour
+  if (piece(g, 'container', { scale: [1, 1, len / 6], colors: { body: color, frame: mixHex(color, 0x000000, 0.5), trim: mixHex(color, 0xffffff, 0.3) } })) {
+    // (the corrugation, frame and rods are trim and go with distance; the plain box inside them stays, and throws the shadow)
+    g.box(w - 0.12, h - 0.1, len - 0.12, { at: [0, h / 2, 0], color, layer: T.PANEL, uvScale: 0.4, col: o.col === false ? 'none' : true, grad: 0.72 });
+    const dz = len / 2 + 0.05;
+    g.box(0.9, 0.34, 0.03, { at: [-0.5, h * 0.72, dz], color: o.label ?? PAL.cream, col: 'none' });
+    g.box(0.5, 0.12, 0.035, { at: [-0.5, h * 0.72, dz + 0.005], color: PAL.cyan, emit: 0.9, col: 'none' });
+    return;
+  }
   g.box(w, h, len, { at: [0, h / 2, 0], color, layer: T.METAL, uvScale: 0.4, col: o.col === false ? 'none' : true, grad: 0.72, jit: 0.04 });
   // corrugation ribs
   const n = Math.round(len / 1.0);

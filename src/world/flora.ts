@@ -4,6 +4,7 @@ import { Rng, fbm, smooth, vnoise } from '../core/util';
 import { T } from '../gfx/textures';
 import type { Geo } from '../gfx/geo';
 import type { Chunks } from './chunks';
+import { piece } from './pieces';
 import { BAND_GATES, BLAST_WALL, HALF, LAKE, PADS, PAL, ROCK, bandAt, inTown, rectMask, ridgeAt, roadDist } from './layout';
 import type { Terrain } from './terrain';
 import { bush, emberTree, poplar, slatePine } from './trees';
@@ -24,10 +25,14 @@ export function boulders(g: Geo, r: Rng, s = 1, color: number = 0x8a9099, solid 
     const a = r.range(0, TAU), d = i === 0 ? 0 : r.range(0.7, 1.4) * s;
     const br = (i === 0 ? r.range(0.8, 1.5) : r.range(0.35, 0.8)) * s;
     maxR = Math.max(maxR, d + br);
-    g.ico(br, 1, {
-      at: [Math.cos(a) * d, br * 0.3, Math.sin(a) * d], rot: [r.range(-0.4, 0.4), r.range(0, 6), r.range(-0.4, 0.4)], scale: [1.2, 0.72 + r.range(0, 0.3), 0.9],
-      lump: 0.3, seed: r.int(0, 7), grad: 0.6, jit: 0.1, flat: true, col: solid && br > 0.7 ? true : 'none',
-    });
+    const at: [number, number, number] = [Math.cos(a) * d, br * 0.3, Math.sin(a) * d], rot: [number, number, number] = [r.range(-0.4, 0.4), r.range(0, 6), r.range(-0.4, 0.4)];
+    const sc: [number, number, number] = [1.2, 0.72 + r.range(0, 0.3), 0.9], seed = r.int(0, 7);
+    // the lead rock of a group is the authored boulder (fractured faces, a baked shade in its clefts); its collider is the ball the lump had
+    if (i === 0 && br >= 0.9 && piece(g, 'boulder', { at: [at[0], -0.22 * br, at[2]], rot: [rot[0] * 0.3, rot[1], rot[2] * 0.3], scale: [br * 0.95, br * sc[1] * 1.2, br * 0.95], colors: { rock: color }, uvScale: 1 })) {
+      if (solid && br > 0.7) g.colBall(br * 0.9, { at, rot, scale: sc });
+      continue;
+    }
+    g.ico(br, 1, { at, rot, scale: sc, lump: 0.3, seed, grad: 0.6, jit: 0.1, flat: true, col: solid && br > 0.7 ? true : 'none' });
   }
   return maxR;
 }

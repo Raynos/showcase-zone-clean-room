@@ -209,6 +209,10 @@ export class Geo {
     this.collide({ ...o, col: true }, mat, 'box', w / 2, h / 2, d / 2);
     return this;
   }
+  colBall(r: number, o?: PrimOpts) {
+    this.collide({ ...o, col: true }, this.local(o, new THREE.Matrix4()), 'ball', r, 0, 0);
+    return this;
+  }
   colCyl(r: number, h: number, o?: PrimOpts) {
     const mat = this.local(o, new THREE.Matrix4());
     this.collide({ ...o, col: true }, mat, 'cyl', r, h / 2, r);

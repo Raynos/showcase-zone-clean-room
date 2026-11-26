@@ -37,7 +37,7 @@ interface Part {
   /** throws no sun shadow of its own */
   trim: boolean;
 }
-interface Piece { parts: Part[]; size: [number, number, number]; tris: number }
+interface Piece { parts: Part[]; size: [number, number, number]; tris: number; /** copies stacked so far, and their triangles (dev) */ used: number; drawn: number }
 
 const pieces = new Map<string, Piece>();
 const ROOT = import.meta.env.DEV ? '/' : new URL('./', document.baseURI).href;
@@ -84,7 +84,7 @@ function split(mesh: THREE.Mesh, meta: { size: [number, number, number]; parts: 
     });
     tris += idx[k].length / 3;
   }
-  return { parts, size: meta.size, tris };
+  return { parts, size: meta.size, tris, used: 0, drawn: 0 };
 }
 
 let loading: Promise<void> | null = null;
@@ -150,6 +150,7 @@ export function piece(g: Geo, name: string, o: PieceOpts = {}): boolean {
   for (const part of p.parts) {
     if (o.skip?.(part.name, part.small)) continue;
     const v0 = g.pos.length / 3;
+    p.drawn += part.geo.index!.count / 3;
     const opts: PrimOpts = {
       at: o.at, rot: o.rot, scale: o.scale, uv: 'world', uvScale: part.uv * (o.uvScale ?? 1),
       color: o.colors?.[part.name] ?? part.color, layer: o.layers?.[part.name] ?? part.layer, emit: o.emit?.[part.name] ?? part.emit,
@@ -161,6 +162,7 @@ export function piece(g: Geo, name: string, o: PieceOpts = {}): boolean {
     for (let i = 0, n = rgb.length, w = v0 * 3; i < n; i += 3, w += 3) { col[w] *= rgb[i] * tr; col[w + 1] *= rgb[i + 1] * tg; col[w + 2] *= rgb[i + 2] * tb; }
   }
   g.lodK = keep; g.trim = keepTrim;
+  p.used++;
   return true;
 }
 
@@ -185,7 +187,7 @@ export function pieceShape(name: string, scale = 1): THREE.BufferGeometry | null
   return geo;
 }
 
-/** Dev: what the kit holds. */
-export function pieceStats(): Array<{ name: string; tris: number; parts: number; size: [number, number, number] }> {
-  return [...pieces].map(([name, p]) => ({ name, tris: p.tris, parts: p.parts.length, size: p.size }));
+/** Dev: what the kit holds, how many copies of each the world has stacked and what they cost in triangles. */
+export function pieceStats(): Array<{ name: string; tris: number; parts: number; size: [number, number, number]; used: number; drawn: number }> {
+  return [...pieces].map(([name, p]) => ({ name, tris: p.tris, parts: p.parts.length, size: p.size, used: p.used, drawn: p.drawn }));
 }

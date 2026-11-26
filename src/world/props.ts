@@ -294,9 +294,12 @@ export function hayBale(g: Geo, o: { x?: number; z?: number; y?: number; ry?: nu
 /** Curved iron lamp post with a hanging cyan lantern. Returns the lantern's local position. */
 export function lampPost(g: Geo, h = 3.6, color: number = PAL.cyan, o: { double?: boolean } = {}): [number, number, number] {
   const iron = 0x343a44;
-  g.cylUp(0.2, 0.3, 0.45, 8, { layer: T.BRICK, color: PAL.stone, uvScale: 0.8, col: 'none', grad: 0.7 });
-  g.cylUp(0.07, 0.1, h, 6, { at: [0, 0.4, 0], layer: T.METAL, color: iron, uvScale: 1.2, col: 'none' });
-  g.cyl(0.13, 0.13, 0.12, 6, { at: [0, 1.3, 0], layer: T.METAL, color: iron, col: 'none' });
+  // the authored post: a dressed footing, a forged shaft with worn edges, brass at the corners
+  if (!piece(g, 'lamp-post', { scale: [1, (h + 0.36) / 3.476, 1] })) {
+    g.cylUp(0.2, 0.3, 0.45, 8, { layer: T.BRICK, color: PAL.stone, uvScale: 0.8, col: 'none', grad: 0.7 });
+    g.cylUp(0.07, 0.1, h, 6, { at: [0, 0.4, 0], layer: T.METAL, color: iron, uvScale: 1.2, col: 'none' });
+    g.cyl(0.13, 0.13, 0.12, 6, { at: [0, 1.3, 0], layer: T.METAL, color: iron, col: 'none' });
+  }
   g.colCyl(0.2, h, { at: [0, h / 2, 0] });
   const top = h + 0.4;
   const arms = o.double ? [1, -1] : [1];
@@ -318,6 +321,8 @@ export function lanternBody(g: Geo, x: number, y: number, z: number, color: numb
 /** Wall-mounted lantern on a bracket; mount point at origin, wall behind (-Z). Returns lantern local position. */
 export function wallLantern(g: Geo, color: number = PAL.cyan, s = 1): [number, number, number] {
   const iron = 0x343a44;
+  // the authored lantern: an oak wall plate, a scrolled bracket, a caged glass in this one's colour (it hangs where the box one did)
+  if (piece(g, 'wall-lantern', { at: [0, -0.69 * s, 0], scale: s, colors: { glass: color } })) return [0, -0.3 * s, 0.46 * s];
   g.box(0.06 * s, 0.06 * s, 0.5 * s, { at: [0, 0, 0.25 * s], color: iron, layer: T.METAL, col: 'none' });
   g.box(0.05 * s, 0.05 * s, 0.42 * s, { at: [0, -0.15 * s, 0.18 * s], rot: [0.75, 0, 0], color: iron, layer: T.METAL, col: 'none' });
   lanternBody(g, 0, -0.03 * s, 0.46 * s, color, s);
@@ -634,6 +639,21 @@ export interface WinOpts { lit?: boolean; shutters?: number; flowers?: boolean; 
 /** Window on a wall: centred on the origin, wall plane z=0, facing +Z. */
 export function windowUnit(g: Geo, w: number, h: number, o: WinOpts = {}) {
   const frame = o.frame ?? 0x86633f;
+  // the authored casement (a house window, not a tall church light): glazing bars, an oak lintel, a stone sill, louvred shutters where asked
+  const sx = w / 0.95, sy = h / 1.2;
+  if (h <= w * 2.2 && piece(g, 'window', {
+    at: [0, -0.85 * sy, 0], scale: [sx, sy, 1],
+    colors: { frame, lintel: frame, glass: o.lit ? o.glow ?? 0xffb95e : 0x34505c, shutter: o.shutters ?? 0, slat: o.shutters ?? 0 },
+    layers: o.lit ? { glass: T.FLAT } : undefined, emit: o.lit ? { glass: 0.5 } : undefined,
+    skip: (name) => o.shutters === undefined && (name === 'shutter' || name === 'slat'),
+  })) {
+    if (o.flowers && o.r) {
+      g.box(w + 0.2, 0.2, 0.26, { at: [0, -h / 2 - 0.26, 0.2], color: 0x8a5e36, layer: T.PLANKS, uvScale: 0.6, col: 'none' });
+      const cols = [PAL.leafOrange, PAL.leafGold, PAL.leafRust, 0xfff1d6];
+      for (let i = 0; i < 3; i++) g.ico(0.17, 0, { at: [(i - 1) * w * 0.34, -h / 2 - 0.1, 0.22], scale: [1.1, 0.8, 1], color: o.r.pick(cols), layer: T.LEAF, flat: true, col: 'none' });
+    }
+    return;
+  }
   g.box(w + 0.2, h + 0.2, 0.12, { at: [0, 0, 0.02], color: frame, layer: T.PLANKS, uvScale: 0.3, col: 'none' });
   if (o.lit) g.box(w, h, 0.06, { at: [0, 0, 0.07], color: o.glow ?? 0xffb95e, emit: 0.5, layer: T.FLAT, col: 'none', grad: 0.75 });
   else g.box(w, h, 0.06, { at: [0, 0, 0.07], color: 0x34505c, layer: T.TILE, uv: 'fit', col: 'none', grad: 0.7 });
@@ -654,6 +674,11 @@ export function windowUnit(g: Geo, w: number, h: number, o: WinOpts = {}) {
 /** Door: bottom centre at the origin, wall plane z=0, facing +Z. */
 export function doorUnit(g: Geo, w = 1.2, h = 2.2, o: { color?: number; frame?: number; double?: boolean; step?: boolean; arch?: boolean } = {}) {
   const frame = o.frame ?? 0x86633f, color = o.color ?? 0x8a5a34;
+  // a single door is the authored one: boards under an arch of dressed stone, on forged straps
+  if (!o.double && piece(g, 'doorway', { scale: [w / 1.07, h / 2.2, 1], colors: { door: color } })) {
+    if (o.step !== false) g.box(w + 0.7, 0.14, 0.6, { at: [0, 0.07, 0.3], color: 0xb9b2a4, layer: T.BRICK, uvScale: 0.4, col: 'none' });
+    return;
+  }
   g.box(w + 0.34, h + 0.2, 0.16, { at: [0, h / 2 + 0.08, 0.02], color: frame, layer: T.PLANKS, uvScale: 0.3, col: 'none' });
   g.box(w, h, 0.1, { at: [0, h / 2, 0.08], color, layer: T.PLANKS, uvScale: 1.6, col: 'none', grad: 0.8 });
   if (o.double) g.box(0.05, h, 0.04, { at: [0, h / 2, 0.14], color: frame, col: 'none' });
