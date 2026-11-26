@@ -89,16 +89,27 @@
       if (await B.use('npc_' + id, 2.5)) break;
       if (i === 3) { B.note(`no talk prompt at ${id}`); return false; }
     }
-    return !!(await B.rawUntil(() => document.querySelector('.pn.show .pn-dch'), 5));
+    // the conversation scene (.sc); .pn-dch was the choice list of the dialog before it
+    return !!(await B.rawUntil(() => document.querySelector('.pn.show .sc, .pn.show .pn-dch'), 5));
+  };
+  /** Page a conversation on: its Next choice where there is one, else a tap on the scene (finish the line, then the next). */
+  B.nextLine = async () => {
+    if (B.btn('next')) return B.act('next', undefined, 0.5);
+    const sc = B.btn('skip');
+    if (!sc) return false;
+    B.tapEl(sc); await B.rawSleep(0.2);
+    return true;
   };
   /** From the conversation root: page through and accept or complete a quest. */
   B.questFlow = async (kind, qid) => {
     if (!(await B.act(kind, qid))) return false;
-    for (let i = 0; i < 14; i++) {
-      const fin = kind === 'offer' ? 'accept' : 'complete';
-      if (B.btn(fin, qid)) { await B.act(fin, qid); break; }
-      if (!(await B.act('next', undefined, 1.5))) { if (!(B.btn(fin, qid))) return false; }
+    const fin = kind === 'offer' ? 'accept' : 'complete';
+    let done = false;
+    for (let i = 0; i < 24 && !done; i++) {
+      if (await B.rawUntil(() => B.btn(fin, qid), 0.3)) { await B.act(fin, qid); done = true; break; }
+      if (!(await B.nextLine())) { if (!(B.btn(fin, qid))) return false; }
     }
+    if (!done) return false;
     await B.rawSleep(0.3);
     if (B.btn('root')) await B.act('root');
     return true;
