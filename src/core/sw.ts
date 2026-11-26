@@ -38,6 +38,7 @@ export function register(beforeReload: () => void) {
   const sw = navigator.serviceWorker;
   onRestart = beforeReload;
   sw.register('./sw.js', { scope: './' }).then((reg) => {
+    if (!reg) return;
     const report = () => { loadstats.offline = reg.active && !reg.installing && !reg.waiting ? 'ready' : 'installing'; };
     reg.addEventListener('updatefound', () => { report(); reg.installing?.addEventListener('statechange', report); });
     reg.installing?.addEventListener('statechange', report);
