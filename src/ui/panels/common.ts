@@ -35,6 +35,19 @@ export interface PanelSpec {
   make(host: Host, arg: any): View;
 }
 
+/** Settings > Comfort: mark the page when the player asks for less motion, so the styles (tokens.css) and the scenes can obey. */
+export function applyComfort(g: Game) {
+  comfortGame = g;
+  comfort.still = !!g.state.d.settings.reduceMotion || !!osStill?.matches;
+  document.documentElement.dataset.motion = comfort.still ? 'reduced' : '';
+}
+/** Less motion is wanted, by the device or by Settings > Comfort: the game reads this where it shakes the camera. */
+export const comfort = { still: false };
+const osStill = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+let comfortGame: Game | null = null;
+osStill?.addEventListener?.('change', () => { if (comfortGame) applyComfort(comfortGame); });
+export const calm = () => comfort.still || !!osStill?.matches;
+
 export const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 export const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 

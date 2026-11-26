@@ -62,9 +62,13 @@
   --t-press: 70ms; --t-fast: 120ms; --t-sheet: 180ms;
   --ease: cubic-bezier(.2, .85, .25, 1); --ease-back: cubic-bezier(.2, 1.4, .4, 1);
 }
-/* Panels, title and loading honour reduced motion wholesale (the gameplay HUD keeps its own feedback). */
+/* Panels, conversations, title and loading honour reduced motion wholesale (the gameplay HUD keeps its own feedback):
+   by the device's preference, or by Settings > Comfort (`data-motion` on the root, set by panels/common.ts). */
+:root[data-motion=reduced] { --t-press: 1ms; --t-fast: 1ms; --t-sheet: 1ms; }
+:root[data-motion=reduced] :is(.pn, .pn *, .pn *::before, .pn *::after, #boot, #boot *, #boot *::before, #boot *::after, .note.head, .death, .death *) {
+  animation-duration: 1ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; transition-duration: 1ms !important; transition-delay: 0s !important; }
 @media (prefers-reduced-motion: reduce) {
   :root { --t-press: 1ms; --t-fast: 1ms; --t-sheet: 1ms; }
-  .pn, .pn *, .pn *::before, .pn *::after, #boot, #boot *, #boot *::before, #boot *::after {
+  .pn, .pn *, .pn *::before, .pn *::after, #boot, #boot *, #boot *::before, #boot *::after, .note.head, .death, .death * {
     animation-duration: 1ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; transition-duration: 1ms !important; transition-delay: 0s !important; }
 }

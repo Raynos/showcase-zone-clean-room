@@ -3,7 +3,7 @@ import { FP_FOV } from '../../core/camera';
 import { QUALITY } from '../../gfx/renderer';
 import { setView } from '../../systems/view';
 import { icon } from '../icons';
-import { btn, cap, playTime, type PanelSpec } from './common';
+import { applyComfort, btn, cap, playTime, type PanelSpec } from './common';
 
 const QN = ['auto', 'low', 'medium', 'high', 'ultra'];
 const QL: Record<string, string> = { auto: 'Auto', low: 'Low', medium: 'Med', high: 'High', ultra: 'Ultra' };
@@ -15,21 +15,21 @@ const QD: Record<string, string> = {
   ultra: '<b>Ultra</b> for strong desktop graphics cards: the sharpest shadows and the densest grass.',
 };
 
-type Tab = 'controls' | 'camera' | 'aiming' | 'display' | 'sound' | 'game';
-const TABS: Array<{ id: Tab; label: string }> = [{ id: 'controls', label: 'Controls' }, { id: 'camera', label: 'Camera' }, { id: 'aiming', label: 'Aiming' }, { id: 'display', label: 'Display' }, { id: 'sound', label: 'Sound' }, { id: 'game', label: 'Game' }];
+type Tab = 'controls' | 'camera' | 'aiming' | 'display' | 'sound' | 'comfort' | 'game';
+/** Seven groups. The first is named for the hand in use (Touch or Keys): short enough for seven tabs under a thumb. */
+const TABS: Array<{ id: Tab; label: string }> = [{ id: 'controls', label: 'Controls' }, { id: 'camera', label: 'Camera' }, { id: 'aiming', label: 'Aiming' }, { id: 'display', label: 'Display' }, { id: 'sound', label: 'Sound' }, { id: 'comfort', label: 'Comfort' }, { id: 'game', label: 'Game' }];
 /** the eyes take this much of the stride when `bob` is unset (systems/view.ts FP_BOB) */
 const BOB_DEFAULT = 0.6;
 
 /**
- * Settings: six groups, one per tab (a bar under the thumb on a phone, a rail in a window), each short
+ * Settings: seven groups, one per tab (a bar under the thumb on a phone, a rail in a window), each short
  * enough to need little or no scrolling. `open('menu', { tab })` lands on a group.
  */
 export const settingsPanel: PanelSpec = {
   title: 'Settings', icon: 'gear', pause: true,
   make(host, arg) {
     const g = host.game, st = g.state, s = st.d.settings;
-    // the sound mix has two keys the save's type does not name yet (core/audio/director.ts reads them)
-    const mix = s as typeof s & { master?: number; ambience?: number };
+    const mix = s;
     let tab: Tab = TABS.some((t) => t.id === arg?.tab) ? arg.tab : 'controls';
     let fpsEl: HTMLElement | null = null, fpsT = 0;
     let townWhy: string | null = null;
@@ -43,6 +43,7 @@ export const settingsPanel: PanelSpec = {
       ambience: { min: 0, max: 1, get: () => mix.ambience ?? 0.6, set: (v) => { mix.ambience = v; vol(); }, fmt: pct },
       sens: { min: 0.4, max: 2, get: () => s.sens, set: (v) => { s.sens = v; }, fmt: (v) => v.toFixed(2) + '×' },
       shake: { min: 0, max: 1.5, get: () => s.shake, set: (v) => { s.shake = v; }, fmt: pct },
+      flash: { min: 0, max: 1, get: () => s.flash ?? 1, set: (v) => { s.flash = v; }, fmt: pct },
       // first person: degrees on top of the default for the way the phone is held; each shows the field of view it gives
       fpFov: { min: -10, max: 15, get: () => s.fpFov ?? 0, set: (v) => { s.fpFov = Math.round(v); }, fmt: (v) => Math.round(FP_FOV.portrait + v) + '°' },
       fpFovWide: { min: -10, max: 15, get: () => s.fpFovWide ?? s.fpFov ?? 0, set: (v) => { s.fpFovWide = Math.round(v); }, fmt: (v) => Math.round(FP_FOV.landscape + v) + '°' },
@@ -99,15 +100,11 @@ export const settingsPanel: PanelSpec = {
         return h + '</div>';
       },
       camera: () => {
-        const still = matchMedia('(prefers-reduced-motion: reduce)').matches, bobOn = s.headBob !== false && !still;
         return sec('View') + group(seg('view', 'View', s.view, [['third', 'Third person'], ['first', 'First person']]) + slider('sens', 'Look speed', 'target') + toggle('invertY', 'Invert vertical look', 'swap', s.invertY)
           + toggle('autoFollow', 'Camera follows movement', 'dash', s.autoFollow, 'Third person: swings behind you as you run'), true)
           + sec('First person') + group(slider('fpFov', 'Field of view', 'eye', 'Phone upright') + slider('fpFovWide', 'Field of view', 'eye', g.input.isTouch ? 'Phone on its side' : 'On this screen')
-          + toggle('headBob', 'Head bob', 'jump', bobOn, still ? 'Off: your device asks for reduced motion' : 'The view rises and falls with your stride')
-          + (bobOn ? slider('bob', 'Bob amount', 'jump') : '')
           + toggle('fpAssist', 'Tilt toward a close target', 'target', s.fpAssist === true, 'Melee: the view eases to the robot you have locked')
-          + toggle('fpWideClose', 'Wider view beside big robots', 'eye', s.fpWideClose !== false, 'So an elite at arm\'s length still fits the screen'))
-          + sec('Comfort') + group(slider('shake', 'Screen shake', 'blast', 'Hits, slams and landings'));
+          + toggle('fpWideClose', 'Wider view beside big robots', 'eye', s.fpWideClose !== false, 'So an elite at arm\'s length still fits the screen'));
       },
       aiming: () => {
         const adsMode = s.adsMode ?? 'tap', assist = s.aimAssist !== false, touch = g.input.isTouch;
@@ -121,6 +118,14 @@ export const settingsPanel: PanelSpec = {
           + `<div class="pn-qd">${QD[s.quality] ?? ''}</div><div class="pn-note fps">Running at <b class="fpsv">${Math.round(g.fps)}</b> fps on <b>${cap(g.renderer.quality.name)}</b>. Resolution adapts on its own to hold 60.</div>`, true)
           + sec('On screen') + group(toggle('fps', 'Frame-rate counter', 'charge', s.fps !== false, 'By the minimap. Tap it for detail') + toggle('dmgNumbers', 'Damage numbers', 'exclaim', s.dmgNumbers, 'Numbers over robots as you hit them')),
       sound: () => sec('Volume') + group(slider('master', 'Everything', 'sound') + slider('music', 'Music', 'star') + slider('sfx', 'Effects', 'bolt', 'Weapons, robots, the menus') + slider('ambience', 'Ambience', 'cloud', 'Wind, rain, the town, machines')),
+      comfort: () => {
+        const os = matchMedia('(prefers-reduced-motion: reduce)').matches, less = os || s.reduceMotion === true, bobOn = s.headBob !== false && !os;
+        return sec('Motion') + group(toggle('reduceMotion', 'Reduce motion', 'eye', less, os ? 'On: your device asks for it' : 'Menus and conversations cut in, and the screen does not shake')
+          + (less ? '' : slider('shake', 'Screen shake', 'blast', 'Hits, slams and landings'))
+          + toggle('headBob', 'Head bob', 'jump', bobOn, os ? 'Off: your device asks for reduced motion' : 'First person: the view rises and falls with your stride')
+          + (bobOn ? slider('bob', 'Bob amount', 'jump') : ''))
+          + sec('Light') + group(slider('flash', 'Flashes', 'bolt', 'How bright a blast or a heavy hit may light the screen'));
+      },
       game: () => {
         const why = g.returnBlocked();
         townWhy = why;
@@ -131,7 +136,7 @@ export const settingsPanel: PanelSpec = {
       },
     };
     const render = () => {
-      host.setTabs(TABS, tab);
+      host.setTabs(TABS.map((t) => t.id === 'controls' ? { ...t, label: g.input.isTouch ? 'Touch' : 'Keys' } : t), tab);
       const top = host.body.scrollTop;
       host.body.innerHTML = `<div class="pn-setp" data-tab="${tab}">${pages[tab]()}</div>`;
       host.body.scrollTop = top;
@@ -167,6 +172,11 @@ export const settingsPanel: PanelSpec = {
         else if (a === 'view') { setView(g, v === 'first' ? 'first' : 'third'); g.sfx('ui_click'); render(); }
         else if (a === 'quality') { s.quality = v; if (v === 'auto') clearAutoTier(); st.touch(); g.sfx('ui_click'); applyQuality(); render(); }
         else if (a === 'adsMode') { s.adsMode = v === 'hold' ? 'hold' : 'tap'; st.touch(); g.sfx('ui_click'); render(); }
+        else if (a === 'toggle' && v === 'reduceMotion') {
+          // the device's own preference cannot be argued with from here
+          if (matchMedia('(prefers-reduced-motion: reduce)').matches) { g.sfx('ui_deny'); return; }
+          s.reduceMotion = !s.reduceMotion; applyComfort(g); st.touch(); g.sfx('ui_click'); render();
+        }
         else if (a === 'toggle' && v === 'fpWideClose') { s.fpWideClose = s.fpWideClose === false; st.touch(); g.sfx('ui_click'); render(); }
         else if (a === 'toggle' && v === 'aimAssist') { s.aimAssist = s.aimAssist === false; st.touch(); g.sfx('ui_click'); render(); }
         else if (a === 'toggle' && v === 'gyro') {

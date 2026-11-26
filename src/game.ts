@@ -28,6 +28,7 @@ import { State } from './systems/state';
 import { Movers, Triggers, type Course } from './systems/world';
 import { Hud } from './ui/hud';
 import { Chunks } from './world/chunks';
+import { comfort } from './ui/panels/common';
 import { Environment } from './world/environment';
 import { FLORA_KEEPOUT, scatterFlora } from './world/flora';
 import { Rain } from './gfx/rain';
@@ -485,7 +486,8 @@ export class Game {
     // things within a metre of the lens dissolve, except in cutscenes, which frame their own close-ups
     this.view.nearFade(GU.uNearFade.value);
     this.cameraRig.shoulder = damp(this.cameraRig.shoulder, this.combat.aiming ? 0.7 : 0, 8, rdt);
-    this.cameraRig.shakeScale = this.state.d.settings.shake ?? 1;
+    // comfort (Settings): reduced motion stills the shake
+    this.cameraRig.shakeScale = comfort.still ? 0 : this.state.d.settings.shake ?? 1;
 
     // world + fx
     this.env.update(rdt, this.camera, pl.pos, this.renderer);
@@ -509,6 +511,9 @@ export class Game {
     post.flash.w = damp(post.flash.w, 0, 6, rdt);
     if (this.fadeHold) post.fade = damp(post.fade, 1, 14, rdt);
     else if (!pl.dead) post.fade = damp(post.fade, 0, 3.5, rdt);
+    // comfort (Settings): a flash is never brighter than the player allows
+    const flashCap = this.state.d.settings.flash ?? 1;
+    if (flashCap < 1) post.flash.w = Math.min(post.flash.w, 0.35 * flashCap);
     post.speed = damp(post.speed, this.speedFx, 5, rdt);
     post.letterbox = damp(post.letterbox, this.cameraRig.cine && this.started ? 1 : 0, 4, rdt);
 

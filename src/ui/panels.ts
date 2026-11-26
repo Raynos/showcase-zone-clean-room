@@ -6,7 +6,7 @@ import './panels.css';
 import { bagPanel } from './panels/bag';
 import { boardPanel, trophiesPanel } from './panels/board';
 import { charPanel } from './panels/char';
-import type { Host, PanelSpec, View } from './panels/common';
+import { applyComfort, type Host, type PanelSpec, type View } from './panels/common';
 import { talkPanel } from './panels/dialog';
 import { mapPanel } from './panels/mapPanel';
 import { questsPanel } from './panels/quests';
@@ -20,7 +20,7 @@ const KEYS: Record<string, PanelId> = { KeyI: 'bag', KeyB: 'bag', KeyL: 'quests'
 const NAV: Array<[PanelId, string, string, string]> = [['bag', 'bag', 'Pack', 'I'], ['char', 'char', 'Character', 'P'], ['quests', 'quests', 'Quests', 'L'], ['map', 'map', 'Map', 'M'], ['menu', 'gear', 'Settings', 'Esc']];
 /** An icon per tab id: the phone's tab bar sits under the thumb and reads by icon first. */
 const TAB_IC: Record<string, string> = { items: 'bag', gear: 'sword', stats: 'char', perks: 'star', records: 'trophy', active: 'quests', avail: 'exclaim', done: 'check', weapons: 'sword', supplies: 'potion', sell: 'coin',
-  bounties: 'board', hunts: 'target', wanted: 'skull', controls: 'pad', camera: 'eye', aiming: 'target', display: 'screen', sound: 'sound', game: 'gear' };
+  bounties: 'board', hunts: 'target', wanted: 'skull', controls: 'pad', camera: 'eye', aiming: 'target', display: 'screen', sound: 'sound', comfort: 'shield', game: 'gear' };
 const PHONE_SHEET = '(max-width: 699.98px) and (orientation: portrait)';
 
 /**
@@ -68,6 +68,7 @@ export class Panels implements System, Host {
     this.scrim = q('.pn-scrim'); this.sheet = q('.pn-sheet'); this.headIcon = q('.pn-hi'); this.headTitle = q('.pn-ht'); this.headScrip = q('.pn-hs');
     this.backBtn = q('.pn-back'); this.navEl = q('.pn-nav'); this.tabsEl = q('.pn-tabs'); this.body = q('.pn-body'); this.foot = q('.pn-foot'); this.modal = q('.pn-modal');
     this.bind();
+    applyComfort(game);
     game.hud.onMenu = (id) => this.toggle(id);
     game.hud.drawMini = this.zoneMap.drawMini;
     game.addSystem(this);
