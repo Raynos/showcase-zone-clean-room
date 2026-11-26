@@ -231,7 +231,8 @@ export class Shooter {
     }
     if (this.cockT > 0 && (this.cockT -= dt) <= 0) g.sfx('rifle_cock', { vol: 0.5, pitch: 1.1 });
     // effects: the rifle gathers as it steadies, and the scope glints when it has
-    if (k === 'rifle' && this.adsK > 0.95 && pl.speed2d < 2.2 && this.adsT < RIFLE_STEADY + dt) g.fx.play(this.adsT < RIFLE_STEADY ? 'charge' : 'gun.glint', c.muzzlePos(_m), undefined, st.weapon.color, 1, 0.5 * this.adsT / RIFLE_STEADY);
+    // (looking through the scope, the muzzle is inside its circle: small there, or it whites out the picture)
+    if (k === 'rifle' && this.adsK > 0.95 && pl.speed2d < 2.2 && this.adsT < RIFLE_STEADY + dt) g.fx.play(this.adsT < RIFLE_STEADY ? 'charge' : 'gun.glint', c.muzzlePos(_m), undefined, st.weapon.color, this.vm.scoped ? 0.2 : 1, 0.5 * this.adsT / RIFLE_STEADY);
     if (this.burstN > 0 && (this.burstT -= dt) <= 0) {
       this.fireBolt({ mult: this.burstMul, free: true, crit: this.burstCrit && this.burstFirst, special: this.burstFirst, spread: this.spreadNow() * 0.5 });
       this.burstFirst = false; this.burstN--; this.burstT = 0.09;
@@ -306,7 +307,7 @@ export class Shooter {
   /** A shot's look and sound at the muzzle, and the camera punch that stays comfortable on a phone. */
   private flash(muzzle: THREE.Vector3, dir: THREE.Vector3, color: number, size: number, punch: number) {
     const g = this.game;
-    g.fx.muzzle(muzzle, dir, color, size, this.kind);
+    g.fx.muzzle(muzzle, dir, color, this.vm.scoped ? size * 0.2 : size, this.kind);
     g.cameraRig.kick(punch, rand(-0.25, 0.25) * punch);
     g.cameraRig.punch(punch * 35);
     g.haptic(punch > 0.02 ? 14 : 6);

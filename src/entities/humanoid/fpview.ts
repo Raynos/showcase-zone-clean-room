@@ -295,9 +295,10 @@ function moveHand(m: FpMove, hp: HumanPose, deadT: number, s: number, p: THREE.V
     p.set(g * (0.085 + 0.05 * f), -0.34 + 0.15 * r - 0.35 * f, 0.36);
     z.set(-g * 0.2, 0.8 - 1.2 * f, 0.5 + 0.3 * f); y.set(-g, 0, 0);
   } else {
-    // riding: both fists on the reins over the horse's withers, giving with its stride
+    // riding: both fists on the reins over the horse's withers, under the picture while the eyes look ahead
+    // (the eyes ride above the rider's, systems/view.ts FP_RIDE), giving with its stride
     const bob = Math.sin(hp.time * (4 + hp.speed)) * 0.006 * clamp(hp.speed / 3, 0, 1);
-    p.set(g * 0.075, -0.26 + bob, 0.42);
+    p.set(g * 0.085, -0.36 + bob, 0.46);
     z.set(-g * 0.12, -0.15, 1); y.set(0, 1, 0);
   }
 }

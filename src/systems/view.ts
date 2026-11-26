@@ -22,6 +22,8 @@ const FP_BOB = 0.6;
  * a roll of the horizon within the comfort settings) and draws none of the body: Rook's arms curled at
  * a lens's distance were two fists filling the picture.
  */
+/** On a horse: how far (m) the eyes sit above and ahead of the rider's, and the share of the gallop's head motion they take (times the bob setting). */
+const FP_RIDE = { up: 0.3, ahead: 0.06, bob: 0.5 };
 const FP_VIG = { roll: 0.22, down: 0.4, dead: 0.5 };
 const reducedMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
 const ease = (u: number) => { const x = clamp01(u); return x * x * (3 - 2 * x); };
@@ -90,6 +92,8 @@ export class ViewSystem {
     if (cam !== g.camera) return 'full';
     const k = g.cameraRig.eyeAmount;
     if (k <= 0) return 'full';
+    // looking through the rifle's scope: nothing of the hero inside its circle
+    if (g.combat.shooter.vm.scoped) return 'none';
     if (k > 0.9) return this.treat;
     // a cutscene handing back to the eyes brings the lens in from behind and through the back and the pack:
     // within arm's reach of the eyes the hero is not drawn at all until the lens is home
@@ -145,12 +149,15 @@ export class ViewSystem {
     if (rig !== this.rig) { this.rig = rig; if (cr.view === 'first') this.hook(); }
     // aiming down sights from third person goes to the eyes too (core/camera.ts `adsEye`)
     if (cr.adsEye) this.hook();
-    if (cr.view !== 'first' && cr.eyeAmount <= 0 && !cr.fp && !cr.adsEye) { this.vignette(0, dt); return null; }
+    if (cr.view !== 'first' && cr.eyeAmount <= 0 && !cr.fp && !cr.adsEye) { this.vignette(0, dt); this.baseOk = false; return null; }
     if (!rig?.eyes || !rig.eyeRest) return null;
     this.inside(dt);
     const f = this.feedOut, p = pl.pose, loc = p.locomotion, act = pl.action ?? '';
     // the lens as last drawn, in the hero's own frame: first-person arms are posed to it (humanoid/fpview.ts `fpMove`)
-    (p.fpEye ??= new THREE.Vector3()).copy(g.camera.position).sub(pl.pos).applyAxisAngle(UP, -pl.yaw);
+    // (against where the body was when that picture was taken: at a zipline's speed the body has since moved a hand's breadth)
+    if (!this.baseOk) { this.lastBase.copy(pl.pos); this.baseOk = true; }
+    (p.fpEye ??= new THREE.Vector3()).copy(g.camera.position).sub(this.lastBase).applyAxisAngle(UP, -pl.yaw);
+    this.lastBase.copy(pl.pos);
     g.camera.getWorldDirection(p.fpDir ??= new THREE.Vector3()).applyAxisAngle(UP, -pl.yaw);
     // ...and how wide it is, so first-person framing places things by share of the picture
     const ty = Math.tan((g.camera.fov * Math.PI) / 360);
@@ -172,6 +179,14 @@ export class ViewSystem {
       // on a horse, a board, a wire, a ladder: the eyes are where the rider's head is, smoothed
       if (trick) { f.off.copy(this.held).add(rest); this.treat = 'none'; f.roll = Math.sin(clamp01(pl.actionT) * Math.PI) * 0.12; }
       else { f.off.copy(head); this.held.copy(head).sub(rest); }
+      if (loc === 'ride' && !trick) {
+        // on a horse the eyes sit higher than the rider's (the mane is under the picture, not up its lower third),
+        // and the gallop's rise and fall is scaled about its mean like a stride on foot (FP_RIDE)
+        const d = this._d.copy(f.off).sub(this.rideMean.lerp(f.off, Math.min(1, dt * 2)));
+        f.off.copy(this.rideMean).addScaledVector(d, FP_RIDE.bob * Math.max(bob, 0.25));
+        f.off.y += FP_RIDE.up; f.off.x += Math.sin(pl.yaw) * FP_RIDE.ahead; f.off.z += Math.cos(pl.yaw) * FP_RIDE.ahead;
+        f.vRate = Math.min(f.vRate, 8);
+      } else this.rideMean.copy(f.off);
       if (STEERED.has(loc)) f.heading = pl.yaw;
       f.anchor.set(pl.pos.x, pl.pos.y + 1.0, pl.pos.z);
     } else {
@@ -241,6 +256,8 @@ export class ViewSystem {
     if (k < 0.001) post.vignette -= k;
   }
   private vigAdd = 0;
+  private lastBase = new THREE.Vector3(); private baseOk = false;
+  private rideMean = new THREE.Vector3(); private _d = new THREE.Vector3();
   /** +1 when moving to the view's right, -1 to its left. */
   private sideOf(vx: number, vz: number) {
     const y = this.game.cameraRig.yaw, rx = Math.cos(y), rz = -Math.sin(y), sp = Math.hypot(vx, vz);

@@ -16,6 +16,10 @@ type Kind = 'bow' | 'crossbow' | 'rifle';
  * relief: aimed, how far ahead of the eye the `sight` node sits on the view axis; `roll` there.
  * reload: how far the weapon dips, rolls and tips its muzzle up at the middle of a reload.
  * kick: how far a shot throws it back (m) and up (rad).
+ * adsP: aimed, a bow is not brought to the eye: it is held like the hip (`hipP` terms) nearer the middle,
+ *   the arrow meeting the crosshair at `conv`, so the bow arm stays in the lower left corner.
+ * scope: the rifle's scope takes over the picture from this much of the aim; from there the eyes draw
+ *   neither the rifle nor the hands (systems/view.ts), which would sit inside the scope's circle.
  *
  * Tuned by looking at 402x874 and 874x402 frames. An artist can retune these numbers; the arms are
  * the artist's in fpview.ts (`fpHold`).
@@ -23,21 +27,22 @@ type Kind = 'bow' | 'crossbow' | 'rifle';
 export const FP_PLACE: Record<Kind, {
   hipP: [number, number, number]; hipL: [number, number, number]; conv: number; roll: number;
   relief: number; adsRoll: number;
-  /** aimed: how far (m) the sight sits under the view axis, so a solid sight never hides the point aimed at */
-  drop?: number;
+  /** aimed: how far (m) the sight sits under the view axis and right of it, so a solid sight never hides the point aimed at */
+  drop?: number; side?: number;
+  adsP?: [number, number, number]; scope?: number;
   reload: { dip: number; roll: number; tip: number; side: number };
   kick: { back: number; up: number };
 }> = {
   rifle: {
-    hipP: [0.62, -0.88, 0.34], hipL: [0.5, -0.8, 0.36], conv: 60, roll: 0.05, relief: 0.085, adsRoll: 0,
+    hipP: [0.62, -0.88, 0.34], hipL: [0.5, -0.8, 0.36], conv: 60, roll: 0.05, relief: 0.085, adsRoll: 0, drop: 0.09, scope: 0.45,
     reload: { dip: 0.11, roll: 0.6, tip: 0.1, side: -0.02 }, kick: { back: 0.07, up: 0.11 },
   },
   crossbow: {
-    hipP: [0.66, -1.0, 0.32], hipL: [0.5, -0.85, 0.34], conv: 40, roll: 0.22, relief: 0.24, adsRoll: 0, drop: 0.025,
+    hipP: [0.66, -1.0, 0.32], hipL: [0.5, -0.85, 0.34], conv: 40, roll: 0.22, relief: 0.24, adsRoll: 0, drop: 0.05, side: 0.03,
     reload: { dip: 0.1, roll: 0.65, tip: 0.08, side: -0.02 }, kick: { back: 0.025, up: 0.035 },
   },
   bow: {
-    hipP: [-0.42, -0.72, 0.58], hipL: [-0.32, -0.62, 0.58], conv: 30, roll: 0.5, relief: 0.52, adsRoll: 0.12,
+    hipP: [-0.42, -0.72, 0.58], hipL: [-0.32, -0.62, 0.58], conv: 30, roll: 0.5, relief: 0.52, adsRoll: 0.12, adsP: [-0.42, -0.5, 0.72],
     reload: { dip: 0, roll: 0, tip: 0, side: 0 }, kick: { back: 0.02, up: 0.03 },
   },
 };
@@ -82,6 +87,8 @@ export class ViewModel {
 
   constructor(private game: Game, private sh: Shooter) {}
 
+  /** The rifle's scope has the picture: the eyes draw none of the hero (systems/view.ts). */
+  scoped = false;
   /** True while the weapon is on the view (debug and tests). */
   get active() { return this.k > 0.01; }
 
@@ -96,6 +103,7 @@ export class ViewModel {
     if (k <= 0.001 || !w || !kind || !grip) { this.release(); return; }
     if (this.placed && this.placed !== w.object) this.release();
     const P = FP_PLACE[kind], cam = g.camera;
+    this.scoped = P.scope !== undefined && sh.adsK >= P.scope && k > 0.5;
 
     // ---- the phases, eased
     const reloading = sh.reloading, rt = reloading ? clamp01(1 - sh.reloadT / Math.max(0.01, sh.reloadDur)) : 0;
@@ -124,12 +132,19 @@ export class ViewModel {
     aimQ(_q, _d, _y.set(0, 1, 0), P.roll);
     // ---- aimed: the sight on the axis, the barrel along it
     const s = _s.setFromMatrixScale(grip.matrixWorld).x;
-    aimQ(_q2, _v.set(0, 0, -1), _y.set(0, 1, 0), P.adsRoll * (kind === 'bow' ? 1 : 0));
-    const sightL = w.sight ? w.sight.position : _p2.set(0, 0.1, 0);
-    // a bow drawn but not aimed sits a little under the axis, so the arrow and the target both show
-    const under = kind === 'bow' ? 0.035 * (1 - this.aimK) : (P.drop ?? 0);
-    _p2.copy(sightL).multiplyScalar(s).applyQuaternion(_q2).negate().add(_v.set(0, -under, -P.relief));
-    const rel = raise;
+    if (P.adsP) {
+      // a bow: held out low and left of the middle, the arrow on the crosshair (FP_PLACE `adsP`)
+      const a = P.adsP, z1 = a[2];
+      _p2.set(a[0] * th * z1, a[1] * tv * z1, -z1);
+      _v.set(-_p2.x, -_p2.y, -P.conv - _p2.z).normalize();
+      aimQ(_q2, _v, _y.set(0, 1, 0), P.roll * 0.6 + P.adsRoll);
+    } else {
+      aimQ(_q2, _v.set(0, 0, -1), _y.set(0, 1, 0), 0);
+      const sightL = w.sight ? w.sight.position : _p2.set(0, 0.1, 0);
+      _p2.copy(sightL).multiplyScalar(s).applyQuaternion(_q2).negate().add(_v.set(P.side ?? 0, -(P.drop ?? 0), -P.relief));
+    }
+    // a scoped rifle stays low until the scope takes the picture, so its receiver never crosses the scope's circle
+    const rel = P.scope !== undefined ? raise ** 2.5 : raise;
     _p.lerp(_p2, rel);
     _q.slerp(_q2, rel);
 
@@ -229,7 +244,7 @@ export class ViewModel {
       this.placed.position.set(0, 0, 0); this.placed.quaternion.identity(); this.placed.scale.copy(ONE);
       this.placed = null;
     }
-    this.hold.k = 0;
+    this.hold.k = 0; this.scoped = false;
     if (pl.pose.fpHold) pl.pose.fpHold = null;
   }
 }

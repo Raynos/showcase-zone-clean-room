@@ -297,8 +297,9 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
       steadyK = damp1(steadyK, fp > 0 && FP_STEADY.test(pose.action ?? '') ? 0.85 * fp : 0, dt * 10);
       if (steadyK > 0.002) fpSteady(P, steadyK);
       // first person: the eyes sit above a blade swung at chest height, so a drawn melee weapon and the
-      // hands on it are re-framed for the eye (fpview.ts)
-      fpLift = damp1(fpLift, (pose.fp ?? 0) * (pose.drawn && (pose.weapon === 'sword' || pose.weapon === 'spear') && pose.locomotion !== 'dead' ? 1 : 0), dt * 8);
+      // hands on it are re-framed for the eye (fpview.ts); a swing that draws the weapon is re-framed from its
+      // first frame (eased in, its wind-up was the third-person hand behind the lens: light 1 had no weapon)
+      fpLift = damp1(fpLift, (pose.fp ?? 0) * (pose.drawn && (pose.weapon === 'sword' || pose.weapon === 'spear') && pose.locomotion !== 'dead' ? 1 : 0), dt * (pose.action && pose.drawn ? 60 : 8));
       const sc = body.scale.y || 1;
       fpPresent(P, pose, fpLift < 0.002 ? 0 : fpLift, eyeRest.y / sc, eyeRest.z / sc, arms, sc, dt);
       // first person with a ranged weapon: the weapon is on the view (systems/viewmodel.ts) and the hands go to it
