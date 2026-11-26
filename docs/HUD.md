@@ -120,7 +120,14 @@ Desktop: a hairline under the hotbar with the numbers, always.
 Desktop: current and maximum, always.
 
 **Zone name.** Under the minimap for five seconds on entering a zone.
-Desktop: always.
+Desktop: always. Indoors it is the place's own name (`hud.placeName`:
+Training Vault, Titan's Arena). The zone's headline in the lane is true
+only while the hero stands in that zone, in the open and on their feet:
+a fast travel, a door into the vault, the gauntlet or the arena, or a
+fall puts it away at once, and it is not raised indoors or started while
+a conversation, a menu or a cutscene has the screen. Those rules are
+the zone's, not the lane's: `enclosed` and `screenBusy` in
+`systems/intro.ts`.
 
 **Shooter stance.** Fire is the primary. Aim, dodge and jump are
 permanent. Reload appears only while the magazine is short of full (the
@@ -131,7 +138,11 @@ in melee, on the same seats, so nothing moves on a swap but the skills.
 
 **Riding.** The cluster shows what a rider can do: jump, and on the board
 its two tricks and the flip. The context seat is Dismount. Attack and
-skills are gone until the hero is on foot.
+skills are gone until the hero is on foot. Interaction prompts stay live
+on a horse (`systems/interact.ts`): what is done on foot (a talk, a
+stall, a board) steps the rider down first, and what is done from the
+saddle (`saddle: true`, a riding course's start) leaves them on. The
+hoverboard still suppresses prompts.
 
 **Talking, and panels.** The whole HUD is hidden while a dialogue is open,
 and on a phone under any full-screen panel. The notice lane still shows;
@@ -156,6 +167,20 @@ Robots carry a plate only as far as it helps (`hud.plate`, `focus`):
 - **Damage numbers stop under a plate** and slide out sideways.
 - A broken robot says BROKEN once, over its head as it breaks; the
   target frame shows the state as an icon and a white bar, with no word.
+
+Who a plate belongs to is its colour, before any word is read:
+
+| Who             | Name            | Under the name           |
+|-----------------|-----------------|--------------------------|
+| Robot           | white           | red bar                  |
+| Elite, rare     | gold, purple    | red bar                  |
+| Townsperson     | green           | trade, amber capitals    |
+| Other player    | periwinkle blue | guild or title, same hue |
+| Someone's fight | grey            | grey bar, whose it is    |
+
+Another player's plate (`cls: 'npc lz-adv'`, `ui/living.css`) carries
+the level as a chip before the name. A friend's health bar is green (an
+escort, a stack being defended: any `npc` plate given `hp`).
 
 ## Overlays
 
@@ -184,8 +209,10 @@ meter (`tools/hud-matrix` fails a stray one).
 - **Left column.** The quest line first, then what the zone adds (the
   crate drop's line, a bounty), then the feed. One column of bare text on
   the stick side. Its budget on a phone is one quest and the drop's
-  line; until the first job is handed in every form shows one such line
-  at most, the drop (which is timed) over the bounty (`.early`).
+  line; until bounties open every form shows one such line at most, the
+  drop (which is timed) over the bounty (`.early`). When they open is
+  `bountiesOpen` in `systems/intro.ts`, which also gates the lines
+  themselves; the HUD keeps no rule of its own.
 - **The column and the lane on an upright phone** share the top of the
   screen. The quest line keeps its place: a lit notice hangs under the
   column's last line (`laneStep`), and the feed, which only passes,
@@ -244,7 +271,10 @@ not, a left drag still turns the view. With a window open a click
 belongs to the window: inside it works the window, outside it closes
 it, and neither takes the mouse nor swings; opening a window gives the
 mouse back. Hints say "click", not "tap", on a desktop (the title,
-loading, "CLICK OR SPACE TO SKIP").
+loading). The line under a cutscene is the HUD's: `hud.skipWords()`
+("TAP TO SKIP" on touch layouts, "CLICK OR SPACE TO SKIP" on a desktop)
+in `.skiphint`, bare type low on the frame. START on the title plays the
+interface's rising cue (`ui_open`), not a quest's.
 
 **Tips** (`systems/coach.ts`) are worded for the controls on screen
 (`hud.touchUi`), not for the pointer last seen: touch wording with the
@@ -341,6 +371,7 @@ action. Three shapes, chosen by the screen alone:
 |             | aiming, display, sound,  |                            |
 |             | game                     |                            |
 | Armoury     | weapons, supplies, sell  | none: prices are gold      |
+| Outpost     | supplies, sell           | none: prices are gold      |
 | Workshop    | none                     | none: prices are gold      |
 | Board       | bounties, hunts, wanted  | claim, when one is ready   |
 | Trophy wall | none                     | none                       |
@@ -353,8 +384,19 @@ action. Three shapes, chosen by the screen alone:
   markers, then courses and landmarks, each only where it is clear, so
   zooming in brings the rest. Drag pans and a pinch or the wheel zooms;
   the buttons zoom and centre. The tracked quest is a chip that opens the
-  log. `Brasswick` is the zone's one fast travel (the same return as
-  Settings, with the same refusal when it is not allowed).
+  log. An area objective (a guide `Target` with `r`) is a washed, dashed
+  ring on the map and the minimap, and standing inside it the ring is
+  the marker; an objective that walks (an escort) is a dot with a beat
+  that eases after it.
+- **Fast travel** lives on the map. Every signal post is a marker: a lit
+  one a disc in its colour with a beat, tapped to travel; a dark one a
+  dashed question mark with no name. `Travel` opens the same posts as a
+  list (a post's own terminal opens the map with the list up): lit rows
+  name the post and its band, dark rows say `Unknown post` and which
+  band to look in. Choosing a lit post asks first (`Travel` / `Stay`).
+  A refusal is said in words, at the head of the list and on a tap:
+  in a fight, indoors, during a timed run or an escort, or too soon
+  (`hooks.travelBlocked`). Settings keeps the return to the square.
 - **Settings.** Seven groups, each a screen or less. The first is named
   for the hand in use, Touch or Keys (left-handed, vibration, and how
   to play with that hand, not both). Camera (view, look speed, invert,
@@ -377,7 +419,13 @@ action. Three shapes, chosen by the screen alone:
 - **Trophy wall.** A plaque not yet earned is not a row of question
   marks: it names the quarry and where it lives, and shows how far the
   hunt has come (`37 / 120 broken`), or for an elite that it is not yet
-  broken.
+  broken. Its picture is the quarry's own outline
+  (`public/ui/robot-<kind>.webp`), dim for a kind and red for a wanted
+  elite, which wears its family's shape; the two hunts with no one kind
+  (rare, night shift) keep the trophy.
+- **An outpost's stall** is the shop under its own name (`Tallyline
+  Supplies`), with Supplies and Sell and no weapons rack
+  (`open('shop', { from: 'vend_b1' })`).
 - **The fall** is not a panel (`hud.downed`, raised by the `DOWN`
   banner): the word, a bar that runs out at the respawn, a line saying
   nothing is lost; the controls dim, menus close, tips wait.
@@ -399,9 +447,15 @@ of the hero's eyes. The panel then draws, with no frame:
   trade, their role under it, and one beat of large text (19 pt on a
   phone, 26 px on a desktop) over a soft dark gradient. A long line is
   said a beat at a time (about two lines), never as a paragraph.
-- **The reveal.** 120 letters a second. A tap anywhere finishes the
+- **The reveal.** 36 letters a second, a reading pace, with a breath at
+  a comma and a longer one at a full stop. A tap anywhere finishes the
   line; the next tap moves on. The words to come hold their place
   unseen, so nothing re-wraps.
+- **The line being said** is published in `ui/speech.ts`: `speech.text`,
+  `speech.shown`, `speech.speaking`, and `speech.on(fn)` for the start
+  and end of each line. The speaker's mouth and hands follow it
+  (`systems/npcs.ts`), so the mouth shuts when the words are all there,
+  or when a tap finishes them. Nothing reads the sheet's DOM.
 - **The choices.** A short stack of 52 pt rows that appears on the last
   beat: under the words on a phone upright, up the right edge on its
   side and beside the words on a desktop. A job carries its marker and
@@ -527,7 +581,7 @@ the quest line). Who mounts what:
 | Slot      | Holds                                             |
 |-----------|---------------------------------------------------|
 | `tracker` | Quest line; the cratefall line under it; the feed |
-| `timer`   | Course or wave timer; the crate's channel bar     |
+| `timer`   | Course or wave timer and its ward; channel bars   |
 | `banner`  | The notice lane (`ui/notices.ts`)                 |
 | `scrip`   | Scrip on change; the XP-boost note under it       |
 | `chat`    | The chat glyph (`ui/chat.ts`)                     |
@@ -538,6 +592,9 @@ the quest line). Who mounts what:
 `hud.toast(text, kind, sub, icon)`, `hud.banner(title, sub, cls)`,
 `hud.tip({ title, text, at })` (false when the lane cannot take it yet),
 `hud.caption(text, 'warn')`, `hud.log(text, kind)` for a feed line,
+`hud.setTimer(label, figure, sub, ward)` for the timer slot (`ward`, 0 to
+1, is the health of what is being kept alive, an escort or a stack: an
+ally's green bar under the figure, red under a third),
 `hud.setStreak({ n, mul, heat, tier, name, drain } | null)`, and
 `hud.freeBand()` for an edge marker. `hud.notices.state` says what is on
 the lane; `hud.notices.clear()` empties it for a capture.
@@ -574,11 +631,11 @@ does). In the HUD a control is anything granted input; in a panel, every
 target of the open surface. An invisible layer over a button passes
 every geometric check and eats every tap: the title's START was dead on
 a landscape phone under a closed sheet's body, past 87 clean screens.
-`tools/hud-matrix.sh --set panels` stages twenty-nine screens
+`tools/hud-matrix.sh --set panels` stages thirty-one screens
 (`tools/hud-matrix/panels.js`) at 402x874, 874x402 and 1920x1080 and
 checks each (`HM.checkPanel`): the surface on screen, no control
-covered, no sideways overflow, no cut text, no type under 11 px, no target under 44 pt (24 px
-with a mouse), nothing in a notch or the home indicator band, and at most
-one orange button in view. Text drawn on the map's canvas is outside its
-reach.
+covered, no sideways overflow, no cut text, no type under 11 px, no
+target under 44 pt (24 px with a mouse), nothing in a notch or the home
+indicator band, and at most one orange button in view. Text drawn on the
+map's canvas is outside its reach.
 `?safe=t,r,b,l` fakes the insets on any build.
