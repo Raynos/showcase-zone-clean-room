@@ -16,7 +16,7 @@
  */
 import * as THREE from 'three';
 import { GU, WorldMaterial } from '../../gfx/material';
-import { hasModel, instantiate } from '../../gfx/models';
+import { SLOTS, hasModel, instantiate } from '../../gfx/models';
 import { AnimState, evaluate, L, R, SK } from './anim';
 import { applyFit, fitLook } from './fit';
 import { FpArms, fpHold, fpMove, fpPresent, fpShoulders, fpSteady } from './fpview';
@@ -112,6 +112,7 @@ export type HumanoidDevRig = HumanoidRig & {
   fpDev: { mats: Float32Array | null; armsN: number; arm: { fore: number; hand: number }; mesh: THREE.SkinnedMesh | null };
 };
 
+const _m4 = new THREE.Matrix4(), _nv = new THREE.Vector3(), _nw = new THREE.Vector3();
 export function makeHumanoid(look: HumanLook): HumanoidDevRig {
   const fit = fitLook(look);
   // townsfolk throw their shadow from the far body; the hero's geometry is re-indexed for first person below, so it keeps one level
@@ -134,6 +135,33 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
   const thigh = side((s) => B[`thigh_${s}`]), shin = side((s) => B[`shin_${s}`]), foot = side((s) => B[`foot_${s}`]);
   const fingA = side((s) => B[`fingA_${s}`]), fingB = side((s) => B[`fingB_${s}`]), fingC = side((s) => B[`fingC_${s}`]), thumb = side((s) => B[`thumb_${s}`]);
   const eye = side((s) => B[`eye_${s}`]), lid = side((s) => B[`lid_${s}`]), lidLo = side((s) => B[`lidLo_${s}`]), brow = side((s) => B[`brow_${s}`]);
+  // Two surfaces catch the rim light where the face they belong to does not. The lids are shells laid over the
+  // eye, and their own normals light up as a pale box round each eye (it shows most on dark skin); the tufts of
+  // hair have sides that face away from every lens, and the rim draws each one a white edge. Both take normals
+  // out from the middle of the head (the lids wholly, the hair most of the way), so the head is lit as one form.
+  {
+    const geo = inst.mesh.geometry, nor = geo.getAttribute('normal') as THREE.BufferAttribute & { headDone?: boolean };
+    const sk = inst.mesh.skeleton, slot = geo.getAttribute('aSlot');
+    if (!nor.headDone && B.head && lid[0] && lidLo[0] && slot) {
+      nor.headDone = true;
+      const pos = geo.getAttribute('position'), si = geo.getAttribute('skinIndex');
+      const at = (b: THREE.Bone) => new THREE.Vector3().setFromMatrixPosition(_m4.copy(sk.boneInverses[sk.bones.indexOf(b)]).invert());
+      const head = at(B.head), ey = at(lid[0]), c = new THREE.Vector3(head.x, ey.y - 0.012, head.z + (ey.z - head.z) * 0.1);
+      const lids = new Set([lid[0], lid[1], lidLo[0], lidLo[1]].map((b) => sk.bones.indexOf(b)));
+      const brows = new Set([brow[0], brow[1]].map((b) => sk.bones.indexOf(b)));
+      const SKIN = SLOTS.indexOf('skin'), HAIR = SLOTS.indexOf('hair');
+      for (let v = 0; v < pos.count; v++) {
+        const sl = Math.floor((slot.getX(v) + 0.5) % 32), b = si.getX(v);
+        // (the lash line on the upper lid is its own dark surface and keeps its normals; so do the brows)
+        const k = lids.has(b) && sl === SKIN ? 1 : sl === HAIR && !brows.has(b) && pos.getY(v) > c.y - 0.2 ? 0.72 : 0;
+        if (!k) continue;
+        _nv.set(pos.getX(v) - c.x, pos.getY(v) - c.y, pos.getZ(v) - c.z).normalize();
+        _nv.multiplyScalar(k).add(_nw.set(nor.getX(v), nor.getY(v), nor.getZ(v)).multiplyScalar(1 - k)).normalize();
+        nor.setXYZ(v, _nv.x, _nv.y, _nv.z);
+      }
+      nor.needsUpdate = true;
+    }
+  }
   const jaw = B.jaw, corner = side((s) => B[`corner_${s}`]);
   const browY = brow[0].position.y + fit.face.browY, cornerAt = corner[0].position.clone();
   for (let s = 0; s < 2; s++) {
@@ -309,11 +337,15 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
   const sway = (fit.sway ?? []).map((names) => names.map((n) => B[n]).filter(Boolean)).filter((c) => c.length > 0);
   let swayA = 0, swayV = 0, swayZ = 0;
 
-  let shadowOn = true;
+  let shadowOn = true, detailOn = true;
   {
     // gfx/models.ts decides the shadow by distance as the main pass draws the mesh; a rig told to throw none overrides it
     const before = inst.mesh.onBeforeRender;
-    inst.mesh.onBeforeRender = function (r, sc, cam, geo, mt, grp) { before.call(this, r, sc, cam, geo, mt, grp); if (!shadowOn) inst.mesh.castShadow = false; };
+    inst.mesh.onBeforeRender = function (r, sc, cam, geo, mt, grp) { before.call(this, r, sc, cam, geo, mt, grp);
+      if (!shadowOn) inst.mesh.castShadow = false;
+      // ...and one told to keep to its far form does, however near (a crowd gives the near form to one body at a time)
+      if (!detailOn && !fpFn) { const g = inst.low(); if (inst.mesh.geometry !== g) inst.mesh.geometry = g; }
+    };
   }
 
   let fpLift = 0;
@@ -331,7 +363,7 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
   const _q0 = new THREE.Quaternion();
   const thumbFist = [1, -1].map((k) => new THREE.Quaternion().setFromUnitVectors(_a.set(-k * 0.523, 0.409, 0.748).normalize(), _b.set(-k * 0.72, -0.3, 0.62).normalize()));
   const thumbGrip = [1, -1].map((k) => new THREE.Quaternion().setFromUnitVectors(_a.set(-k * 0.523, 0.409, 0.748).normalize(), _b.set(-k * 0.9, 0.02, 0.44).normalize()));
-  let effort = 0, talk = 0, glance = 0, glanceIn = 2 + Math.random() * 4;
+  let effort = 0, talk = 0, mouth = 0, glance = 0, glanceIn = 2 + Math.random() * 4;
   const phase = Math.random() * 10;
 
   const rig: HumanoidDevRig = {
@@ -340,6 +372,7 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
     materials: clothMat ? [mat, clothMat, ...fpMats] : [mat, ...fpMats],
     weapon: null,
     setShadow(on) { shadowOn = on; if (!on) inst.mesh.castShadow = false; },
+    setDetail(on) { detailOn = on; },
     stats: { meshes, tris },
     anim: st,
     eyeRest,
@@ -539,7 +572,10 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
         brow[s].position.y = browY - effort * 0.006 + surprise * 0.007 + talk * 0.0025 * Math.sin(time * 3.1 + phase) - shut * 0.0015;
       }
       // the jaw drops to talk; the corners of the mouth carry its width and its mood
-      const open = talk * Math.max(0, 0.5 + 0.5 * Math.sin(time * 12.5 + phase) * Math.sin(time * 4.3 + phase * 2)) + (act === 'cheer' ? 0.6 : 0) + (act === 'drink' ? 0.5 : 0) + (dead ? 0.25 : 0);
+      // (in a conversation the mouth is given: it follows the words as they are revealed, and rests between them)
+      mouth += ((pose.speak ?? 0) - mouth) * Math.min(1, dt * 26);
+      const chatter = pose.speak === undefined ? Math.max(0, 0.5 + 0.5 * Math.sin(time * 12.5 + phase) * Math.sin(time * 4.3 + phase * 2)) : mouth * 1.25;
+      const open = talk * chatter + (act === 'cheer' ? 0.6 : 0) + (act === 'drink' ? 0.5 : 0) + (dead ? 0.25 : 0);
       jaw.rotation.x = open * 0.14 + effort * 0.03;
       for (let s = 0; s < 2; s++) {
         const k = s === L ? 1 : -1;

@@ -40,13 +40,15 @@ export interface Adv {
   rig: (HumanoidRig & { anim?: { phase: number }; bake?: () => THREE.BufferGeometry }) | null; weapon: WeaponModel | null; kind: WeaponKind;
   pose: HumanPose; proxy: THREE.Mesh | null;
   frames: { idle: THREE.BufferGeometry; walk: THREE.BufferGeometry[]; run: THREE.BufferGeometry[]; fight: THREE.BufferGeometry[]; sit: THREE.BufferGeometry } | null;
-  lod: -1 | 0 | 2; gait: number; dist: number; horse: HorseRig | null; board: HoverboardRig | null; hPose: { time: number; speed: number; vy: number; grounded: boolean; turn: number; rear: number };
+  lod: -1 | 0 | 2; gait: number; dist: number; horse: HorseRig | null; board: HoverboardRig | null; detail?: boolean; hPose: { time: number; speed: number; vy: number; grounded: boolean; turn: number; rear: number };
   // life
   act2: HumanAction; act2T: number; act2Dur: number; waveCd: number; greeted: boolean; rayT: number; groundY: number;
   /** what they are up to, for chat and the inspect card */
   doing: string; band: number; lastSaid: number; partner: Adv | null;
 }
 
+/** The near form (10 to 13k triangles) is for one body standing beside the hero; past FAR_CAP only the nearest few are drawn at all. */
+const NEAR_IN = 6, NEAR_OUT = 7.5, FAR_CAP = 45, FAR_MAX = 5;
 const MODEL_MAX = 8, FULL_MAX = 2, FULL_IN = 15, FULL_OUT = 18, SHOW = 92, FOE_MAX = 2, FOE_SHOW = 58, PLATE = 36, TITLE = 14;
 const WALK = 1.7, RUN = 6.0, RIDE = 10.5;
 const WALK_F = 6, RUN_F = 6, FIGHT_F = 4;
@@ -450,7 +452,7 @@ export class Adventurers implements System {
     a.weapon = rig.weapon ?? (g.human.makeWeaponModel(a.def.weapon) as WeaponModel);
     if (!rig.weapon) rig.setWeapon(a.weapon);
     a.weapon.object.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = false; });
-    rig.setShadow?.(false);
+    rig.setShadow?.(false); rig.setDetail?.(false);
     rig.root.visible = false;
     this.group.add(rig.root);
     // the far stand-in: a handful of baked poses
@@ -551,7 +553,7 @@ export class Adventurers implements System {
     let models = 0, full = 0;
     const want = new Map<Adv, -1 | 0 | 2>();
     for (const a of order) {
-      if (models >= MODEL_MAX) break;
+      if (models >= MODEL_MAX || (a.dist > FAR_CAP && models >= FAR_MAX)) break;
       if (!a.rig) { if (!this.buildQ.includes(a)) this.buildQ.push(a); continue; }
       // riders are drawn whole or not at all; a stand-in cannot sit a horse
       const close = a.dist < (a.lod === 0 ? FULL_OUT : FULL_IN);
@@ -564,6 +566,8 @@ export class Adventurers implements System {
     let caster: Adv | null = null;
     for (const a of order) if (want.get(a) === 0) { caster = a; break; }
     if (caster !== this.caster) { this.caster?.rig?.setShadow?.(false); caster?.rig?.setShadow?.(true); this.caster = caster; }
+    // ...and only that one, close enough to read its buckles, is drawn in its near form (10 to 13k triangles against 2k)
+    for (const a of order) a.rig?.setDetail?.(a === caster && a.dist < (a.detail ? NEAR_OUT : NEAR_IN) ? (a.detail = true) : (a.detail = false));
     // ---- the fights worth drawing
     const fights = this.list.filter((a) => a.foe && a.lod >= 0 && a.dist < FOE_SHOW && a.act === 'hunt').sort((p, q) => p.dist - q.dist);
     for (const a of this.list) if (a.foe?.rig && !fights.slice(0, FOE_MAX).includes(a)) this.releaseFoe(a.foe);

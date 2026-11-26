@@ -7,7 +7,7 @@ import type { HumanAction, HumanLook, HumanPose, HumanoidRig } from '../entities
 import type { Game, System } from '../game';
 import { shaftMat } from '../gfx/energy';
 import { Geo } from '../gfx/geo';
-import { worldMat } from '../gfx/material';
+import { FLASHL, worldMat } from '../gfx/material';
 import { T } from '../gfx/textures';
 import { PAL } from '../world/layout';
 import type { NpcSpot, TownInfo } from '../world/town';
@@ -101,6 +101,11 @@ export class Npcs implements System {
   private queue: Npc[] = [];
   private talking: Npc | null = null;
   private talkOpen = false;
+  /** the conversation's performance: how far the speaker's hands are into a gesture, the mouth's opening, a nod's progress (-1 none) */
+  private talkK = 0; private mouth = 0; private nodT = -1; private nodHooked = false;
+  private line = ''; private saidAt = 0;
+  /** the key and the rim on the speaker's face: who is lit and how far it has come up */
+  private lit: Npc | null = null; private litK = 0; private litRim = 0.65;
   private camPos = new THREE.Vector3(); private camLook = new THREE.Vector3(); private camDir = new THREE.Vector3();
   private marks = new Map<string, '' | 'y' | 'g' | 't'>();
   private pollT = 0; private claimable = false; private frame = 0; private night = false;
@@ -296,18 +301,32 @@ export class Npcs implements System {
       n.lineN++;
     }
     g.sfx('dialog_blip');
-    // ---- camera: over the player's shoulder onto the NPC, framed into the upper half (the sheet covers the rest)
+    // ---- camera: the speaker's close-up. The hero is behind the lens in every size, so no shoulder or head of
+    // his fills the frame, and first person gets the same picture from just in front of his own eyes
     const dx = n.x - pl.pos.x, dz = n.z - pl.pos.z, d = Math.max(0.6, Math.hypot(dx, dz));
     const ux = dx / d, uz = dz / d, rx = uz, rz = -ux;
     const portrait = g.camera.aspect < 1;
     const side = (hash(n.id) & 1 ? 1 : -1);
-    // portrait: a clean 3/4 portrait from beside the player (their shoulder would fill a narrow frame);
-    // landscape: a true over-the-shoulder
-    const back = portrait ? clamp(d + 0.5, 3.0, 3.8) - d : Math.max(1.0, 4.4 - d), lat = portrait ? 0.75 : 0.95;
     const sit = n.idle === 'sit' ? 0.5 : 0;
-    const eye = n.y + n.height * 0.9 - sit;
-    this.camLook.set(n.x - ux * 0.1, eye - (portrait ? 0.62 : 0.2), n.z - uz * 0.1);
-    this.camPos.set(pl.pos.x - ux * back + rx * lat * side, Math.max(pl.pos.y, n.y) + (portrait ? 1.72 : 1.6) - sit * 0.4, pl.pos.z - uz * back + rz * lat * side);
+    // the height of the speaker's eyes: read off the body when it is there (a seated one sits lower than its height says)
+    const eyeBone = n.rig?.root.getObjectByName('lid_L');
+    const eye = eyeBone ? eyeBone.getWorldPosition(_v).y : n.y + n.height * 0.9 - sit;
+    let fov = 50;
+    if (portrait) {
+      // a 3/4 portrait from beside the player, framed into the upper half (the sheet covers the rest)
+      const back = clamp(d + 0.5, 3.0, 3.8) - d, lat = 0.75;
+      this.camLook.set(n.x - ux * 0.1, eye - 0.62, n.z - uz * 0.1);
+      this.camPos.set(pl.pos.x - ux * back + rx * lat * side, Math.max(pl.pos.y, n.y) + 1.72 - sit * 0.4, pl.pos.z - uz * back + rz * lat * side);
+    } else {
+      // landscape and desktop: head and shoulders on the left third (the choices are on the right), from a lens a
+      // step in front of the hero and to his left, so the speaker's body opens toward the empty side of the frame
+      const want = 2.0, ahead = Math.max(0.35, d - want), lat = 0.5, dc = Math.hypot(d - ahead, lat);
+      // the same head-and-shoulders whatever the distance: about 1.5 m of the speaker down the frame
+      fov = clamp((2 * Math.atan(0.74 / dc) * 180) / Math.PI, 30, 58);
+      const th = Math.tan((fov * Math.PI) / 360) * g.camera.aspect, shift = 0.36 * th * dc;
+      this.camPos.set(pl.pos.x + ux * ahead + rx * lat, eye + 0.04, pl.pos.z + uz * ahead + rz * lat);
+      this.camLook.set(n.x - rx * shift, eye - 0.24, n.z - rz * shift);
+    }
     // keep the lens out of walls: pull it toward the NPC if something is in the way
     _v.copy(this.camPos).sub(this.camLook); const len = _v.length(); _v.multiplyScalar(1 / len);
     _v2.copy(this.camLook); _v2.y = eye;
@@ -318,8 +337,61 @@ export class Npcs implements System {
     g.cameraRig.startCine({
       pos: (t) => out.copy(p0).addScaledVector(this.camDir, (1 - Math.exp(-t * 0.35)) * 0.32).add(_v3.set(Math.sin(t * 0.7) * 0.012, Math.sin(t * 0.9 + 1) * 0.01, 0)),
       look: () => look.copy(this.camLook),
-      fov: portrait ? 50 : 38,
+      fov,
     });
+    this.talkK = 0; this.mouth = 0; this.nodT = -1; this.line = ''; this.saidAt = 0;
+    // a deal struck (a job taken, a job handed in) gets a nod
+    if (!this.nodHooked) { this.nodHooked = true; g.state.events.on('questUpdate', () => { if (this.talking) this.nodT = 0; }); }
+  }
+  /**
+   * The speaker's performance, read off the sheet (ui/panels/dialog.ts keeps the words shown in `.sc-line .on`
+   * and those still to come in `.sc-line .off`). The words arrive faster than anyone speaks, so the mouth starts
+   * with them and then says the line at a speaking pace: open on a vowel, half on a consonant, shut on a space,
+   * a held breath at a comma or a full stop. The hands gesture while the line is being said and rest while the
+   * hero chooses.
+   */
+  private perform(dt: number) {
+    const on = document.querySelector('.sc-line .on')?.textContent ?? '', line = on + (document.querySelector('.sc-line .off')?.textContent ?? '');
+    if (line !== this.line) { this.line = line; this.saidAt = 0; }
+    const ch = line.charAt(Math.floor(this.saidAt)).toLowerCase(), speaking = this.saidAt < line.length;
+    const letter = ch >= 'a' && ch <= 'z';
+    if (speaking) this.saidAt = Math.min(Math.max(on.length, this.saidAt), this.saidAt + dt * (letter ? 17 : ch === ' ' ? 26 : 4.5));
+    this.mouth = !speaking ? 0 : 'aeiouy'.includes(ch) && letter ? 1 : letter ? 0.4 : 0.03;
+    this.talkK = damp(this.talkK, speaking ? 1 : 0, speaking ? 7 : 2.2, dt);
+    if (this.nodT >= 0) { this.nodT += dt / 0.95; if (this.nodT >= 1) this.nodT = -1; }
+  }
+  /**
+   * A key and a rim on the speaker's face for as long as the conversation lasts: a soft warm light a metre off
+   * the face on the lens's side and above it, and a stronger edge from the rim their material already has. The
+   * key is one of the two flash lights every lit material reads (gfx/fx.ts keeps their state), held, not fired.
+   */
+  private faceLight(dt: number) {
+    const g = this.game;
+    if (this.talking && this.lit !== this.talking) { this.unlight(); this.lit = this.talking; this.litRim = this.lit.rig?.materials[0]?.rim.value.w ?? 0.65; }
+    const n = this.lit;
+    if (!n) return;
+    this.litK = damp(this.litK, this.talking === n ? 1 : 0, this.talking === n ? 3.5 : 6, dt);
+    const slot = (g.fx as unknown as { lights?: Array<{ color: THREE.Color; life: number; dur: number; peak: number }> }).lights?.[1];
+    if (this.talking !== n && this.litK < 0.02) { this.unlight(); return; }
+    const m = n.rig?.materials[0];
+    if (m) m.rim.value.w = this.litRim + 0.4 * this.litK;
+    if (slot) {
+      const cam = g.camera.position, hy = n.y + n.height * 0.9 - (n.idle === 'sit' ? 0.5 : 0);
+      _v.set(cam.x - n.x, 0, cam.z - n.z).normalize();
+      // in front of the face, toward the lens and off to the side the body opens to, above the brow
+      FLASHL[2].set(n.x + _v.x * 0.9 - _v.z * 0.55, hy + 0.5, n.z + _v.z * 0.9 + _v.x * 0.55, 3.2);
+      slot.color.setRGB(1, 0.88, 0.74);
+      slot.peak = (this.night ? 0.95 : 0.5) * this.litK; slot.life = slot.dur = 1;
+    }
+  }
+  private unlight() {
+    const n = this.lit;
+    if (!n) return;
+    const m = n.rig?.materials[0];
+    if (m) m.rim.value.w = this.litRim;
+    const slot = (this.game.fx as unknown as { lights?: Array<{ life: number }> }).lights?.[1];
+    if (slot) slot.life = 0;
+    this.lit = null; this.litK = 0;
   }
   private endTalk() {
     const g = this.game, n = this.talking;
@@ -368,7 +440,9 @@ export class Npcs implements System {
       const n = this.talking;
       if ((this.talkOpen && !cur) || (!cur && n.modeT > 0.5)) this.endTalk();
       else pl.faceYaw = Math.atan2(n.x - pl.pos.x, n.z - pl.pos.z);
+      this.perform(rdt);
     }
+    this.faceLight(rdt);
 
     this.walkerChats();
     for (const n of this.list) {
@@ -526,9 +600,13 @@ export class Npcs implements System {
     let action: HumanAction = null, period = 1;
     p.locomotion = 'ground'; p.speed = 0; p.moveZ = 0; p.moveX = 0;
     let lookAtPlayer = d < 7.5, bodyTurn = 0;
+    if (!talkingToMe && p.speak !== undefined) { p.speak = undefined; p.talkK = undefined; p.gesture = undefined; p.nod = 0; }
 
     if (talkingToMe) {
-      action = 'talk'; period = 2.6;
+      // quest givers are firm about it, traders open-handed; the rest of the town is one of the three
+      p.gesture = n.id.startsWith('quest') ? 1 : n.folk ? hash(n.id) % 3 : 0;
+      p.talkK = this.talkK * (n.idle === 'sit' ? 0.6 : 1); p.speak = this.mouth; p.nod = this.nodT >= 0 ? this.nodT : 0;
+      action = 'talk'; period = p.gesture === 1 ? 2.3 : 3.1;
       if (n.idle === 'sit') p.locomotion = 'sit';
       else if (!n.path) n.yaw = dampAngle(n.yaw, Math.atan2(dx, dz), 6, dt);
       lookAtPlayer = true;

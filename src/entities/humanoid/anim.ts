@@ -1137,14 +1137,40 @@ function applyAction(P: Pose, hp: HumanPose, st: AnimState) {
       break;
     }
     case 'talk': {
-      const c = t * TAU, k = 1;
+      // `k` is how far the hands are into their gesture: 1 speaking, 0 listening with the hands back at rest
+      const c = t * TAU, k = clamp(hp.talkK ?? 1, 0, 1), style = hp.gesture ?? 0;
       const g1 = Math.sin(c) * 0.5 + 0.5, g2 = Math.sin(c * 2 + 1) * 0.5 + 0.5, g3 = Math.sin(c * 3 + 2);
-      twist(P, 0.04 * g3, 0.1 * Math.sin(c), 0.04 * g2, 0);
-      qmul(P.headQ, 0.06 * g3, 0.1 * Math.sin(c * 2), 0.04 * Math.sin(c));
-      hand(P, R, -0.24 - g1 * 0.1, lerp(-0.3, 0.02, g1) + g3 * 0.02, 0.1 + g1 * 0.26 * k);
-      basisYZ(P.handQ[R], -0.3, 0.3, 0.9, 0.4, 0.9, -0.2);
-      hand(P, L, 0.25 + g2 * 0.05, lerp(-0.32, -0.12, g2 * 0.7), 0.07 + g2 * 0.18);
-      P.elbow[R].set(-1, -0.7, -0.3); P.elbow[L].set(1, -0.7, -0.3);
+      // the weight shifts from one foot to the other every few seconds, whoever is speaking
+      const sh = Math.sin(hp.time * 0.55 + style * 2.1), sw = sh * Math.abs(sh);
+      P.hipsPos.x += 0.016 * sw;
+      twist(P, 0.04 * g3 * k + 0.03 * sw, 0.1 * Math.sin(c) * k - 0.05 * sw, 0.04 * g2 * k, 0);
+      // a nod: down, a smaller one, and back
+      const nd = hp.nod ?? 0, nod = nd > 0 && nd < 1 ? Math.sin(nd * TAU * 1.5) * (1 - nd) * 0.3 + Math.sin(nd * Math.PI) * 0.1 : 0;
+      qmul(P.headQ, 0.06 * g3 * k + nod, 0.1 * Math.sin(c * 2) * k, 0.04 * Math.sin(c) * (0.4 + 0.6 * k) + 0.03 * sw);
+      for (let s = 0; s < 2; s++) { tmpB.handPos[s].copy(P.handPos[s]); tmpB.handQ[s].copy(P.handQ[s]); }
+      if (style === 1) {
+        // firm: the left thumb in the belt, the right hand chopping each point down in front
+        const beat = Math.abs(Math.sin(c * 2)) ** 0.6;
+        hand(P, L, 0.2, -0.37, 0.1);
+        hand(P, R, -0.2 - g1 * 0.04, lerp(-0.06, -0.24, beat), 0.3 + 0.05 * g2);
+        basisYZ(P.handQ[R], 0.9, 0.35, 0.2, 0.1, -0.25, 0.95);
+        P.elbow[R].set(-1, -0.6, -0.2); P.elbow[L].set(1, -0.3, -0.6);
+      } else if (style === 2) {
+        // reserved: hands together low in front; now and then the right one opens, palm up, with a small shrug
+        const open = smooth(0.55, 0.75, g1) * (1 - smooth(0.9, 1, g1));
+        hand(P, L, 0.05, -0.36, 0.2);
+        hand(P, R, lerp(-0.05, -0.26, open), lerp(-0.35, -0.2, open), lerp(0.21, 0.3, open));
+        _q2.copy(P.handQ[R]); basisYZ(P.handQ[R], -0.3, 0.3, 0.9, 0.4, 0.9, -0.2); P.handQ[R].slerp(_q2, 1 - open);
+        qmul(P.chestQ, -0.02 * open, 0, 0);
+        P.elbow[R].set(-1, -0.7, -0.3); P.elbow[L].set(1, -0.7, -0.3);
+      } else {
+        // open-handed: the right hand rises palm up as the point is made, the left keeps time lower down
+        hand(P, R, -0.24 - g1 * 0.1, lerp(-0.3, 0.02, g1) + g3 * 0.02, 0.1 + g1 * 0.26);
+        basisYZ(P.handQ[R], -0.3, 0.3, 0.9, 0.4, 0.9, -0.2);
+        hand(P, L, 0.25 + g2 * 0.05, lerp(-0.32, -0.12, g2 * 0.7), 0.07 + g2 * 0.18);
+        P.elbow[R].set(-1, -0.7, -0.3); P.elbow[L].set(1, -0.7, -0.3);
+      }
+      if (k < 1) for (let s = 0; s < 2; s++) { P.handPos[s].lerp(tmpB.handPos[s], 1 - k); P.handQ[s].slerp(tmpB.handQ[s], 1 - k); }
       break;
     }
     case 'point': {

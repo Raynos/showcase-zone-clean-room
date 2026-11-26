@@ -77,6 +77,13 @@ export interface HumanPose {
   rollT: number;
   /** head look offsets (radians) relative to body, for looking at speakers / targets */
   lookYaw: number; lookPitch: number;
+  /**
+   * conversation (action 'talk'): `talkK` 0..1 how much the hands are gesturing (0 listens, hands at rest; default 1),
+   * `gesture` which set (0 open-handed, 1 firm: one hand at the belt, the other chopping, 2 reserved: hands together,
+   * a small shrug), `speak` the mouth's opening 0..1 (given, the jaw follows it instead of its own chatter), `nod` 0..1
+   * through one nod
+   */
+  talkK?: number; gesture?: number; speak?: number; nod?: number;
   /** accumulates with distance climbed (m) for ladder/climb hand-foot cycles */
   climbPhase: number;
   /** 0..1 while sliding into a melee strike: feet stay planted in a long lunge stance (speed should read 0) */
@@ -192,6 +199,8 @@ export interface HumanoidRig {
   weapon?: WeaponModel | null;
   /** Whether the body throws a sun shadow (default on). A crowd lets only its nearest. */
   setShadow?(on: boolean): void;
+  /** Whether the body may show its near form when the camera is close (default on). Off, it keeps to the far one. */
+  setDetail?(on: boolean): void;
   update(dt: number, pose: HumanPose): void;
   dispose(): void;
   /** Midpoint of the eyes in world space, as last posed (first person). */
