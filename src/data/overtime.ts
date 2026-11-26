@@ -15,13 +15,14 @@ import type { Reward } from './tally';
 
 // ---------------------------------------------------------------- overtime runs
 export type OtAct = 'vault' | 'titan';
-export interface OtRule { id: 'nokits' | 'foremen' | 'hardhats' | 'thin'; name: string; line: string }
+export interface OtRule { id: 'nokits' | 'foremen' | 'hardhats' | 'thin' | 'double'; name: string; line: string }
 /** One rule a run, drawn by the day (a different one for each run). */
 export const OT_RULES: OtRule[] = [
   { id: 'nokits', name: 'No Kits', line: 'Repair kits stay in the pack' },
   { id: 'foremen', name: 'Foremen on the Floor', line: 'Every fourth robot is an elite' },
   { id: 'hardhats', name: 'Hard Hats', line: 'Robots take 40% less stagger' },
   { id: 'thin', name: 'Thin Overalls', line: 'You take 25% more damage' },
+  { id: 'double', name: 'Double Time', line: 'Signature moves come twice as often' },
 ];
 export interface OtDef {
   act: OtAct; name: string; place: string;

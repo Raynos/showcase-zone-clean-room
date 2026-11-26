@@ -87,7 +87,12 @@ export class Heroic {
     if (r.rule.id === 'foremen' && !boss && (r.act === 'titan' || !o.noLoot) && (o.variant ?? 'normal') === 'normal' && r.spawned % 4 === 0) out.variant = 'elite';
     return out;
   }
-  post(m: Mob) { if (this.live('hardhats')) m.poiseMul *= 0.6; }
+  /** after the spawn: the run's standing modifiers go on the robot's own layer (Mob.run), which encounter scripts never overwrite */
+  post(m: Mob) {
+    const r = this.run;
+    if (!this.live() || !r) return;
+    m.applyRun({ poise: r.rule.id === 'hardhats' ? 0.6 : 1, trick: r.rule.id === 'double' ? 2 : 1, rule: r.rule.id });
+  }
 
   // ------------------------------------------------------------------ the run
   private begin(act: OtAct) {
