@@ -38,7 +38,7 @@ export const FP_PLACE: Record<Kind, {
     reload: { dip: 0.11, roll: 0.6, tip: 0.1, side: -0.02 }, kick: { back: 0.07, up: 0.11 },
   },
   crossbow: {
-    hipP: [0.66, -1.0, 0.32], hipL: [0.5, -0.85, 0.34], conv: 40, roll: 0.22, relief: 0.24, adsRoll: 0, drop: 0.05, side: 0.03,
+    hipP: [0.7, -1.05, 0.4], hipL: [0.5, -0.85, 0.34], conv: 40, roll: 0.22, relief: 0.24, adsRoll: 0, drop: 0.05, side: 0.03,
     reload: { dip: 0.1, roll: 0.65, tip: 0.08, side: -0.02 }, kick: { back: 0.025, up: 0.035 },
   },
   bow: {

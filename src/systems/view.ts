@@ -25,11 +25,11 @@ const FP_BOB = 0.6;
 /** On a horse: how far (m) the eyes sit above and ahead of the rider's, and the share of the gallop's head motion they take (times the bob setting). */
 const FP_RIDE = { up: 0.3, ahead: 0.06, bob: 0.5 };
 /**
- * Close targets (ViewSystem.close): a robot this tall or taller counts as big; the view widens by `fov`
+ * Close targets (ViewSystem.close): a robot `bigH` tall or `bigR` wide counts as big; the view widens by `fov`
  * degrees as the gap to its body closes from `near` to `full` metres. The pitch assist reaches `assistR`
  * metres past a target's body, leaves `dead` radians of error alone, and closes the rest at `rate` per second.
  */
-const FP_CLOSE = { bigH: 2.8, near: 4, full: 1, fov: 14, assistR: 6, dead: 0.12, rate: 3 };
+const FP_CLOSE = { bigH: 2.8, bigR: 1.1, near: 4, full: 1, fov: 14, assistR: 6, dead: 0.12, rate: 3 };
 const FP_VIG = { roll: 0.22, down: 0.4, dead: 0.5 };
 const reducedMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
 const ease = (u: number) => { const x = clamp01(u); return x * x * (3 - 2 * x); };
@@ -276,7 +276,7 @@ export class ViewSystem {
     const g = this.game, cr = g.cameraRig, s = g.state.d.settings, eye = cr.eye;
     let wide = 0;
     if (s.fpWideClose !== false) for (const m of g.mobs.list) {
-      if (!m.alive || m.height < FP_CLOSE.bigH) continue;
+      if (!m.alive || (m.height < FP_CLOSE.bigH && m.radius < FP_CLOSE.bigR)) continue;
       const gap = Math.hypot(m.pos.x - eye.x, m.pos.z - eye.z) - m.radius;
       wide = Math.max(wide, clamp01((FP_CLOSE.near - gap) / (FP_CLOSE.near - FP_CLOSE.full)));
     }
