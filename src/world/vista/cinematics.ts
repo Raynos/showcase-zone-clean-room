@@ -129,6 +129,7 @@ export function startCinematics(game: Game): Cinematics {
     pl.controllable = false;
     // the rig reads these every frame; this system moves them
     rig.startCine({ pos: () => _p, look: () => _l, fov: pose(keys, 0) });
+    hint.textContent = game.input.isTouch ? 'TAP TO SKIP' : 'CLICK OR SPACE TO SKIP';   // the device's own word
     hint.style.display = '';
   };
   const finish = () => {

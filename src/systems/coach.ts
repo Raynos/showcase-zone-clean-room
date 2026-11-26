@@ -13,7 +13,7 @@ const TIPS: Record<string, Tip> = {
   move: { id: 'move', title: 'Getting around', at: 'stick', touch: 'Drag on the left to move, anywhere else to look.', desk: `${K('W')}${K('A')}${K('S')}${K('D')} move, the mouse looks. ${K('Shift')} sprints.` },
   quest: { id: 'quest', title: 'Find work', when: (g) => Object.keys(g.state.d.quests).length === 0, touch: 'A yellow ! means a job. Walk up and tap the prompt.', desk: `A yellow ! means a job. Walk up and press ${K('E')}.` },
   gate: { id: 'gate', title: 'The live yard', touch: 'East of the Blast Wall the robots are hostile.', desk: 'East of the Blast Wall the robots are hostile.' },
-  fight: { id: 'fight', title: 'Fighting', at: 'attack', touch: 'Tap to attack. Keep tapping to chain a combo.', desk: `Right click once to take the mouse, then left click attacks: keep clicking to combo. ${K('Tab')} next target.` },
+  fight: { id: 'fight', title: 'Fighting', at: 'attack', touch: 'Tap to attack. Keep tapping to chain a combo.', desk: `Left click attacks: keep clicking to combo. ${K('Tab')} next target. ${K('Esc')} frees the mouse.` },
   dodge: { id: 'dodge', title: 'Read the floor', at: 'dodge', touch: `Red on the ground? Roll out with ${G('dodge')}.`, desk: `Red on the ground? Roll out with ${K('C')}.` },
   kit: { id: 'kit', title: 'Repair kits', at: 'kit', when: (g) => !g.player.dead && g.state.count('kit') > 0 && g.state.d.hp < g.state.maxHp * 0.6, touch: `Low on health? Tap ${G('potion')} for a repair kit.`, desk: `Low on health? ${K('H')} uses a repair kit.` },
   skills: { id: 'skills', title: 'Skills', at: 'skill1', touch: 'Cyan buttons are skills. They cost energy.', desk: `${K('Q')} and ${K('R')} are skills. They cost energy.` },

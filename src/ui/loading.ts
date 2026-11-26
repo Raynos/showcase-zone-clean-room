@@ -25,6 +25,8 @@ const STAGES: Array<{ id: string; name: string; groups: Group[] }> = [
   { id: 'build', name: 'Building the zone', groups: [] },
 ];
 const CRATE = `<svg viewBox="0 0 64 64" width="40" height="40" fill="none" stroke-linejoin="round" stroke-linecap="round"><path d="M8 20L32 8l24 12v26L32 58 8 46z" fill="#f28a2e" stroke="#2a1608" stroke-width="3"/><path d="M8 20l24 12 24-12M32 32v26" stroke="#2a1608" stroke-width="3"/><path d="M14 27l12 6v13l-12-6zM50 27l-12 6v13l12-6z" fill="#ffc46a" stroke="#2a1608" stroke-width="2.4"/><path d="M26 14l12 6" stroke="#5ef0ff" stroke-width="3.4"/></svg>`;
+/** the device's own word for a press */
+const TAP = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window ? 'Tap' : 'Click';
 const CHECK = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>';
 
 const mb = (b: number) => b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : b >= 1e3 ? Math.round(b / 1e3) + ' KB' : b + ' B';
@@ -37,7 +39,7 @@ export interface Loading { done(): Promise<void>; fail(msg: string): void }
 export function mountLoading(root: HTMLElement): Loading {
   root.className = 'ld';
   root.innerHTML = `<div class="ld-top"><div class="ld-crate">${CRATE}</div><div class="bt-word" data-w="CRATEFALL">CRATEFALL</div><div class="ld-sub">The Proving Yard</div></div>
-    <div class="ld-toy"><canvas></canvas><div class="ld-score"><b>Stack 0</b><small>Tap to drop a crate</small></div></div>
+    <div class="ld-toy"><canvas></canvas><div class="ld-score"><b>Stack 0</b><small>${TAP} to drop a crate</small></div></div>
     <div class="ld-lore bev"><small></small><p></p><div class="ld-dots">${LORE.map(() => '<i></i>').join('')}</div></div>
     <div class="ld-prog bev"><div class="ld-head"><b class="ld-pct">0%</b><span class="ld-now"></span></div><div class="pn-bar"><i></i></div>
       <div class="ld-stages">${STAGES.map((s) => `<div class="ld-st" data-s="${s.id}"><i class="ld-ic"></i><b>${s.name}</b><span></span><div class="pn-bar"><i></i></div></div>`).join('')}</div>
@@ -148,7 +150,7 @@ class Stacker {
   }
   private hud() {
     const n = this.stack.length;
-    this.score.innerHTML = `<b>${this.msg || `Stack ${n}`}</b><small>${this.best ? `Best ${this.best} · ` : ''}Tap to drop a crate</small>`;
+    this.score.innerHTML = `<b>${this.msg || `Stack ${n}`}</b><small>${this.best ? `Best ${this.best} · ` : ''}${TAP} to drop a crate</small>`;
   }
   private topY(i: number) { return this.h - 14 - (i + 1) * this.H; }
   drop() {

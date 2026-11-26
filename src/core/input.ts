@@ -109,16 +109,17 @@ export class Input {
     if (this.uiCapture) return;
     if (e.pointerType === 'mouse') {
       this.isTouch = false;
-      if (this.shooter && (e.button === 0 || e.button === 2)) {
-        // the shooter stance: the first click takes the pointer; then left fires and right aims
-        if (!this.pointerLocked) this.el.requestPointerLock?.();
-        else this.press(e.button === 0 ? 'attack' : 'aim');
-      } else if (e.button === 0) {
-        if (this.pointerLocked) this.press('attack');
-        else { this.lookIds.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(), moved: 0 }); this.mouseLook = true; }
-      } else if (e.button === 2) {
-        if (!this.pointerLocked) this.el.requestPointerLock?.();
-        else this.press('dodge');
+      if (e.button === 0 || e.button === 2) {
+        // A click on the game view takes the mouse and does what the button does: nobody clicks once for nothing.
+        // Left attacks (fires, or starts the draw); right aims with a ranged weapon, and rolls once the mouse is held.
+        const had = this.pointerLocked;
+        if (!had) this.takeMouse();
+        if (e.button === 0) {
+          this.press('attack');
+          // until the browser grants the mouse (or where it will not), a drag still turns the view
+          if (!had) { this.lookIds.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(), moved: 0 }); this.mouseLook = true; }
+        } else if (this.shooter) this.press('aim');
+        else if (had) this.press('dodge');
       }
       return;
     }
@@ -178,8 +179,9 @@ export class Input {
 
   private onUp(e: PointerEvent) {
     if (e.pointerType === 'mouse') {
-      if (e.button === 0 && this.pointerLocked) this.release('attack');
-      if (e.button === 2 && this.pointerLocked) { this.release('dodge'); this.release('aim'); }
+      // (not only while the mouse is held: the click that took it pressed too, and the grant may not have come)
+      if (e.button === 0) this.release('attack');
+      if (e.button === 2) { this.release('dodge'); this.release('aim'); }
     }
     if (e.pointerId === this.heldStick) this.heldStick = -1;
     if (e.pointerId === this.stickId) { this.endStick(); return; }
@@ -234,4 +236,8 @@ export class Input {
     this.lookX = 0; this.lookY = 0; this.zoom = 0; this.taps.length = 0;
   }
   exitPointerLock() { if (this.pointerLocked) document.exitPointerLock?.(); }
+  /** Ask the browser for the mouse (Esc gives it back). A refusal is not an error: a drag still looks. */
+  private takeMouse() {
+    try { const p = this.el.requestPointerLock?.() as unknown as Promise<void> | undefined; p?.catch?.(() => { /* refused: too soon after Esc, or not allowed here */ }); } catch { /* ignore */ }
+  }
 }

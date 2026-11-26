@@ -87,7 +87,7 @@ export const settingsPanel: PanelSpec = {
           h += C('Menus', 'The glyph in the top corner');
         } else {
           h += C('Move', K('W', 'A', 'S', 'D') + ' · sprint ' + K('Shift') + ' · jump ' + K('Space'));
-          h += C('Look', 'Mouse · zoom with the wheel');
+          h += C('Look', 'Mouse · zoom with the wheel · a click on the view takes the mouse, ' + K('Esc') + ' gives it back');
           h += C('Attack', 'Left click · hold a bow or rifle to draw');
           h += C('Skills', K('Q', 'R', 'T') + ' · Overdrive ' + K('G'));
           h += C('Roll', K('C') + ' or ' + K('Ctrl'));

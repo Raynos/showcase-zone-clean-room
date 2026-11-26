@@ -25,7 +25,7 @@ function saveCard(host: Host): string {
 
 /** Title card over the live scene. Resolves once the player chooses to play. */
 export function showTitle(host: Host, root: HTMLElement): Promise<void> {
-  const g = host.game, st = g.state;
+  const g = host.game, st = g.state, tap = g.input.isTouch ? 'tap' : 'click';
   return new Promise((resolve) => {
     const has = State.hasSave() && st.d.playTime > 5;
     const t = el('div', 'pn-title');
@@ -37,11 +37,11 @@ export function showTitle(host: Host, root: HTMLElement): Promise<void> {
       <div class="tt-menu">
         ${has ? `${saveCard(host)}<div class="tt-btn pri" data-t="go"><b>Continue</b><small>${where(host)}</small></div>
           <div class="tt-row"><div class="tt-btn" data-t="new"><b>New game</b></div><div class="tt-btn" data-t="set">${icon('gear', 16)}<b>Settings</b></div></div>
-          <div class="tt-btn ghost" data-t="view"><b>${st.d.settings.view === 'first' ? 'First person' : 'Third person'}</b><small>View · tap to switch</small></div>`
+          <div class="tt-btn ghost" data-t="view"><b>${st.d.settings.view === 'first' ? 'First person' : 'Third person'}</b><small>View · ${tap} to switch</small></div>`
           : `<div class="tt-btn pri" data-t="go"><b>Start</b><small>Level 1 in Brasswick to the Crate Titan</small></div>
         <div class="tt-btn ghost" data-t="set">${icon('gear', 16)}<b>Settings</b></div>
-        <div class="tt-btn ghost" data-t="view"><b>${st.d.settings.view === 'first' ? 'First person' : 'Third person'}</b><small>View · tap to switch</small></div>
-        <div class="tt-tap">Tap to start</div>`}
+        <div class="tt-btn ghost" data-t="view"><b>${st.d.settings.view === 'first' ? 'First person' : 'Third person'}</b><small>View · ${tap} to switch</small></div>
+        <div class="tt-tap">${g.input.isTouch ? 'Tap' : 'Click'} to start</div>`}
       </div>
       <div class="tt-ver">Single-player zone · v1.0 · saves on this device</div>`;
     root.appendChild(t);

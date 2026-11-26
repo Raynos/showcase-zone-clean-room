@@ -424,7 +424,7 @@ export class Arena implements System {
   private skipHint(on: boolean) {
     if (on && !this.skipEl) {
       const e = document.createElement('div');
-      e.textContent = 'TAP TO SKIP';
+      e.textContent = this.game.input.isTouch ? 'TAP TO SKIP' : 'CLICK OR SPACE TO SKIP';
       e.style.cssText = 'position:absolute;left:0;right:0;bottom:calc(64px + env(safe-area-inset-bottom));text-align:center;font:800 11px/1 system-ui,sans-serif;letter-spacing:.3em;color:#fff;opacity:.55;pointer-events:none;text-shadow:0 1px 3px #000';
       document.getElementById('ui')?.appendChild(e); this.skipEl = e;
     } else if (!on && this.skipEl) { this.skipEl.remove(); this.skipEl = null; }
