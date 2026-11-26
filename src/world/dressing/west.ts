@@ -4,6 +4,7 @@ import { T } from '../../gfx/textures';
 import { bush, reeds } from '../flora';
 import { LAKE, PADS, PAL, ROADS, ROAD_SAMPLES, inTown, roadDist } from '../layout';
 import { bench, cart, fence, hayBale, lampPost, pixelText, sack, trough, well } from '../props';
+import { hasPiece, piece } from '../pieces';
 import { Ctx, scareDummy, tripod } from './kit';
 
 const face = (x: number, z: number, tx: number, tz: number) => Math.atan2(tx - x, tz - z);
@@ -190,13 +191,19 @@ function waterTower(c: Ctx) {
     for (const yy of [3.6, 7.4]) for (let i = 0; i < 4; i++) { const a = (i / 4) * TAU, k = 2.8 - (yy / 11) * 0.8; g.box(k * 2, 0.1, 0.1, { at: [Math.cos(a) * k, yy, Math.sin(a) * k], rot: [0, -a + Math.PI / 2, 0], color: PAL.slateDark, col: 'none' }); }
     for (let i = 0; i < 4; i++) { const a = (i / 4) * TAU; g.tube([[Math.cos(a) * 2.5 - Math.sin(a) * 2.5, 3.6, Math.sin(a) * 2.5 + Math.cos(a) * 2.5], [Math.cos(a) * 2.2 + Math.sin(a) * 2.2, 7.4, Math.sin(a) * 2.2 - Math.cos(a) * 2.2]], 0.04, 4, { curve: false, color: PAL.slate, col: 'none' }); }
     g.cyl(3.3, 3.3, 0.3, 12, { at: [0, 11.1, 0], color: PAL.slateDark, layer: T.METAL, col: 'none' });
-    g.cyl(3.0, 3.0, 4.6, 12, { at: [0, 13.5, 0], color: PAL.orangeDeep, layer: T.PLANKS, uvScale: 0.35, col: 'none', grad: 0.75 });
-    for (const yy of [12.0, 13.6, 15.2]) g.cyl(3.06, 3.06, 0.14, 12, { at: [0, yy, 0], color: PAL.slateDark, layer: T.METAL, col: 'none' });
-    g.cone(3.4, 2.2, 12, { at: [0, 16.9, 0], color: PAL.slate, layer: T.ROOF, uvScale: 0.5, col: 'none' });
-    g.sphere(0.24, 6, 5, { at: [0, 18.2, 0], color: PAL.cyan, emit: 2.6, col: 'none' });
+    if (hasPiece('tank')) {
+      // the authored vessel: banded enamel, its own cradle and outlet, a hatch on the crown
+      piece(g, 'tank', { at: [0.72, 11.25, 0], scale: 3 });
+      g.sphere(0.24, 6, 5, { at: [0, 19.9, 0], color: PAL.cyan, emit: 2.6, col: 'none' });
+    } else {
+      g.cyl(3.0, 3.0, 4.6, 12, { at: [0, 13.5, 0], color: PAL.orangeDeep, layer: T.PLANKS, uvScale: 0.35, col: 'none', grad: 0.75 });
+      for (const yy of [12.0, 13.6, 15.2]) g.cyl(3.06, 3.06, 0.14, 12, { at: [0, yy, 0], color: PAL.slateDark, layer: T.METAL, col: 'none' });
+      g.cone(3.4, 2.2, 12, { at: [0, 16.9, 0], color: PAL.slate, layer: T.ROOF, uvScale: 0.5, col: 'none' });
+      g.sphere(0.24, 6, 5, { at: [0, 18.2, 0], color: PAL.cyan, emit: 2.6, col: 'none' });
+    }
     g.cyl(0.16, 0.16, 11, 6, { at: [0, 5.6, 0], color: PAL.steel, layer: T.METAL, col: 'none' });
     g.box(0.5, 11, 0.06, { at: [2.5, 5.6, 2.5], rot: [0.07, 0.78, 0], color: PAL.steel, layer: T.GRATE, uvScale: 1.2, col: 'none' });
-    g.push().translate(0, 13.6, 3.02); pixelText(g, 'CRATEFALL', 0.11, { color: PAL.cream, emit: 0.5 }); g.pop();
+    g.push().translate(0, hasPiece('tank') ? 15.9 : 13.6, hasPiece('tank') ? 2.66 : 3.02); pixelText(g, 'CRATEFALL', 0.11, { color: PAL.cream, emit: 0.5 }); g.pop();
     g.push().translate(2.6, 0, 0.4); trough(g, 2.2); g.pop();
   });
   c.info.lamps.push({ x, y: base + 18.2, z, color: PAL.cyan });

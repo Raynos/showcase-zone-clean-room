@@ -58,7 +58,7 @@ export function buildGround(c: Ctx) {
     const paint = (px: number, pz: number, ux: number, uz: number, len: number, w = 0.17) => {
       const dh = c.h(px + ux * len / 2, pz + uz * len / 2) - c.h(px - ux * len / 2, pz - uz * len / 2);
       if (Math.abs(dh) > len * 0.16 || ridgeAt(px, pz) > 0.3) return;
-      c.putY(px, c.h(px, pz), pz, Math.atan2(ux, uz), (g) => g.box(w, 0.04, len, { at: [0, 0.035, 0], rot: [-Math.atan2(dh, len), 0, 0], color: 0xc7a03c, col: 'none', jit: 0.08 }));
+      c.putY(px, c.h(px, pz), pz, Math.atan2(ux, uz), (g) => g.quad(w, len, { at: [0, 0.055, 0], rot: [-Math.atan2(dh, len), 0, 0], color: 0xc7a03c, col: 'none', jit: 0.08 }));
     };
     const turns: Array<Array<[number, number]>> = [];
     for (const [cx, cz, R, a0, a1] of [[35, 178, 7, -1.2, 1.9], [37, 179, 9.5, -0.9, 1.4]]) { const arc: Array<[number, number]> = []; for (let a = a0; a <= a1; a += 0.5) arc.push([cx + Math.cos(a) * R, cz + Math.sin(a) * R]); turns.push(arc); }
@@ -163,9 +163,10 @@ export function buildGround(c: Ctx) {
         if (Math.abs(dh) > 0.5) continue;
         const pitch = -Math.atan2(dh, 2.6);
         c.put(mx, mz, yaw, (g) => {
-          g.box(0.62, 0.1, 2.64, { at: [0, 0.02, 0], rot: [pitch, 0, 0], color: 0x1d232a, layer: T.METAL, uvScale: 0.5, col: 'none' });
-          g.box(0.1, 0.05, 2.64, { at: [0, 0.075, 0], rot: [pitch, 0, 0], color: PAL.cyan, emit: 1.5, col: 'none' });
-          if (i % 2 === 0) g.box(0.9, 0.07, 0.2, { at: [0, 0.08, 0], color: 0x3a444e, layer: T.METAL, col: 'none' });
+          // (flat plates: nothing here stands tall enough to have sides anyone sees)
+          g.quad(0.62, 2.64, { at: [0, 0.07, 0], rot: [pitch, 0, 0], color: 0x1d232a, layer: T.METAL, uvScale: 0.5, col: 'none' });
+          g.quad(0.1, 2.64, { at: [0, 0.09, 0], rot: [pitch, 0, 0], color: PAL.cyan, emit: 1.5, col: 'none' });
+          if (i % 2 === 0) g.quad(0.9, 0.2, { at: [0, 0.1, 0], color: 0x3a444e, layer: T.METAL, col: 'none' });
         });
       }
       S.stamp(p.x, p.z, r.range(2.6, 4), { scorch: 0.85 }, 120 + (p.x | 0));
