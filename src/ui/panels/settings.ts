@@ -1,3 +1,4 @@
+import { autoTier, clearAutoTier } from '../../core/autotier';
 import { FP_FOV } from '../../core/camera';
 import { QUALITY } from '../../gfx/renderer';
 import { setView } from '../../systems/view';
@@ -41,8 +42,7 @@ export const settingsPanel: PanelSpec = {
     const toggle = (id: string, label: string, ic: string, on: boolean, sub = '') => `<div class="pn-set tg" data-a="toggle" data-v="${id}" role="switch" aria-checked="${on}"><label>${icon(ic, 18)}<span>${label}${sub ? `<small>${sub}</small>` : ''}</span></label><div class="pn-switch${on ? ' on' : ''}"><i></i></div></div>`;
     const group = (inner: string) => `<div class="pn-group bev">${inner}</div>`;
     const applyQuality = () => {
-      const coarse = matchMedia('(pointer: coarse)').matches;
-      const q = QUALITY[s.quality === 'auto' ? (coarse ? 'medium' : 'high') : s.quality] ?? QUALITY.high;
+      const q = QUALITY[s.quality === 'auto' ? autoTier() : s.quality] ?? QUALITY.high;
       if (g.renderer.quality !== q) { g.renderer.setQuality(q); g.env.setShadowQuality?.(q.shadowSize, q.shadowDist); }
     };
     const render = () => {
@@ -123,7 +123,7 @@ export const settingsPanel: PanelSpec = {
       dispose() { st.save(); },
       act(a, v) {
         if (a === 'view') { setView(g, v === 'first' ? 'first' : 'third'); g.sfx('ui_click'); render(); }
-        else if (a === 'quality') { s.quality = v; st.touch(); g.sfx('ui_click'); applyQuality(); render(); }
+        else if (a === 'quality') { s.quality = v; if (v === 'auto') clearAutoTier(); st.touch(); g.sfx('ui_click'); applyQuality(); render(); }
         else if (a === 'adsMode') { s.adsMode = v === 'hold' ? 'hold' : 'tap'; st.touch(); g.sfx('ui_click'); render(); }
         else if (a === 'toggle' && v === 'aimAssist') { s.aimAssist = s.aimAssist === false; st.touch(); g.sfx('ui_click'); render(); }
         else if (a === 'toggle' && v === 'gyro') {

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { autoTier, watchAutoTier } from './core/autotier';
 import { CameraRig } from './core/camera';
 import { Input } from './core/input';
 import { Haptics } from './core/haptics';
@@ -95,8 +96,7 @@ export class Game {
     installFog();
     const params = new URLSearchParams(location.search);
     const saved = this.state.d.settings.quality;
-    const coarse = matchMedia('(pointer: coarse)').matches;
-    const qn = params.get('q') ?? (saved !== 'auto' ? saved : coarse ? 'medium' : 'high');
+    const qn = params.get('q') ?? (saved !== 'auto' ? saved : autoTier());
     this.renderer = new Renderer(canvas, QUALITY[qn] ?? QUALITY.high);
     progress(0.1, 'MIXING PAINT');
     await tick();
@@ -204,6 +204,7 @@ export class Game {
     this.last = performance.now();
     this.started = true;
     requestAnimationFrame((t) => this.frame(t));
+    watchAutoTier(this, (q) => { this.renderer.setQuality(q); this.env.setShadowQuality(q.shadowSize, q.shadowDist); });
     // the rest of the staged download: the bosses, then the full-size surfaces
     setTimeout(() => { void this.lateAssets().then(() => surfaces.upgrade()); }, 1000);
   }
