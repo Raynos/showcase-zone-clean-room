@@ -1045,6 +1045,142 @@ one weapon in hand, game seconds from first aggro to death):
 - Shift Boss Slag at level 12 with the Rivet Rifle: 188 s, a win, so
   not trivial. The bow's full draw was not tried.
 
+### QA round four: pacing, bosses, defects, after hours (2026-11-26)
+
+Production builds of named commits in scratch worktrees, competent bot
+unless marked careless, no `?dev` after the checkpoint. Summaries are in
+`shots/playthrough/qa4-*/summary.txt`, boss and after-hours records in
+`shots/qa4-*.jsonl`.
+
+**Pacing, unboosted, from band-entry checkpoints, field quests played.**
+The bot now plays field quests (`tools/bot/42-field.js`): kill, elite,
+use, signs, rare, sabotage, weak point, foot run, timed sequence, lamp
+route and escort steps. It skips horse runs, the drop steps and photo
+steps; band 6's Charge Run and Drop Zone went unplayed for that.
+
+| Lvl   | Tgt | Measured    | Pass | Build   | Kill | Town | Fld | Bnty | Ctr |
+|-------|-----|-------------|------|---------|------|------|-----|------|-----|
+| 19    | 24  | 28.2 (118%) | yes  | b9f074a | 68%  | 10%  | 0%  | 10%  | 5%  |
+| 16-18 | 63  | 62.5 (99%)  | yes  | b9f074a | 63%  | 18%  | 0%  | 5%   | 9%  |
+| 13-15 | 54  | 37.3 (69%)  | no   | 86f64fb | 69%  | 9%   | 5%  | 8%   | 8%  |
+| 10-12 | 45  | 33.8 (75%)  | no   | 86f64fb | 68%  | 10%  | 5%  | 8%   | 5%  |
+| 7-9   | 36  | not run     | -    | -       | -    | -    | -   | -    | -   |
+| 1-3   | 10  | 8.1 (81%)   | yes  | 86f64fb | 49%  | 40%  | 0%  | 2%   | 5%  |
+
+Minutes in-game, levels from entry to the next band. XP shares: kills,
+town quests, field quests, bounties, contracts; the rest is the Titan's
+and the vault's first-clear XP, courses and finds. Kills sit at 63-69%
+against the 70% intent from level 10 on, 49% in levels 1-3 where "First
+Day on the Yard" carries level 1. Levels 7-9 were not run: time ran out.
+Levels 16-18 include 6 min the bot stood stuck at a chest at (199, -61)
+in the Slagworks (a bot gap). Band 6 field quests were not played.
+
+Bounties are priced in kills now (b414c42): at most 3.5 kills' worth,
+which binds from level 10. Their share fell from 10-18% to 5-10%.
+
+**Tuned** (14a0199, `balance.ts`): band 4 (10-12) 41 -> 55 and band 5
+(13-15) 36 -> 52, scaled from these runs to land on 45 and 54. Not
+re-run. Levels 19 and 1-3 pass as they are.
+
+**Boss weapon balance.** Competent bot, checkpoint gear, one weapon in
+hand, game seconds from first aggro to the kill. Before: b9f074a, one
+run each. After: one run each on the Titan, three on the Warden, on
+ac77571 and a29ad1d (same Titan numbers) and 3b73e2a (the bow).
+
+Game seconds; W = Vault Warden at level 11 (Rivet Rifle, Bandsaw,
+Jackhammer Lance, Tension Bow, Bolt Driver), T = Crate Titan at level 20
+(Rail Rifle, Arc Cutter, Stormrod, Arcstring, Twin Driver).
+
+| Class    | W before | W after       | T before | T after |
+|----------|----------|---------------|----------|---------|
+| rifle    | 69       | 154, 126 *    | 92       | 294     |
+| sword    | 90       | 125, 109, 142 | 349      | 255     |
+| spear    | 89       | 99, 105, 95   | 294      | 260     |
+| bow      | 316      | 172, 116, 76  | 295      | 249     |
+| crossbow | 211      | 53, 118, 277  | 252      | 305     |
+
+\* Two more Rivet Rifle trials stalled with the Warden at 78-87% after
+6 min: the bot stopped landing hits. Not diagnosed.
+
+Why it was wide: shot damage is power x the zone's multiple x the gun's
+own weak multiple, and an aimed weapon can reach the weak zone the whole
+fight. The Titan's heart is a big, slow target, so the Rail Rifle (power
+135) hit it twice per shot from anywhere while melee walked in and
+rolled out. The Warden is small and quick; a full-draw arrow at 10-18 m
+misses it often, and ranged runs on it swing 2-4x from one run to the
+next (Bolt Driver 53-277 s with nothing changed between runs).
+
+The fix is boss-side only: `data/bosses.ts` multiplies what each boss
+takes by the class of weapon in hand. Weapons' field numbers are
+unchanged.
+
+Multipliers: Titan rifle 0.45, sword 1.25, spear 1.1, bow 1.1, crossbow
+1 (ac77571). Warden rifle 0.5, sword 0.9, spear 0.8, bow 1.25, crossbow
+1.6 (3b73e2a). The Warden's spear and bow rows are from their last
+settings (spear 0.9 gave 87-90 s, bow 2.2 gave 66-131 s and bow 1.6
+gave 60-70 s). The bow's time jumps rather than slides: 254-316 s at
+x1, about 65 s from x1.6.
+
+Against the targets: the Titan's five land in 249-305 s, 1.2x apart;
+the Twin Driver's 305 s is 5 s over. The Warden's medians land in
+99-140 s, but single runs fall outside 90-180 s (bow 76, crossbow 53
+and 277), so the 2x rule holds for medians, not for every run.
+
+**Defects.**
+- Vault fall, found and fixed (86f64fb). Neighbouring chambers stand
+  0.8 m apart, wall to wall, and the floor slabs stop at the walls, so
+  the doorways from chamber 1 to 2 and 2 to 3 each had a 5 x 0.8 m
+  slot. The capsule is 0.72 m across. The careless band-4 run caught it
+  frame by frame: walking south at x 199.9 the hero sank at z 28.2,
+  fell, and kept walking under the floor to (200, 10), which is where
+  round three saw it. A threshold slab now spans both slots. Test
+  server, seven crossings each way: before, 7 of 14 fell through and
+  the rest dipped 0.1-0.4 m; after, 14 of 14 held.
+- The fall's stall: the safety net put the hero at the vault's
+  checkpoint, behind the combat chamber's closed door, without the
+  respawn reset. It now runs the interior's reset as a death does.
+- Instanced fights (b9f074a): open-world robots ignore a player in the
+  vault, the arena, the gauntlet or the Long Shift.
+  Checked on the a29ad1d build: an open-world Welder set 6 m from the
+  player in court A aggroed with nothing running, and did not with the
+  Long Shift on or the gauntlet running. Every hit in the careless
+  Long Shift came from shift robots. The vault and the arena clear the
+  open world's robots on entry, and their fights were clean.
+- Edge arrows, careless band 6 (6 min, b9f074a): 2 deaths, both to Arc
+  Sentry storms; all 7 hits in the 8 s before them came with the edge
+  arrow up. No death without a logged hit.
+- Careless band 4 (8 min, b9f074a): no deaths; it fell through the
+  vault floor at 2:06 and then stalled behind the closed door (both
+  fixed above).
+
+**After hours** (a29ad1d, a level-20 save with the Titan broken,
+typical gear, one run each; `shots/qa4-after-hours.jsonl`):
+- Overtime vault, Thin Overalls: the competent bot cleared it clean in
+  4:35. Pars 6/8/11 min -> 5:15/7:00/10:00 (557fcaf).
+- Overtime Titan, No Kits: the competent bot died at 2:58, the careless
+  bot at 0:42. No clean run, so the pars are modelled: the normal Titan
+  falls in 249-305 s and overtime gives it 40% more health. 5/7/10 min
+  -> 6:30/8:30/11:00.
+- Long Shift: the careless bot cleared 3 waves and died in wave 4 to
+  level-20 Welders, every hit on screen. The competent bot cleared 5
+  and then stepped off the court in wave 6, which ends a shift after
+  2 s. Bronze 5 -> 3; silver 10 and gold 15 are not measured.
+- Bronze is out of the careless bot's reach in both overtimes: a death
+  ends the run, and it died at 1:44 (vault) and 0:42 (Titan). No par
+  fixes that; a time penalty for a death instead of a fail would.
+
+**Perk points.** 19 from levels, 3 from Field Training and 3 from the
+Tally Book make 25 against 22 ranks. Rule (b9f074a): a cap plus
+conversion. When the free points would outnumber the ranks still open,
+a Field Training point is paid out as a tuning card instead (at most
+three). Tally Book points always stay points.
+
+**Not done.** Levels 7-9 not run. Bands 4 and 5 not re-run after the
+tune. Band 6 field quests (horse run, drop, photo) and band 1's scan
+step are not played by the bot. The Rivet Rifle's Warden stalls are not
+diagnosed. The forensics log misses the killing blow (it shows only in
+`lastHurt`), which explains round three's death with no logged hit.
+
 ### Sound, round 2 (2026-11-26)
 
 Measured only. Nobody listened. Headless desktop Chrome, no phone. The
