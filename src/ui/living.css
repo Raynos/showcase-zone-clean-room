@@ -92,7 +92,11 @@
 [data-h=r] > .lz-feed-lines { text-align: right; }
 .hud:is([data-ctx=fight], .boss-on) .lz-fl:not(.k-loot, .k-quest, .k-warn) { display: none; }
 /* a fight's budget for the column is two lines: the last two of the kinds a fight shows, whatever the zone is chatting about */
-.hud:is([data-ctx=fight], .boss-on) .lz-fl:nth-last-child(n+3 of :is(.k-loot, .k-quest, .k-warn)) { display: none; }.hud[data-form=desktop] .lz-feed-lines { display: none; }
+.hud:is([data-ctx=fight], .boss-on) .lz-fl:nth-last-child(n+3 of :is(.k-loot, .k-quest, .k-warn)) { display: none; }
+/* a phone on its side down the sights: the left-hand trigger sits under the column, so the feed keeps one line */
+.hud.aiming[data-form=landscape] .lz-fl:not(.k-loot, .k-quest, .k-warn) { display: none; }
+.hud.aiming[data-form=landscape] .lz-fl:nth-last-child(n+2 of :is(.k-loot, .k-quest, .k-warn)) { display: none; }
+.hud[data-form=desktop] .lz-feed-lines { display: none; }
 
 /* channel colours, used in the feed and the panel */
 .c-zone { color: #ffd9a8; } .c-trade { color: #7dffb0; } .c-group { color: #8fd6ff; } .c-sys { color: #c9c2b4; } .c-me { color: var(--cyan); }

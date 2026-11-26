@@ -155,7 +155,8 @@
         // (the menu tray once hung off the left edge of an upright phone with its first entry cut to "ACK")
         const cn = e.dataset.act || String(e.className).split(' ').slice(0, 2).join('.');
         if (r.left < -1 || r.top < -1 || r.right > W + 1 || r.bottom > Hh + 1) issues.push({ kind: 'clipped', what: cn + ' is partly off the screen', at: [r.left, r.top, r.width, r.height].map(Math.round) });
-        else if (r.left < S.l - 1 || r.top < S.t - 1 || r.right > W - S.r + 1 || r.bottom > Hh - S.b + 1) issues.push({ kind: 'unsafe', what: cn + ' is partly outside the safe area', at: [r.left, r.top, r.width, r.height].map(Math.round) });
+        // (a sheet is a surface, not a button: it runs to the screen's edge and pads what is in it; the panel set checks its contents)
+        else if (!e.matches('.pn-sheet, .pn-scrim, .pn-modal') && (r.left < S.l - 1 || r.top < S.t - 1 || r.right > W - S.r + 1 || r.bottom > Hh - S.b + 1)) issues.push({ kind: 'unsafe', what: cn + ' is partly outside the safe area', at: [r.left, r.top, r.width, r.height].map(Math.round) });
         // (the open tray is a menu the player asked for: what it lies over for that moment is behind it, not lost)
         const by = HM.under(e, '.tray.on');
         if (by) issues.push({ kind: 'covered', what: (e.dataset.act || String(e.className).split(' ').slice(0, 2).join('.')) + ' is under ' + by, at: [r.left, r.top, r.width, r.height].map(Math.round) });

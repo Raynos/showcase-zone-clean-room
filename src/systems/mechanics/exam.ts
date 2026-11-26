@@ -53,6 +53,10 @@ export class WardenExam {
   /** the pillar to strike next, if a question is open (the bot's handler reads it) */
   /** seconds left to answer, of `WardenExam.ASK` (0 when no question is open): the boss bar's clock (ui/mechRead.ts) */
   get left() { return this.state === 'ask' ? Math.max(0, this.t) : 0; }
+  /** the lamps are being shown; lamps answered so far in this question; when the last wrong answer was given (game time) */
+  get showing() { return this.state === 'show'; }
+  get got() { return this.state === 'ask' ? this.step : 0; }
+  missedAt = -1e9;
   static ASK = 14;
   get next(): Pillar | null { return this.state === 'ask' ? this.pillars[this.seq[this.step]] : null; }
   start(m: Mob) { this.m = m; this.state = 'rest'; this.t = 4; this.laneT = 7; this.answered = 0; }
@@ -84,7 +88,7 @@ export class WardenExam {
       if (this.step >= this.seq.length) this.accept();
     } else {
       // a wrong answer: the Warden marks it, and asks again
-      g.hud.damage(p.top, 'WRONG', 'miss'); g.sfx('ui_error');
+      g.hud.damage(p.top, 'WRONG', 'miss'); g.sfx('ui_error'); this.missedAt = g.time;
       m.center(_v); _w.set(g.player.pos.x, g.player.pos.y + 1.1, g.player.pos.z);
       g.fx.beam(_v, _w, RED, 0.25, 0.3, 0.6, 5);
       g.combat.hurtPlayer(m.dmg * 0.55, m.pos, 3, m);

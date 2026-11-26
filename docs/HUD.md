@@ -209,21 +209,50 @@ Every elite-class robot has a signature mechanic (docs/COMBAT.md,
 "Elite" had, so the frame grows no taller; on the boss bar under its
 sub line. The row is a chip, then the answer in a few words.
 
-| State  | Chip                         | Examples             |
-| ------ | ---------------------------- | -------------------- |
-| weak   | struck solid, gold, pulsing  | Venting, Open        |
-| rage   | red outline                  | Overtime, Grudge     |
-| shield | pale outline, shield glyph   | Shelled, Plated      |
-| timer  | amber outline with a bar     | Deadline, Fuse, Heat |
-| note   | no chip: the answer only     | Dodge the dive       |
+| State  | Chip                         | Examples                |
+| ------ | ---------------------------- | ----------------------- |
+| weak   | struck solid, gold, pulsing  | Venting, Grounded 2 s   |
+| rage   | red outline                  | Overtime, Grudge, Laser |
+| shield | pale outline, shield glyph   | Shelled, Front shield   |
+| timer  | amber outline with a bar     | Deadline, Laser lock    |
+| note   | no chip: the answer only     | Dodge the dive          |
 
 A state is a glyph and a word, never colour alone. A clock is a bar on
-the chip, a grudge is three pips. The long introduction ("Shelled while
-its larvae live: sweep them up") is the lane's call-out when the fight
-starts; the frame keeps the short answer ("Sweep the larvae") for as
-long as the robot is the target. A boss with phases says which it is in
-("Phase 2 of 3") unless its own script names them, and the bar's ticks
-mark where the phases turn. The Warden's question is a clock on its bar.
+the chip, a grudge is three pips. An opening (a stun that takes extra
+damage: grounded, dazed, venting, line cut) and the Titan's planted fist
+drain on the bar with their seconds beside the word; a deadline counts
+its last ten. The bar and the seconds change in place, so the chip's
+pulse never restarts.
+
+**One place per fact.**
+
+- *Name, level, health, stagger*: the target frame. The current target
+  has no plate over it while the frame is up (`hud.plate` leaves it
+  out); other robots keep theirs.
+- *What it is doing now*: the chip.
+- *What to do*: the few words after the chip.
+- *The introduction* ("Turns to glass: dodge the dive and it lands
+  dazed"): the lane's call-out, once, when the fight starts. Afterwards
+  a hold on the frame shows it again; keep holding and the frame lets
+  the target go, as it does for any robot.
+- *A state word over the robot* (GROUNDED, VENTING, PLATED): a short
+  floater on its own dark plate with a hairline, gold when it is good
+  for the player. It rises straight, lasts 1.3 s, and reads over a
+  night sky, sand or the robot's own glow. No floater, word or number,
+  is drawn over the frame, the boss bar, the lane, the timer or the
+  quest column: it is pushed below them.
+
+A boss with phases says which it is in ("Phase 2 of 3") unless its own
+script names them, and the bar's ticks mark where the phases turn.
+
+**The Warden's final question** reads on its bar: "Question" while the
+lamps are shown, then the seconds left on a draining bar and three pips
+that fill as lamps are answered. A wrong answer shakes the chip once,
+empties the pips and says the question comes again. The order is never
+written down: remembering it is the exam. The lamp asked next is marked
+at the edge of the view only while it is out of sight (a cyan point and
+arrow, `hud.drawPoint`), which gives away no more than the hall does:
+that lamp already pulses hardest.
 
 ## Overlays
 
@@ -732,7 +761,7 @@ like any headline. A brass cog entered in the book is the toast kind
 slot, and the notice lane keeps clear of it wherever the column pushes
 the lane.
 
-**Testing.** `tools/hud-matrix.sh` stages twenty-three states at five sizes
+**Testing.** `tools/hud-matrix.sh` stages twenty-four states at five sizes
 and checks overlaps, clipping, safe areas, the clear centre (the notice
 lane may reach 28% of the height under a target frame), touch sizes
 (44 pt; 40 for chips and glyphs), 8 pt between buttons, the budget, a

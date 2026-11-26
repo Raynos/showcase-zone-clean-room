@@ -27,7 +27,7 @@ export interface PlateInfo { name: string; level?: number; hp?: number; cls?: st
   /** robots only: true on the target, false on the rest. The target and the elites carry a full plate;
    *  any other robot shows a thin health bar once it is in the fight and nothing before. */
   focus?: boolean }
-interface Dmg { el: HTMLElement; t: number; x: number; y: number; z: number; vx: number; vy: number; life: number; crit: boolean }
+interface Dmg { el: HTMLElement; t: number; x: number; y: number; z: number; vx: number; vy: number; life: number; crit: boolean; hw?: number }
 export type ActionId = 'attack' | 'dodge' | 'jump' | 'skill1' | 'skill2' | 'skill3' | 'overdrive' | 'swap' | 'kit' | 'target' | 'mount'
   /** shooter stance: main fire, the other thumb's fire (only while aiming), aim down sights, reload */
   | 'fire' | 'fire2' | 'aim' | 'reload';
@@ -352,19 +352,28 @@ export class Hud {
     S.boss.appendChild(this.boss);
     this.bossName = this.boss.querySelector('.bn')!; this.bossFill = this.boss.querySelector('.fill')!; this.bossLag = this.boss.querySelector('.lag')!; this.bossSub = this.boss.querySelector('.bs')!;
     this.bStg = this.boss.querySelector('.stg i')!; this.bFx = this.boss.querySelector('.tfx')!;
-    // the frame at the top is the target control: tap for the next target, hold to let go
+    // the frame at the top is the target control: tap for the next target, hold to let go. A robot with a signature
+    // mechanic answers a hold with its introduction first (the line the lane showed when the fight began); keep holding
+    // and it lets go as any other does.
     for (const tf of [this.tframe, this.boss]) {
-      let hold = 0, ptr = -1;
+      let hold = 0, ptr = -1, told = false;
+      const letGo = () => { hold = 0; if (ptr === -1) return; g.engage.clearTarget(); g.sfx('ui_click', { vol: 0.7, pitch: 0.75 }); g.haptic(20); };
       tf.addEventListener('pointerdown', (e) => {
         e.stopPropagation(); e.preventDefault();
         if (ptr !== -1) return;
-        ptr = e.pointerId; tf.classList.add('down'); g.haptic(8);
-        hold = window.setTimeout(() => { hold = 0; if (ptr === -1) return; g.engage.clearTarget(); g.sfx('ui_click', { vol: 0.7, pitch: 0.75 }); g.haptic(20); }, 450);
+        ptr = e.pointerId; told = false; tf.classList.add('down'); g.haptic(8);
+        hold = window.setTimeout(() => {
+          hold = 0; if (ptr === -1) return;
+          const m = tf === this.boss ? g.bossMob : g.combat.target, hint = m && 'mech' in m ? (m as Mob).mech?.hint : '';
+          if (!m || !hint) { letGo(); return; }
+          told = true; this.toast(m.name, 'warn', hint); g.haptic(12);
+          hold = window.setTimeout(letGo, 750);
+        }, 450);
       });
       const up = (e: PointerEvent) => {
         if (e.pointerId !== ptr) return;
         ptr = -1; tf.classList.remove('down');
-        if (hold) { clearTimeout(hold); hold = 0; if (e.type === 'pointerup') { g.sfx('ui_click', { vol: 0.5 }); g.input.press('target'); g.input.release('target'); } }
+        if (hold) { clearTimeout(hold); hold = 0; if (e.type === 'pointerup' && !told) { g.sfx('ui_click', { vol: 0.5 }); g.input.press('target'); g.input.release('target'); } }
       };
       tf.addEventListener('pointerup', up); tf.addEventListener('pointercancel', up);
     }
@@ -657,10 +666,15 @@ export class Hud {
   damage(pos: { x: number; y: number; z: number }, text: string, cls = '') {
     if (this.dmgs.length > 40) return;
     const e = this.dmgPool.pop() ?? el('div', 'dmg');
-    e.className = 'dmg ' + cls; e.textContent = text;
+    // a word (GROUNDED, VENTING, PLATED) is not a number: it sits on a dark plate so it reads on any ground, a night
+    // sky or its own glow, rises straight and stays long enough to read
+    const word = /[A-Za-z]{3}/.test(text) && !/^[+\-]?\d/.test(text);
+    // the same word said again over the same robot (PLATED on every turned hit) takes the place of the last one: plates never pile up
+    if (word) for (const o of this.dmgs) if (o.hw && o.hw > 16 && o.el.textContent === text && Math.abs(o.x - pos.x) + Math.abs(o.z - pos.z) < 4) o.t = o.life;
+    e.className = 'dmg ' + cls + (word ? ' word' : ''); e.textContent = text;
     this.floatEl.appendChild(e);
     const crit = cls.includes('crit');
-    this.dmgs.push({ el: e, t: 0, x: pos.x, y: pos.y, z: pos.z, vx: (Math.random() - 0.5) * 70, vy: -(70 + Math.random() * 50), life: crit ? 1.0 : 0.8, crit });
+    this.dmgs.push({ el: e, t: 0, x: pos.x, y: pos.y, z: pos.z, vx: word ? 0 : (Math.random() - 0.5) * 70, vy: word ? -46 : -(70 + Math.random() * 50), life: word ? 1.3 : crit ? 1.0 : 0.8, crit: crit && !word, hw: word ? 8 + text.length * 4.2 : 16 });
   }
   setInteract(label: string | null, ic = 'interact') {
     const key = label ? label + ic : '';
@@ -1077,22 +1091,60 @@ export class Hud {
     const g = this.game, t = g.combat.target, boss = this.bossOn ? g.bossMob : null;
     const m = boss ?? (t && t.alive && t.cls !== 'boss' && this.tframe.classList.contains('on') ? t : null);
     const r = m && 'mech' in m ? readMech(g, m as Mob) : null;
-    const sig = r ? (boss ? 'B' : 'T') + r.kind + '|' + r.word + '|' + (r.frac === undefined ? '' : Math.round(r.frac * 40)) + '|' + (r.pips ?? '') + '|' + r.answer : '';
-    if (sig === this.mechSig) return;
-    this.mechSig = sig;
-    let html = '';
-    if (r) {
-      if (r.word) {
-        html += `<span class="mc ${r.kind}">${icon(r.ic, 11, 2.4)}<b>${r.word}</b>`;
-        if (r.frac !== undefined) html += `<i><u style="transform:scaleX(${clamp01(r.frac).toFixed(3)})"></u></i>`;
-        if (r.pips !== undefined) html += `<em>${'<s class="on"></s>'.repeat(r.pips)}${'<s></s>'.repeat(Math.max(0, 3 - r.pips))}</em>`;
-        html += '</span>';
+    this.drawPoint(r?.at ?? null);
+    // (the bar and the seconds change in place: a rebuilt chip would start its pulse again several times a second)
+    const sig = r ? (boss ? 'B' : 'T') + r.kind + '|' + r.word + '|' + (r.frac === undefined ? '' : 'f') + (r.secs === undefined ? '' : 's') + '|' + (r.pips ?? '') + '|' + (r.shake ? '!' : '') + r.answer : '';
+    if (sig !== this.mechSig) {
+      this.mechSig = sig;
+      let html = '';
+      if (r) {
+        if (r.word) {
+          html += `<span class="mc ${r.kind}${r.shake ? ' shake' : ''}">${icon(r.ic, 11, 2.4)}<b>${r.word}</b>`;
+          if (r.secs !== undefined) html += '<q></q>';
+          if (r.frac !== undefined) html += '<i><u></u></i>';
+          if (r.pips !== undefined) html += `<em>${'<s class="on"></s>'.repeat(r.pips)}${'<s></s>'.repeat(Math.max(0, 3 - r.pips))}</em>`;
+          html += '</span>';
+        }
+        if (r.answer) html += `<span class="ma">${r.answer}</span>`;
       }
-      if (r.answer) html += `<span class="ma">${r.answer}</span>`;
+      const mine = boss ? this.boss : this.tframe, other = boss ? this.tframe : this.boss, tm = mine.querySelector('.tm') as HTMLElement;
+      tm.innerHTML = html;
+      (other.querySelector('.tm') as HTMLElement).innerHTML = '';
+      this.mechU = tm.querySelector('u'); this.mechQ = tm.querySelector('q'); this.mechF = -1; this.mechS = -1;
     }
-    const mine = boss ? this.boss : this.tframe, other = boss ? this.tframe : this.boss;
-    (mine.querySelector('.tm') as HTMLElement).innerHTML = html;
-    (other.querySelector('.tm') as HTMLElement).innerHTML = '';
+    if (!r) return;
+    const f = Math.round(clamp01(r.frac ?? 0) * 100);
+    if (this.mechU && f !== this.mechF) { this.mechF = f; this.mechU.style.transform = `scaleX(${f / 100})`; }
+    if (this.mechQ && r.secs !== this.mechS) { this.mechS = r.secs ?? -1; this.mechQ.textContent = `${r.secs} s`; }
+  }
+  private mechU: HTMLElement | null = null; private mechQ: HTMLElement | null = null; private mechF = -1; private mechS = -1;
+  private pointEl: HTMLElement | null = null; private pointOn = false;
+  /**
+   * A point in the world a mechanic's answer is at (the lamp the Warden asks for next), marked at the edge of the free
+   * part of the view while it is out of sight. In view the world marks it itself, so the marker goes.
+   */
+  private drawPoint(at: { x: number; y: number; z: number } | null) {
+    let on = false, sx = 0, sy = 0, rot = 0;
+    if (at) {
+      const cam = this.game.camera;
+      _v.set(at.x, at.y, at.z).applyMatrix4(cam.matrixWorldInverse);
+      const behind = _v.z > -0.3, w = this.w, h = this.h;
+      if (!behind) { _v.applyMatrix4(cam.projectionMatrix); sx = (_v.x * 0.5 + 0.5) * w; sy = (-_v.y * 0.5 + 0.5) * h; }
+      else { const l = Math.hypot(_v.x, _v.y) || 1; sx = w / 2 + (_v.x / l) * w; sy = h * 0.4 - (_v.y / l) * h; if (Math.abs(_v.x) < 0.5) sx = w / 2 + (_v.x >= 0 ? 1 : -1) * w; }
+      on = behind || sx < 8 || sx > w - 8 || sy < this.safe.t + 8 || sy > h - 8;
+      if (on) {
+        const { x0, x1, y0, y1 } = this.freeBand(), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+        const dx = sx - cx, dy = sy - cy, k = Math.min((x1 - cx) / Math.max(1e-3, Math.abs(dx)), (y1 - cy) / Math.max(1e-3, Math.abs(dy)), 1);
+        sx = cx + dx * k; sy = cy + dy * k;
+        if (sy > y1 - 1) sx = dx >= 0 ? x1 : x0;
+        rot = Math.atan2(dx, -dy);
+      }
+    }
+    if (on && !this.pointEl) { this.pointEl = el('div', 'mpoint', '<u></u>'); this.floatEl.appendChild(this.pointEl); }
+    const p = this.pointEl;
+    if (!p) return;
+    if (on !== this.pointOn) { this.pointOn = on; p.classList.toggle('on', on); }
+    if (on) { p.style.transform = `translate(${sx.toFixed(1)}px,${sy.toFixed(1)}px)`; (p.firstChild as HTMLElement).style.transform = `rotate(${rot.toFixed(3)}rad)`; }
   }
   setTarget(info: { name: string; level: number; frac: number; cls: string; sub: string } | null) {
     this.tframe.classList.toggle('on', !!info);
@@ -1143,6 +1195,8 @@ export class Hud {
   plate(key: string, pos: { x: number; y: number; z: number }, info: PlateInfo) {
     const s = this.scr;
     if (!this.project(pos, s)) return;
+    // one place per fact: the target's name, level, health and stagger are in the target frame while that is up
+    if (info.focus && this.tfShown) return;
     // a robot that is neither the target nor an elite: a bar when it is hurt or hunting, else nothing
     const thin = info.focus === false && (info.cls ?? 'normal') === 'normal';
     if (thin && info.hp === undefined) return;
@@ -1212,7 +1266,7 @@ export class Hud {
       p.root.style.opacity = p.op >= 1 ? '1' : p.op.toFixed(2);
     }
   }
-  private keep: number[] = []; private keepAt = -1;
+  private keep: number[] = []; private keepAt = -1; private tfShown = false;
   /**
    * Where the HUD is showing words right now (left, top, right, bottom for each): the left column's lines, the
    * notice lane, the timer, the target frame, the boss bar. Measured four times a second.
@@ -1235,7 +1289,9 @@ export class Hud {
     if (this.notices.lit) add(this.notices.el);
     const ts = this.slots.timer.children;
     for (let i = 0; i < ts.length; i++) if (ts[i].classList.contains('on')) add(ts[i]);
+    const n0 = K.length;
     if (this.tframe.classList.contains('on')) add(this.tframe);
+    this.tfShown = K.length > n0;
     if (this.bossOn) add(this.boss);
     return K;
   }
@@ -1353,6 +1409,12 @@ export class Hud {
         if (B[b + 3] < 12) continue;
         const px = s.x + ox, py = s.y + oy;
         if (Math.abs(px - B[b]) < B[b + 2] / 2 + 14 && py - hh < B[b + 1] && py + hh > B[b + 1] - B[b + 3]) oy = B[b + 1] + hh + 2 - s.y;
+      }
+      // nor over the HUD's own words: the target frame, the boss bar, the lane, the timer, the quest column
+      const K = this.keep, hw = m.hw ?? 16;
+      for (let b = 0; b < K.length; b += 4) {
+        const px = s.x + ox, py = s.y + oy;
+        if (px + hw > K[b] && px - hw < K[b + 2] && py + hh > K[b + 1] && py - hh < K[b + 3]) oy = K[b + 3] + hh + 3 - s.y;
       }
       const pop = m.t < 0.12 ? 0.6 + (m.t / 0.12) * (m.crit ? 0.9 : 0.6) : (m.crit ? 1.5 : 1.2) - Math.min(1, (m.t - 0.12) / 0.2) * (m.crit ? 0.5 : 0.2);
       m.el.style.transform = `translate(${(s.x + ox).toFixed(1)}px,${(s.y + oy).toFixed(1)}px) translate(-50%,-50%) scale(${pop.toFixed(2)})`;

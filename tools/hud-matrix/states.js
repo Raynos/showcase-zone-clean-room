@@ -334,6 +334,26 @@ const HM_STATES = [
       await G.secs(0.6);
     },
   },
+  {
+    n: 24, name: 'elite-open', what: 'A night elite in its opening: the gold chip draining with its seconds, the state word on its plate over the glow, no second name over the robot', hour: 23,
+    async setup(G, g) {
+      await hmFields(G, g, 12);
+      const d = g.mobs.elites.find((e) => e.def.id === 'hot_mess').def;
+      const m = G.spawn(d.kind, 44.5, 6, { level: d.level, variant: d.variant, elite: d, name: d.name, scale: d.scale, hpMul: d.hpMul, aggro: true });
+      await G.settleMobs();
+      g.combat.target = m; g.player.invuln = 60;
+      await G.secs(1.0); G.quiet();
+      // held in its opening for the shot: a stun that takes extra damage, and the word the trick says over it
+      clearInterval(window.HM_TIMER);
+      const word = () => { const c = m.center(new g.camera.position.constructor()); g.hud.damage({ x: c.x, y: c.y + m.height * 0.5 + 0.6, z: c.z }, 'VENTING', 'crit'); };
+      const hold = () => { if (!m.alive) return; if (m.state !== 'stun') m.interrupt(3.0); m.stunTaken = 1.5; if (m.stT > -1.2) m.stT = -1.2; };
+      window.HM_TIMER = setInterval(hold, 50);
+      hold();
+      window.HM_AFTER = () => { hmLane(g); word(); };
+      window.HM_AFTER();
+      await G.secs(0.35);
+    },
+  },
 ];
 // the crate drop's line as systems/events.ts draws it (the event itself is the zone's to schedule)
 function hmCrate() {

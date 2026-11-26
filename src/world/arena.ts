@@ -528,6 +528,8 @@ export class Arena implements System {
    * that was only "dodge the fist, poke the shins" becomes "dodge the fist, punish the fist", and a
    * full punish topples it (a break) before the crates start to fall. Bow and rifle can hit it too.
    */
+  /** seconds the planted fist has left, 0 when none is down: the boss bar's chip (ui/mechRead.ts) */
+  get fistLeft() { return this.plantT; }
   private makeFist(): Hittable {
     const g = this.game;
     const f: Hittable = {
