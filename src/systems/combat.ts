@@ -156,6 +156,8 @@ export class Combat {
   /** Overdrive, 0..100: shared across weapons, spent whole on the weapon's ultimate */
   od = 0;
   private deadT = 0;
+  /** seconds after a field respawn in which no robot notices the player (one that is hit still turns) */
+  graceT = 0;
   /** where the player comes back after dying */
   checkpoint: { x: number; y: number; z: number; yaw: number; onRespawn?: () => void } | null = null;
   perfectT = 0;
@@ -533,6 +535,8 @@ export class Combat {
     pl.dead = false; pl.controllable = true; pl.invuln = 2.5;
     st.d.hp = st.maxHp; st.d.energy = st.maxEnergy;
     pl.teleport(cp.x, cp.y + 0.2, cp.z, cp.yaw);
+    // back up in the open: a few seconds to get bearings before anything notices (an arena or a vault retries its fight)
+    this.graceT = this.checkpoint ? 0 : 4;
     g.cameraRig.snap(cp.yaw + Math.PI);
     g.renderer.post.fade = 1;
     cp.onRespawn?.();
@@ -624,6 +628,7 @@ export class Combat {
       if (this.autoT <= 0) { this.autoT = 0.4; this.target = this.acquire(this.kind === 'sword' || this.kind === 'spear' ? 9 : 30, g.cameraRig.yaw + Math.PI); }
     }
 
+    if (this.graceT > 0) this.graceT -= dt;
     if (pl.dead) {
       // the aim drops with the hero (and a third-person aim's lens leaves the eyes)
       this.shooter.ads = false; g.cameraRig.adsEye = false;

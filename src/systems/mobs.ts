@@ -164,6 +164,8 @@ export class Mob implements Hittable {
   get broken() { return this.state === 'broken'; }
   /** Line of sight from the robot's head to the player's chest through world geometry, cached briefly. */
   sees(): boolean {
+    // just back up after a death: nothing notices the player for a few seconds (systems/combat.ts graceT)
+    if (this.mobs.game.combat.graceT > 0) return false;
     if (this.seesT > 0) return this.seesV;
     this.seesT = 0.2 + Math.random() * 0.1;
     const g = this.mobs.game, pl = g.player;
@@ -534,7 +536,7 @@ export class Mob implements Hittable {
         if (hd < (this.aggro ? 4 : 1.5)) { this.setState('idle'); this.phase = this.hp >= this.maxHp ? 1 : this.phase; }
         else { wantVx = (hx / hd) * speed * 1.5; wantVz = (hz / hd) * speed * 1.5; face = Math.atan2(hx, hz); }
         // back into the fight when the player comes into reach (or, reset, comes back in close)
-        if (this.aggro ? canSee && inReach && hd < this.reachLeash * 0.8 : canSee && dist < this.def.aggro * 0.6 && hd < this.leash * 0.5) { this.aggro = true; this.mending = false; this.setState('chase'); }
+        if (this.aggro ? canSee && inReach && hd < this.reachLeash * 0.8 : canSee && dist < this.def.aggro * 0.6 && hd < this.leash * 0.5 && !(g.combat.graceT > 0)) { this.aggro = true; this.mending = false; this.setState('chase'); }
         break;
       }
       case 'dead': {

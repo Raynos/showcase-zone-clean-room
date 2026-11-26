@@ -15,7 +15,7 @@ import { FieldRunner } from '../systems/objectives/runner';
 import { Travel, arrival } from '../systems/travel';
 import { Ctx, burrow, capacitorBank, drum, ingots, ladleCar, palletStack, pipeRack, rangePole, rivetPile, sandbags, tarpPile, tripod } from './dressing/kit';
 import { FLORA_KEEPOUT } from './flora';
-import { PAL } from './layout';
+import { PAL, inTown } from './layout';
 import { anvil, bench, cloth, crate, crateStack, lanternBody, marketStall, pixelText } from './props';
 import type { NpcSpot } from './town';
 
@@ -506,10 +506,16 @@ export function start(game: Game) {
     for (const b of benches) { const d = Math.hypot(b.x - p.x, b.z - p.z); if (d < bd) { bd = d; best = b; } }
     return { x: best.x, z: best.z, label: 'Wait for dusk' };
   });
-  // respawn at the nearest lit post when it is nearer than the gate or town the world would pick
+  // respawn at the nearest lit post when it is nearer than the gate or town the world would pick. A post's
+  // ring and the town are safe ground; any other spot must be 30 m clear of every robot camp and standing
+  // robot, or it is not offered (dying should never put the player back in the same fight)
   const prev = g.hooks.respawnPoint;
+  const clearOf = (x: number, z: number) => !g.mobs.camps.some((c) => Math.hypot(c.def.x - x, c.def.z - z) < 30 + c.def.r)
+    && !g.mobs.list.some((m) => m.alive && !m.isBoss && Math.hypot(m.pos.x - x, m.pos.z - z) < 30);
   g.hooks.respawnPoint = () => {
-    const b = prev?.() ?? { x: -30, y: g.terrain.h(-30, 6), z: 6, yaw: -Math.PI / 2 };
+    const town = { x: -30, y: g.terrain.h(-30, 6), z: 6, yaw: -Math.PI / 2 };
+    let b = prev?.() ?? town;
+    if (!inTown(b.x, b.z) && !clearOf(b.x, b.z)) b = town;
     const p = g.player.pos; let best = b, bd = Math.hypot(p.x - b.x, p.z - b.z);
     for (const o of OUTPOSTS) {
       if (!travel.unlocked(o.id)) continue;
