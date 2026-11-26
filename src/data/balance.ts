@@ -21,14 +21,16 @@ export const XP_PER_MIN = 10.7;
  * brought only 57% and 42% of the XP. Quest shares from level 4, WANTED posters and bounties were
  * then halved and these rates set so kills carry about 70% at the measured kill rate (6.3 a minute
  * in the Heights, 12 in the Docks). That last step is worked out from the runs, not re-run. Band 1
- * went from 10.7 to 11.5 when "First Day on the Yard" was lifted to most of level 1.
+ * went from 10.7 to 11.5 when "First Day on the Yard" was lifted to most of level 1, then to 15 when
+ * levels 1-3 took 6.8 min of 10 (QA, 2026-11-26, 15d045e, fast travel in use; quests 39% of it).
  * Levels 10-18 at 18 (QA, 2026-11-26, HEAD 4060d00, no boost, signal posts in use): levels 10-12 took
- * 17.7 min of 45, 13-15 26.8 of 54, level 16 8.0 of 20; kills brought 63-74%. With bounties cut to
- * 0.4x (grind.ts) and field quests halved from band 4, these rates are modelled to land levels 10-12
- * at 44 min and 13-15 at 55 min with kills at 64% and 70%; band 6 is set from its first level and
- * the last level (19) takes band 6's rate. Modelled from the runs, not yet re-run.
+ * 17.7 min of 45, 13-15 26.8 of 54, 16-18 22.9 of 63; kills brought 63%, 74% and 59%. With bounties
+ * cut to 0.4x (grind.ts) and field quests halved from band 4, these rates are modelled to land the
+ * three bands at 44, 55 and 60 min with kills at 64%, 70% and 56%. Bounties stay 15-18% of band 6
+ * because each pays a share of a level that is now long. The last level (19) takes band 6's rate.
+ * Modelled from the runs, not yet re-run.
  */
-export const XP_PER_MIN_BAND = [11.5, 23, 18, 41, 36, 40, 40];
+export const XP_PER_MIN_BAND = [15, 23, 18, 41, 36, 45, 45];
 /** The rate for climbing out of `level` (its band: 1-3, 4-6, ... 19). */
 export const xpPerMin = (level: number) => XP_PER_MIN_BAND[Math.min(6, Math.floor((Math.max(1, level) - 1) / 3))];
 /** XP needed to go from level L to L+1: PACE_MIN minutes of play at its band's rate. */
