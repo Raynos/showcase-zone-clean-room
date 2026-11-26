@@ -11,6 +11,7 @@ import { addGlow, type Glow } from '../gfx/lighting';
 import { T } from '../gfx/textures';
 import type { Mob } from '../systems/mobs';
 import { BANDS, BAND_GATES, GAUNTLET, PAL, TITAN_GATE, VAULT_PORTAL, type BandGate } from './layout';
+import { piece, pieceShape } from './pieces';
 import { crate, pixelIcon, pixelText } from './props';
 import { addEmitter } from '../systems/emitters';
 
@@ -80,10 +81,13 @@ export function buildEast(game: Game) {
       wall(-(s / 4 + 1.75), s / 2, s / 2 - 3.5, 1.2); wall(s / 4 + 1.75, s / 2, s / 2 - 3.5, 1.2);
       pylon(g, -4.1, h + 2.5, 1.8); pylon(g, 4.1, h + 2.5, 1.8);
       g.push().translate(0, 0, s / 2);
-      g.box(10, 1.6, 1.2, { at: [0, h + 2.2, 0], color: PAL.slateDeep, layer: T.PANEL, bevel: 0.08 });
-      g.push().translate(0, h + 2.2, 0.62); pixelText(g, 'CRATE TITAN', 0.17, { color: PAL.red, emit: 2.2 }); g.pop();
-      g.push().translate(-4.1, h - 2.6, 1.0); pixelIcon(g, 'skull', 0.16, { color: PAL.amber, emit: 1.8 }); g.pop();
-      g.push().translate(4.1, h - 2.6, 1.0); pixelIcon(g, 'skull', 0.16, { color: PAL.amber, emit: 1.8 }); g.pop();
+      // the gate's armoured frame stands round the door and through the wall; the sign rides its lintel
+      const frame = piece(g, 'titan-gate', { at: [0, 0, 0], scale: [1.9, 2.44, 1.4] });
+      const sy = frame ? h + 4.3 : h + 2.2, iz = frame ? 1.3 : 1.0;
+      g.box(10, 1.6, 1.2, { at: [0, sy, 0], color: PAL.slateDeep, layer: T.PANEL, bevel: 0.08 });
+      g.push().translate(0, sy, 0.62); pixelText(g, 'CRATE TITAN', 0.17, { color: PAL.red, emit: 2.2 }); g.pop();
+      g.push().translate(-4.75, h - 2.6, iz); pixelIcon(g, 'skull', 0.16, { color: PAL.amber, emit: 1.8 }); g.pop();
+      g.push().translate(4.75, h - 2.6, iz); pixelIcon(g, 'skull', 0.16, { color: PAL.amber, emit: 1.8 }); g.pop();
       g.pop();
       // floor + portal dais at the back
       g.box(s, 0.3, s, { at: [0, 0.05, 0], color: PAL.slateDark, layer: T.PLATE, uvScale: 0.3 });
@@ -103,17 +107,26 @@ export function buildEast(game: Game) {
     g.at(P.x, y, P.z, -Math.PI / 2, () => {
       g.cyl(7.5, 8, 0.5, 24, { at: [0, 0.25, 0], color: PAL.concrete, layer: T.CONCRETE, col: true });
       g.cyl(6, 6.4, 0.35, 24, { at: [0, 0.65, 0], color: PAL.slate, layer: T.PLATE, col: true });
-      g.torus(2.7, 0.45, 8, 28, { at: [0, 3.9, -2.2], color: PAL.slateDark, layer: T.METAL });
-      g.torus(2.7, 0.2, 6, 28, { at: [0, 3.9, -1.95], color: PAL.cyan, emit: 2 });
+      // the portal: a brick shell round a plated ring, brass markers, a lens that carries the vault's light
+      const ring = piece(g, 'vault-portal', { at: [0, 0.825, -2.2] });
+      if (!ring) {
+        g.torus(2.7, 0.45, 8, 28, { at: [0, 3.9, -2.2], color: PAL.slateDark, layer: T.METAL });
+        g.torus(2.7, 0.2, 6, 28, { at: [0, 3.9, -1.95], color: PAL.cyan, emit: 2 });
+      }
       for (const sx of [-1, 1]) {
-        g.box(1.4, 2.4, 1.8, { at: [sx * 3.1, 1.9, -2.2], color: PAL.slateDark, layer: T.PANEL, bevel: 0.1, col: true });
-        g.box(0.2, 1.6, 0.2, { at: [sx * 2.36, 1.9, -1.3], color: PAL.cyan, emit: 1.8 });
+        if (ring) g.colBox(1.4, 2.4, 1.8, { at: [sx * 3.1, 1.9, -2.2] });
+        else {
+          g.box(1.4, 2.4, 1.8, { at: [sx * 3.1, 1.9, -2.2], color: PAL.slateDark, layer: T.PANEL, bevel: 0.1, col: true });
+          g.box(0.2, 1.6, 0.2, { at: [sx * 2.36, 1.9, -1.3], color: PAL.cyan, emit: 1.8 });
+        }
         g.box(1.0, 5.5, 1.0, { at: [sx * 6.2, 3.3, -4.2], color: PAL.concrete, layer: T.CONCRETE, bevel: 0.1, col: true, grad: 0.7 });
         g.sphere(0.4, 8, 6, { at: [sx * 6.2, 6.4, -4.2], color: PAL.cyan, emit: 2.5 });
       }
-      g.box(7, 1.3, 0.5, { at: [0, 7.6, -2.6], color: PAL.slateDeep, layer: T.PANEL, bevel: 0.06 });
-      g.box(0.4, 1.4, 0.4, { at: [-3.1, 6.6, -2.6], color: PAL.slateDark, layer: T.METAL }); g.box(0.4, 1.4, 0.4, { at: [3.1, 6.6, -2.6], color: PAL.slateDark, layer: T.METAL });
-      g.push().translate(0, 7.6, -2.33); pixelText(g, 'TRAINING VAULT', 0.14, { color: PAL.cyan, emit: 2 }); g.pop();
+      // the sign rides above the ring's crown
+      const sy = ring ? 9.3 : 7.6;
+      g.box(7, 1.3, 0.5, { at: [0, sy, -2.6], color: PAL.slateDeep, layer: T.PANEL, bevel: 0.06 });
+      g.box(0.4, 1.4, 0.4, { at: [-3.1, sy - 1, -2.6], color: PAL.slateDark, layer: T.METAL }); g.box(0.4, 1.4, 0.4, { at: [3.1, sy - 1, -2.6], color: PAL.slateDark, layer: T.METAL });
+      g.push().translate(0, sy, -2.33); pixelText(g, 'TRAINING VAULT', 0.14, { color: PAL.cyan, emit: 2 }); g.pop();
     });
   }
   // ---- storm beacons ----
@@ -121,6 +134,13 @@ export function buildEast(game: Game) {
     const y = terrain.h(b.x, b.z) - 0.1, g = chunks.solid(b.x, b.z);
     g.at(b.x, y, b.z, 0, () => {
       g.cyl(1.9, 2.3, 0.7, 10, { at: [0, 0.35, 0], color: PAL.concrete, layer: T.CONCRETE, col: true });
+      // the armoured tower with its ladder and open crown; the lamp in the crown is lit by the player (East.beaconFx)
+      if (piece(g, 'beacon', { at: [0, 0.7, 0], rot: [0, b.x * 0.37 + b.z * 0.11, 0] })) {
+        g.colCyl(1.55, 6.5, { at: [0, 3.9, 0] });
+        g.cone(1.75, 0.95, 10, { at: [0, 10.15, 0], color: PAL.orangeDeep, layer: T.ROOF });
+        for (let i = 0; i < 4; i++) { const a = (i / 4) * TAU + 0.4; g.box(0.12, 0.5, 0.12, { at: [Math.cos(a) * 1.3, 9.75, Math.sin(a) * 1.3], color: PAL.slateDark, layer: T.METAL }); }
+        return;
+      }
       g.cyl(0.55, 0.9, 6.5, 8, { at: [0, 3.9, 0], color: PAL.slate, layer: T.METAL, col: true, grad: 0.7 });
       for (let i = 0; i < 3; i++) g.cyl(0.74 - i * 0.07, 0.74 - i * 0.07, 0.22, 8, { at: [0, 1.8 + i * 1.7, 0], color: PAL.orange, layer: T.STRIPE, uv: 'fit' });
       g.cyl(1.5, 0.7, 0.8, 10, { at: [0, 7.5, 0], color: PAL.slateDark, layer: T.METAL });
@@ -261,7 +281,8 @@ export class East implements System {
     // ---- beacons ----
     BEACONS.forEach((b, i) => {
       const y = terrain.h(b.x, b.z) - 0.1;
-      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.85, 12, 8), new THREE.MeshBasicMaterial({ color: 0x2a3038 }));
+      const lamp = new THREE.Mesh(pieceShape('beacon-lamp', 1.5) ?? new THREE.SphereGeometry(0.85, 12, 8), new THREE.MeshBasicMaterial({ color: 0x2a3038 }));
+      lamp.rotation.y = b.x * 0.37 + b.z * 0.11;
       lamp.position.set(b.x, y + 8.8, b.z); g.scene.add(lamp);
       const shaft = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 0.9, 150, 14, 1, true), shaftMat(0xffb04a, 1.6));
       shaft.position.set(b.x, y + 8.8 + 75, b.z); shaft.visible = false; shaft.renderOrder = 4; g.scene.add(shaft);

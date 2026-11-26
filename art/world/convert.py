@@ -11,6 +11,7 @@ triangles only. The method is in art/lib/static.py.
 The manifest is kept outside the repository, next to the source meshes:
 
     { "root": "<dir the sources are under>", "cache": "<dir for converted pieces>", "out": "kit",
+      "roles": { "<name>": {role}, ... },     shared roles; "mats" may name one, or {"use": "<name>", ...changes}
       "pieces": { "<piece name>": {
           "src": "file.glb"  |  [{"file": "a.glb", "at": [x, y, z], "yaw": deg, "scale": s, "keep": "<node regex>", "drop": "<node regex>"}],
           "fit": [x, y, z],        size to stretch the piece to, metres, game axes (null keeps an axis in proportion)
@@ -23,7 +24,7 @@ The manifest is kept outside the repository, next to the source meshes:
 A role: {"name", "layer" (a T layer name in src/gfx/textures.ts), "color" "#rrggbb", "emit", "uv" (tiles per metre),
 "lod" (size multiplier for the distance level-of-detail; under 1 also makes the part trim, which casts no shadow, unless "cast": true), "jit" (tone drift between islands), "ao" (depth of occlusion),
 "ratio" (edge-collapse for this role alone), "drop": true, "split": true (each island its own part), "whole": true
-(never clustered as small), "vcol": true (keep the source's vertex colours as tone), "box": true (each island
+(never clustered as small), "vcol": true (keep the source's vertex colours as tone), "show": true (never dropped as hidden: decals that lie on a face), "box": true (each island
 that is nearly a box becomes one: the cheap level of a board)}.
 
 Pieces are cached one file each, so naming pieces rebuilds only those; the .glb is always
@@ -100,8 +101,9 @@ def load_sources(spec, root):
     return objs
 
 
-def convert(name, spec, root):
+def convert(name, spec, root, presets=None):
     t0 = time.time()
+    presets = presets or {}
     static.reset()
     objs = load_sources(spec, root)
     static.bake_transforms(objs)
@@ -116,7 +118,12 @@ def convert(name, spec, root):
         if mname in seen: return seen[mname]
         role = None
         for rx, r in spec.get('mats', []):
-            if re.search(rx, mname, re.I): role = dict(r); break
+            if re.search(rx, mname, re.I):
+                # a role by name is one of the manifest's shared "roles"; {"use": name, ...} is one with changes
+                if isinstance(r, str): role = dict(presets[r]); role.setdefault('name', r)
+                elif 'use' in r: role = {**presets[r['use']], **{k: v for k, v in r.items() if k != 'use'}}; role.setdefault('name', r['use'])
+                else: role = dict(r)
+                break
         col, glow = colours.get(mname, ((0.5, 0.5, 0.5), 0.0))
         if role is None:
             role = {}
@@ -177,6 +184,8 @@ def convert(name, spec, root):
     rgb, ao = static.shade(P, tri, nor, src, role, roles, ao_dist, seed=sum(map(ord, name)), grime=tuple(spec.get('grime', (0.35, 0.16))), rays=spec.get('rays', 24), cool=tuple(spec.get('cool', (0.80, 0.80, 1.0))))
     if spec.get('hidden', True):
         keep = static.visible(P, tri)
+        for ri, r in enumerate(roles):
+            if r.get('show'): keep |= role == ri
         tri, nor, src, role, rgb = tri[keep], nor[keep], src[keep], role[keep], rgb[keep]
     part, table = static.parts(P, tri, role, roles, small=spec.get('small', 0.2), cell=spec.get('cell', 0.7))
     if len(table) > 120: raise RuntimeError(f'{len(table)} parts: raise "cell" or "small" (the part index is stored in 7 bits)')
@@ -199,7 +208,7 @@ def convert(name, spec, root):
 
 def spec_role_colour(spec, r):
     for rx, role in spec.get('mats', []):
-        if role.get('name') == r.get('name'): return role
+        if isinstance(role, dict) and role.get('name') == r.get('name'): return role
     return {}
 
 
@@ -242,7 +251,7 @@ def main():
         stale = not os.path.exists(path) or name in want or 'all' in want
         if not stale: continue
         try:
-            np.savez(path, **convert(name, spec, man['root']))
+            np.savez(path, **convert(name, spec, man['root'], man.get('roles')))
         except Exception as e:  # one bad piece must not stop the rest
             import traceback; traceback.print_exc()
             print(f'FAILED {name}: {e}')

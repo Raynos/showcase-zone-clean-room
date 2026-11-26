@@ -5,6 +5,7 @@ import type { Geo } from '../../gfx/geo';
 import { T } from '../../gfx/textures';
 import { STORIES } from '../stories';
 import { BANDS, PAL, ROADS, ROAD_SAMPLES, bandAt, ridgeAt } from '../layout';
+import { hasPiece, piece } from '../pieces';
 import { anvil, cart, crate, crateBox, crateStack, crateTier, fence, flagPole, hayBale, lampPost, pixelText, sack, workbench } from '../props';
 import {
   Ctx, antennaMast, brokenCrate, burrow, capacitorBank, container, conveyor, crateSteps, dockBay, dockCrane, drum, flatcar, floodlight, gantry,
@@ -369,6 +370,8 @@ function basin(c: Ctx, g: Geo, wx: number, wz: number, y: number, r: number) {
   g.cyl(r + 0.3, r + 0.3, 0.12, 16, { at: [0, 0.06, 0], color: 0x1c1a1a, col: 'none' });
   c.info.pools.push({ x: wx, z: wz, r, level: y + 0.34 });
 }
+/** where the kiln's tall flue stands when the authored furnace is under it (on the furnace's own collar) */
+const KILN_FLUE: [number, number] = [-2.4, -0.95];
 const V4: Vig[] = [
   { r: 4.4, w: 3, f: (c, x, z, yaw, r, b) => { // slag pour: ladle on rails, ingots
     dirt(c, b, x, z, 5, 0.5);
@@ -397,17 +400,24 @@ const V4: Vig[] = [
   { r: 5.4, w: 2, hx: 4.5, hz: 3.2, f: (c, x, z, yaw, r, b) => { // kiln with a channel and catch basin
     dirt(c, b, x, z, 6.2, 0.6);
     c.plinth(x, z, yaw, 9, 6.4, (g, y) => {
-      g.box(3.4, 3.4, 3.2, { at: [-2.4, 1.7, -1], color: 0x9a5a42, layer: T.REDBRICK, uvScale: 0.35, col: true, grad: 0.65 });
-      g.box(3.7, 0.3, 3.5, { at: [-2.4, 3.5, -1], color: PAL.slateDark, layer: T.METAL, col: 'none' });
-      g.cyl(0.5, 0.7, 4.6, 8, { at: [-2.9, 5.9, -1.4], color: 0x4a4d54, layer: T.METAL, col: 'none', grad: 0.8 });
-      g.cyl(0.4, 0.4, 0.1, 8, { at: [-2.9, 8.22, -1.4], color: 0xff7a1a, emit: 2.4, col: 'none' });
-      g.box(1.5, 1.4, 0.2, { at: [-2.4, 1.0, 0.62], color: 0xff6a14, emit: 2.3, col: 'none' });
-      for (let i = 0; i < 3; i++) g.box(0.1, 1.5, 0.26, { at: [-2.9 + i * 0.5, 1.0, 0.66], color: 0x18191c, col: 'none' });
+      // the authored furnace, its own flue collar carrying the tall stack
+      const kiln = piece(g, 'furnace', { at: [-2.4, 0, -0.9], scale: 1.25 });
+      const [fx, fz] = kiln ? KILN_FLUE : [-2.9, -1.4];
+      if (kiln) g.colBox(3.4, 3.4, 3.2, { at: [-2.4, 1.7, -1] });
+      else {
+        g.box(3.4, 3.4, 3.2, { at: [-2.4, 1.7, -1], color: 0x9a5a42, layer: T.REDBRICK, uvScale: 0.35, col: true, grad: 0.65 });
+        g.box(3.7, 0.3, 3.5, { at: [-2.4, 3.5, -1], color: PAL.slateDark, layer: T.METAL, col: 'none' });
+        g.box(1.5, 1.4, 0.2, { at: [-2.4, 1.0, 0.62], color: 0xff6a14, emit: 2.3, col: 'none' });
+        for (let i = 0; i < 3; i++) g.box(0.1, 1.5, 0.26, { at: [-2.9 + i * 0.5, 1.0, 0.66], color: 0x18191c, col: 'none' });
+      }
+      g.cyl(0.5, 0.7, 4.6, 8, { at: [fx, 5.9, fz], color: 0x4a4d54, layer: T.METAL, col: 'none', grad: 0.8 });
+      g.cyl(0.4, 0.4, 0.1, 8, { at: [fx, 8.22, fz], color: 0xff7a1a, emit: 2.4, col: 'none' });
       g.push().translate(0.2, 0, 1.5); slagChannel(g, 3.6); g.pop();
       g.push().translate(3.2, 0, 1.5); const [wx, wz] = rel(x, z, yaw, 3.2, 1.5); basin(c, g, wx, wz, y, 1.25); g.pop();
       g.push().translate(2.6, 0, -1.8); ingots(g, r, 3); g.pop();
     }, { color: 0x4a4a4e });
-    c.info.stacks.push({ x: rel(x, z, yaw, -2.9, -1.4)[0], y: c.h(x, z) + 8.6, z: rel(x, z, yaw, -2.9, -1.4)[1] });
+    const [fx, fz] = hasPiece('furnace') ? KILN_FLUE : [-2.9, -1.4];
+    c.info.stacks.push({ x: rel(x, z, yaw, fx, fz)[0], y: c.h(x, z) + 8.6, z: rel(x, z, yaw, fx, fz)[1] });
     c.nook(b, x, z, yaw, -0.4, 3.9);
   } },
 ];

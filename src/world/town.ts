@@ -9,6 +9,7 @@ import {
   bounce, glowPatch, ladderProp, lampPost, lanternBody, marketStall, pipeRun, pixelIcon, pixelText, planter, sack, signPost, slab, stringLights, toWorld, trough,
   wallLantern, well, windowUnit, workbench, wpos,
 } from './props';
+import { piece } from './pieces';
 import type { HouseOut, HouseSpec } from './props';
 import type { Terrain } from './terrain';
 
@@ -131,14 +132,19 @@ function plaza(c: Ctx) {
   const g = c.chunks.solid(cx, cz + 1);
   // ---- the Mainspring: a brass orrery fountain with a cyan core
   g.at(cx, 0, cz, 0, () => {
-    g.cylUp(5.0, 5.25, 0.8, 28, { color: STONE_L, layer: T.BRICK, uvScale: 0.5, col: true, grad: 0.7 });
-    g.torus(5.02, 0.2, 6, 32, { at: [0, 0.82, 0], rot: [PI / 2, 0, 0], color: 0xe9e1d0, layer: T.BRICK, uvScale: 0.5, col: 'none' });
+    // the basin: a ring of dressed limestone blocks over a course of fired tile
+    const rim = piece(g, 'fountain-basin', { scale: [1.235, 0.98, 1.235], colors: { stone: STONE_L, course: 0xb99c84 } });
+    if (rim) g.colCyl(5.25, 0.8, { at: [0, 0.4, 0] });
+    else {
+      g.cylUp(5.0, 5.25, 0.8, 28, { color: STONE_L, layer: T.BRICK, uvScale: 0.5, col: true, grad: 0.7 });
+      g.torus(5.02, 0.2, 6, 32, { at: [0, 0.82, 0], rot: [PI / 2, 0, 0], color: 0xe9e1d0, layer: T.BRICK, uvScale: 0.5, col: 'none' });
+    }
     g.cyl(4.85, 4.85, 0.06, 28, { at: [0, 0.6, 0], color: 0x2c93ad, emit: 0.3, layer: T.FLAT, col: 'none' });
     g.torus(3.3, 0.05, 4, 28, { at: [0, 0.635, 0], rot: [PI / 2, 0, 0], color: 0xbff3ff, emit: 0.7, col: 'none' });
     g.torus(4.2, 0.04, 4, 28, { at: [0, 0.635, 0], rot: [PI / 2, 0, 0], color: 0xbff3ff, emit: 0.45, col: 'none' });
     for (let i = 0; i < 12; i++) {
       const a = (i / 12) * PI * 2;
-      g.ico(0.17, 0, { at: [Math.sin(a) * 5.02, 1.05, Math.cos(a) * 5.02], color: BRASS, layer: T.BRASS, flat: true, col: 'none' });
+      g.ico(0.17, 0, { at: [Math.sin(a) * (rim ? 4.9 : 5.02), rim ? 1.0 : 1.05, Math.cos(a) * (rim ? 4.9 : 5.02)], color: BRASS, layer: T.BRASS, flat: true, col: 'none' });
     }
     // drum with a great horizontal gear
     g.cylUp(2.2, 2.5, 1.5, 16, { color: STONE, layer: T.BRICK, uvScale: 0.5, col: true, grad: 0.75 });
@@ -925,9 +931,11 @@ function clockTower(c: Ctx) {
     g.push().rotateY(i * PI / 2).translate(0, CM, 3.36);
     g.box(6.5, 0.3, 0.12, { at: [0, (C2 - C1) / 2 - 0.15, 0.02], color: TIMBER, layer: T.PLANKS, uvScale: 0.3, col: 'none' });
     g.box(6.5, 0.3, 0.12, { at: [0, -(C2 - C1) / 2 + 0.15, 0.02], color: TIMBER, layer: T.PLANKS, uvScale: 0.3, col: 'none' });
+    g.push().translate(0, 0, 0.1); gear(g, 2.55, 24, 0.3, BRASS, { ring: true }); g.pop();
+    // the authored clock: a cast case, a brass bezel, an enamel dial that glows a little after dark
+    if (piece(g, 'clock-face', { at: [0, 0, 0.12], scale: 1.75, emit: { dial: 0.2 } })) { g.pop(); continue; }
     g.cyl(2.25, 2.25, 0.14, 32, { at: [0, 0, 0.06], rot: [PI / 2, 0, 0], color: 0xfff3d6, emit: 0.2, col: 'none' });
     g.cyl(1.1, 1.1, 0.03, 20, { at: [0, 0, 0.14], rot: [PI / 2, 0, 0], color: 0xa9ecfa, emit: 0.3, col: 'none' });
-    g.push().translate(0, 0, 0.1); gear(g, 2.55, 24, 0.3, BRASS, { ring: true }); g.pop();
     for (let k = 0; k < 12; k++) {
       const a = (k / 12) * PI * 2;
       g.box(k % 3 ? 0.1 : 0.17, k % 3 ? 0.34 : 0.5, 0.05, { at: [Math.sin(a) * 1.85, Math.cos(a) * 1.85, 0.15], rot: [0, 0, -a], color: 0x3a2e22, col: 'none' });

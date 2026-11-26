@@ -164,6 +164,27 @@ export function piece(g: Geo, name: string, o: PieceOpts = {}): boolean {
   return true;
 }
 
+/**
+ * A piece's bare shape (positions and normals, every part merged), for the few things that are
+ * their own mesh with their own material: a lamp glass that is switched on, a door that moves.
+ * Null if the piece is not loaded.
+ */
+export function pieceShape(name: string, scale = 1): THREE.BufferGeometry | null {
+  const p = pieces.get(name);
+  if (!p) return null;
+  const pos: number[] = [], nor: number[] = [], idx: number[] = [];
+  for (const part of p.parts) {
+    const P = part.geo.getAttribute('position'), N = part.geo.getAttribute('normal'), I = part.geo.index!, base = pos.length / 3;
+    for (let i = 0; i < P.count; i++) { pos.push(P.getX(i) * scale, P.getY(i) * scale, P.getZ(i) * scale); nor.push(N.getX(i), N.getY(i), N.getZ(i)); }
+    for (let i = 0; i < I.count; i++) idx.push(I.getX(i) + base);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geo.setIndex(idx);
+  return geo;
+}
+
 /** Dev: what the kit holds. */
 export function pieceStats(): Array<{ name: string; tris: number; parts: number; size: [number, number, number] }> {
   return [...pieces].map(([name, p]) => ({ name, tris: p.tris, parts: p.parts.length, size: p.size }));

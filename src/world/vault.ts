@@ -11,7 +11,8 @@ import { T } from '../gfx/textures';
 import type { Mob } from '../systems/mobs';
 import type { InteriorLook } from './environment';
 import { PAL, VAULT, VAULT_PORTAL } from './layout';
-import { pixelText } from './props';
+import { piece } from './pieces';
+import { crate, pixelText } from './props';
 import { addEmitter } from '../systems/emitters';
 
 /**
@@ -101,10 +102,14 @@ export function build(game: Game) {
     // -------- entry hall --------
     room(g, roof, -6, 6, 60, 78, 0, 7, [{ side: 'n', w: 5, h: 5 }]);
     g.cyl(3.2, 3.5, 0.3, 20, { at: [0, 0.15, 74], color: PAL.concrete, layer: T.CONCRETE, col: true });
-    g.torus(2.3, 0.4, 8, 26, { at: [0, 3.2, 77.1], color: PAL.slate, layer: T.METAL });
-    g.torus(2.3, 0.16, 6, 26, { at: [0, 3.2, 76.85], color: PAL.cyan, emit: 2 });
+    // the way back out is a round vault door standing open, its leaf swung into the hall
+    if (piece(g, 'vault-door', { at: [0, 0.05, 77.1], rot: [0, Math.PI, 0] })) g.colBox(1.6, 4.6, 3.6, { at: [-4.0, 2.4, 74.3] });
+    else {
+      g.torus(2.3, 0.4, 8, 26, { at: [0, 3.2, 77.1], color: PAL.slate, layer: T.METAL });
+      g.torus(2.3, 0.16, 6, 26, { at: [0, 3.2, 76.85], color: PAL.cyan, emit: 2 });
+    }
     for (const [cx, cz, n] of [[-4.6, 64, 2], [4.5, 66.5, 3], [-4.4, 70.5, 1]] as const) for (let i = 0; i < n; i++)
-      g.box(1.3, 1.3, 1.3, { at: [cx, 0.65 + i * 1.3, cz], rot: [0, cx + i * 0.6, 0], color: i % 2 ? 0xb98548 : PAL.crate, layer: i % 2 ? T.CRATE2 : T.CRATE, uv: 'fit', bevel: 0.05, col: i === 0 });
+      crate(g, 1.3, { x: cx, y: i * 1.3, z: cz, ry: cx + i * 0.6, color: i % 2 ? 0xb98548 : PAL.crate, alt: i % 2 === 0, col: i === 0 });
     g.push().translate(0, 6.0, 60.9); pixelText(g, 'CHAMBER 1  LOGIC', 0.12, { color: PAL.cyan, emit: 2 }); g.pop();
     // -------- chamber 1: logic plates --------
     room(g, roof, -12, 12, 30, 60, 0, 9, [{ side: 's', w: 5, h: 5 }, { side: 'n', w: 5, h: 5 }]);
