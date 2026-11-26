@@ -5,7 +5,7 @@
   padding: calc(var(--sat) + 26px) calc(var(--gutter) + var(--sar)) calc(var(--sab) + 16px) calc(var(--gutter) + var(--sal));
   background: radial-gradient(120% 60% at 50% 30%, #3a2a1c 0%, #1b1f26 55%, #0b0e12 100%); color: var(--text); font-family: var(--font);
   justify-content: center; font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; letter-spacing: 0; text-transform: none; font-weight: 500; line-height: 1.2; font-size: 14px;
-  transition: opacity .5s; overflow: hidden; }
+  transition: opacity var(--t-sheet); overflow: hidden; }
 #boot.ld * { box-sizing: border-box; }
 #boot.ld.out { opacity: 0; pointer-events: none; }
 #boot.ld::before { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .5;
@@ -70,4 +70,19 @@
   .ld-toy { grid-column: 1; grid-row: 2 / 4; }
   .ld-lore { grid-column: 2; grid-row: 1; }
   .ld-prog { grid-column: 2; grid-row: 2 / 4; align-self: start; }
+}
+/* a monitor or a tablet on its side: the same two columns as a phone on its side at a size for a desk,
+   not a phone's column alone in the middle of the screen */
+@media (min-width: 1000px) and (min-height: 600.02px) {
+  #boot.ld { display: grid; grid-template-columns: minmax(0, 520px) minmax(0, 460px); grid-template-rows: auto auto auto; justify-content: center; align-content: center; column-gap: 28px; row-gap: 16px; }
+  #boot.ld > * { width: 100%; }
+  .ld-top { grid-column: 1; grid-row: 1; }
+  .ld .bt-word { font-size: 64px; }
+  .ld-sub { font-size: 15px; }
+  .ld-toy { grid-column: 1; grid-row: 2 / 4; height: 400px; max-height: none; flex: none; }
+  .ld-lore { grid-column: 2; grid-row: 1; align-self: end; }
+  .ld-lore p { font-size: 17px; }
+  .ld-prog { grid-column: 2; grid-row: 2 / 4; align-self: start; }
+  .ld-st b { font-size: 16px; }
+  .ld-st span, .ld-foot { font-size: 13.5px; }
 }

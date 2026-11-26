@@ -117,7 +117,7 @@ export function mountLoading(root: HTMLElement): Loading {
       return new Promise((res) => {
         setTimeout(() => {
           root.classList.add('out');
-          setTimeout(() => { alive = false; cancelAnimationFrame(raf); unsub(); root.remove(); res(); }, 520);
+          setTimeout(() => { alive = false; cancelAnimationFrame(raf); unsub(); root.remove(); res(); }, 200);
         }, 350);
       });
     },
