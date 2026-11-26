@@ -3,10 +3,12 @@ import { icon } from './icons';
 import './living.css';
 
 /**
- * Zone chat. A compact feed in the HUD's log slot (the last few lines, fading after a while, tap
- * to open) and a panel with channels: Zone, Trade, Group finder and System. The game's own log
- * lines (loot, quests, warnings) come in on System. The player cannot type: the panel offers a few
- * quick replies, and an emote wheel sits beside the feed.
+ * Zone chat (docs/HUD.md). On a phone: one glyph in the HUD's chat slot and the last few lines in
+ * the log slot, which fade; in a fight the glyph and the zone's talk go and only loot, quest and
+ * warning lines show. On a desktop: a chat window docked in the log slot. The panel has channels:
+ * Zone, Trade, Group finder and System; the game's own log lines (loot, quests, warnings) come in
+ * on System. The player cannot type: the panel offers a few quick replies and the emotes, which
+ * are also in the HUD's quick wheel.
  */
 export type Channel = 'zone' | 'trade' | 'group' | 'sys';
 export interface Msg { id: number; ch: Channel; who: string | null; full: string | null; mine: boolean; text: string; kind: string; t: number; clock: string }
@@ -16,7 +18,7 @@ export type Emote = 'wave' | 'cheer' | 'point' | 'talk' | 'thanks';
 const CH_TAG: Record<Channel, string> = { zone: 'Zone', trade: 'Trade', group: 'Group', sys: 'System' };
 const QUICK: Array<[Quick, string, string]> = [['wave', 'o/', 'wave'], ['thanks', 'Thanks!', 'check'], ['omw', 'On my way', 'dash'], ['nice', 'Nice one', 'star'], ['lfg', 'LFG?', 'char'], ['lol', 'lol', 'chat']];
 const EMOTES: Array<[Emote, string, string]> = [['wave', 'Wave', 'wave'], ['cheer', 'Cheer', 'star'], ['point', 'Point', 'dash'], ['talk', 'Chat', 'chat'], ['thanks', 'Thanks', 'check']];
-const FEED_N = 5, FADE_AFTER = 16;
+const FEED_N = 6, FADE_AFTER = 9;
 
 const el = (tag: string, cls: string, html = '') => { const e = document.createElement(tag); e.className = cls; if (html) e.innerHTML = html; return e; };
 const press = (e: HTMLElement, fn: () => void) => {
@@ -27,9 +29,9 @@ const press = (e: HTMLElement, fn: () => void) => {
 export class Chat {
   msgs: Msg[] = [];
   private ids = 1;
-  private feed: HTMLElement; private lines: HTMLElement; private badge: HTMLElement;
+  private glyph: HTMLElement; private lines: HTMLElement; private badge: HTMLElement;
   private panel: HTMLElement; private list: HTMLElement; private tabs: Record<string, HTMLElement> = {};
-  private wheel: HTMLElement;
+  private docked = false;
   private tab: Channel | 'all' = 'all';
   private unread = 0;
   open = false;
@@ -44,19 +46,13 @@ export class Chat {
     // ---- the feed replaces the old fading log in its slot
     const old = hud.slots.log.querySelector(':scope > .log') as HTMLElement | null;
     if (old) old.style.display = 'none';
-    this.feed = el('div', 'lz-feed');
-    const bar = el('div', 'lz-feed-bar');
-    const btn = el('button', 'lz-fb', `${icon('chat', 14, 2.4)}<span>Chat</span><i class="badge"></i>`);
-    this.badge = btn.querySelector('.badge')!;
-    press(btn, () => this.toggle(true));
-    const emo = el('button', 'lz-fb emo', `${icon('wave', 14, 2.4)}`);
-    emo.setAttribute('aria-label', 'Emotes');
-    press(emo, () => this.openWheel());
-    bar.append(btn, emo);
+    this.glyph = el('button', 'lz-cb', `${icon('chat', 19, 2.1)}<i class="badge"></i>`);
+    this.glyph.setAttribute('aria-label', 'Chat');
+    this.badge = this.glyph.querySelector('.badge')!;
+    press(this.glyph, () => this.toggle(!this.open));
+    hud.slots.chat.appendChild(this.glyph);
     this.lines = el('div', 'lz-feed-lines');
-    this.lines.addEventListener('pointerdown', (ev) => { if (!this.lines.children.length) return; ev.stopPropagation(); this.toggle(true); });
-    this.feed.append(bar, this.lines);
-    hud.slots.log.appendChild(this.feed);
+    hud.slots.log.appendChild(this.lines);
     // the game's own log lines become System lines
     hud.log = (text: string, kind = 'sys') => this.system(text, kind);
 
@@ -84,16 +80,22 @@ export class Chat {
       press(q, () => this.quick(id, q));
       quick.appendChild(q);
     }
-    const note = el('div', 'lz-ch-note', 'Quick replies · other adventurers answer');
+    for (const [id, label, ic] of EMOTES) {
+      const q = el('button', 'lz-q emo', `${icon(ic, 14, 2.4)}${label}`);
+      press(q, () => { if (!this.docked) this.toggle(false); this.onEmote?.(id); });
+      quick.appendChild(q);
+    }
+    const note = el('div', 'lz-ch-note', 'Quick replies and emotes · other adventurers answer');
     sheet.append(head, this.list, quick, note);
     this.panel.appendChild(sheet);
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     hud.root.appendChild(this.panel);
 
-    // ---- the emote wheel
-    this.wheel = el('div', 'lz-wheel');
-    this.wheel.addEventListener('pointerdown', (e) => { e.stopPropagation(); if (e.target === this.wheel) this.closeWheel(); });
-    hud.root.appendChild(this.wheel);
+    // the quick wheel's Chat and Emote items
+    hud.chatApi = {
+      open: () => this.toggle(true),
+      emotes: () => EMOTES.map(([id, label, ic]) => ({ id, icon: ic, label, run: () => { this.onEmote?.(id); } })),
+    };
   }
 
   // ------------------------------------------------------------------ posting
@@ -103,9 +105,9 @@ export class Chat {
     this.msgs.push(m);
     if (this.msgs.length > 160) this.msgs.splice(0, this.msgs.length - 160);
     this.addFeed(m);
-    if (this.open && (this.tab === 'all' || this.tab === ch)) this.addRow(m, true);
+    if ((this.open || this.docked) && (this.tab === 'all' || this.tab === ch)) this.addRow(m, true);
     else if (ch !== 'sys' && !m.mine) { this.unread++; this.badge.textContent = this.unread > 9 ? '9+' : String(this.unread); }
-    if (!this.open || (this.tab !== 'all' && this.tab !== ch)) this.tabs[ch]?.classList.add('unread');
+    if (!(this.open || this.docked) || (this.tab !== 'all' && this.tab !== ch)) this.tabs[ch]?.classList.add('unread');
   }
   system(text: string, kind = 'sys') { this.post('sys', null, text, { kind }); }
   /** seconds since anything new came into chat */
@@ -134,22 +136,30 @@ export class Chat {
 
   // ------------------------------------------------------------------ the panel
   toggle(on: boolean) {
+    // the docked window is always there: asking for chat lights it for a moment
+    if (this.docked) { if (on) { this.panel.classList.remove('flash'); void this.panel.offsetWidth; this.panel.classList.add('flash'); } return; }
     if (on === this.open) return;
     this.open = on;
     this.game.sfx(on ? 'ui_open' : 'ui_close', { vol: 0.5 });
     if (on) {
-      this.closeWheel();
       this.unread = 0; this.badge.textContent = '';
-      this.layoutPanel();
       this.setTab(this.tab, true);
     }
     this.panel.classList.toggle('on', on);
-    this.feed.style.visibility = on ? 'hidden' : '';
+    this.glyph.classList.toggle('on', on);
+    this.lines.style.visibility = on ? 'hidden' : '';
   }
+  /** A desktop docks the panel in the log slot as a window; a phone opens it over the view. */
   private layoutPanel() {
-    const form = this.game.hud.hud.dataset.form;
+    const hud = this.game.hud, form = hud.layout.form, dock = form === 'desktop';
     this.panel.classList.toggle('land', form === 'landscape');
-    this.panel.classList.toggle('desk', form === 'desktop');
+    if (dock === this.docked) return;
+    this.docked = dock;
+    this.open = false; this.panel.classList.remove('on'); this.glyph.classList.remove('on');
+    this.panel.classList.toggle('dock', dock);
+    (dock ? hud.slots.log : hud.root).appendChild(this.panel);
+    this.lines.style.visibility = '';
+    if (dock) { this.unread = 0; this.badge.textContent = ''; this.setTab(this.tab, true); }
   }
   private setTab(id: Channel | 'all', force = false) {
     if (id === this.tab && !force) return;
@@ -167,33 +177,6 @@ export class Chat {
     this.onQuick?.(q);
   }
 
-  // ------------------------------------------------------------------ emote wheel
-  private openWheel() {
-    const w = this.wheel;
-    if (w.classList.contains('on')) { this.closeWheel(); return; }
-    this.toggle(false);
-    w.innerHTML = '';
-    const r = this.feed.getBoundingClientRect(), W = innerWidth, H = innerHeight;
-    // centred where a thumb can reach every spoke, clear of the edges
-    const cx = Math.min(W - 110, Math.max(110, r.left + 110)), cy = Math.min(H - 120, Math.max(130, r.top + 60));
-    w.style.setProperty('--wx', cx + 'px'); w.style.setProperty('--wy', cy + 'px');
-    const c = el('button', 'lz-wc', icon('close', 16, 2.4));
-    c.style.left = cx + 'px'; c.style.top = cy + 'px';
-    press(c, () => this.closeWheel());
-    w.appendChild(c);
-    EMOTES.forEach(([id, label, ic], i) => {
-      const a = -Math.PI / 2 + (i / EMOTES.length) * Math.PI * 2, R = 84;
-      const b = el('button', 'lz-w', `${icon(ic, 20, 2.4)}<span>${label}</span>`);
-      b.style.left = (cx + Math.cos(a) * R) + 'px'; b.style.top = (cy + Math.sin(a) * R) + 'px';
-      press(b, () => { this.closeWheel(); this.onEmote?.(id); });
-      w.appendChild(b);
-    });
-    this.game.sfx('ui_open', { vol: 0.4 });
-    this.feed.style.visibility = 'hidden';
-    requestAnimationFrame(() => w.classList.add('on'));
-  }
-  closeWheel() { if (!this.wheel.classList.contains('on')) return; this.wheel.classList.remove('on'); if (!this.open) this.feed.style.visibility = ''; }
-
   update(rdt: number) {
     if (this.quickCd > 0) this.quickCd -= rdt;
     // old feed lines fade out (a tap on the feed opens the full history)
@@ -205,7 +188,7 @@ export class Chat {
     // the HUD hides for cutscenes; so does the open panel
     const vis = this.game.hud.visible;
     const sig = vis ? 'v' : 'h';
-    if (sig !== this.lastSig) { this.lastSig = sig; if (!vis) { this.toggle(false); this.closeWheel(); } }
-    if (this.open) this.layoutPanel();
+    if (sig !== this.lastSig) { this.lastSig = sig; if (!vis) this.toggle(false); }
+    this.layoutPanel();
   }
 }

@@ -54,14 +54,14 @@ const HM_STATES = [
     },
   },
   {
-    n: 4, name: 'level1-locked', what: 'Level 1: third skill and Overdrive locked, labels showing', hour: 10,
+    n: 4, name: 'level1-locked', what: 'Level 1: third skill and Overdrive locked, so neither is drawn', hour: 10,
     async setup(G, g) {
       await hmFields(G, g, 1);
       await G.secs(1.0); G.quiet();
     },
   },
   {
-    n: 5, name: 'level20-cooldown', what: 'Level 20 rifle: every skill cooling, energy low, Overdrive full', hour: 13,
+    n: 5, name: 'level20-cooldown', what: 'Level 20 rifle: every skill cooling, energy low, hurt (kit seat), Overdrive full', hour: 13,
     async setup(G, g) {
       await hmFields(G, g, 20);
       G.weapon('rail_rifle', 0);
@@ -158,6 +158,50 @@ const HM_STATES = [
         };
       }
       await G.secs(1.0); G.quiet();
+    },
+  },
+  {
+    n: 12, name: 'hurt-overdrive', what: 'Melee at level 12, hurt with kits left and Overdrive full: the cluster at its peak', hour: 12.5,
+    async setup(G, g) {
+      await hmFields(G, g, 12);
+      G.weapon('shop_blade', 0); G.weapon('trainer_bow', 1);
+      await hmFight(G, g);
+      await G.secs(0.8); G.quiet();
+      g.state.addItem('kit', 3, true); g.state.d.hp = Math.round(g.state.maxHp * 0.42);
+      g.combat.od = 100;
+      await G.secs(0.4);
+    },
+  },
+  {
+    n: 13, name: 'shooter-ads', what: 'Shooter stance, aiming down sights with rounds spent: left fire and reload are in', hour: 12.5,
+    async setup(G, g) {
+      await hmFields(G, g, 12);
+      G.weapon('rivet_rifle', 0); G.weapon('shop_blade', 1);
+      await hmFight(G, g);
+      await G.secs(0.8); G.quiet();
+      await G.tap('attack', 3); await G.secs(0.5); await G.tap('attack', 3); await G.secs(0.4);
+      await G.tap('aim', 3); await G.secs(0.6);
+    },
+  },
+  {
+    n: 14, name: 'tray-open', what: 'Exploring with the menu tray open (on a desktop: the micro menu)', hour: 11,
+    async setup(G, g) {
+      await hmFields(G, g, 6);
+      await G.secs(1.0); G.quiet();
+      g.state.addScrip(25);
+      window.HM_AFTER = (o) => { if (!o.mouse) document.querySelector('.hbtn').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 77, pointerType: 'touch' })); };
+      await G.secs(0.4);
+    },
+  },
+  {
+    n: 15, name: 'wheel-open', what: 'The quick wheel open from the weapon chip', hour: 11,
+    async setup(G, g) {
+      await hmFields(G, g, 6);
+      G.weapon('shop_blade', 0); G.weapon('trainer_bow', 1);
+      g.state.setFlag('horse_whistle'); g.state.addItem('kit', 2, true);
+      await G.secs(1.0); G.quiet();
+      window.HM_AFTER = (o) => { if (!o.mouse) g.hud.openWheel(); };
+      await G.secs(0.4);
     },
   },
 ];

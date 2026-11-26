@@ -33,6 +33,8 @@ const P: Record<string, string> = {
   star: '<path d="M12 3l2.7 5.8 6.3.7-4.7 4.3 1.3 6.2-5.6-3.2L6.4 20l1.3-6.2L3 9.5l6.3-.7z"/>',
   scrip: '<circle cx="12" cy="12" r="8"/><path d="M9.5 15c.6.8 1.5 1.2 2.6 1.2 1.6 0 2.6-.8 2.6-2 0-2.8-5-1.4-5-4.2 0-1.2 1-2 2.5-2 1 0 1.9.4 2.4 1.1M12 6.5v11"/>',
   chat: '<path d="M4 5h16v11H10l-5 4v-4H4z"/>',
+  menu: '<path d="M4 6.5h16M4 12h16M4 17.5h10"/>',
+  more: '<circle cx="6" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18" cy="12" r="1.4"/>',
   lock: '<path d="M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3"/>',
   board: '<path d="M3 14c3 2 15 2 18 0M6 15v3m12-3v3M8 11l3-5 2 3 2-2 1 4"/>',
   grapple: '<path d="M4 20L15 9m-2-5a5 5 0 0 1 7 7m-7-7l-1 3m8 4l-3 1"/>',

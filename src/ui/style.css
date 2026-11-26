@@ -1,295 +1,348 @@
-/* Colour, type, spacing, elevation and motion values live in tokens.css, shared with the panels and the loading screen. */
+/* The HUD (docs/HUD.md). Colour, type, spacing, elevation and motion values live in tokens.css,
+   shared with the panels and the loading screen. The HUD's own surfaces are flat glass: a
+   translucent dark fill and a hairline edge, with the game's amber and cyan as the only colour. */
 @import './tokens.css';
 #ui { position: fixed; inset: 0; pointer-events: none; font-family: var(--font); color: var(--text); overflow: hidden; z-index: 10;
-  font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
+  font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased;
+  --glass: rgba(13, 16, 21, .44); --glass-2: rgba(10, 13, 17, .6); --hair: rgba(255, 255, 255, .3); --hair-2: rgba(255, 255, 255, .16);
+  --tsh: 0 1px 2px rgba(0, 0, 0, .85), 0 0 6px rgba(0, 0, 0, .5); }
 #ui * { box-sizing: border-box; }
 #ui button { font-family: inherit; color: inherit; border: 0; background: none; padding: 0; -webkit-tap-highlight-color: transparent; touch-action: none; }
 .hud { position: absolute; inset: 0; transition: opacity .35s; }
-.hud.hidden { opacity: 0; }
-.hud.hidden * { pointer-events: none !important; }
-.cut { clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); }
-.panel { background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
-.lbl { font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-.shadow-text { text-shadow: 0 1px 2px #000c, 0 0 8px #0008; }
+.hud.hidden, .hud.veiled { opacity: 0; }
+.hud.hidden *, .hud.veiled * { pointer-events: none !important; }
+.shadow-text { text-shadow: var(--tsh); }
 
 /* ---------- slots ----------
    Every HUD element sits in a wrapper (.slot.s-<id>) that hud.ts places from the layout table in
    layout.ts: anchor, inward offsets, width and scale, mirrored for the left hand. The wrapper takes
-   no input; the element inside keeps its own look and arranges itself by the slot's classes and its
-   data-h (l/c/r: which side of the screen it ended up on). #ui and .hud carry data-form
-   (portrait/landscape/desktop) and data-layout (portrait, land-a, land-b, desktop). */
+   no input; the element inside keeps its own look and arranges itself by the slot's classes (k-*)
+   and its data-h / data-v (which side of the screen it ended up on). #ui and .hud carry data-form
+   (portrait/landscape/desktop), data-stance and data-ctx (explore/fight/ride). A slot whose value
+   has just changed carries .fresh. */
 .slot { position: absolute; pointer-events: none; }
 .slot:empty { display: none; }
 .safe-probe { position: absolute; top: var(--sat); right: var(--sar); bottom: var(--sab); left: var(--sal); pointer-events: none; visibility: hidden; }
 
-/* ---------- player frame ---------- */
-.pframe { position: relative; display: flex; align-items: center; gap: 8px; pointer-events: auto; }
-.pframe .portrait { width: 50px; height: 50px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffb968, #c95a14 70%); border: 2px solid #ffd9a8; box-shadow: 0 2px 10px #0009, inset 0 -6px 10px #0004;
-  display: grid; place-items: center; position: relative; color: #2a1608; }
-.pframe .lvl { position: absolute; right: -6px; bottom: -4px; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px; background: #14171c; border: 1.5px solid var(--cyan); color: var(--cyan);
-  font-weight: 800; font-size: 12px; display: grid; place-items: center; box-shadow: 0 0 8px #5ef0ff66; }
-.pframe .bars { width: 150px; position: relative; }
-.pframe .nrow { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
-.pframe .nlv { display: none; font-size: 12px; font-weight: 800; letter-spacing: .06em; color: var(--cyan); text-shadow: var(--ts); white-space: nowrap; }
-.pframe .name { min-width: 0; font-size: 13px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; display: flex; gap: 6px; align-items: baseline; }
-.pframe .name small { font-weight: 600; color: var(--amber); font-size: 10px; letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 96px; }
-.bar { position: relative; height: 13px; background: #0b0d10cc; border: 1px solid #000a; box-shadow: inset 0 1px 2px #000a, 0 0 0 1px #ffffff14; overflow: hidden; transform: skewX(-14deg); margin-top: 3px; border-radius: 2px; }
-.bar i { position: absolute; inset: 0; transform-origin: left; display: block; will-change: transform; }
-.bar .lag { background: #fff; opacity: .55; transition: transform .5s cubic-bezier(.3, 0, .2, 1) .12s; }
+/* ---------- the hero: level, health, energy ---------- */
+.unit { position: relative; display: flex; align-items: center; gap: 6px; }
+.unit .u-lv { flex: none; font-size: 13px; font-weight: 800; line-height: 1; color: var(--cyan); text-shadow: var(--tsh); }
+.unit .u-bars { flex: 1; min-width: 0; }
+.unit .u-top { display: none; }
+.unit .u-hp { font-size: 11px; font-weight: 800; line-height: 1; text-shadow: var(--tsh); white-space: nowrap; }
+.unit .u-hp i { font-style: normal; opacity: .7; }
+.bar { position: relative; height: 6px; background: rgba(6, 8, 11, .58); box-shadow: 0 0 0 1px rgba(0, 0, 0, .5); overflow: hidden; border-radius: 3px; }
+.bar i { position: absolute; inset: 0; transform-origin: left; display: block; will-change: transform; border-radius: inherit; }
+.bar .lag { background: #fff; opacity: .6; transition: transform .5s cubic-bezier(.3, 0, .2, 1) .12s; }
 .bar .fill { transition: transform .12s; }
-.bar.hp .fill { background: linear-gradient(180deg, #ffb26a, #f0622a 55%, #c03a14); }
-.bar.en { height: 8px; }
-.bar.en .fill { background: linear-gradient(180deg, #a8f8ff, #2fc4e6 60%, #147a9c); }
-.bar span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 10px; font-weight: 800; transform: skewX(14deg); text-shadow: 0 1px 2px #000; letter-spacing: .03em; }
-/* hangs under the bars without resizing the frame, in the gap above the menu strip */
-.buffs { position: absolute; left: 0; top: 100%; display: flex; gap: 4px; margin-top: 4px; }
-/* the frame as a bar (landscape reference layout, desktop): no disc; level and name over a long health bar, buffs to the right of the name */
-.s-status.k-flat .pframe { display: block; }
-.s-status.k-flat .portrait { display: none; }
-.s-status.k-flat .bars { width: 100%; }
-.s-status.k-flat .nlv { display: block; }
-.s-status.k-flat .bar.hp { height: 14px; }
-.s-status.k-flat .buffs { left: auto; right: 0; top: auto; bottom: calc(100% - 15px); margin: 0; }
-.s-status.k-flat .pframe .name small { max-width: 120px; }
-.buff { width: 20px; height: 20px; border-radius: 5px; background: #14171ccc; border: 1px solid var(--line); display: grid; place-items: center; color: var(--cyan); position: relative; }
+.bar.hp .fill { background: linear-gradient(180deg, #ffc27a, #f47a2c); }
+.unit.low .bar.hp .fill { background: linear-gradient(180deg, #ff8a6a, #e0342a); animation: lowbar .7s ease-in-out infinite; }
+@keyframes lowbar { 50% { filter: brightness(1.5); } }
+.bar.en { height: 3px; margin-top: 3px; }
+.bar.en .fill { background: linear-gradient(180deg, #a8f8ff, #2fc4e6); }
+/* a phone: the level hangs outside a centred bar, the number shows only while hurt */
+.s-status[data-h=c]:not(.k-unit) .u-lv { position: absolute; right: 100%; margin-right: 7px; }
+.s-status:not(.k-unit) .u-top { display: block; position: absolute; left: 100%; top: 50%; translate: 0 -50%; margin-left: 7px; opacity: 0; transition: opacity .3s; }
+.s-status:not(.k-unit) .u-name, .s-status:not(.k-unit) .u-hp i { display: none; }
+.s-status.hurt:not(.k-unit) .u-top { opacity: 1; }
+.s-status[data-h=r]:not(.k-unit) .u-top { left: auto; right: 100%; margin: 0 7px 0 0; }
+/* health is shown while it matters (hud.ts drawContext): hurt, spending energy, in a fight */
+.hud:not([data-form=desktop]) .s-status { opacity: 0; transition: opacity .9s; }
+.hud:not([data-form=desktop]) .s-status.fresh { opacity: 1; transition: opacity .15s; }
+/* a desktop: a unit frame over the hotbar, with the name and the numbers */
+.s-status.k-unit .unit { gap: 9px; align-items: flex-end; }
+.s-status.k-unit .u-lv { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 15px; color: #fff; background: var(--glass-2); box-shadow: inset 0 0 0 1.5px var(--cyan), 0 0 10px rgba(94, 240, 255, .25); }
+.s-status.k-unit .u-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.s-status.k-unit .u-name { font-size: 12.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; text-shadow: var(--tsh); }
+.s-status.k-unit .u-hp { font-size: 12px; }
+.s-status.k-unit .bar.hp { height: 13px; border-radius: 4px; }
+.s-status.k-unit .bar.en { height: 6px; }
+/* buffs: over a bar at the bottom of the screen, beside one at the top */
+.buffs { position: absolute; display: flex; gap: 4px; left: 0; bottom: 100%; margin-bottom: 5px; }
+.s-status[data-v=t] .buffs { left: 100%; bottom: auto; top: -4px; margin: 0 0 0 38px; }
+.s-status[data-v=t][data-h=r] .buffs { left: auto; right: 100%; margin: 0 38px 0 0; }
+.s-status.k-unit .buffs { left: 43px; bottom: 100%; margin-bottom: 6px; }
+.buff { width: 19px; height: 19px; border-radius: 50%; background: var(--glass-2); box-shadow: inset 0 0 0 1px var(--hair-2); display: grid; place-items: center; color: var(--cyan); position: relative; }
 .buff.bad { color: var(--red); }
-.buff b { position: absolute; right: -2px; bottom: -3px; font-size: 9px; font-weight: 800; text-shadow: 0 1px 2px #000; color: #fff; }
+.buff b { position: absolute; right: -3px; bottom: -4px; font-size: 9px; font-weight: 800; text-shadow: 0 1px 2px #000; color: #fff; }
 
-/* ---------- menu strip ---------- */
-.mstrip { position: relative; display: flex; gap: 6px; pointer-events: auto; }
-/* the portrait disc opens the character sheet; layouts without it get the button */
-.hud[data-form=portrait] .mbtn.m-char { display: none; }
-.mbtn { width: 38px; height: 38px; border-radius: 10px; background: var(--panel) !important; border: 1px solid var(--line) !important; display: grid; place-items: center; color: #e9dfcf !important; position: relative; }
-.mbtn:active, .mbtn.on { transform: scale(.92); background: #ff9a3c44 !important; }
-.mbtn .pip { position: absolute; right: -3px; top: -3px; width: 11px; height: 11px; border-radius: 50%; background: var(--orange); border: 2px solid #14171c; display: none; }
-.mbtn.alert .pip { display: block; animation: pip 1.2s infinite; }
+/* ---------- experience: a hairline, shown when it moves ---------- */
+.xp { position: relative; height: 2px; border-radius: 1px; background: rgba(6, 8, 11, .5); }
+.xp i { display: block; height: 100%; border-radius: 1px; background: linear-gradient(90deg, #c78aff, #5ef0ff); transform-origin: left; transition: transform .5s cubic-bezier(.2, .8, .2, 1); box-shadow: 0 0 6px rgba(94, 240, 255, .5); }
+.xp span { display: none; position: absolute; left: calc(100% + 8px); top: -5px; white-space: nowrap; font-size: 9.5px; font-weight: 700; color: #cfd6df; text-shadow: var(--tsh); letter-spacing: .08em; }
+.s-xp.k-text .xp span { display: block; }
+.hud:not([data-form=desktop]) .s-xp { opacity: 0; transition: opacity .9s; }
+.hud:not([data-form=desktop]) .s-xp.fresh { opacity: 1; transition: opacity .15s; }
+
+/* ---------- menus: one glyph and a tray (phone), a micro menu (desktop) ---------- */
+.s-menu { z-index: 6; }
+#ui .hbtn { position: relative; width: 44px; height: 44px; display: grid; place-items: center; pointer-events: auto; color: #fff; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .8)); transition: transform .07s; }
+#ui .hbtn::before { content: ''; position: absolute; inset: -3px; }
+#ui .hbtn:active { transform: scale(.9); }
+#ui .hbtn:active, #ui .hbtn.on { color: var(--amber); }
+.pip { position: absolute; right: 7px; top: 7px; width: 9px; height: 9px; border-radius: 50%; background: var(--orange); box-shadow: 0 0 0 1.5px #14171c; display: none; }
+.mbtn.alert .pip, .s-menu:has(.mbtn.alert) .hbtn .pip { display: block; animation: pip 1.2s infinite; }
 @keyframes pip { 50% { transform: scale(1.35); } }
-.scrip { position: relative; font-size: 13px; font-weight: 800; color: var(--gold); display: flex; gap: 4px; align-items: center; text-shadow: 0 1px 3px #000; }
+.tray { position: absolute; top: calc(100% + 2px); right: 0; padding: 6px 6px 8px; border-radius: 16px; background: rgba(13, 16, 21, .86); box-shadow: inset 0 0 0 1px var(--hair-2), 0 10px 30px rgba(0, 0, 0, .55);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); opacity: 0; transform: translateY(-6px) scale(.96); transform-origin: top right; pointer-events: none; transition: opacity .12s, transform .14s var(--ease); }
+[data-h=l] > .tray { right: auto; left: 0; transform-origin: top left; }
+.tray.on { opacity: 1; transform: none; pointer-events: auto; }
+.tray-g { display: flex; }
+#ui .tray .mbtn { position: relative; width: 56px; height: 54px; border-radius: 11px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--text); }
+#ui .tray .mbtn .mi { display: grid; }
+#ui .tray .mbtn .ml { font-size: 9.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); white-space: nowrap; }
+#ui .tray .mbtn .mk { display: none; }
+#ui .tray .mbtn:active, #ui .tray .mbtn.on { background: rgba(255, 154, 60, .2); color: var(--amber); }
+#ui .tray .mbtn .pip { right: 12px; top: 6px; }
+.tray-i { margin: 6px 8px 0; padding-top: 7px; border-top: 1px solid var(--stroke); display: grid; gap: 4px; font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--text-2); }
+.tray-i div { display: flex; justify-content: space-between; gap: 12px; white-space: nowrap; }
+.tray-i span { display: inline-flex; align-items: center; gap: 4px; }
+.tray-i .gold { color: var(--gold); }
+.micro { display: flex; gap: 4px; pointer-events: auto; }
+#ui .micro .mbtn { position: relative; width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; color: var(--text-2); background: var(--glass-2); box-shadow: inset 0 0 0 1px var(--hair-2); }
+#ui .micro .mbtn svg { width: 17px; height: 17px; }
+#ui .micro .mbtn:hover { color: #fff; box-shadow: inset 0 0 0 1px var(--hair); }
+#ui .micro .mbtn:active, #ui .micro .mbtn.on { color: var(--amber); background: rgba(255, 154, 60, .2); }
+#ui .micro .mbtn .mk { position: absolute; right: 3px; bottom: 1px; font-style: normal; font-size: 8px; font-weight: 800; color: #ffffffa0; }
+#ui .micro .mbtn .ml { position: absolute; bottom: calc(100% + 6px); left: 50%; translate: -50% 0; padding: 3px 7px; border-radius: 6px; background: rgba(8, 10, 13, .92); font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; color: #fff; opacity: 0; pointer-events: none; transition: opacity .1s; }
+#ui .micro .mbtn:hover .ml { opacity: 1; }
+#ui .micro .mbtn .pip { right: -2px; top: -2px; }
+/* scrip: when it changes (always in the tray, the pack and the shops) */
+.scrip { position: relative; font-size: 13px; font-weight: 800; color: var(--gold); display: flex; gap: 4px; align-items: center; text-shadow: var(--tsh); opacity: 0; transition: opacity .9s; }
+.s-scrip.fresh .scrip { opacity: 1; transition: opacity .15s; }
+/* frame rate (ui/perf.ts): two digits on the top edge, no box */
+.s-fps #perf.mini .pbar { height: auto; padding: 0; gap: 0; border: 0; border-radius: 0; background: none; box-shadow: none; color: #ffffff80; }
+.s-fps #perf.mini .pbar span { font-size: 0; }
+.s-fps #perf.mini .pbar span b { font-size: 9.5px; font-weight: 800; letter-spacing: .04em; opacity: .75; text-shadow: 0 1px 2px #000; }
+.s-fps #perf.mini .pbar i { display: none; }
+.s-fps #perf.mini .pbar > b { font-size: 9.5px; margin-left: 4px; }
 
-/* ---------- target frame ---------- */
-.tframe { position: relative; width: 100%; text-align: center; opacity: 0; transition: opacity .15s; }
-.tframe.on { opacity: 1; }
-[data-h=l] > .tframe { text-align: left; } [data-h=r] > .tframe { text-align: right; }
-.tframe .tname { font-size: 13px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; display: flex; justify-content: center; gap: 6px; align-items: center; }
-[data-h=l] > .tframe .tname { justify-content: flex-start; } [data-h=r] > .tframe .tname { justify-content: flex-end; }
+/* ---------- target and boss ---------- */
+.tframe { position: relative; width: 100%; text-align: center; opacity: 0; transition: opacity .15s, transform .07s; }
+.tframe::before { content: ''; position: absolute; inset: -5px -8px -8px; }
+.tframe.on { opacity: 1; pointer-events: auto; }
+.tframe.down { transform: scale(.97); }
+.tframe .tname { font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; display: flex; justify-content: center; gap: 6px; align-items: center; }
 .tframe .tname .tl { color: var(--amber); }
 .tframe.elite .tname { color: var(--gold); }
-.tframe.boss .tname { font-size: 16px; color: #ffb03a; }
-.tframe .bar { height: 11px; margin-top: 4px; }
-.tframe.boss .bar { height: 15px; }
-.tframe .bar .fill { background: linear-gradient(180deg, #ff8a6a, #e0342a 60%, #9c1a14); }
-.tframe .tsub { font-size: 10px; color: var(--dim); letter-spacing: .1em; text-transform: uppercase; }
+.tframe .bar { height: 6px; margin-top: 4px; }
+.tframe .bar .fill, .bossbar .bar .fill { background: linear-gradient(180deg, #ff8a6a, #e0342a); }
+.tframe .tsub { font-size: 9.5px; font-weight: 700; color: var(--dim); letter-spacing: .1em; text-transform: uppercase; text-shadow: var(--tsh); }
 .tframe .trow { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 3px; min-height: 12px; }
+.tframe.boss { display: none; }
 /* stagger under health, the broken state and status effects: only when combat supplies them (hud.setTargetState) */
-.stg { display: none; height: 5px; margin-top: 2px; border-radius: 3px; background: #05070bcc; border: 1px solid #000a; overflow: hidden; }
-.stg i { display: block; height: 100%; background: linear-gradient(180deg, #fff3c4, #ffd24a 60%, #c98a10); transform-origin: left; transform: scaleX(0); transition: transform .12s; }
+.stg { display: none; height: 3px; margin-top: 2px; border-radius: 2px; background: rgba(5, 7, 11, .7); overflow: hidden; }
+.stg i { display: block; height: 100%; background: linear-gradient(180deg, #fff3c4, #ffd24a); transform-origin: left; transform: scaleX(0); transition: transform .12s; }
 .has-stg .stg { display: block; }
 .broken .stg i { background: linear-gradient(180deg, #fff, #9ff6ff); animation: brk .5s steps(2) infinite; }
 .broken .bar .fill { filter: brightness(1.35) saturate(.7); }
 @keyframes brk { 50% { opacity: .45; } }
 .tfx { display: flex; gap: 4px; align-items: center; }
-.tfx .fx { display: grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; background: #0c0f13e6; border: 1.5px solid currentColor; box-shadow: 0 1px 4px #000a; }
+.tfx .fx { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--glass-2); box-shadow: inset 0 0 0 1.25px currentColor; }
 .tfx .fx.shock { color: var(--cyan); } .tfx .fx.burn { color: #ff8a3c; } .tfx .fx.jam { color: var(--purple); }
 .tfx .fx.guard { color: #9fd8ff; } .tfx .fx.mend { color: #7dffb0; }
-.tfx .fx.brk { width: auto; display: flex; gap: 3px; padding: 0 7px 0 5px; border-radius: 10px; color: #0b0e12; background: linear-gradient(180deg, #fff, #9ff6ff); border-color: #fff; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.tfx .fx.brk { width: auto; display: flex; gap: 3px; padding: 0 7px 0 5px; border-radius: 10px; color: #0b0e12; background: linear-gradient(180deg, #fff, #9ff6ff); box-shadow: none; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.bossbar { position: relative; width: 100%; text-align: center; opacity: 0; transition: opacity .4s; }
+.bossbar.on { opacity: 1; pointer-events: auto; }
+.bossbar.down { transform: scale(.985); }
+.bossbar .bn { font-size: 15px; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; color: #ffcf8a; text-shadow: 0 0 14px #ff7a1a, 0 2px 3px #000; }
+.bossbar .bar { height: 9px; margin-top: 4px; border-radius: 4px; }
+.bossbar .ticks { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 calc(33.333% - 1px), #000a calc(33.333% - 1px) 33.333%); }
+.bossbar .bs { font-size: 9.5px; font-weight: 700; letter-spacing: .2em; color: var(--dim); margin-top: 4px; text-transform: uppercase; text-shadow: var(--tsh); }
 .bossbar .tfx { justify-content: center; margin-top: 4px; }
 .bossbar .tfx:empty { display: none; }
-.bossbar { position: relative; width: 100%; text-align: center; opacity: 0; transition: opacity .4s; }
-.bossbar.on { opacity: 1; }
-.tframe.boss { display: none; }
-/* a boss on screen pushes what sits under its bar down: the tracker, timer and a second target in portrait; the target and timer elsewhere */
-.hud[data-form=portrait].boss-on .bossbar .bn { font-size: 16px; }
-.hud[data-form=portrait].boss-on :is(.s-tracker, .s-timer, .s-target, .s-tip) { translate: 0 calc(68px * var(--ku, 1)); }
-.hud:not([data-form=portrait]).boss-on :is(.s-target, .s-timer) { translate: 0 calc(70px * var(--ku, 1)); }
+.hud[data-form=desktop] .bossbar .bn { font-size: 18px; } .hud[data-form=desktop] .bossbar .bar { height: 12px; }
+.hud[data-form=desktop] .tframe .tname { font-size: 13px; } .hud[data-form=desktop] .tframe .bar { height: 9px; }
+/* a boss takes the top centre. On a phone the target frame goes (the boss bar is the target control, and
+   the plates carry an add's health); on a desktop it steps down under the bar. The timer steps down too. */
+.hud.boss-on:not([data-form=desktop]) .s-target { display: none !important; }
+.hud.boss-on :is(.s-target, .s-timer) { translate: 0 calc(60px * var(--ku, 1)); }
+.hud[data-form=portrait].boss-on .s-tip { translate: 0 calc(60px * var(--ku, 1)); }
 /* portrait: a tip card takes the toasts' place, so they step down beneath it while it shows */
 #ui[data-form=portrait]:has(.s-tip .coach.on) > .s-toasts { translate: 0 calc(96px * var(--ku, 1)); }
-/* variant B keeps the tracker under the minimap, where the pushed-down target frame would land: the boss fight folds it */
-.hud[data-layout^=land-b].boss-on .s-tracker { display: none; }
-.bossbar .bn { font-size: 18px; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; color: #ffcf8a; text-shadow: 0 0 14px #ff7a1a, 0 2px 3px #000; }
-.bossbar .bar { height: 14px; margin-top: 5px; }
-.bossbar .bar .fill { background: linear-gradient(180deg, #ffb26a, #f0622a 55%, #a0260c); }
-.bossbar .ticks { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 calc(33.333% - 1px), #000a calc(33.333% - 1px) 33.333%); }
-.bossbar .bs { font-size: 10px; letter-spacing: .22em; color: var(--dim); margin-top: 4px; text-transform: uppercase; }
 
 /* ---------- minimap ---------- */
-.mini { position: relative; width: 104px; pointer-events: auto; }
-.s-mini.k-land .mini, .s-mini.k-land .mini canvas { width: 92px; }
-.s-mini.k-land .mini canvas { height: 92px; }
-.s-mini.k-small .mini, .s-mini.k-small .mini canvas { width: 80px; } .s-mini.k-small .mini canvas { height: 80px; }
-.mini canvas { width: 104px; height: 104px; border-radius: 50%; border: 2px solid #ffd9a855; box-shadow: 0 2px 12px #000a, inset 0 0 0 1px #000; background: #1b1f26; display: block; }
-.mini .zone { text-align: center; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; margin-top: 4px; text-shadow: 0 1px 3px #000; white-space: nowrap; }
-.mini .clock { position: absolute; left: -4px; top: -2px; font-size: 10px; font-weight: 800; background: #14171cdd; border: 1px solid var(--line); border-radius: 9px; padding: 1px 6px 1px 4px; display: flex; gap: 3px; align-items: center; color: var(--amber); }
-.mini .north { position: absolute; left: 50%; top: -5px; transform: translateX(-50%); font-size: 9px; font-weight: 800; color: var(--cyan); text-shadow: 0 1px 2px #000; }
+.mini { position: relative; width: 96px; pointer-events: auto; }
+.mini canvas { width: 96px; height: 96px; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, .3); box-shadow: 0 2px 10px rgba(0, 0, 0, .5); background: #1b1f26; display: block; }
+.s-mini.k-small .mini, .s-mini.k-small .mini canvas { width: 72px; } .s-mini.k-small .mini canvas { height: 72px; }
+.s-mini.k-big .mini, .s-mini.k-big .mini canvas { width: 128px; } .s-mini.k-big .mini canvas { height: 128px; }
+.mini .north { position: absolute; left: 50%; top: -4px; transform: translateX(-50%); font-size: 8.5px; font-weight: 800; color: var(--cyan); text-shadow: 0 1px 2px #000; }
+/* the zone, when it changes; a desktop keeps it, with the clock */
+.mini .zinfo { position: absolute; top: calc(100% + 4px); left: 0; display: flex; gap: 8px; align-items: center; white-space: nowrap; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; text-shadow: var(--tsh); opacity: 0; transition: opacity .9s; }
+[data-h=r] > .mini .zinfo { left: auto; right: 0; flex-direction: row-reverse; }
+.s-mini.fresh .zinfo, .s-mini.k-info .zinfo { opacity: 1; transition: opacity .2s; }
+.mini .clock { display: none; gap: 3px; align-items: center; color: var(--amber); }
+.s-mini.k-info .clock { display: flex; }
 
-/* ---------- quest tracker ---------- */
-.tracker { position: relative; width: 100%; pointer-events: auto; }
-/* on the left of the screen the tracker reads from the left edge */
-[data-h=l] > .tracker .q { text-align: left; border-right: 0; border-left: 2px solid var(--orange); background: linear-gradient(270deg, #14171c00, #14171ccc 30%); }
-[data-h=l] > .tracker .q.ready { border-left-color: var(--gold); }
-/* landscape keeps the view clear: the tracked quest only, or two */
-.s-tracker.k-one .q:nth-child(n+2), .s-tracker.k-two .q:nth-child(n+3) { display: none; }
-.tracker .q { margin-bottom: 6px; padding: 5px 7px 6px; background: linear-gradient(90deg, #14171c00, #14171ccc 30%); border-right: 2px solid var(--orange); text-align: right; }
-.tracker .q.ready { border-right-color: var(--gold); }
-.tracker .qt { font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--amber); text-shadow: 0 1px 2px #000; }
+/* ---------- quest tracker: bare text ---------- */
+.tracker { position: relative; width: 100%; pointer-events: auto; transition: opacity .5s; }
+.tracker .q { position: relative; margin-bottom: 7px; padding-left: 11px; }
+.tracker .q::before { content: ''; position: absolute; left: 1px; top: 4px; width: 5px; height: 5px; transform: rotate(45deg); background: var(--amber); box-shadow: 0 0 0 1px #000a; }
+.tracker .q.ready::before { background: var(--gold); box-shadow: 0 0 6px var(--gold); }
+[data-h=r] > .tracker .q { text-align: right; padding: 0 11px 0 0; }
+[data-h=r] > .tracker .q::before { left: auto; right: 1px; }
+.s-tracker.k-one .q:nth-child(n+2), .s-tracker.k-two .q:nth-child(n+3), .s-tracker.k-three .q:nth-child(n+4) { display: none; }
+.tracker .qt { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--amber); text-shadow: var(--tsh); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tracker .q.ready .qt { color: var(--gold); }
-.tracker .qo { font-size: 11px; color: #e6e0d4; text-shadow: 0 1px 2px #000; line-height: 1.25; }
+.tracker .qo { font-size: 11px; color: #ece6da; text-shadow: var(--tsh); line-height: 1.25; }
 .tracker .qo.done { color: var(--green); opacity: .8; }
 .tracker .qo b { color: #fff; }
+.hud[data-form=desktop] .tracker .qt { font-size: 12px; } .hud[data-form=desktop] .tracker .qo { font-size: 12px; }
+/* a fight on a phone has no room for errands: the line comes back for a moment when it changes */
+.hud[data-ctx=fight]:not([data-form=desktop]) .s-tracker:not(.fresh) .tracker,
+.hud.boss-on:not([data-form=desktop]) .s-tracker:not(.fresh) .tracker { opacity: 0; pointer-events: none; }
 
-/* ---------- log ---------- */
+/* ---------- log (the plain fallback; ui/chat.ts replaces it with the chat feed) ---------- */
 .log { position: relative; width: 100%; display: flex; flex-direction: column; gap: 2px; }
-[data-h=r] > .log { text-align: right; }
-.s-log.k-up .log div:nth-last-child(n+5), .s-log.k-three .log div:nth-last-child(n+4) { display: none; }
-.log div { font-size: 11px; line-height: 1.25; text-shadow: 0 1px 2px #000, 0 0 6px #000a; animation: logfade 7s forwards; }
+.log div { font-size: 11px; line-height: 1.25; text-shadow: var(--tsh); animation: logfade 7s forwards; }
 .log .loot { color: var(--gold); } .log .quest { color: var(--amber); } .log .warn { color: #ff8a6a; } .log .combat { color: #d6dde6; } .log .npc { color: var(--cyan); } .log .sys { color: #c9c2b4; }
 @keyframes logfade { 0% { opacity: 0; transform: translateX(-8px); } 4% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; } }
 
-/* ---------- xp ---------- */
-.xp { position: relative; height: calc(5px + var(--sab)); background: #0b0d10; border-top: 1px solid #ffffff1c; }
-/* the thin form under the bar-style frame: no text on a phone, the numbers beside it on a desktop */
-.s-xp.k-thin .xp { height: 4px; border: 0; border-radius: 2px; background: #0b0d10cc; box-shadow: 0 0 0 1px #000a; }
-.s-xp.k-thin .xp i { height: 4px; border-radius: 2px; }
-/* landscape keeps the weapon chip in the bottom right corner: the full-width bar's readout goes to the stick's side */
-.hud:not([data-form=portrait]) .s-xp.k-edge[data-h=l] .xp span { right: auto; left: calc(8px + var(--sal)); }
-.hud:not([data-form=portrait]) .s-xp.k-edge[data-h=r] .xp span { right: calc(8px + var(--sar)); }
-.s-xp.k-thin .xp span { display: none; }
-.s-xp.k-thin.k-text .xp span { display: block; left: calc(100% + 8px); right: auto; bottom: -5px; white-space: nowrap; }
-.xp i { display: block; height: 5px; background: linear-gradient(90deg, #c78aff, #5ef0ff); transform-origin: left; transition: transform .5s cubic-bezier(.2, .8, .2, 1); box-shadow: 0 0 8px #5ef0ff88; }
-.xp span { position: absolute; right: 6px; bottom: calc(7px + var(--sab)); font-size: 9px; font-weight: 700; color: #cfd6df; text-shadow: 0 1px 2px #000; letter-spacing: .08em; }
-
-/* ---------- touch controls ---------- */
-.stick { position: absolute; width: 132px; height: 132px; margin: -66px 0 0 -66px; border-radius: 50%; border: 2px solid #ffffff2e; background: radial-gradient(circle, #ffffff0a 40%, #ffffff16 100%); opacity: 0; transition: opacity .18s; }
+/* ---------- touch stick ---------- */
+.stick { position: absolute; width: 124px; height: 124px; margin: -62px 0 0 -62px; border-radius: 50%; box-shadow: inset 0 0 0 1.25px rgba(255, 255, 255, .34), 0 0 0 1px rgba(0, 0, 0, .12); background: radial-gradient(circle, rgba(255, 255, 255, 0) 55%, rgba(255, 255, 255, .07) 100%); opacity: 0; transition: opacity .18s; }
 .stick.on { opacity: 1; }
-.stick.rest { opacity: .38; }
-.stick i { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffffffcc, #ffb968aa 60%, #ff9a3c66); box-shadow: 0 3px 12px #0008; }
-/* ---------- action cluster ----------
-   Every button hangs off a zero-size anchor in the thumb-side bottom corner; hud.ts places them on
-   two arcs around the attack button (left/top are offsets from the anchor, --d the diameter). */
+.stick.rest { opacity: .8; }
+.stick i { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: rgba(255, 255, 255, .22); box-shadow: inset 0 0 0 1.25px rgba(255, 255, 255, .5); }
+.stick.on i { background: rgba(255, 196, 106, .5); box-shadow: inset 0 0 0 1.25px #ffe3bf; }
+
+/* ---------- action buttons ----------
+   On a phone every button hangs off a zero-size anchor in the thumb-side bottom corner; hud.ts
+   seats them from the layout table (left/top are offsets from the anchor, --d the diameter). On a
+   desktop the same buttons are re-parented into the hotbar (.in-bar) as square slots with keys.
+   One button is warm and large: the primary. The rest are glass discs told apart by the colour of
+   their icon: cyan for skills, gold for Overdrive, green for the kit. No labels, no padlocks. */
 .acts { position: absolute; right: var(--sar); bottom: var(--sab); width: 0; height: 0; pointer-events: none; }
 .hud.lefty .acts { right: auto; left: var(--sal); }
-.abtn { --d: 58px; position: absolute; width: var(--d); height: var(--d); margin: calc(var(--d) / -2) 0 0 calc(var(--d) / -2); border-radius: 50%; pointer-events: auto; display: grid; place-items: center;
-  /* bevelled metal rim; the dark glass face sits inside it */
-  background: conic-gradient(from 215deg, #aab3bf, #323943 20%, #7a8491 44%, #1a1e24 68%, #b9c1cc 88%, #aab3bf) !important;
-  box-shadow: 0 4px 10px #000c, 0 0 0 1px #0009; color: #f3ede2 !important; transition: transform .07s; }
-.abtn .face { position: absolute; inset: 3px; border-radius: 50%; background: radial-gradient(circle at 36% 22%, #4a5562 0%, #1d222a 46%, #0b0e12 100%); box-shadow: inset 0 0 0 1px #000b, inset 0 2px 3px #ffffff33, inset 0 -6px 10px #0009; transition: filter .1s; }
-.abtn .ico { position: relative; display: grid; place-items: center; transition: opacity .15s; }
-.abtn .ico svg { width: calc(var(--d) * .47); height: calc(var(--d) * .47); filter: drop-shadow(0 1px 1px #000c); }
-.abtn.sm .ico svg { width: calc(var(--d) * .5); height: calc(var(--d) * .5); }
-/* attack: the one warm button, and the biggest */
-.abtn.atk { background: conic-gradient(from 215deg, #fff1da, #c96a1e 22%, #ffd9a8 46%, #873808 70%, #fff4e2 88%, #fff1da) !important; box-shadow: 0 6px 18px #000c, 0 0 26px #ff7a1a70, 0 0 0 1px #3a1602; }
-.abtn.atk .face { inset: 4px; background: radial-gradient(circle at 36% 22%, #ffd49a 0%, #f78d30 40%, #c9530f 76%, #8f3505 100%); box-shadow: inset 0 0 0 1px #5a2204, inset 0 3px 5px #fff9, inset 0 -10px 16px #6a240088; }
-.abtn.atk .ico { color: #2a1406; }
-.abtn.atk .ico svg { width: calc(var(--d) * .5); height: calc(var(--d) * .5); stroke-width: 2.3; filter: drop-shadow(0 1px 0 #ffd9a8aa); }
-/* skills carry the energy colour */
-.abtn.sk .face { box-shadow: inset 0 0 0 1.5px #5ef0ffb8, inset 0 0 12px #5ef0ff40, inset 0 2px 3px #ffffff33, inset 0 -6px 10px #0009; }
-.abtn.sk .ico { color: var(--cyan); }
-/* Overdrive: gold, with its meter as a ring that fills */
-.abtn.od .face { box-shadow: inset 0 0 0 1.5px #ffcf5a99, inset 0 0 12px #ffcf5a33, inset 0 2px 3px #ffffff33, inset 0 -6px 10px #0009; }
-.abtn.od .ico { color: var(--gold); opacity: .5; }
-.abtn.od.full .ico, .abtn.od.s-active .ico { opacity: 1; }
-.abtn.od.full { animation: odready 1.1s ease-in-out infinite; }
-.abtn.od.full .face { background: radial-gradient(circle at 36% 22%, #8a6a22 0%, #4a340c 50%, #1c1404 100%); }
-@keyframes odready { 50% { box-shadow: 0 4px 10px #000c, 0 0 0 1px #0009, 0 0 20px 4px #ffcf5aaa; } }
+#ui .abtn { --d: 50px; --tint: #f3ede2; position: absolute; width: var(--d); height: var(--d); margin: calc(var(--d) / -2) 0 0 calc(var(--d) / -2); border-radius: 50%; pointer-events: auto; display: grid; place-items: center; color: var(--tint); transition: transform .07s; }
+.abtn.no-seat { display: none !important; }
+.abtn .face { position: absolute; inset: 0; border-radius: inherit; background: var(--glass); box-shadow: inset 0 0 0 1.25px var(--hair); transition: background .1s, box-shadow .15s, filter .1s; }
+.abtn .ico { position: relative; display: grid; place-items: center; transition: opacity .15s; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, .7)); }
+.abtn .ico svg { width: calc(var(--d) * .46); height: calc(var(--d) * .46); }
+/* the primary */
+#ui .abtn.atk { --tint: #2a1406; }
+.abtn.atk .face { background: radial-gradient(circle at 50% 28%, rgba(255, 205, 140, .95), rgba(247, 141, 48, .93) 52%, rgba(206, 88, 18, .93)); box-shadow: inset 0 0 0 1.5px rgba(255, 238, 214, .9), 0 0 22px rgba(255, 122, 26, .32), 0 2px 8px rgba(0, 0, 0, .35); }
+.abtn.atk .ico { filter: drop-shadow(0 1px 0 rgba(255, 226, 190, .6)); }
+.abtn.atk .ico svg { width: calc(var(--d) * .44); height: calc(var(--d) * .44); stroke-width: 2.2; }
+/* a reload sweeps the primary, and the reload button counts it down */
+.abtn.atk:not(.in-bar) .cdt { display: none; }
+/* the other thumb's fire: the warm colour as an edge */
+#ui .abtn.f2 { --tint: var(--amber); }
+.abtn.f2 .face { background: rgba(247, 141, 48, .2); box-shadow: inset 0 0 0 1.5px rgba(255, 196, 106, .75); }
+#ui .abtn.sk { --tint: var(--cyan); }
+.abtn.sk .face { box-shadow: inset 0 0 0 1.25px rgba(94, 240, 255, .5); }
+#ui .abtn.od { --tint: #ffe9a8; }
+.abtn.od .face { background: radial-gradient(circle at 50% 30%, rgba(150, 110, 24, .85), rgba(52, 36, 6, .8)); box-shadow: inset 0 0 0 1.5px var(--gold), 0 0 16px rgba(255, 207, 90, .5); animation: odready 1.1s ease-in-out infinite; }
+@keyframes odready { 50% { box-shadow: inset 0 0 0 1.5px #fff3c4, 0 0 26px 3px rgba(255, 207, 90, .75); } }
+.abtn.chip .face { background: var(--glass-2); box-shadow: inset 0 0 0 1px var(--hair-2); }
+.abtn.chip::before { content: ''; position: absolute; inset: -3px; border-radius: 50%; }
+#ui .abtn.kit { --tint: #7dffb0; }
+.abtn.kit .face { box-shadow: inset 0 0 0 1.25px rgba(125, 255, 176, .6), 0 0 12px rgba(125, 255, 176, .25); }
 
 /* pressed: the face lights, the button sinks, a ring snaps on round it */
-.abtn::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; border: 2px solid #fff; opacity: 0; transition: opacity .28s, inset .28s; pointer-events: none; }
-.abtn.down { transform: scale(.91); }
-.abtn.down .face { filter: brightness(1.7); }
-.abtn.down::after { opacity: .95; inset: -2px; transition: none; }
-.abtn.aim::after { inset: -9px; border-color: var(--cyan); border-style: dashed; opacity: .9; }
-.abtn.held::after { border-color: var(--red); }
+.abtn::after { content: ''; position: absolute; inset: -3px; border-radius: inherit; border: 1.5px solid #fff; opacity: 0; transition: opacity .28s, inset .28s; pointer-events: none; }
+.abtn.down { transform: scale(.92); }
+.abtn.down .face { background: rgba(255, 255, 255, .3); }
+.abtn.atk.down .face { background: radial-gradient(circle at 50% 28%, #fff1da, #ffb060 52%, #f07a22); }
+.abtn.down::after { opacity: .9; inset: -2px; transition: none; }
+.abtn.steer::after { inset: -8px; border-color: var(--cyan); border-style: dashed; opacity: .9; }
 .abtn.deny { animation: deny .22s; }
 @keyframes deny { 25% { translate: -3px 0; } 75% { translate: 3px 0; } }
-.abtn.ready-flash { animation: readyflash .4s; }
-@keyframes readyflash { 0% { box-shadow: 0 4px 10px #000c, 0 0 0 0 #5ef0ffdd; } 100% { box-shadow: 0 4px 10px #000c, 0 0 0 16px #5ef0ff00; } }
+.abtn.ready-flash::after { animation: readyflash .45s; }
+@keyframes readyflash { 0% { opacity: 1; inset: -2px; border-color: var(--cyan); } 100% { opacity: 0; inset: -14px; border-color: var(--cyan); } }
+/* a button the moment brings in (reload, the kit, Overdrive) arrives with a pop */
+.abtn.arrive { animation: arrive .26s var(--ease-back); }
+@keyframes arrive { 0% { scale: .5; opacity: 0; } 100% { scale: 1; opacity: 1; } }
 
-/* cooldown: a dark sweep with a bright leading edge and the seconds left */
-.abtn .cd { position: absolute; inset: 3px; border-radius: 50%; pointer-events: none; display: none;
-  background: conic-gradient(#05070be0 calc(var(--cd, 0%) - 1.4%), #b8f8ff var(--cd, 0%), transparent 0); }
+/* cooldown: a dark sweep and the seconds left */
+.abtn .cd { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; display: none; background: conic-gradient(rgba(4, 6, 9, .74) var(--cd, 0%), transparent 0); }
 .abtn.has-cd .cd { display: block; }
-.abtn.s-cooldown .ico { opacity: .34; }
+.abtn.s-cooldown .ico { opacity: .3; }
 .abtn .cdt { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; font-size: calc(var(--d) * .34); color: #fff; text-shadow: 0 1px 3px #000, 0 0 6px #000; pointer-events: none; }
 /* not enough energy: drained of colour, with the energy bolt struck in red at the corner */
-.abtn.s-noenergy .face { filter: saturate(.15) brightness(.62); }
-.abtn.s-noenergy .ico { opacity: .32; color: #9aa3ad; }
-.abtn .en { position: absolute; left: -3px; top: -3px; width: 19px; height: 19px; border-radius: 50%; background: #2a0d0a; border: 1.5px solid #ff6a4a; color: #ff8a6a; display: none; place-items: center; box-shadow: 0 1px 4px #000; animation: enlow 1s ease-in-out infinite; z-index: 2; }
+.abtn.s-noenergy .face { box-shadow: inset 0 0 0 1.25px var(--hair-2); }
+.abtn.s-noenergy .ico { opacity: .3; color: #9aa3ad; }
+.abtn .en { position: absolute; left: -2px; top: -2px; width: 17px; height: 17px; border-radius: 50%; background: #2a0d0a; box-shadow: inset 0 0 0 1.25px #ff6a4a; color: #ff8a6a; display: none; place-items: center; animation: enlow 1s ease-in-out infinite; z-index: 2; }
 .abtn.sk.s-noenergy .en { display: grid; }
-/* Overdrive short of full is told by its ring, and a kit button with no kits by its count */
-.abtn.od.s-noenergy .face { filter: none; }
-.abtn.od.s-noenergy .ico { opacity: .5; color: var(--gold); }
-@keyframes enlow { 50% { border-color: #ff6a4a55; color: #ff8a6a77; } }
-/* locked: no colour, a padlock and the level that opens it */
-.abtn.s-locked { background: conic-gradient(from 215deg, #5c626b, #24282e 20%, #474d56 44%, #15181c 68%, #666c75 88%, #5c626b) !important; }
-.abtn.s-locked .face { background: repeating-linear-gradient(135deg, #171a1f 0 5px, #1e2228 5px 10px); box-shadow: inset 0 0 0 1px #000b, inset 0 0 10px #000c; }
-.abtn.s-locked .ico { display: none; }
-.abtn .lk { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: #aeb5bf; pointer-events: none; }
-.abtn .lk b { font-size: 10px; font-weight: 800; letter-spacing: .08em; color: #e3d7c3; line-height: 1; }
-.abtn.s-locked .lk { display: flex; }
+@keyframes enlow { 50% { opacity: .5; } }
 /* active: the action is running */
-.abtn.s-active .face { filter: brightness(1.45); }
-.abtn.s-active::after { opacity: .9; border-color: var(--cyan); box-shadow: 0 0 14px #5ef0ffaa; }
-.abtn.atk.s-active::after { border-color: #ffe3bf; box-shadow: 0 0 16px #ff9a3caa; }
-/* charge ring: a held attack, or the Overdrive meter */
-.abtn .ring { position: absolute; inset: -6px; width: calc(100% + 12px); height: calc(100% + 12px); transform: rotate(-90deg); pointer-events: none; opacity: 0; transition: opacity .12s; overflow: visible; }
-.abtn .ring circle { fill: none; stroke-width: 5.5; }
-.abtn .ring .trk { stroke: #000a; }
+.abtn.s-active .face { box-shadow: inset 0 0 0 2px var(--tint), 0 0 14px color-mix(in srgb, var(--tint) 55%, transparent); }
+.abtn.atk.s-active .face { box-shadow: inset 0 0 0 2px #fff, 0 0 24px rgba(255, 154, 60, .8); }
+#ui .abtn.aim.s-active { --tint: #0b0e12; }
+.abtn.aim.s-active .face { background: rgba(255, 255, 255, .88); box-shadow: inset 0 0 0 1.5px #fff, 0 0 14px rgba(255, 255, 255, .4); }
+.abtn.aim.s-active .ico { filter: none; }
+/* charge ring: a held heavy attack, a draw */
+.abtn .ring, .abtn .oda { position: absolute; transform: rotate(-90deg); pointer-events: none; opacity: 0; transition: opacity .12s; overflow: visible; }
+.abtn .ring { inset: -5px; width: calc(100% + 10px); height: calc(100% + 10px); }
+.abtn .ring circle, .abtn .oda circle { fill: none; }
+.abtn .ring circle { stroke-width: 4; }
+.abtn .ring .trk { stroke: rgba(0, 0, 0, .5); }
 .abtn .ring .val { stroke: #fff3d6; stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 100; }
-.abtn.charging .ring, .abtn.od:not(.s-locked) .ring { opacity: 1; }
-.abtn.s-locked .ring { opacity: 0; }
+.abtn.charging .ring { opacity: 1; }
 .abtn.full .ring .val { stroke: #fff; filter: drop-shadow(0 0 3px #fff); }
-.abtn.od .ring .val { stroke: var(--gold); }
-.abtn.od.full .ring .val { stroke: #ffe9a8; filter: drop-shadow(0 0 3px #ffcf5a); }
-/* count pip: kits left, bolts in the magazine */
-.abtn .cnt { position: absolute; left: -4px; top: -4px; min-width: 19px; height: 19px; padding: 0 4px; border-radius: 10px; background: #0c0f13; border: 1px solid #ffffff55; font-size: 11.5px; line-height: 17px; font-weight: 800; color: #fff; text-align: center; pointer-events: none; box-shadow: 0 1px 4px #000a; z-index: 2; }
+/* the Overdrive meter: a thin gold arc round the primary; it needs no button until it is full */
+.abtn .oda { inset: -8px; width: calc(100% + 16px); height: calc(100% + 16px); }
+.abtn .oda .trk { stroke: rgba(255, 255, 255, .13); stroke-width: 1.6; }
+.abtn .oda .val { stroke: var(--gold); stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 100; transition: stroke-dashoffset .3s; }
+.abtn.has-od .oda { opacity: 1; }
+.abtn.od-full .oda .val { stroke: #ffe9a8; filter: drop-shadow(0 0 4px var(--gold)); }
+/* count: kits left, rounds in the magazine */
+.abtn .cnt { position: absolute; left: 50%; bottom: -7px; translate: -50% 0; min-width: 18px; height: 15px; padding: 0 5px; border-radius: 8px; background: rgba(8, 10, 13, .86); font-size: 10.5px; line-height: 15px; font-weight: 800; color: #fff; text-align: center; white-space: nowrap; pointer-events: none; z-index: 2; }
 .abtn .cnt:empty { display: none; }
-.abtn .cnt small { font-size: 9px; opacity: .7; }
-.abtn.atk .cnt { left: auto; right: 3px; top: 1px; min-width: 22px; height: 22px; line-height: 20px; font-size: 13px; border-radius: 11px; }
-.hud.lefty .abtn .en, .hud.lefty .abtn .cnt { left: auto; right: -4px; }
-.hud.lefty .abtn.atk .cnt { right: auto; left: 3px; }
-.abtn.none-left .cnt { color: #ff8a6a; border-color: #ff6a4a; }
-.abtn.none-left .ico { opacity: .32; }
-.abtn.none-left .face { filter: saturate(.2) brightness(.7); }
-/* the name of the action, until it has been used a few times */
-/* never wider than its own button, so a long name wraps onto two lines rather than run under a neighbour */
-.abtn .lbl { position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%); width: max-content; max-width: calc(var(--d) + 2px); padding: 1.5px 4px 1px; border-radius: 7px; background: #0a0d11e6; border: 1px solid #ffffff2e;
-  font-size: 9px; line-height: 1.08; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; text-align: center; color: #fff; pointer-events: none; transition: opacity .8s; z-index: 1; }
-.abtn.sk .lbl { color: #c9f9ff; border-color: #5ef0ff66; }
-.abtn.atk .lbl { bottom: -2px; font-size: 10.5px; max-width: calc(var(--d) + 4px); color: #ffe3bf; border-color: #ffb96899; }
-.abtn .lbl.gone, .abtn .lbl:empty { opacity: 0; }
-.abtn.s-locked .lbl { display: none; }
-.abtn .key { position: absolute; left: 50%; top: -11px; transform: translateX(-50%); font-size: 9px; font-weight: 800; color: #ffffffcc; text-shadow: 0 1px 2px #000; display: none; }
-body.desktop .abtn .key { display: block; }
-/* desktop shows key hints instead of names */
-.hud.no-lbl .abtn .lbl { display: none; }
-/* the utility column (landscape, desktop): buttons stacked on the thumb-side edge */
-.s-util { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 14px; }
-.s-util .abtn { position: relative; margin: 0; flex: none; }
-/* on the screen edge the names sit inward of the buttons, not under them */
-.s-util.k-side .abtn .lbl { top: 50%; bottom: auto; transform: translateY(-50%); }
-.s-util.k-side[data-h=r] .abtn .lbl { left: auto; right: calc(100% - 6px); }
-.s-util.k-side[data-h=l] .abtn .lbl { left: calc(100% - 6px); }
-.s-util.k-side { gap: 10px; }
-/* a two-by-two block (shooter stance), filled from the bottom right */
-.s-util.k-grid { display: grid; grid-template-columns: repeat(2, auto); gap: 8px; direction: rtl; align-content: end; }
-.s-util.k-grid[data-h=l] { direction: ltr; }
-.abtn.no-seat { display: none !important; }
-/* the second fire button: the warm face, smaller, for the left thumb; aim wears the energy rim */
-.abtn.f2 .lbl { font-size: 9px; }
-.abtn.aim .face { box-shadow: inset 0 0 0 1.5px #ffffff88, inset 0 2px 3px #ffffff33, inset 0 -6px 10px #0009; }
-/* the weapon chip: what is in hand, and the weapon a swap brings in */
-.wchip { display: flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px 0 6px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--e1);
-  font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--text); white-space: nowrap; text-shadow: var(--ts); }
-.wchip .wc-i { color: var(--amber); display: grid; } .wchip .wc-2 { display: none; color: var(--text-3); padding-left: 5px; margin-left: 1px; border-left: 1px solid var(--line); }
-.wchip.two .wc-2 { display: grid; }
-[data-h=r] > .wchip { flex-direction: row-reverse; padding: 0 6px 0 9px; }
-[data-h=r] > .wchip .wc-2 { padding: 0 5px 0 0; margin: 0 1px 0 0; border-left: 0; border-right: 1px solid var(--line); }
-.ibtn { position: relative; transform: translate(0, 8px) scale(.94); pointer-events: none; opacity: 0; transition: opacity .14s, transform .14s cubic-bezier(.2, 1.4, .4, 1);
-  padding: 9px 18px 9px 12px !important; border-radius: 26px; background: linear-gradient(180deg, #2a313bee, #14171cee) !important; border: 1.5px solid var(--cyan) !important; box-shadow: 0 4px 16px #000a, 0 0 18px #5ef0ff44;
-  display: flex !important; align-items: center; gap: 8px; font-size: 15px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #fff !important; white-space: nowrap; }
-.ibtn.on { opacity: 1; transform: none; pointer-events: auto; }
-.ibtn.on.down { transform: scale(.94); filter: brightness(1.5); transition: none; }
-.ibtn svg { color: var(--cyan); }
-.ibtn small { color: var(--dim); font-size: 10px; font-weight: 700; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; display: none; }
+.abtn .cnt small { font-size: 8.5px; opacity: .65; }
+.abtn.none-left .cnt { color: #ff8a6a; }
+.abtn.none-left .ico { opacity: .3; }
+/* the one word a button ever shows: the counter window, over the primary */
+.abtn .cap { position: absolute; left: 50%; bottom: calc(100% + 9px); translate: -50% 0; font-size: 11px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: #fff3d6; text-shadow: 0 0 10px var(--orange), 0 1px 2px #000; white-space: nowrap; pointer-events: none; opacity: 0; }
+.abtn.counter .cap { opacity: 1; animation: capblink .3s steps(2) infinite; }
+@keyframes capblink { 50% { opacity: .55; } }
+.abtn .key, .abtn .tipn { display: none; }
+
+/* ---------- hotbar (desktop) ---------- */
+.hbar { display: flex; gap: 10px; align-items: flex-end; justify-content: center; width: max-content; }
+.hb-g { display: flex; gap: 5px; padding: 5px; border-radius: 13px; background: rgba(9, 12, 16, .5); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+.hb-g:not(:has(.abtn:not([style*="display: none"]))) { display: none; }
+#ui .abtn.in-bar { position: relative; --d: 50px; margin: 0; border-radius: 9px; }
+.abtn.in-bar .face { background: linear-gradient(180deg, rgba(45, 52, 62, .92), rgba(17, 21, 27, .94)); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .17), inset 0 1px 0 rgba(255, 255, 255, .16); animation: none; }
+.abtn.in-bar.atk .face { background: linear-gradient(180deg, #ffc98a, #f78d30 50%, #cf5a12); box-shadow: inset 0 0 0 1px #ffe9cf, 0 0 14px rgba(255, 122, 26, .3); }
+.abtn.in-bar.sk .face { box-shadow: inset 0 0 0 1px rgba(94, 240, 255, .42), inset 0 1px 0 rgba(255, 255, 255, .16); }
+.abtn.in-bar.kit .face { box-shadow: inset 0 0 0 1px rgba(125, 255, 176, .4), inset 0 1px 0 rgba(255, 255, 255, .16); }
+.abtn.in-bar:hover .face { filter: brightness(1.25); }
+.abtn.in-bar .ico svg { width: 24px; height: 24px; }
+.abtn.in-bar .ring, .abtn.in-bar .oda, .abtn.in-bar::before { display: none; }
+.abtn.in-bar .key { display: block; position: absolute; left: 4px; top: 2px; font-style: normal; font-size: 9.5px; font-weight: 800; letter-spacing: .02em; color: #fff; opacity: .9; text-shadow: 0 1px 2px #000, 0 0 3px #000; z-index: 2; }
+.abtn.in-bar.atk .key { color: #2a1406; text-shadow: 0 1px 0 rgba(255, 226, 190, .6); }
+.abtn.in-bar .cnt { left: auto; right: 3px; bottom: 2px; translate: none; min-width: 0; height: auto; padding: 0; background: none; font-size: 11px; line-height: 1; text-shadow: 0 1px 2px #000, 0 0 3px #000; }
+.abtn.in-bar .cdt { font-size: 17px; }
+/* Overdrive in the bar: the meter fills the slot, and the slot lights when it is full */
+.abtn.in-bar.od .face { overflow: hidden; }
+.abtn.in-bar.od .face::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: var(--ch, 0%); background: linear-gradient(0deg, rgba(255, 207, 90, .5), rgba(255, 207, 90, .16)); transition: height .3s; }
+.abtn.in-bar.od:not(.full):not(.s-active) .ico { opacity: .5; }
+.abtn.in-bar.od.full .face { box-shadow: inset 0 0 0 1.5px var(--gold), 0 0 16px rgba(255, 207, 90, .55); }
+.abtn.in-bar .tipn { display: block; position: absolute; bottom: calc(100% + 8px); left: 50%; translate: -50% 0; padding: 3px 8px; border-radius: 6px; background: rgba(8, 10, 13, .92); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; color: #fff; opacity: 0; pointer-events: none; transition: opacity .1s; z-index: 3; }
+.abtn.in-bar .tipn:empty { display: none; }
+.abtn.in-bar:hover .tipn { opacity: 1; }
+.abtn.in-bar .cap { bottom: calc(100% + 12px); }
+/* the cast bar: a held heavy, a draw, a reload */
+.cast { width: 100%; text-align: center; opacity: 0; transition: opacity .12s; }
+.cast.on { opacity: 1; }
+.cast span { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; text-shadow: var(--tsh); margin-bottom: 4px; }
+.cast .cb { height: 7px; border-radius: 4px; background: rgba(6, 8, 11, .62); box-shadow: 0 0 0 1px rgba(0, 0, 0, .5); overflow: hidden; }
+.cast .cb i { display: block; height: 100%; background: linear-gradient(90deg, var(--orange), #fff3d6); transform-origin: left; }
+.cast.full .cb i { background: #fff; box-shadow: 0 0 8px #fff; }
+
+/* ---------- a skill's name, the first few times it is used ---------- */
+.capn { width: 100%; text-align: center; font-size: 12px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; color: #dffbff; text-shadow: 0 0 10px rgba(94, 240, 255, .6), 0 1px 2px #000; opacity: 0; white-space: nowrap; }
+.capn.on { animation: capn 1.5s forwards; }
+@keyframes capn { 0% { opacity: 0; transform: translateY(5px); } 12% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ---------- the context prompt (Talk, Open, Salvage) ---------- */
+#ui .ibtn { position: relative; min-height: 44px; transform: translate(0, 8px) scale(.94); pointer-events: none; opacity: 0; transition: opacity .14s, transform .14s cubic-bezier(.2, 1.4, .4, 1);
+  padding: 0 18px 0 13px; border-radius: 22px; background: var(--glass-2); box-shadow: inset 0 0 0 1.25px rgba(94, 240, 255, .8), 0 0 16px rgba(94, 240, 255, .22);
+  display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #fff; white-space: nowrap; text-shadow: var(--ts); }
+#ui .ibtn.on { opacity: 1; transform: none; pointer-events: auto; }
+#ui .ibtn.on.down { transform: scale(.94); background: rgba(94, 240, 255, .3); transition: none; }
+.ibtn .ii { display: grid; color: var(--cyan); }
+.ibtn small { color: var(--dim); font-size: 10px; font-weight: 700; box-shadow: inset 0 0 0 1px var(--stroke-2); border-radius: 4px; padding: 1px 5px; display: none; }
 body.desktop .ibtn small { display: block; }
 
 /* ---------- toasts ---------- */
@@ -321,14 +374,14 @@ body.desktop .ibtn small { display: block; }
 .plate .pn { display: block; position: static; inset: auto; line-height: 1.25; font-size: 11px; font-weight: 800; letter-spacing: .05em; text-shadow: 0 1px 2px #000, 0 0 5px #000; }
 .plate .pn .pl { color: var(--amber); margin-right: 3px; }
 .plate.npc .pt { margin-top: 1px; font-weight: 800; text-shadow: 0 1px 2px #000, 0 0 4px #000; }
-.plate .pb { width: 64px; height: 6px; margin: 2px auto 0; background: #0009; border: 1px solid #000; border-radius: 3px; overflow: hidden; }
+.plate .pb { width: 64px; height: 5px; margin: 2px auto 0; background: #0009; box-shadow: 0 0 0 1px #000; border-radius: 3px; overflow: hidden; }
 .plate .pb i { display: block; height: 100%; background: linear-gradient(180deg, #ff8a6a, #d83424); transform-origin: left; }
 .plate.elite .pn { color: var(--gold); } .plate.rare .pn { color: var(--purple); } .plate.night .pn { color: #8fd6ff; }
 .plate.npc .pn { color: #b8ffd6; } .plate.npc .pt { font-size: 9px; color: var(--amber); letter-spacing: .12em; text-transform: uppercase; text-shadow: 0 1px 2px #000; }
 .plate .mark { font-size: 26px; font-weight: 900; line-height: 1; text-shadow: 0 0 10px currentColor, 0 2px 2px #000; animation: bob 1.4s ease-in-out infinite; }
 .plate .mark.y { color: var(--gold); } .plate .mark.g { color: #8a909a; text-shadow: 0 2px 2px #000; animation: none; } .plate .mark.t { color: var(--cyan); }
 @keyframes bob { 50% { transform: translateY(-4px); } }
-.reticle { position: absolute; left: 0; top: 0; width: 46px; height: 46px; margin: -23px 0 0 -23px; border: 2px solid var(--orange); border-radius: 50%; opacity: 0; transition: opacity .12s; box-shadow: 0 0 10px #ff9a3c88, inset 0 0 8px #ff9a3c55; will-change: transform; }
+.reticle { position: absolute; left: 0; top: 0; width: 46px; height: 46px; margin: -23px 0 0 -23px; border: 1.5px solid var(--orange); border-radius: 50%; opacity: 0; transition: opacity .12s; box-shadow: 0 0 10px #ff9a3c88, inset 0 0 8px #ff9a3c55; will-change: transform; }
 .reticle::before, .reticle::after { content: ""; position: absolute; left: 50%; top: -7px; width: 2px; height: 10px; margin-left: -1px; background: var(--orange); }
 .reticle::after { top: auto; bottom: -7px; }
 .reticle.on { opacity: .9; }
@@ -339,7 +392,27 @@ body.desktop .ibtn small { display: block; }
 /* ---------- course timer ---------- */
 .ctimer { position: relative; text-align: center; opacity: 0; transition: opacity .2s; padding: 4px 18px 6px;
   background: linear-gradient(90deg, #14171c00, #14171ccc 20%, #14171ccc 80%, #14171c00); }
+.ctimer:not(.on) { position: absolute; left: 0; right: 0; }
 .ctimer.on { opacity: 1; }
 .ctimer .cl { font-size: 10px; font-weight: 800; letter-spacing: .22em; text-transform: uppercase; color: var(--cyan); }
 .ctimer .ct { font-size: 24px; font-weight: 800; letter-spacing: .04em; line-height: 1; text-shadow: 0 2px 4px #000; }
 .ctimer .cs { font-size: 11px; font-weight: 700; letter-spacing: .1em; color: var(--amber); text-transform: uppercase; }
+
+/* ---------- quick wheel (ui/quick.ts) ----------
+   A fan of the rare actions on the inward side of the weapon chip. */
+.qw { position: absolute; inset: 0; z-index: 30; pointer-events: none; opacity: 0; transition: opacity .12s; }
+.qw.on { opacity: 1; pointer-events: auto; background: radial-gradient(circle at var(--qx) var(--qy), rgba(4, 6, 9, .78) 0, rgba(4, 6, 9, .55) 130px, rgba(4, 6, 9, 0) 250px); }
+.qw-arc { position: absolute; left: var(--qx); top: var(--qy); width: 204px; height: 204px; margin: -102px 0 0 -102px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .16); }
+.qw[data-dir=l] .qw-arc { clip-path: inset(0 50% 0 0); } .qw[data-dir=r] .qw-arc { clip-path: inset(0 0 0 50%); }
+.qw-name { display: none; }
+#ui .qw-i { position: absolute; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; display: grid; place-items: center; color: #f3ede2; pointer-events: auto;
+  background: rgba(18, 22, 28, .9); box-shadow: inset 0 0 0 1.25px rgba(255, 255, 255, .36), 0 2px 10px rgba(0, 0, 0, .5); transform: scale(.3); opacity: 0; transition: transform .16s var(--ease-back), opacity .1s, background .08s; }
+#ui .qw.fan .qw-i { transform: none; opacity: 1; }
+.qw-i span { display: grid; }
+.qw-i small { position: absolute; top: 50%; translate: 0 -50%; white-space: nowrap; font-size: 10.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--text-2); text-shadow: var(--tsh); pointer-events: none; }
+.qw[data-dir=l] .qw-i small { right: calc(100% + 8px); } .qw[data-dir=r] .qw-i small { left: calc(100% + 8px); }
+.qw-i b { position: absolute; right: -4px; top: -4px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: #0b0e12; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .4); font-size: 10.5px; line-height: 17px; font-weight: 800; color: #fff; }
+#ui .qw.fan .qw-i.hot, #ui .qw.fan .qw-i:active { background: rgba(255, 154, 60, .95); color: #2a1406; transform: scale(1.14); box-shadow: inset 0 0 0 1.5px #ffe9cf, 0 0 18px rgba(255, 122, 26, .5); }
+.qw-i.hot small { color: #fff; }
+#ui .qw.fan .qw-i.off { opacity: .4; }
+.qw-i.deny { animation: deny .22s; }

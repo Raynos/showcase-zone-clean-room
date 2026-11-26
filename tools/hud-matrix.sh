@@ -1,22 +1,21 @@
 #!/bin/bash
 # HUD screenshot matrix: every HUD state at every target size, with an automated check of the
 # slot rectangles (overlaps, clipping, boxes under a notch or the home indicator, anything in the
-# middle third of a landscape screen) and contact sheets.
+# clear centre of a landscape screen, touch targets under 44 pt, an action budget over its cap)
+# and contact sheets. The rules are docs/HUD.md's.
 #
 #   tools/hud-matrix.sh [state ...] [--url <base>] [--out <dir>] [--sizes <key,key>]
 #
 #   state    a state from tools/hud-matrix/states.js by name or number (default: all)
 #   --url    base URL of a running build (default http://localhost:5174)
 #   --out    output directory (default shots/hud/matrix, git-ignored)
-#   --sizes  comma list of size keys (default: all of p402 l874a l874b p375 l667a l667b d1920)
+#   --sizes  comma list of size keys (default: all of p402 l874 p375 l667 d1920)
 #
 # Sizes (CSS px; the insets are faked through ?safe-style CSS variables, as the target phones give them):
 #   p402   402x874  portrait, iPhone 17 Pro (top 62, bottom 34)
-#   l874a  874x402  landscape, layout A (left 62, right 62, bottom 21; lefty state: notch on the right only)
-#   l874b  874x402  landscape, layout B
+#   l874   874x402  landscape (left 62, right 62, bottom 21; lefty state: notch on the right only)
 #   p375   375x667  portrait, iPhone SE (top 20)
-#   l667a  667x375  landscape, layout A (no insets)
-#   l667b  667x375  landscape, layout B
+#   l667   667x375  landscape (no insets)
 #   d1920  1920x1080 desktop, mouse and keyboard
 #
 # Each state is staged once (fresh save, seeded, fixed 60 Hz clock: tools/golden/init.js), then the
@@ -29,7 +28,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$HERE")"
 URL="http://localhost:5174"
 OUT="$ROOT/shots/hud/matrix"
-SIZES="p402,l874a,l874b,p375,l667a,l667b,d1920"
+SIZES="p402,l874,p375,l667,d1920"
 WANT=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -44,11 +43,9 @@ done
 size_of() {   # key -> "w h scale safe opts"
   case "$1" in
     p402) echo "402 874 2 62,0,34,0 {}" ;;
-    l874a) echo "874 402 2 0,62,21,62 {variant:'a'}" ;;
-    l874b) echo "874 402 2 0,62,21,62 {variant:'b'}" ;;
+    l874) echo "874 402 2 0,62,21,62 {}" ;;
     p375) echo "375 667 2 20,0,0,0 {}" ;;
-    l667a) echo "667 375 2 0,0,0,0 {variant:'a'}" ;;
-    l667b) echo "667 375 2 0,0,0,0 {variant:'b'}" ;;
+    l667) echo "667 375 2 0,0,0,0 {}" ;;
     d1920) echo "1920 1080 1 0,0,0,0 {mouse:true}" ;;
     *) return 1 ;;
   esac
@@ -120,7 +117,7 @@ while read -r file <&3; do
     res="$(agent-browser eval "HM.check()" 2>/dev/null)"
     agent-browser screenshot "$OUT/$file/$key.png" >/dev/null 2>&1
     echo "$file $key $res" >> "$REPORT.part"
-    n="$(echo "$res" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const r=JSON.parse(JSON.parse(s));console.log(r.layout+" "+r.issues.length+" issues, re-laid in "+r.ms+" ms")}catch(e){console.log("?")}})')"
+    n="$(echo "$res" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const r=JSON.parse(JSON.parse(s));console.log(r.layout+" "+r.ctx+": cluster "+r.cluster+"+"+r.chips+", "+r.touch+" touchable, "+r.issues.length+" issues"+(r.issues.length?" ("+r.issues.map(i=>i.kind+" "+i.what).join("; ")+")":"")+", re-laid in "+r.ms+" ms")}catch(e){console.log("?")}})')"
     echo "$file $key: $n"
   done
 done 3<<EOF

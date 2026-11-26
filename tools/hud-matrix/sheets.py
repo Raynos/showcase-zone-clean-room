@@ -15,7 +15,7 @@ import sys
 from PIL import Image, ImageDraw, ImageFont
 
 INK, PAPER, DIM, RED, MAG, OK = (236, 238, 242), (16, 18, 22), (150, 158, 170), (255, 90, 60), (255, 60, 230), (125, 255, 176)
-ORDER = ['p402', 'l874a', 'l874b', 'p375', 'l667a', 'l667b', 'd1920']
+ORDER = ['p402', 'l874', 'p375', 'l667', 'd1920']
 
 
 def font(size, bold=False):

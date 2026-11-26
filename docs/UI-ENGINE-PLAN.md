@@ -87,6 +87,9 @@ and recorder. A Settings switch to hide it, on by default.
 
 ### U1. Layout foundation (M, Opus)
 
+> The slot engine and the matrix tool stand. The HUD's layouts, and the
+> matrix's rules, are now those of `docs/HUD.md`.
+
 - One HUD, many layouts. Every HUD element gets a named slot; a layout is a
   table that places each slot. Layouts: portrait phone, landscape phone,
   desktop. Chosen from the viewport, switched live on rotation.
@@ -102,6 +105,12 @@ Done when: rotating the device mid-fight re-lays the HUD in under 200 ms
 with nothing overlapping, clipped or under a notch, at every size above.
 
 ### U2. Landscape HUD to the reference standard (L, Opus, then a Fable polish)
+
+> Superseded by `docs/HUD.md`: the owner rejected the layout built from
+> the table below (too many buttons, labelled, nothing questioned). The
+> HUD was redesigned from a study of the references
+> (`docs/HUD-STUDY.md`) with an action budget; landscape variants A and B
+> and `?hud=` are gone.
 
 Layout, following the conventions of the references:
 
@@ -125,6 +134,9 @@ Layout, following the conventions of the references:
 Done when: the owner signs off the landscape HUD on their phone.
 
 ### U3. Portrait HUD retune (M, Opus)
+
+> Superseded by `docs/HUD.md`, "Layouts": portrait is the same budget and
+> the same buttons, seated for one thumb.
 
 The same slots and components, re-placed for one-handed and two-handed
 portrait play, with everything learned in U2. The action bar from run 2 is
@@ -168,7 +180,8 @@ Equipping a ranged weapon switches stance. Putting it away switches back.
 - **HUD.** A shooter layout per orientation: fire, second fire, aim,
   reload, ammo and magazine, the crosshair with spread, plus dodge, jump,
   skills and swap. `hud.setActionBar` gains a stance so the HUD can switch
-  layout.
+  layout. (The shooter layout is now `docs/HUD.md`'s: seven buttons from
+  the hip; reload and the second fire appear only when they apply.)
 - **Skills** stay on their buttons and are re-authored for free aim (they
   fire where the crosshair points).
 - **The test bot** learns to aim, so shooter fights can be measured.

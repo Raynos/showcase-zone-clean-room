@@ -1,7 +1,8 @@
 // In-page helpers for tools/hud-matrix.sh, injected after tools/golden/lib.js and states.js.
 //   HM.size(w, h, safe, opts)  fake the safe-area insets ("t,r,b,l"), set touch or mouse, re-lay
 //                              the HUD, run a few frames, freeze; HM.status turns 'ready'
-//   HM.check()                 the overlap, clipping, safe-area and clear-view check, as JSON
+//   HM.check()                 the overlap, clipping, safe-area, clear-centre, touch-size and
+//                              action-budget check (docs/HUD.md), as JSON
 (() => {
   const H = window.__golden;
   const HM = (window.HM = {
@@ -12,10 +13,11 @@
       const s = String(safe || '0,0,0,0').split(',');
       ['--sat', '--sar', '--sab', '--sal'].forEach((k, i) => root.setProperty(k, (+s[i] || 0) + 'px'));
       g.input.isTouch = !o.mouse;
-      if (o.variant) g.hud.variant = o.variant;
       g.state.d.settings.lefty = !!o.lefty;
       g.hud.setMirror(!!o.lefty);
       g.resize(); g.hud.applyLayout(true);
+      // a state that shows something a re-layout puts away (the tray, the wheel) opens it again
+      if (window.HM_AFTER) window.HM_AFTER(o);
       H.thaw();
       let n = 0;
       const tick = () => {
@@ -28,9 +30,12 @@
       return 'sizing';
     },
     /**
-     * Every visible HUD box: each slot's content, each action button and its label, the stick's
-     * rest ring, the frame-rate chip. Then: pairs that overlap, boxes off screen, boxes in the unsafe
-     * bands (notch, home indicator), and, in landscape and on desktop, boxes in the middle third.
+     * Every visible HUD box: each slot's content, each action button, the stick's rest ring, the
+     * frame-rate digits. Then: pairs that overlap, boxes off screen, boxes in the unsafe bands
+     * (notch, home indicator), boxes in the clear centre of a landscape or desktop screen (30 to
+     * 70% of the width, 22 to 75% of the height), touch targets under 44 pt (40 for the edge chips
+     * and the bare glyphs, which carry a wider hit area), buttons closer than 8 pt, and a thumb
+     * cluster over its budget (7 in melee, 9 in the shooter stance; the two edge chips are apart).
      */
     check() {
       const W = innerWidth, Hh = innerHeight, hud = window.game.hud, S = hud.safe, form = hud.layout.form;
@@ -49,17 +54,15 @@
         units.push({ name, group: group || name, x: r.left, y: r.top, w: r.width, h: r.height, round: /^btn:|^stick$/.test(name) });
       };
       for (const [id, s] of Object.entries(hud.slots)) {
-        if (id === 'util') continue;
-        for (const c of s.children) add(id, c);
+        // the open tray is a menu over the HUD for a moment, not part of its layout
+        for (const c of s.children) if (!c.classList.contains('tray')) add(id, c);
       }
       add('buffs', document.querySelector('.s-status .buffs'), 'status');
       add('clock', document.querySelector('.s-mini .clock'), 'mini');
       for (const t of document.querySelectorAll('.toast')) add('toast', t, 'toasts');
       for (const b of document.querySelectorAll('.abtn')) {
         const id = b.dataset.act;
-        add('btn:' + id, b, 'btn:' + id);
-        const l = b.querySelector('.lbl');
-        if (l && !l.classList.contains('gone') && l.textContent) add('lbl:' + id, l, 'btn:' + id);
+        add('btn:' + id, b, b.classList.contains('in-bar') ? 'bar' : 'btn:' + id);
       }
       if (hud.game.input.isTouch) add('stick', document.querySelector('.stick.rest'));
       const box = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
@@ -95,17 +98,30 @@
       }
       if (form !== 'portrait') {
         // prompts, toasts, banners and tip cards are allowed there: they are the news, and they go
-        const mid = { x: W / 3, y: Hh / 3, w: W / 3, h: Hh / 3 }, ok = new Set(['prompt', 'toast', 'toasts', 'banner', 'tip']);
+        const mid = { x: W * 0.3, y: Hh * 0.22, w: W * 0.4, h: Hh * 0.53 }, ok = new Set(['prompt', 'toast', 'toasts', 'banner', 'tip']);
         for (const u of units) if (!ok.has(u.name) && ov(u, mid) > 6) issues.push({ kind: 'middle', what: u.name, px: Math.round(ov(u, mid)) });
       }
+      let cluster = 0, chips = 0, touch = 0;
       if (hud.game.input.isTouch) {
-        for (const e of document.querySelectorAll('.abtn, .mbtn, .ibtn.on, .s-mini .mini, .s-status .portrait')) {
+        const btns = [];
+        for (const e of document.querySelectorAll('.abtn, .tray.on .mbtn, .hbtn, .lz-cb, .ibtn.on, .s-mini .mini, .tframe.on, .tracker')) {
           if (!vis(e)) continue;
           const r = e.getBoundingClientRect(), m = Math.min(r.width, r.height);
-          if (m < 40) issues.push({ kind: 'small', what: e.dataset.act || e.className.split(' ').slice(0, 2).join('.'), px: Math.round(m) });
+          if (m < 2) continue;
+          touch++;
+          const act = e.classList.contains('abtn'), chip = e.classList.contains('chip'), glyph = e.matches('.hbtn, .lz-cb');
+          if (act) { if (chip) chips++; else cluster++; btns.push({ id: e.dataset.act, x: r.left + r.width / 2, y: r.top + r.height / 2, r: r.width / 2 }); }
+          const need = act && !chip ? 44 : chip || glyph ? 40 : e.matches('.ibtn, .mbtn') ? 44 : 0;
+          if (need && m < need - 0.5) issues.push({ kind: 'small', what: e.dataset.act || e.className.split(' ').slice(0, 2).join('.'), px: Math.round(m) });
         }
+        for (let i = 0; i < btns.length; i++) for (let j = i + 1; j < btns.length; j++) {
+          const a = btns[i], b = btns[j], gap = Math.hypot(a.x - b.x, a.y - b.y) - a.r - b.r;
+          if (gap < 8) issues.push({ kind: 'tight', what: a.id + ' × ' + b.id, px: Math.round(gap) });
+        }
+        const cap = hud.stance === 'shooter' ? 9 : 7;
+        if (cluster > cap) issues.push({ kind: 'budget', what: cluster + ' buttons in the cluster, the cap is ' + cap });
       }
-      return JSON.stringify({ layout: hud.layout.id, w: W, h: Hh, safe: S, ms: +hud.lastLayoutMs.toFixed(2), boxes: units.length, issues });
+      return JSON.stringify({ layout: hud.layout.id, w: W, h: Hh, safe: S, ms: +hud.lastLayoutMs.toFixed(2), boxes: units.length, cluster, chips, touch, ctx: hud.ctx, issues });
     },
   });
 })();

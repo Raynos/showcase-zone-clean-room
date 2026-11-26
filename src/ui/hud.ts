@@ -6,7 +6,8 @@ import { WEAPONS } from '../data/weapons';
 import { BLAST_WALL } from '../world/layout';
 import { toggleView } from '../systems/view';
 import { icon } from './icons';
-import { formFor, OUTSIDE, pickLayout, SLOT_IDS, type Form, type Layout, type Place, type SlotId, type Stance, type Variant } from './layout';
+import { formFor, OUTSIDE, pickLayout, SLOT_IDS, type Form, type Layout, type Place, type SlotId, type Stance } from './layout';
+import { QuickWheel, type QuickItem } from './quick';
 import './style.css';
 
 const _v = new THREE.Vector3();
@@ -18,14 +19,14 @@ export interface PlateInfo { name: string; level?: number; hp?: number; cls?: st
   fx?: string[]; stagger?: number; broken?: boolean }
 interface Dmg { el: HTMLElement; t: number; x: number; y: number; z: number; vx: number; vy: number; life: number; crit: boolean }
 export type ActionId = 'attack' | 'dodge' | 'jump' | 'skill1' | 'skill2' | 'skill3' | 'overdrive' | 'swap' | 'kit' | 'target' | 'mount'
-  /** shooter stance (docs/UI-ENGINE-PLAN.md U5): main fire, the left thumb's second fire, aim down sights, reload */
+  /** shooter stance: main fire, the other thumb's fire (only while aiming), aim down sights, reload */
   | 'fire' | 'fire2' | 'aim' | 'reload';
 /** One button of the action bar, as combat describes it (docs/COMBAT.md, "Combat to HUD interface"). */
 export interface ActionSlot {
   id: ActionId;
   /** icon id; weapon-specific for attack and skills */
   icon: string;
-  /** two words at most, shown until the player has used the action a few times */
+  /** the action's name: never printed on the button (docs/HUD.md); shown once as a caption on first uses, and on hover on a desktop */
   label: string;
   state: 'ready' | 'cooldown' | 'noenergy' | 'locked' | 'hidden' | 'active';
   /** 0..1 of the cooldown remaining, for the sweep */
@@ -34,62 +35,66 @@ export interface ActionSlot {
   charge?: number;
   /** kits left, ammo */
   count?: number;
-  /** shooter stance: the magazine's size, printed beside `count` on fire and reload */
+  /** shooter stance: the magazine's size, printed beside `count` on reload */
   mag?: number;
   /** seconds of cooldown left, printed over the sweep when given */
   cdSec?: number;
-  /** level that opens a `locked` slot; defaults to skill 3 at 6 and Overdrive at 10 */
+  /** level that opens a `locked` slot (a locked slot is not drawn) */
   unlock?: number;
 }
 /** Extras for the target frame: stagger under health, the broken state, status-effect icons. */
 export interface TargetState { stagger: number; broken: boolean; effects: string[] }
 export interface ActBtn {
-  id: ActionId; root: HTMLElement; ico: HTMLElement; cd: HTMLElement; cdt: HTMLElement; cnt: HTMLElement; ring: SVGCircleElement; lk: HTMLElement; lbl: HTMLElement;
-  btn: Btn; size: number;
+  id: ActionId; root: HTMLElement; ico: HTMLElement; cd: HTMLElement; cdt: HTMLElement; cnt: HTMLElement; ring: SVGCircleElement; oda: SVGCircleElement | null; cap: HTMLElement;
+  btn: Btn;
   // what is on screen now, so an unchanged slot costs nothing
-  icon: string; label: string; state: ActionSlot['state']; cdQ: number; cdTxt: string; chargeQ: number; cnt_: string; unlock: number; cdSec: number;
-  uses: number; useKey: string; live: boolean; lblGone: boolean; ptr: number; sx: number; sy: number; lx: number; ly: number; aim: boolean; hold: number;
+  icon: string; label: string; state: ActionSlot['state']; cdQ: number; cdTxt: string; chargeQ: number; cnt_: string; cdSec: number; odQ: number; capTxt: string;
+  uses: number; useKey: string; ptr: number; sx: number; sy: number; lx: number; ly: number; aim: boolean; hold: number; wheel: boolean;
 }
-interface ActSpec { btn: Btn; size: number; cls: string; key: string }
-/**
- * What each action is. Where it sits and how big it is comes from the layout table (layout.ts):
- * the cluster follows the thumb's arc, attack under the thumb's rest, the four most-used actions
- * ringing it, the rest fanned out on a second ring or moved to the utility column.
- */
+interface ActSpec { btn: Btn; cls: string; key: string }
+/** What each action is. Where it sits and how big it is comes from the layout table (layout.ts). */
 const ACT: Record<ActionId, ActSpec> = {
-  attack: { btn: 'attack', size: 92, cls: 'atk', key: 'LMB' },
-  dodge: { btn: 'dodge', size: 58, cls: '', key: 'C' },
-  skill1: { btn: 'skill1', size: 58, cls: 'sk', key: 'Q' },
-  skill2: { btn: 'skill2', size: 58, cls: 'sk', key: 'R' },
-  jump: { btn: 'jump', size: 58, cls: '', key: '␣' },
-  skill3: { btn: 'skill3', size: 52, cls: 'sk', key: 'T' },
-  overdrive: { btn: 'overdrive', size: 54, cls: 'od', key: 'G' },
-  kit: { btn: 'potion', size: 46, cls: 'sm', key: 'H' },
-  swap: { btn: 'swap', size: 46, cls: 'sm', key: 'F' },
-  target: { btn: 'target', size: 46, cls: 'sm', key: 'Tab' },
-  mount: { btn: 'mount', size: 46, cls: 'sm', key: 'X' },
-  // main fire is the attack input to combat; the left thumb's fire, aim and reload are their own
-  fire: { btn: 'attack', size: 84, cls: 'atk', key: 'LMB' },
-  fire2: { btn: 'fire2', size: 62, cls: 'atk f2', key: '' },
-  aim: { btn: 'aim', size: 56, cls: 'aim', key: 'RMB' },
-  reload: { btn: 'reload', size: 50, cls: 'sm', key: '' },
+  attack: { btn: 'attack', cls: 'atk', key: 'LMB' },
+  dodge: { btn: 'dodge', cls: '', key: 'C' },
+  skill1: { btn: 'skill1', cls: 'sk', key: 'Q' },
+  skill2: { btn: 'skill2', cls: 'sk', key: 'R' },
+  jump: { btn: 'jump', cls: '', key: '␣' },
+  skill3: { btn: 'skill3', cls: 'sk', key: 'T' },
+  overdrive: { btn: 'overdrive', cls: 'od', key: 'G' },
+  kit: { btn: 'potion', cls: 'chip kit', key: 'H' },
+  swap: { btn: 'swap', cls: 'chip swp', key: 'F' },
+  target: { btn: 'target', cls: '', key: 'Tab' },
+  mount: { btn: 'mount', cls: 'chip', key: 'X' },
+  // main fire is the attack input to combat; the other thumb's fire, aim and reload are their own
+  fire: { btn: 'attack', cls: 'atk', key: 'LMB' },
+  fire2: { btn: 'fire2', cls: 'f2', key: '' },
+  aim: { btn: 'aim', cls: 'aim', key: 'RMB' },
+  reload: { btn: 'reload', cls: 'rl', key: 'R' },
 };
 /** the buttons a drag from steers the view, as a drag on the view would */
-const STEERS = new Set<ActionId>(['attack', 'fire']);
-const UNLOCK: Partial<Record<ActionId, number>> = { skill3: 6, overdrive: 10 };
-/** presses before an action's label fades */
-const LEARNED = 4;
+const STEERS = new Set<ActionId>(['attack', 'fire', 'fire2']);
+/** times a skill's name is shown as a caption when it is used, before the player knows it */
+const LEARNED = 3;
+/** health below this share shows the heal kit on the context seat */
+const HURT = 0.6;
 const LEGACY_ID: Record<string, ActionId> = { potion: 'kit' };
 const ACT_IDS = Object.keys(ACT) as ActionId[];
 const IDX = Object.fromEntries(ACT_IDS.map((k, i) => [k, i])) as Record<ActionId, number>;
 /** status effect id -> icon id */
 const FX_ICON: Record<string, string> = { shock: 'shock', burn: 'burn', jam: 'jam', guard: 'shield', mend: 'kit' };
+const MENUS: Array<[id: string, ic: string, label: string, key: string]> = [['bag', 'bag', 'Pack', 'I'], ['quests', 'quests', 'Quests', 'J'], ['map', 'map', 'Map', 'M'], ['char', 'char', 'Character', 'P'], ['menu', 'gear', 'Settings', 'Esc'], ['view', 'eye', 'View', '']];
+export type HudContext = 'explore' | 'fight' | 'ride';
 
-/** Portrait-first MMO HUD built from DOM: frames, touch controls, toasts, nameplates, damage text. */
+/**
+ * The HUD (docs/HUD.md), built from DOM: frames, touch controls, toasts, nameplates, damage text.
+ * It shows what the moment needs: an action budget of seven buttons in a fight, no labels, nothing
+ * locked, rare actions behind the quick wheel and the menu glyph, and information that fades when
+ * it stops changing.
+ */
 export class Hud {
   root: HTMLElement;
   hud: HTMLElement;
-  private hpFill!: HTMLElement; private hpLag!: HTMLElement; private hpText!: HTMLElement; private enFill!: HTMLElement;
+  private unit!: HTMLElement; private hpFill!: HTMLElement; private hpLag!: HTMLElement; private hpText!: HTMLElement; private enFill!: HTMLElement;
   private lvl!: HTMLElement; private nameEl!: HTMLElement; private scripEl!: HTMLElement; private buffs!: HTMLElement;
   private tframe!: HTMLElement; private tName!: HTMLElement; private tFill!: HTMLElement; private tLag!: HTMLElement; private tSub!: HTMLElement;
   private boss!: HTMLElement; private bossName!: HTMLElement; private bossFill!: HTMLElement; private bossLag!: HTMLElement; private bossSub!: HTMLElement;
@@ -104,7 +109,7 @@ export class Hud {
   private plates = new Map<string, Plate>();
   private dmgs: Dmg[] = []; private dmgPool: HTMLElement[] = [];
   acts = {} as Record<ActionId, ActBtn>;
-  private actsEl!: HTMLElement; private actsSig = ''; private mirror = false;
+  private actsEl!: HTMLElement; private barEl!: HTMLElement; private actsSig = ''; private mirror = false;
   /** the slots as last given to setActionBar, kept so the bar can be redrawn every frame */
   private actBase: Partial<Record<ActionId, ActionSlot>> = {};
   /** what callers of the older `setAct` want of a button, and the frame they last said so (mounts restyle buttons while riding) */
@@ -113,21 +118,35 @@ export class Hud {
   private actTmp: ActionSlot = { id: 'attack', icon: '', label: '', state: 'hidden' };
   private tStg!: HTMLElement; private bStg!: HTMLElement; private tFx!: HTMLElement; private bFx!: HTMLElement;
   private tStateSig = ''; private tBroken = false;
+  /** the panel shortcuts: in the menu tray on a phone, in the micro menu on a desktop */
   menuBtns: Record<string, HTMLElement> = {};
+  private hub!: HTMLElement; private tray!: HTMLElement; private trayGrid!: HTMLElement; private trayInfo!: HTMLElement; private micro!: HTMLElement; private trayOpen = false; private traySig = '';
   /** set by the panels module */
   onMenu: (id: string) => void = () => {};
   /** draw callback for the minimap (set by the map module) */
   drawMini: ((ctx: CanvasRenderingContext2D, size: number) => void) | null = null;
+  /** set by the chat module: open the chat panel, and the emotes as wheel items */
+  chatApi: { open: () => void; emotes: () => QuickItem[] } | null = null;
+  readonly wheel: QuickWheel;
   private miniT = 0; private lastHp = -1; private lastEn = -1; private lastXp = -1; private lastScrip = -1; private lastLvl = -1;
   private tLast = -1; private lastZone = ''; private lastClock = ''; private lastInteract = ''; private bannerQueue: Array<[string, string, string]> = []; private bannerT = 0;
   private w = 1; private h = 1;
   visible = true;
+  private veiled = false;
+
+  // ---- context: what the moment is, and what has just changed (docs/HUD.md, principles 6 and 7)
+  ctx: HudContext = 'explore';
+  private calm = 99; private bossOn = false; private aiming = false; private hpFrac = 1; private riding = 'none';
+  /** seconds left for each thing that shows on change and then fades */
+  private fresh = { status: 0, xp: 0, scrip: 0, zone: 0, tracker: 0 };
+  private freshSig = '';
+  private capEl!: HTMLElement; private capT = 0;
+  private castEl!: HTMLElement; private castFill!: HTMLElement; private castLbl!: HTMLElement; private castSig = '';
 
   // ---- layout (layout.ts): named slots placed by a table chosen from the viewport, the input and the stance
   /** the wrapper element of every slot; what a slot shows lives inside it */
   readonly slots = {} as Record<SlotId, HTMLElement>;
   layout!: Layout;
-  variant: Variant = 'a';
   stance: Stance = 'melee';
   private kUi = 1; private kActs = 1;
   /** the safe-area insets in px, as last measured */
@@ -138,8 +157,6 @@ export class Hud {
   readonly stickRest = { x: 86, y: 700 };
   /** how long the last change of layout took to apply, ms (the switch on rotation must stay under 200) */
   lastLayoutMs = 0;
-  private wchip!: HTMLElement; private wSig = '';
-  private nlv!: HTMLElement;
 
   constructor(public game: Game) {
     this.root = document.getElementById('ui')!;
@@ -149,31 +166,28 @@ export class Hud {
     // ?safe=top,right,bottom,left fakes the safe-area insets (a notch on one side, the home indicator) for testing
     const safe = q.get('safe')?.split(',').map(Number);
     if (safe && safe.length === 4 && safe.every((n) => isFinite(n))) ['--sat', '--sar', '--sab', '--sal'].forEach((k, i) => document.documentElement.style.setProperty(k, safe[i] + 'px'));
-    // the landscape trial: ?hud=a or ?hud=b, remembered; the dev drawer switches it live
-    let v = q.get('hud');
-    try { if (v === 'a' || v === 'b') localStorage.setItem('cf_hud', v); else v = localStorage.getItem('cf_hud'); } catch { /* storage unavailable */ }
-    if (v === 'a' || v === 'b') this.variant = v;
+    this.wheel = new QuickWheel(this.root);
+    this.wheel.onFx = (k) => {
+      const g = this.game;
+      if (k === 'open') { g.sfx('ui_open', { vol: 0.4 }); g.haptic(14); }
+      else if (k === 'hot') g.haptic(6);
+      else if (k === 'pick') { g.sfx('ui_click', { vol: 0.5 }); g.haptic(10); }
+      else if (k === 'deny') g.sfx('ui_deny', { vol: 0.4 });
+    };
     this.build();
     this.resize();
     // a rotation re-lays the HUD at once (the resize event can trail it on some browsers)
     matchMedia('(orientation: portrait)').addEventListener?.('change', () => this.resize());
   }
   resize() { this.w = window.innerWidth; this.h = window.innerHeight; this.applyLayout(); }
-  /** Pick the landscape variant ('a' reference, 'b' MMO frame) and re-lay at once. */
-  setVariant(v: Variant) {
-    this.variant = v;
-    try { localStorage.setItem('cf_hud', v); } catch { /* storage unavailable */ }
-    this.applyLayout(true);
-  }
-  /** The stance picks the action layout (melee today; the shooter stance brings its own tables). */
+  /** The stance picks the action layout. */
   setStance(s: Stance) { if (s !== this.stance) { this.stance = s; this.keycaps(); this.applyLayout(true); } }
   /** In the shooter stance R reloads (core/input.ts), so skill 2 shows its other key. */
   private keycaps() {
-    const sh = this.stance === 'shooter', k2 = this.acts.skill2?.root.querySelector('.key'), kr = this.acts.reload?.root.querySelector('.key');
-    if (k2) k2.textContent = sh ? '2' : ACT.skill2.key;
-    if (kr) kr.textContent = sh ? 'R' : ACT.reload.key;
+    const k2 = this.acts.skill2?.root.querySelector('.key');
+    if (k2) k2.textContent = this.stance === 'shooter' ? '2' : ACT.skill2.key;
   }
-  /** Put an element into a slot (modules that own their own DOM: tip cards, the frame-rate chip, the view toggle). */
+  /** Put an element into a slot (modules that own their own DOM: tip cards, the frame-rate readout). */
   mount(id: SlotId, e: HTMLElement) { if (e.parentElement !== this.slots[id]) this.slots[id].appendChild(e); }
 
   /**
@@ -187,7 +201,7 @@ export class Hud {
     const t0 = performance.now(), g = this.game, touch = g.input.isTouch;
     this.touchWas = touch;
     const form: Form = formFor(this.w, this.h, touch);
-    const L = pickLayout(form, this.variant, this.stance);
+    const L = pickLayout(form, this.stance);
     const sig = L.id + '|' + this.w + 'x' + this.h + (this.mirror ? 'L' : 'R') + (touch ? 't' : 'm');
     if (!force && sig === this.layoutSig) return;
     this.layoutSig = sig;
@@ -195,14 +209,18 @@ export class Hud {
     this.layout = L;
     const sc = L.scale(this.w, this.h); this.kUi = sc.ui; this.kActs = sc.acts;
     document.body.classList.toggle('desktop', !touch);
-    for (const e of [this.hud, this.root]) { e.dataset.layout = L.id; e.dataset.form = form; }
-    this.hud.classList.toggle('no-lbl', !L.labels);
+    for (const e of [this.hud, this.root]) { e.dataset.layout = L.id; e.dataset.form = form; e.dataset.stance = this.stance; }
     const r = this.probe.getBoundingClientRect();
     this.safe.t = r.top; this.safe.l = r.left; this.safe.r = Math.max(0, this.w - r.right); this.safe.b = Math.max(0, this.h - r.bottom);
     for (const id of SLOT_IDS) this.place(id, L.slots[id]);
     this.hud.style.setProperty('--k', this.kActs.toFixed(3));
     this.hud.style.setProperty('--ku', this.kUi.toFixed(3));
-    this.actsSig = ''; this.layoutActs();
+    // the panel shortcuts live in the tray on a phone and in the micro menu on a desktop
+    const host = form === 'desktop' ? this.micro : this.trayGrid;
+    for (const [id] of MENUS) { const b = this.menuBtns[id]; if (b.parentElement !== (id === 'view' ? this.micro : host)) (id === 'view' ? this.micro : host).appendChild(b); }
+    this.setTray(false);
+    this.wheel.close();
+    this.actsSig = ''; this.freshSig = ''; this.layoutActs();
     const st = L.stick;
     if (st) {
       this.stickRest.x = this.mirror ? this.w - this.safe.r - st.x * this.kActs : this.safe.l + st.x * this.kActs;
@@ -219,10 +237,10 @@ export class Hud {
     const k = p.acts ? this.kActs : this.kUi, v = p.at[0], h0 = p.at[1];
     const h = this.mirror && h0 !== 'c' ? (h0 === 'l' ? 'r' : 'l') : h0;
     // arrangement classes carry a k- prefix so they never meet the HUD's own classes (.bar, .up...)
-    s.className = 'slot s-' + id + (p.cls ? ' ' + p.cls.split(' ').map((c) => 'k-' + c).join(' ') : '');
+    const keep = s.classList.contains('fresh') ? ' fresh' : '';
+    s.className = 'slot s-' + id + (p.cls ? ' ' + p.cls.split(' ').map((c) => 'k-' + c).join(' ') : '') + keep;
     s.dataset.h = h; s.dataset.v = v;
     st.left = st.right = st.top = st.bottom = st.width = '';
-    if (p.cls?.includes('edge')) { st.left = st.right = st.bottom = '0'; st.transform = ''; return; }
     const SW = '(100% - var(--sal) - var(--sar))', SH = '(100% - var(--sat) - var(--sab))';
     const x = (p.x ?? 0) * k * (h0 === 'c' && this.mirror ? -1 : 1), y = (p.y ?? 0) * k, yy = `${y.toFixed(1)}px + ${SH} * ${p.yf ?? 0}`;
     if (h === 'l') st.left = `calc(var(--sal) + ${x.toFixed(1)}px)`;
@@ -244,10 +262,11 @@ export class Hud {
     for (const a of Object.values(this.acts)) {
       if (a.ptr === -1) continue;
       const pid = a.ptr;
-      a.ptr = -1; a.root.classList.remove('down', 'aim', 'held');
+      a.ptr = -1; a.root.classList.remove('down', 'steer');
       if (a.hold) { clearTimeout(a.hold); a.hold = 0; }
+      a.wheel = false;
       try { a.root.releasePointerCapture(pid); } catch { /* ignore */ }
-      if (a.id !== 'target' && a.state !== 'locked') inp.release(a.btn);
+      inp.release(a.btn);
     }
     if (this.ibtn?.classList.contains('down')) { this.ibtn.classList.remove('down'); inp.release('interact'); }
     inp.cancelTouches();
@@ -265,30 +284,36 @@ export class Hud {
     for (const id of SLOT_IDS) { const s = el('div', 'slot s-' + id); (OUTSIDE.includes(id) ? this.root : h).appendChild(s); this.slots[id] = s; }
     const S = this.slots;
 
-    // player frame
-    const pf = el('div', 'pframe');
-    pf.innerHTML = `<div class="portrait">${icon('char', 30, 2.2)}<div class="lvl">1</div></div>
-      <div class="bars"><div class="nrow"><b class="nlv"></b><div class="name shadow-text"><span></span><small></small></div></div>
-      <div class="bar hp"><i class="lag"></i><i class="fill"></i><span></span></div>
-      <div class="bar en"><i class="fill"></i></div><div class="buffs"></div></div>`;
-    S.status.appendChild(pf);
-    this.nlv = pf.querySelector('.nlv')!;
-    this.lvl = pf.querySelector('.lvl')!; this.nameEl = pf.querySelector('.name')!;
-    this.hpFill = pf.querySelector('.hp .fill')!; this.hpLag = pf.querySelector('.hp .lag')!; this.hpText = pf.querySelector('.hp span')!;
-    this.enFill = pf.querySelector('.en .fill')!; this.buffs = pf.querySelector('.buffs')!;
-    pf.querySelector('.portrait')!.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.onMenu('char'); });
+    // the hero: level, health, energy, buffs. A thin bar on a phone, a unit frame over the hotbar on a desktop.
+    const u = this.unit = el('div', 'unit');
+    u.innerHTML = `<div class="buffs"></div><b class="u-lv"></b><div class="u-bars"><div class="u-top"><span class="u-name"></span><span class="u-hp"></span></div>
+      <div class="bar hp"><i class="lag"></i><i class="fill"></i></div><div class="bar en"><i class="fill"></i></div></div>`;
+    S.status.appendChild(u);
+    this.lvl = u.querySelector('.u-lv')!; this.nameEl = u.querySelector('.u-name')!; this.hpText = u.querySelector('.u-hp')!;
+    this.hpFill = u.querySelector('.hp .fill')!; this.hpLag = u.querySelector('.hp .lag')!;
+    this.enFill = u.querySelector('.en .fill')!; this.buffs = u.querySelector('.buffs')!;
 
-    // menu shortcuts (the character button is the portrait disc's job where the disc shows)
-    const ms = el('div', 'mstrip');
-    for (const [id, ic] of [['bag', 'bag'], ['quests', 'quests'], ['map', 'map'], ['char', 'char'], ['menu', 'gear'], ['view', 'eye']] as const) {
-      const b = el('button', 'mbtn m-' + id, icon(ic, 20) + '<i class="pip"></i>');
-      b.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); g.sfx('ui_click'); if (id === 'view') toggleView(g); else this.onMenu(id); });
-      ms.appendChild(b); this.menuBtns[id] = b;
+    // menus: one glyph and a tray on a phone, a micro menu row on a desktop. The same buttons serve both.
+    this.hub = el('button', 'hbtn m-hub', icon('menu', 20, 2.1) + '<i class="pip"></i>');
+    this.hub.setAttribute('aria-label', 'Menu');
+    this.tray = el('div', 'tray'); this.trayGrid = el('div', 'tray-g'); this.trayInfo = el('div', 'tray-i');
+    this.tray.append(this.trayGrid, this.trayInfo);
+    this.micro = el('div', 'micro');
+    for (const [id, ic, label, key] of MENUS) {
+      const b = el('button', 'mbtn m-' + id, `<span class="mi">${icon(ic, 20, 2)}</span><span class="ml">${label}</span>${key ? `<em class="mk">${key}</em>` : ''}<i class="pip"></i>`);
+      b.setAttribute('aria-label', label);
+      b.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); g.sfx('ui_click'); this.setTray(false); if (id === 'view') toggleView(g); else this.onMenu(id); });
+      (id === 'view' ? this.micro : this.trayGrid).appendChild(b); this.menuBtns[id] = b;
     }
-    S.menu.appendChild(ms);
-    this.scripEl = el('div', 'scrip', `${icon('coin', 15)}<span>0</span>`); S.scrip.appendChild(this.scripEl);
+    this.hub.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); g.sfx('ui_click', { vol: 0.5 }); this.setTray(!this.trayOpen); });
+    this.tray.addEventListener('pointerdown', (e) => e.stopPropagation());
+    // a touch anywhere else puts the tray away
+    window.addEventListener('pointerdown', (e) => { if (this.trayOpen && !(e.target as Element | null)?.closest?.('.s-menu')) this.setTray(false); }, true);
+    S.menu.append(this.hub, this.tray);
+    S.micro.appendChild(this.micro);
+    this.scripEl = el('div', 'scrip', `${icon('coin', 13)}<span>0</span>`); S.scrip.appendChild(this.scripEl);
 
-    // target + boss
+    // target + boss. The target frame is the target control: tap for the next one, hold to let go.
     this.tframe = el('div', 'tframe', `<div class="tname shadow-text"></div><div class="bar"><i class="lag"></i><i class="fill"></i></div><div class="stg"><i></i></div><div class="trow"><div class="tsub"></div><div class="tfx"></div></div>`);
     S.target.appendChild(this.tframe);
     this.tName = this.tframe.querySelector('.tname')!; this.tFill = this.tframe.querySelector('.fill')!; this.tLag = this.tframe.querySelector('.lag')!; this.tSub = this.tframe.querySelector('.tsub')!;
@@ -297,64 +322,82 @@ export class Hud {
     S.boss.appendChild(this.boss);
     this.bossName = this.boss.querySelector('.bn')!; this.bossFill = this.boss.querySelector('.fill')!; this.bossLag = this.boss.querySelector('.lag')!; this.bossSub = this.boss.querySelector('.bs')!;
     this.bStg = this.boss.querySelector('.stg i')!; this.bFx = this.boss.querySelector('.tfx')!;
+    // the frame at the top is the target control: tap for the next target, hold to let go
+    for (const tf of [this.tframe, this.boss]) {
+      let hold = 0, ptr = -1;
+      tf.addEventListener('pointerdown', (e) => {
+        e.stopPropagation(); e.preventDefault();
+        if (ptr !== -1) return;
+        ptr = e.pointerId; tf.classList.add('down'); g.haptic(8);
+        hold = window.setTimeout(() => { hold = 0; if (ptr === -1) return; g.engage.clearTarget(); g.sfx('ui_click', { vol: 0.7, pitch: 0.75 }); g.haptic(20); }, 450);
+      });
+      const up = (e: PointerEvent) => {
+        if (e.pointerId !== ptr) return;
+        ptr = -1; tf.classList.remove('down');
+        if (hold) { clearTimeout(hold); hold = 0; if (e.type === 'pointerup') { g.sfx('ui_click', { vol: 0.5 }); g.input.press('target'); g.input.release('target'); } }
+      };
+      tf.addEventListener('pointerup', up); tf.addEventListener('pointercancel', up);
+    }
 
-    // minimap
-    const mm = el('div', 'mini', `<canvas width="208" height="208"></canvas><div class="north">N</div><div class="clock"></div><div class="zone shadow-text"></div>`);
+    // minimap: opens the map. The zone shows when it changes; a desktop keeps it, with the clock.
+    const mm = el('div', 'mini', `<canvas width="208" height="208"></canvas><div class="north">N</div><div class="zinfo"><span class="zone"></span><span class="clock"></span></div>`);
     S.mini.appendChild(mm);
     this.mini = mm.querySelector('canvas')!; this.zoneEl = mm.querySelector('.zone')!; this.clockEl = mm.querySelector('.clock')!;
     mm.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.onMenu('map'); });
 
     this.tracker = el('div', 'tracker'); S.tracker.appendChild(this.tracker);
     this.tracker.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.onMenu('quests'); });
+    // the quest line is news when it changes, and steps back when it does not
+    new MutationObserver(() => { this.fresh.tracker = 7; }).observe(this.tracker, { childList: true, subtree: true, characterData: true });
     this.logEl = el('div', 'log'); S.log.appendChild(this.logEl);
     const xp = el('div', 'xp', '<i></i><span></span>'); S.xp.appendChild(xp);
-    // the weapon in hand, by the swap and kit buttons where the layout shows it
-    this.wchip = el('div', 'wchip', '<span class="wc-i"></span><span class="wc-n"></span><span class="wc-2"></span>'); S.weapon.appendChild(this.wchip);
     this.xpFill = xp.querySelector('i')!; this.xpText = xp.querySelector('span')!;
+    this.capEl = el('div', 'capn'); S.caption.appendChild(this.capEl);
+    this.castEl = el('div', 'cast', '<span></span><div class="cb"><i></i></div>'); S.cast.appendChild(this.castEl);
+    this.castLbl = this.castEl.querySelector('span')!; this.castFill = this.castEl.querySelector('i')!;
 
     // touch stick
     this.stick = el('div', 'stick', '<i></i>'); h.appendChild(this.stick);
     this.stickNub = this.stick.querySelector('i')!;
 
-    // action cluster
+    // action cluster (touch) and hotbar (desktop): the same buttons, seated by the layout
     this.actsEl = el('div', 'acts'); h.appendChild(this.actsEl);
+    this.barEl = el('div', 'hbar'); S.bar.appendChild(this.barEl);
     for (const id of ACT_IDS) this.makeAct(id);
 
     // interact prompt
-    this.ibtn = el('button', 'ibtn', `<span class="ii">${icon('interact', 22)}</span><span class="il"></span><small>E</small>`);
+    this.ibtn = el('button', 'ibtn', `<span class="ii">${icon('interact', 20)}</span><span class="il"></span><small>E</small>`);
     this.ibtnLabel = this.ibtn.querySelector('.il')!; this.ibtnIcon = this.ibtn.querySelector('.ii')!;
     this.ibtn.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); this.ibtn.classList.add('down'); g.sfx('ui_click', { vol: 0.5 }); g.input.press('interact'); });
     this.ibtn.addEventListener('pointerup', () => { this.ibtn.classList.remove('down'); g.input.release('interact'); });
     this.ibtn.addEventListener('pointercancel', () => { this.ibtn.classList.remove('down'); g.input.release('interact'); });
     // every HUD button answers a press with a tick (the action buttons send their own)
-    h.addEventListener('pointerdown', (e) => { const b = (e.target as Element | null)?.closest?.('button, .portrait, .mini, .tracker'); if (b && !b.classList.contains('abtn')) g.haptic(8); }, true);
+    h.addEventListener('pointerdown', (e) => { const b = (e.target as Element | null)?.closest?.('button, .mini, .tracker'); if (b && !b.classList.contains('abtn')) g.haptic(8); }, true);
     S.prompt.appendChild(this.ibtn);
 
     this.timerEl = el('div', 'ctimer', '<div class="cl"></div><div class="ct"></div><div class="cs"></div>'); S.timer.appendChild(this.timerEl);
     this.toasts = el('div', 'toasts'); S.toasts.appendChild(this.toasts);
     this.bannerEl = el('div', 'banner', '<div class="b1"></div><div class="rule"></div><div class="b2"></div>'); S.banner.appendChild(this.bannerEl);
   }
-  /** Modules that build their own HUD pieces after the HUD (tip cards, the first-person toggle) get their slots here. */
-  private adopt() {
-    const v = this.menuBtns.view;
-    if (v && v.parentElement !== this.slots.view) this.slots.view.appendChild(v);
-    const c = this.hud.querySelector(':scope > .coach') as HTMLElement | null;
-    if (c) this.slots.tip.appendChild(c);
-  }
-  /** The weapon chip: what is in hand, and what the swap button would bring in. */
-  private drawWeapon() {
-    const st = this.game.state, lo = st.d.loadout, other = lo[st.d.active ? 0 : 1];
-    const sig = st.weaponId + '|' + (other ?? '');
-    if (sig === this.wSig) return;
-    this.wSig = sig;
-    const w = st.weapon, o = other ? WEAPONS[other] : null;
-    this.wchip.children[0].innerHTML = icon(w.kind, 16, 2.2);
-    this.wchip.children[1].textContent = w.name;
-    this.wchip.children[2].innerHTML = o ? icon(o.kind, 13, 2.2) : '';
-    this.wchip.classList.toggle('two', !!o);
-  }
 
-  setVisible(v: boolean) { if (v !== this.visible) { this.visible = v; this.hud.classList.toggle('hidden', !v); } }
+  setVisible(v: boolean) { if (v !== this.visible) { this.visible = v; this.hud.classList.toggle('hidden', !v); if (!v) { this.setTray(false); this.wheel.close(); } } }
+
+  // ---- menu tray ----
+  private setTray(on: boolean) {
+    if (on === this.trayOpen) return;
+    this.trayOpen = on; this.traySig = '';
+    this.tray.classList.toggle('on', on); this.hub.classList.toggle('on', on);
+  }
+  /** What is only read in a menu: the clock, scrip, level and experience, the zone. */
+  private drawTray() {
+    const g = this.game, st = g.state, d = st.d, max = st.xpNext;
+    const sig = g.env.clockText() + '|' + d.scrip + '|' + d.xp + '|' + d.level + '|' + g.zoneName;
+    if (sig === this.traySig) return;
+    this.traySig = sig;
+    const wx = g.env.isNight() ? 'moon' : g.env.weather === 'storm' ? 'storm' : g.env.weather === 'rain' ? 'rain' : 'sun';
+    this.trayInfo.innerHTML = `<div><span>${icon(wx, 12, 2.2)}${g.env.clockText()}</span><span class="gold">${icon('coin', 12, 2.2)}${fmtNum(d.scrip)}</span></div>` +
+      `<div><span>${g.zoneName}</span><span>LV ${d.level}${isFinite(max) ? ` · ${fmtNum(d.xp)} / ${fmtNum(max)} XP` : ' · MAX'}</span></div>`;
+  }
 
   // ---- messages ----
   toast(text: string, kind = 'info', sub = '', ic = '') {
@@ -384,7 +427,13 @@ export class Hud {
     if (key === this.lastInteract) return;
     this.lastInteract = key;
     this.ibtn.classList.toggle('on', !!label);
-    if (label) { this.ibtnLabel.textContent = label; this.ibtnIcon.innerHTML = icon(ic, 22); }
+    if (label) { this.ibtnLabel.textContent = label; this.ibtnIcon.innerHTML = icon(ic, 20); }
+  }
+  /** A skill's name, shown for a moment over the health bar: the first-use hint that replaces button labels. */
+  caption(text: string) {
+    this.capEl.textContent = text;
+    this.capEl.classList.remove('on'); void this.capEl.offsetWidth; this.capEl.classList.add('on');
+    this.capT = 1.5;
   }
   /**
    * Older per-button call, kept for systems that restyle a button for a while: mounts show and
@@ -403,17 +452,18 @@ export class Hud {
   }
 
   private makeAct(id: ActionId) {
-    const g = this.game, sp = ACT[id];
+    const g = this.game, sp = ACT[id], primary = id === 'attack' || id === 'fire';
     const b = el('button', 'abtn ' + sp.cls,
       `<span class="face"></span><span class="ico"></span><i class="cd"></i>` +
-      `<svg class="ring" viewBox="0 0 100 100"><circle class="trk" cx="50" cy="50" r="46"/><circle class="val" cx="50" cy="50" r="46" pathLength="100"/></svg>` +
-      `<b class="cdt"></b><b class="cnt"></b><span class="lk">${icon('lock', 15, 2.4)}<b></b></span><span class="en">${icon('bolt', 10, 2.6)}</span><span class="lbl"></span><em class="key">${sp.key}</em>`);
+      `<svg class="ring" viewBox="0 0 100 100"><circle class="trk" cx="50" cy="50" r="47"/><circle class="val" cx="50" cy="50" r="47" pathLength="100"/></svg>` +
+      (primary ? `<svg class="oda" viewBox="0 0 100 100"><circle class="trk" cx="50" cy="50" r="48" pathLength="100"/><circle class="val" cx="50" cy="50" r="48" pathLength="100"/></svg>` : '') +
+      `<b class="cdt"></b><b class="cnt"></b><span class="en">${icon('bolt', 9, 2.8)}</span><span class="cap"></span><em class="key">${sp.key}</em><span class="tipn"></span>`);
     b.dataset.act = id;
     const a: ActBtn = {
       id, root: b, ico: b.querySelector('.ico')!, cd: b.querySelector('.cd')!, cdt: b.querySelector('.cdt')!, cnt: b.querySelector('.cnt')!, ring: b.querySelector('.ring .val')!,
-      lk: b.querySelector('.lk b')!, lbl: b.querySelector('.lbl')!, btn: sp.btn, size: sp.size,
-      icon: '', label: '', state: 'hidden', cdQ: -1, cdTxt: '', chargeQ: -1, cnt_: '', unlock: 0, cdSec: 0,
-      uses: 0, useKey: '', live: false, lblGone: false, ptr: -1, sx: 0, sy: 0, lx: 0, ly: 0, aim: false, hold: 0,
+      oda: b.querySelector('.oda .val'), cap: b.querySelector('.cap')!, btn: sp.btn,
+      icon: '', label: '', state: 'hidden', cdQ: -1, cdTxt: '', chargeQ: -1, cnt_: '', cdSec: 0, odQ: -1, capTxt: '',
+      uses: 0, useKey: '', ptr: -1, sx: 0, sy: 0, lx: 0, ly: 0, aim: false, hold: 0, wheel: false,
     };
     b.style.display = 'none';
     const deny = () => { b.classList.remove('deny'); void b.offsetWidth; b.classList.add('deny'); };
@@ -423,34 +473,30 @@ export class Hud {
       a.ptr = e.pointerId; b.classList.add('down');
       try { b.setPointerCapture(e.pointerId); } catch { /* ignore */ }
       g.haptic(8);
-      if (a.state === 'locked') {
-        deny(); g.sfx('ui_deny', { vol: 0.6 });
-        this.toast(`${id === 'overdrive' ? 'Overdrive' : 'Third skill'} opens at level ${a.unlock}`, 'info');
-        return;
-      }
-      if (id === 'target') {
-        // tap: next target (on release). Hold: clear it.
-        g.sfx('ui_click', { vol: 0.5 });
-        a.hold = window.setTimeout(() => {
-          a.hold = 0;
-          if (a.ptr === -1) return;
-          g.engage.clearTarget(); g.sfx('ui_click', { vol: 0.7, pitch: 0.75 }); g.haptic(20); b.classList.add('held');
-        }, 450);
+      if (id === 'swap' && this.layout.form !== 'desktop') {
+        // the weapon chip: a tap swaps (on release), a hold opens the quick wheel under the thumb
+        a.wheel = false; a.sx = e.clientX; a.sy = e.clientY;
+        a.hold = window.setTimeout(() => { a.hold = 0; if (a.ptr !== -1) { a.wheel = true; this.openWheel(); } }, 300);
         return;
       }
       // every press is heard: the action's own sound when it fires, a soft refusal when it cannot
       if (a.state === 'noenergy' || (a.state === 'cooldown' && (a.cdSec > 0.25 || (a.cdSec === 0 && a.cdQ > 4)))) { deny(); g.sfx('ui_deny', { vol: 0.35 }); }
-      else if (id !== 'attack') g.sfx('ui_click', { vol: 0.3 });
+      else if (!primary) g.sfx('ui_click', { vol: 0.3 });
       g.input.press(sp.btn);
-      if (a.uses < LEARNED && a.label && !a.live && a.state !== 'noenergy' && a.state !== 'cooldown') { a.uses++; g.state.setFlag(a.useKey, a.uses); }
+      // the name of a skill, the first few times it is used
+      if (sp.cls.includes('sk') || id === 'overdrive') {
+        if (a.label && a.uses < LEARNED && a.state !== 'noenergy' && a.state !== 'cooldown') { a.uses++; g.state.setFlag(a.useKey, a.uses); this.caption(a.label); }
+      }
       if (STEERS.has(id)) { a.sx = a.lx = e.clientX; a.sy = a.ly = e.clientY; a.aim = false; }
     };
     const move = (e: PointerEvent) => {
-      if (e.pointerId !== a.ptr || !STEERS.has(id)) return;
+      if (e.pointerId !== a.ptr) return;
+      if (id === 'swap') { if (a.wheel) this.wheel.move(e.clientX, e.clientY); return; }
+      if (!STEERS.has(id)) return;
       // past 8 px the finger holding the button steers the aim, as a drag on the view would
       if (!a.aim) {
         if (Math.hypot(e.clientX - a.sx, e.clientY - a.sy) < 8) return;
-        a.aim = true; a.lx = e.clientX; a.ly = e.clientY; b.classList.add('aim');
+        a.aim = true; a.lx = e.clientX; a.ly = e.clientY; b.classList.add('steer');
         return;
       }
       g.input.dragLook(e.clientX - a.lx, e.clientY - a.ly);
@@ -459,11 +505,15 @@ export class Hud {
     const up = (e: PointerEvent) => {
       if (e.pointerId !== a.ptr) return;
       e.stopPropagation();
-      a.ptr = -1; b.classList.remove('down', 'aim');
-      if (a.state === 'locked') return;
-      if (id === 'target') {
-        if (a.hold) { clearTimeout(a.hold); a.hold = 0; if (e.type === 'pointerup') { g.input.press('target'); g.input.release('target'); } }
-        b.classList.remove('held');
+      a.ptr = -1; b.classList.remove('down', 'steer');
+      if (id === 'swap' && this.layout.form !== 'desktop') {
+        if (a.hold) {
+          clearTimeout(a.hold); a.hold = 0;
+          if (e.type !== 'pointerup') return;
+          // with one weapon there is nothing to swap to: the chip is the wheel
+          if (this.actBase.swap && this.actBase.swap.state !== 'hidden') { g.sfx('ui_click', { vol: 0.3 }); g.input.press('swap'); g.input.release('swap'); }
+          else this.openWheel();
+        } else if (a.wheel) { a.wheel = false; this.wheel.release(); }
         return;
       }
       g.input.release(sp.btn);
@@ -472,6 +522,29 @@ export class Hud {
     b.addEventListener('contextmenu', (e) => e.preventDefault());
     this.actsEl.appendChild(b);
     this.acts[id] = a;
+  }
+
+  // ---- quick wheel ----
+  /** The rare actions (docs/HUD.md): heal kit, mount, emote, chat, view. */
+  private wheelItems(): QuickItem[] {
+    const g = this.game, st = g.state, inp = g.input, out: QuickItem[] = [];
+    const tap = (b: Btn) => () => { inp.press(b); inp.release(b); };
+    const kit = this.actBase.kit, kits = st.count('kit');
+    out.push({ id: 'kit', icon: 'potion', label: 'Heal Kit', count: kits, off: kits <= 0 || kit?.state === 'cooldown' || this.hpFrac >= 1, run: tap('potion') });
+    const mo = this.actOver.mount, live = !!mo && mo.n >= this.actFrame;
+    if (live && !mo!.hidden) out.push({ id: 'mount', icon: mo!.icon ?? 'horse', label: this.riding !== 'none' ? (this.riding === 'board' ? 'Stow' : 'Dismount') : mo!.icon === 'board' ? 'Board' : 'Mount', off: !!mo!.off, run: tap('mount') });
+    if (this.chatApi) {
+      out.push({ id: 'emote', icon: 'wave', label: 'Emote', run: () => this.chatApi!.emotes() });
+      out.push({ id: 'chat', icon: 'chat', label: 'Chat', run: () => { this.chatApi!.open(); } });
+    }
+    out.push({ id: 'view', icon: 'eye', label: g.cameraRig.view === 'first' ? 'Third person' : 'First person', run: () => { toggleView(g); } });
+    return out;
+  }
+  /** Open the wheel as a fan on the inward side of the weapon chip. */
+  openWheel() {
+    const r = this.acts.swap.root.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    this.wheel.open(cx, cy, cx > this.w / 2 ? -1 : 1, this.wheelItems());
   }
 
   /** Left-handed layout: buttons on the left, stick on the right. */
@@ -483,48 +556,44 @@ export class Hud {
   }
 
   /**
-   * Place every shown button on the thumb's arc, by the layout's cluster table; buttons the layout
-   * sends to the utility column move there. Runs when the set of shown buttons or the layout changes.
+   * Seat every button by the layout's table: in the thumb cluster on a phone, in the hotbar's
+   * groups on a desktop. A button the layout gives no seat is never shown. Seats are fixed: a
+   * button that is not showing leaves its seat empty, so the others never move under the thumb.
    */
   private layoutActs() {
     const A = this.layout?.acts;
     if (!A) return;
-    const shown = (A.flex?.ids ?? []).filter((id) => this.acts[id].state !== 'hidden');
-    const sig = this.layoutSig + shown.join(',');
+    const sig = this.layoutSig;
     if (sig === this.actsSig) return;
     this.actsSig = sig;
-    const k = this.kActs, dir = this.mirror ? 1 : -1, [ax, ay] = A.attack, util = A.util ?? [];
-    for (const id of ACT_IDS) {
-      const a = this.acts[id], u = util.includes(id), host = u ? this.slots.util : this.actsEl;
-      if (a.root.parentElement !== host) host.appendChild(a.root);
-      a.root.classList.toggle('in-util', u);
-      a.root.classList.toggle('no-seat', !!A.hide?.includes(id));
-      if (u) { a.root.style.left = a.root.style.top = ''; a.root.style.order = String(util.indexOf(id)); a.root.style.setProperty('--d', (A.utilD ?? 46) + 'px'); }
+    const k = this.kActs, dir = this.mirror ? 1 : -1;
+    const seated = new Set<ActionId>();
+    this.barEl.innerHTML = '';
+    for (const grp of A.bar ?? []) {
+      const ge = el('div', 'hb-g');
+      for (const id of grp) { const a = this.acts[id]; ge.appendChild(a.root); a.root.classList.add('in-bar'); a.root.style.left = a.root.style.top = ''; a.root.style.removeProperty('--d'); seated.add(id); }
+      this.barEl.appendChild(ge);
     }
-    const put = (id: ActionId, deg: number, r: number, d: number) => {
-      const a = this.acts[id], rad = deg * Math.PI / 180;
-      const x = (ax - Math.cos(rad) * r) * k, y = (ay + Math.sin(rad) * r) * k;
-      a.root.style.left = (dir * x).toFixed(1) + 'px'; a.root.style.top = (-y).toFixed(1) + 'px';
-      a.root.style.setProperty('--d', (d * k).toFixed(1) + 'px');
-    };
-    put('attack', 0, 0, A.attack[2]);
-    for (const [id, deg, r, d] of A.seats) put(id, deg, r, d);
-    // the far list measures from the other bottom corner: the safe width less its inset
     const across = this.w - this.safe.l - this.safe.r;
-    for (const [list, far] of [[A.pos, false], [A.far, true]] as const) for (const [id, x, y, d] of list ?? []) {
+    for (const [list, far] of [[A.seats, false], [A.far, true]] as const) for (const [id, x, y, d] of list ?? []) {
       const a = this.acts[id], xx = far ? across - x * k : x * k;
+      if (a.root.parentElement !== this.actsEl) this.actsEl.appendChild(a.root);
+      a.root.classList.remove('in-bar');
       a.root.style.left = (dir * xx).toFixed(1) + 'px'; a.root.style.top = (-y * k).toFixed(1) + 'px';
       a.root.style.setProperty('--d', (d * k).toFixed(1) + 'px');
+      seated.add(id);
     }
-    if (A.flex) {
-      const f = A.flex, at = Math.max(0, shown.indexOf(f.anchor));
-      shown.forEach((id, i) => put(id, f.deg + (i - at) * f.step, f.r, f.d[id] ?? ACT[id].size));
+    for (const id of ACT_IDS) {
+      const a = this.acts[id], off = !seated.has(id) || !!A.hide?.includes(id);
+      if (!seated.has(id) && a.root.parentElement !== this.actsEl) this.actsEl.appendChild(a.root);
+      a.root.classList.toggle('no-seat', off);
     }
   }
 
   /**
    * The action bar, from combat: one entry per slot, once per change and at most once per frame.
-   * A slot left out is hidden. The HUD owns position, size, press feedback and when labels fade.
+   * A slot left out is hidden. The HUD owns position, size, press feedback, and which of them the
+   * moment shows (`gate`).
    */
   setActionBar(slots: ActionSlot[], bar?: { stance?: Stance }) {
     // the stance picks the action layout: set by combat (setStance), given with the bar, or read from it
@@ -540,10 +609,33 @@ export class Hud {
     }
     for (const id of ACT_IDS) if (!(seen & (1 << IDX[id]))) { const b = this.actBase[id]; if (b) b.state = 'hidden'; }
   }
+  /**
+   * Whether the moment shows this button (docs/HUD.md). A desktop's hotbar shows every unlocked
+   * action with its key; a phone shows the seven a fight needs and brings the rest in by context.
+   */
+  private gate(t: ActionSlot): boolean {
+    if (t.state === 'hidden' || t.state === 'locked') return false;
+    const desk = this.layout.form === 'desktop', id = t.id;
+    if (desk) return true;
+    if (this.riding !== 'none') {
+      // in the saddle: jump and dismount; on the board the two tricks and the flip as well
+      if (id === 'jump' || id === 'mount' || id === 'swap') return true;
+      return this.riding === 'board' && (id === 'skill1' || id === 'skill2' || id === 'dodge');
+    }
+    switch (id) {
+      case 'overdrive': return (t.charge ?? 0) >= 0.995 || t.state === 'active';
+      case 'kit': return this.hpFrac < HURT && (t.count ?? 0) > 0;
+      case 'mount': return t.state !== 'cooldown' && !(this.hpFrac < HURT && this.game.state.count('kit') > 0);
+      case 'fire2': return this.aiming;
+      case 'reload': return t.state === 'active' || (t.count !== undefined && !!t.mag && t.count < t.mag);
+      default: return true;
+    }
+  }
   /** Draw the bar: the slots combat gave, with what `setAct` callers want laid over them. Every frame; unchanged buttons cost nothing. */
   private drawActs(dt: number) {
-    const n = ++this.actFrame, t = this.actTmp;
-    let relayout = false;
+    const n = ++this.actFrame, t = this.actTmp, st = this.game.state;
+    const od = this.actBase.overdrive, odCharge = od && od.state !== 'locked' && od.state !== 'hidden' ? clamp01(od.charge ?? 0) : -1;
+    this.aiming = this.actBase.aim?.state === 'active';
     for (const id of ACT_IDS) {
       const b = this.actBase[id], a = this.acts[id];
       let o = this.actOver[id];
@@ -563,39 +655,41 @@ export class Hud {
           if (o.off) { t.state = 'cooldown'; t.cd = 0; t.cdSec = undefined; }
         }
       }
-      if (this.applySlot(a, t)) relayout = true;
+      if (id === 'swap') {
+        // the chip shows the weapon a swap brings in; with one weapon it is the wheel's handle
+        const lo = st.d.loadout, other = lo[st.d.active ? 0 : 1];
+        if (t.state === 'hidden' && this.layout.form !== 'desktop') { t.state = 'ready'; t.icon = 'more'; t.label = 'Quick wheel'; }
+        else if (other && WEAPONS[other]) { t.icon = WEAPONS[other].kind; t.label = 'Swap to ' + WEAPONS[other].name; }
+      }
+      // the reload button carries the magazine; the fire button leaves it to the crosshair
+      if (id === 'fire' || id === 'fire2') { t.count = undefined; t.mag = undefined; }
+      if (!this.gate(t)) t.state = 'hidden';
+      this.applySlot(a, t, id === 'attack' || id === 'fire' ? odCharge : -1);
     }
-    if (relayout) this.layoutActs();
+    this.drawCast();
   }
-  /** Returns true when the slot appeared or disappeared, so the arc needs laying out again. */
-  private applySlot(a: ActBtn, s: ActionSlot): boolean {
+  private applySlot(a: ActBtn, s: ActionSlot, od: number) {
     const b = a.root;
-    let relayout = false;
     if (s.state !== a.state) {
       const was = a.state;
-      relayout = (was === 'hidden') !== (s.state === 'hidden');
-      // a cooldown that just ended flashes, so the eye catches it without watching the sweep
+      // a cooldown that just ended flashes, so the eye catches it without watching the sweep; a button that arrives pops in
       if (was === 'cooldown' && (s.state === 'ready' || s.state === 'active')) { b.classList.remove('ready-flash'); void b.offsetWidth; b.classList.add('ready-flash'); }
+      if (was === 'hidden' && this.actFrame > 30) { b.classList.remove('arrive'); void b.offsetWidth; b.classList.add('arrive'); }
       b.classList.remove('s-' + was); b.classList.add('s-' + s.state);
       a.state = s.state;
       b.style.display = s.state === 'hidden' ? 'none' : '';
     }
-    if (s.state === 'hidden') return relayout;
-    if (s.icon !== a.icon) { a.icon = s.icon; a.ico.innerHTML = icon(s.icon, 24, 2.1); }
+    if (s.state === 'hidden') return;
+    if (s.icon !== a.icon) { a.icon = s.icon; a.ico.innerHTML = icon(s.icon, 24, 2); }
     if (s.label !== a.label) {
       a.label = s.label;
       a.useKey = 'use_' + a.id + '_' + s.label.toLowerCase().replace(/[^a-z0-9]+/g, '');
       a.uses = this.game.state.flag(a.useKey);
-      a.lbl.textContent = s.label;
+      b.querySelector('.tipn')!.textContent = s.label;
     }
-    // a caption on the attack button while something is happening ("Counter", "Full") is news, not a name to learn
-    a.live = STEERS.has(a.id) && s.state === 'active';
-    const gone = !s.label || (!a.live && a.uses >= LEARNED);
-    if (gone !== a.lblGone) { a.lblGone = gone; a.lbl.classList.toggle('gone', gone); }
-    if (s.state === 'locked') {
-      const lv = s.unlock ?? UNLOCK[a.id] ?? 0;
-      if (lv !== a.unlock) { a.unlock = lv; a.lk.textContent = lv ? 'LV ' + lv : ''; }
-    }
+    // the one word a button ever shows: the counter window, on the primary
+    const cap = (a.id === 'attack' || a.id === 'fire') && s.state === 'active' && s.label === 'Counter' ? 'Counter' : '';
+    if (cap !== a.capTxt) { a.capTxt = cap; a.cap.textContent = cap; b.classList.toggle('counter', !!cap); }
     // a skill that is still running already shows the cooldown it started
     const cooling = s.state === 'cooldown' || (s.state === 'active' && !!s.cdSec);
     const cd = cooling ? clamp01(s.cd ?? 0) : 0, q = Math.round(cd * 60);
@@ -608,13 +702,36 @@ export class Hud {
       a.chargeQ = ch;
       b.classList.toggle('charging', ch > 0); b.classList.toggle('full', ch >= 100);
       a.ring.style.strokeDashoffset = String(100 - Math.max(0, ch));
+      b.style.setProperty('--ch', Math.max(0, ch) + '%');
+    }
+    // the Overdrive meter, as an arc round the primary
+    if (a.oda) {
+      const oq = od < 0 ? -1 : Math.round(od * 100);
+      if (oq !== a.odQ) { a.odQ = oq; b.classList.toggle('has-od', oq >= 0); b.classList.toggle('od-full', oq >= 100); a.oda.style.strokeDashoffset = String(100 - Math.max(0, oq)); }
     }
     const cnt = s.count === undefined ? '' : s.mag ? s.count + '/' + s.mag : String(s.count);
     if (cnt !== a.cnt_) {
       a.cnt_ = cnt; b.classList.toggle('none-left', s.count === 0);
       if (s.mag && s.count !== undefined) a.cnt.innerHTML = `${s.count}<small>/${s.mag}</small>`; else a.cnt.textContent = cnt;
     }
-    return relayout;
+  }
+  /** Desktop: the charge of a held heavy or a draw, and a reload, as a bar above the unit frame. */
+  private drawCast() {
+    if (this.layout.form !== 'desktop') return;
+    const p = this.actBase[this.stance === 'shooter' ? 'fire' : 'attack'];
+    let v = -1, label = '';
+    if (p && p.state !== 'hidden') {
+      if (p.state === 'cooldown' && p.cd) { v = 1 - clamp01(p.cd); label = 'Reload'; }
+      else if (p.charge !== undefined && p.charge > 0.02) { v = clamp01(p.charge); label = p.label; }
+    }
+    const sig = v < 0 ? '' : label + Math.round(v * 100);
+    if (sig === this.castSig) return;
+    this.castSig = sig;
+    this.castEl.classList.toggle('on', v >= 0);
+    if (v < 0) return;
+    this.castEl.classList.toggle('full', v >= 0.995);
+    this.castFill.style.transform = `scaleX(${v.toFixed(3)})`;
+    if (this.castLbl.textContent !== label) this.castLbl.textContent = label;
   }
 
   /**
@@ -646,6 +763,7 @@ export class Hud {
     if (sig !== this.timerSig) { this.timerSig = sig; (this.timerEl.children[0] as HTMLElement).textContent = label; (this.timerEl.children[2] as HTMLElement).textContent = sub; }
   }
   setBoss(name: string | null, frac = 1, sub = '') {
+    this.bossOn = !!name;
     this.boss.classList.toggle('on', !!name);
     this.hud.classList.toggle('boss-on', !!name);
     if (!name) return;
@@ -675,7 +793,6 @@ export class Hud {
     if (c.perfectT > 0) L.push({ icon: 'dodge', t: c.perfectT });                                // perfect-dodge window
     if (c.overchargeT > 0) L.push({ icon: 'charge', t: c.overchargeT });                         // next rifle shot x3
     if (pl.invuln > 0.45 && !pl.rolling && !pl.dead) L.push({ icon: 'shield', t: pl.invuln });   // arrival / respawn grace
-    if (pl.mode?.name === 'ride') L.push({ icon: 'horse' });
     if (!g.interior) {
       if (g.state.flag('storm') === 1) L.push({ icon: 'storm', bad: true });                     // Storm Hour is on
       if (g.env.isNight() && pl.pos.x > BLAST_WALL.x1) L.push({ icon: 'moon', bad: true });      // night shift: tougher robots out east
@@ -686,7 +803,7 @@ export class Hud {
     const sig = list.map((b) => b.icon + (b.t !== undefined ? Math.ceil(b.t) : '') + (b.bad ? '!' : '')).join(',');
     if (this.buffs.dataset.sig === sig) return;
     this.buffs.dataset.sig = sig;
-    this.buffs.innerHTML = list.map((b) => `<div class="buff${b.bad ? ' bad' : ''}">${icon(b.icon, 14)}${b.t !== undefined ? `<b>${Math.ceil(b.t)}</b>` : ''}</div>`).join('');
+    this.buffs.innerHTML = list.map((b) => `<div class="buff${b.bad ? ' bad' : ''}">${icon(b.icon, 12, 2.2)}${b.t !== undefined ? `<b>${Math.ceil(b.t)}</b>` : ''}</div>`).join('');
   }
 
   // ---- nameplates (immediate mode) ----
@@ -743,41 +860,76 @@ export class Hud {
     this.reticle.style.transform = `translate(${this.scr.x.toFixed(1)}px,${this.scr.y.toFixed(1)}px) scale(${sc.toFixed(2)})`;
   }
 
+  /**
+   * What the moment is, and what is still news. The context goes on the HUD as data-ctx; each
+   * fading element's slot carries `fresh` while its value has just changed. The stylesheet does
+   * the rest.
+   */
+  private drawContext(dt: number) {
+    const g = this.game, f = this.fresh;
+    this.riding = (g.hooks.mountState?.() as string | undefined) ?? 'none';
+    const t = g.combat.target;
+    const fight = g.mobs.inCombat > 0 || this.bossOn || (!!t && t.alive && this.stance !== 'shooter');
+    this.calm = fight ? 0 : this.calm + dt;
+    this.ctx = this.riding !== 'none' ? 'ride' : this.calm < 2.5 ? 'fight' : 'explore';
+    for (const k in f) { const key = k as keyof typeof f; if (f[key] > 0) f[key] -= dt; }
+    // health is shown while it matters: hurt, energy spent, in a fight, or just changed
+    const st = g.state, need = this.ctx === 'fight' || this.hpFrac < 0.999 || st.d.energy < st.maxEnergy - 0.5 || f.status > 0;
+    const sig = this.ctx + (this.aiming ? 'A' : '') + (need ? 'S' : '') + (f.xp > 0 ? 'X' : '') + (f.scrip > 0 ? 'C' : '') + (f.zone > 0 ? 'Z' : '') + (f.tracker > 0 ? 'T' : '') + (this.hpFrac < 0.999 ? 'H' : '');
+    if (sig === this.freshSig) return;
+    this.freshSig = sig;
+    const S = this.slots;
+    for (const e of [this.hud, this.root]) e.dataset.ctx = this.ctx;
+    this.hud.classList.toggle('aiming', this.aiming);
+    S.status.classList.toggle('fresh', need); S.status.classList.toggle('hurt', this.hpFrac < 0.999);
+    S.xp.classList.toggle('fresh', f.xp > 0);
+    S.scrip.classList.toggle('fresh', f.scrip > 0);
+    S.mini.classList.toggle('fresh', f.zone > 0);
+    S.tracker.classList.toggle('fresh', f.tracker > 0);
+  }
+
   update(dt: number) {
     const g = this.game, st = g.state, d = st.d;
     // the viewport or the input changed under us (a rotation whose resize event has not come yet, a first touch on a laptop)
     if (innerWidth !== this.w || innerHeight !== this.h || g.input.isTouch !== this.touchWas) this.resize();
-    if (this.actFrame % 30 === 0) this.adopt();
-    this.drawActs(dt);
-    this.drawWeapon();
     // bars
     const hp = Math.max(0, Math.round(d.hp)), mhp = st.maxHp;
+    this.hpFrac = mhp > 0 ? hp / mhp : 1;
     if (hp !== this.lastHp) {
+      if (this.lastHp >= 0) this.fresh.status = 3;
       this.lastHp = hp;
       const s = `scaleX(${clamp01(hp / mhp)})`;
       this.hpFill.style.transform = s; this.hpLag.style.transform = s;
-      this.hpText.textContent = `${hp} / ${mhp}`;
+      this.hpText.innerHTML = `${hp}<i> / ${mhp}</i>`;
       this.lowHp.classList.toggle('on', hp > 0 && hp / mhp < 0.28);
+      this.unit.classList.toggle('low', hp > 0 && hp / mhp < 0.28);
     }
     const en = Math.round(d.energy);
     if (en !== this.lastEn) { this.lastEn = en; this.enFill.style.transform = `scaleX(${clamp01(en / st.maxEnergy)})`; }
-    if (d.level !== this.lastLvl) { this.lastLvl = d.level; this.lvl.textContent = String(d.level); this.nlv.textContent = 'LV ' + d.level; this.lastXp = -1; this.lastHp = -1; }
-    const nm = d.name + '|' + (d.title ?? '');
-    if (this.nameEl.dataset.sig !== nm) { this.nameEl.dataset.sig = nm; this.nameEl.innerHTML = `<span>${d.name}</span><small>${d.title ?? ''}</small>`; }
+    if (d.level !== this.lastLvl) { this.lastLvl = d.level; this.lvl.textContent = String(d.level); this.lastXp = -1; this.lastHp = -1; this.fresh.status = 4; }
+    if (this.nameEl.textContent !== d.name) this.nameEl.textContent = d.name;
     if (d.xp !== this.lastXp) {
+      if (this.lastXp >= 0) this.fresh.xp = 5;
       this.lastXp = d.xp;
       const max = st.xpNext;
       this.xpFill.style.transform = `scaleX(${isFinite(max) ? clamp01(d.xp / max) : 1})`;
       this.xpText.textContent = isFinite(max) ? `LV ${d.level} · ${fmtNum(d.xp)} / ${fmtNum(max)} XP` : 'LV 20 · MAX';
     }
-    if (d.scrip !== this.lastScrip) { this.lastScrip = d.scrip; this.scripEl.lastElementChild!.textContent = fmtNum(d.scrip); }
+    if (d.scrip !== this.lastScrip) { if (this.lastScrip >= 0) this.fresh.scrip = 4; this.lastScrip = d.scrip; this.scripEl.lastElementChild!.textContent = fmtNum(d.scrip); }
+    this.drawActs(dt);
+    this.drawContext(dt);
+    // talking, or any full-screen panel on a phone: the HUD steps out (a desktop keeps it under its windows)
+    const cur = g.panels?.current as string | null | undefined, veil = !!cur && (cur === 'talk' || this.layout.form !== 'desktop');
+    if (veil !== this.veiled) { this.veiled = veil; this.hud.classList.toggle('veiled', veil); if (veil) { this.setTray(false); this.wheel.close(); this.releaseAll(); } }
+    if (this.trayOpen) this.drawTray();
+    if (this.capT > 0) { this.capT -= dt; if (this.capT <= 0) this.capEl.classList.remove('on'); }
     // stick
     const sk = g.input.stick;
     if (g.input.isTouch) {
       if (sk.active) {
         this.stick.className = 'stick on';
         this.stick.style.transform = `translate(${sk.ox}px,${sk.oy}px)`;
-        this.stickNub.style.transform = `translate(${sk.x * 46}px,${sk.y * 46}px)`;
+        this.stickNub.style.transform = `translate(${sk.x * 40}px,${sk.y * 40}px)`;
       } else {
         this.stick.className = 'stick rest';
         this.stick.style.transform = `translate(${this.stickRest.x.toFixed(1)}px,${this.stickRest.y.toFixed(1)}px)`;
@@ -786,8 +938,8 @@ export class Hud {
     } else this.stick.className = 'stick';
     // clock + zone
     const ck = g.env.clockText();
-    if (ck !== this.lastClock) { this.lastClock = ck; this.clockEl.innerHTML = icon(g.env.isNight() ? 'moon' : g.env.weather === 'storm' ? 'storm' : g.env.weather === 'rain' ? 'rain' : 'sun', 11) + ck; }
-    if (g.zoneName !== this.lastZone) { this.lastZone = g.zoneName; this.zoneEl.textContent = g.zoneName; }
+    if (ck !== this.lastClock) { this.lastClock = ck; this.clockEl.innerHTML = icon(g.env.isNight() ? 'moon' : g.env.weather === 'storm' ? 'storm' : g.env.weather === 'rain' ? 'rain' : 'sun', 10, 2.2) + ck; }
+    if (g.zoneName !== this.lastZone) { this.lastZone = g.zoneName; this.zoneEl.textContent = g.zoneName; this.fresh.zone = 5; }
     // minimap at 15 Hz
     this.miniT -= dt;
     if (this.miniT <= 0 && this.drawMini) { this.miniT = 1 / 15; this.drawMini(this.mini.getContext('2d')!, 208); }
