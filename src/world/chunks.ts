@@ -222,6 +222,8 @@ export class Chunks {
   lodPx = 2.5;
   /** the same, times this, in a landscape frame (see LOD_WIDE) */
   lodWide = LOD_WIDE;
+  /** how much farther off a far square becomes one mesh when the phone is held upright */
+  farTall = 1.6;
   /** `ground(x, z)` is the terrain height; with it, slabs lying on the ground are kept out of the shadow pass. */
   constructor(private ground: ((x: number, z: number) => number) | null = null) {
     for (let i = 0; i < N * N; i++) { this.solidG.push(this.staging()); this.leafG.push(this.staging()); }
@@ -731,7 +733,8 @@ export class Chunks {
     const k = (this.lodPx * (camera.aspect > 1.2 ? this.lodWide : 1) * (600 / viewDist) * 2 * Math.tan((camera.fov * Math.PI) / 360)) / Math.max(1, viewportPx);
     const eye = camera.position;
     // a far-layer square is one mesh from where its cells' tighter culling stops paying: past the shadow cascades at the least
-    const farAt = Math.max(FAR_AT, CASTER.dist * 1.25);
+    // (held upright the view is narrow: a square mostly lies outside it, and its cells' culling pays for longer)
+    const farAt = Math.max(FAR_AT * (camera.aspect > 1.2 ? 1 : this.farTall), CASTER.dist * 1.25);
     if (!this.interior) for (const b of this.blocks) {
       const far = b.whole.box.distanceToPoint(eye) > farAt;
       b.whole.off = !far;
