@@ -248,7 +248,7 @@ export class Hud {
     if (p.hide) { st.display = 'none'; return; }
     st.display = '';
     if (p.under) {
-      s.className = 'slot s-' + id + ' k-under' + (p.cls ? ' ' + p.cls.split(' ').map((c) => 'k-' + c).join(' ') : '');
+      s.className = 'slot s-' + id + ' k-under' + (p.cls ? ' ' + p.cls.split(' ').map((c) => 'k-' + c).join(' ') : '') + (s.classList.contains('yield') ? ' yield' : '');
       s.dataset.h = host.dataset.h ?? 'l'; s.dataset.v = 't';
       st.left = st.right = st.top = st.bottom = st.width = st.transform = st.transformOrigin = '';
       return;
@@ -256,7 +256,9 @@ export class Hud {
     const k = p.acts ? this.kActs : this.kUi, v = p.at[0], h0 = p.at[1];
     const h = this.mirror && h0 !== 'c' ? (h0 === 'l' ? 'r' : 'l') : h0;
     // arrangement classes carry a k- prefix so they never meet the HUD's own classes (.bar, .up...)
-    const keep = s.classList.contains('fresh') ? ' fresh' : '';
+    // (what the HUD has marked on the slot outlives a change of layout: news, the column's budget, a docked waypoint)
+    let keep = '';
+    for (const c of ['fresh', 'early', 'way']) if (s.classList.contains(c)) keep += ' ' + c;
     s.className = 'slot s-' + id + (p.cls ? ' ' + p.cls.split(' ').map((c) => 'k-' + c).join(' ') : '') + keep;
     s.dataset.h = h; s.dataset.v = v;
     st.left = st.right = st.top = st.bottom = st.width = '';
@@ -478,27 +480,44 @@ export class Hud {
     const l = (this.mirror ? b : a) + s.l, r = (this.mirror ? a : b) + s.r;
     // top: above the clear middle on a wide screen (the top centre is the lane's, and a marker under it
     // reads as a heading); under the minimap, the lane and the offer chip on a tall one
-    return { x0: l, x1: w - r, y0: s.t + (f === 'portrait' ? Math.max(h * 0.3, 240) : h * 0.16), y1: f === 'landscape' ? Math.min(h * 0.6, h - s.b - 178 * this.kActs) : h * 0.6 };
+    // bottom: above the hero; on a phone also above the thumb cluster's highest seat (a short upright phone: the weapon chip),
+    // with room for the marker and the distance under it
+    const y1 = f === 'landscape' ? Math.min(h * 0.6, h - s.b - 178 * this.kActs) : f === 'portrait' ? Math.min(h * 0.6, h - s.b - this.actsHigh - 36) : h * 0.6;
+    return { x0: l, x1: w - r, y0: s.t + (f === 'portrait' ? Math.max(h * 0.3, 240) : h * 0.16), y1 };
   }
   /**
-   * Where an off-screen waypoint sits on a phone held sideways: the end of the quest line's first
-   * row, so the arrow and its distance read as part of the quest they belong to instead of hanging
-   * a third of the way into the picture. HUD px. Null when there is no quest line to carry it.
+   * Where an off-screen waypoint sits on a phone held sideways: after the words of the tracked
+   * quest's first objective ("Crate Mites broken 0/5 > 62 m"), so the arrow and its distance read
+   * as part of the quest they belong to instead of hanging a third of the way into the picture.
+   * That line keeps room for it (style.css), so the quest's name is never cut and nothing re-wraps
+   * when the marker comes and goes. HUD px. Null when there is no quest line to carry it.
    */
   wayDock(fresh = false): { x: number; y: number } | null {
     // measured when asked afresh, when the layout changes (a turn of the phone) and when the quest line is rewritten
     if (!fresh && this.dockSig === this.layoutSig) return this.dockAt;
     this.dockSig = this.layoutSig; this.dockAt = null;
     if (this.layout.form !== 'landscape') return null;
-    const q = this.tracker.querySelector('.q .qt') as HTMLElement | null;
+    // (a bounty's line is not a quest's: the waypoint never rides it)
+    const q = this.tracker.querySelector('.q:first-child:not(.gr-bq) .qo') as HTMLElement | null;
     if (!q) return null;
-    const r = q.getBoundingClientRect(), o = this.hud.getBoundingClientRect();
-    if (!r.width) return null;
-    return this.dockAt = { x: (this.mirror ? r.left + 8 : r.right - 46) - o.left, y: r.top + r.height / 2 - o.top };
+    // the last line of its words, as laid out
+    const rg = document.createRange(); rg.selectNodeContents(q);
+    const rs = [...rg.getClientRects()].filter((r) => r.width >= 1);
+    if (!rs.length) return null;
+    const last = Math.max(...rs.map((r) => r.top));
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (const r of rs) if (r.top > last - 6) { x0 = Math.min(x0, r.left); x1 = Math.max(x1, r.right); y0 = Math.min(y0, r.top); y1 = Math.max(y1, r.bottom); }
+    const o = this.hud.getBoundingClientRect();
+    // the marker is an arrow at its point and the distance from 11 px right of it (systems/guide.ts)
+    const label = (this.hud.querySelector('.gmark b') as HTMLElement | null)?.offsetWidth || 34;
+    const x = this.slots.tracker.dataset.h === 'r' ? x0 - 10 - label - 11 : x1 + 11;
+    return this.dockAt = { x: x - o.left, y: (y0 + y1) / 2 - o.top };
   }
   private dockSig = '~'; private dockAt: { x: number; y: number } | null = null;
   /** the quest line makes room for the docked waypoint */
   wayDocked(on: boolean) { const c = this.slots.tracker.classList; if (c.contains('way') !== on) c.toggle('way', on); }
+  /** A notice has just lit: place the lane for it now, not on the next tick. */
+  laneKick() { this.laneT = 0; }
   private laneT = 0; private laneY = 0; private laneHold = 0; private laneUp = false; private timerY = 0;
   /**
    * The notice lane hangs under whatever holds the top centre: the target frame or the boss bar,
@@ -511,7 +530,7 @@ export class Hud {
     const ts = this.slots.timer, kids = ts.children;
     let tm = false;
     for (let i = 0; i < kids.length; i++) if (kids[i].classList.contains('on')) tm = true;
-    const tf = this.tframe.classList.contains('on'), bs = this.bossOn, up = tf || bs || tm;
+    const tf = this.tframe.classList.contains('on'), bs = this.bossOn, up = tf || bs || tm, col0 = this.slots.tracker.classList;
     if (up) this.laneHold = 1.5; else if (this.laneHold > 0) this.laneHold -= dt;
     if ((this.laneT -= dt) > 0 && up === this.laneUp) return;
     this.laneT = 0.12; this.laneUp = up;
@@ -532,8 +551,28 @@ export class Hud {
         if (r1 > 0 && top + y < r1 + 2 && top + y + hgt > r0 - 2) y = Math.max(0, Math.round(r1 + 4 - top));
       }
     } else if (this.laneHold <= 0) y = 0;
+    // An upright phone: the lane shares the top of the screen with the left column. The quest line keeps its
+    // place and the lane hangs under it; the feed (chat and loot lines, which pass) gives way while a notice is lit.
+    let give = false;
+    if (this.layout.form === 'portrait' && this.notices.lit) {
+      const top = s.offsetTop, col = this.slots.tracker, log = this.slots.log;
+      let cb = 0;
+      for (let i = 0; i < col.children.length; i++) {
+        const c = col.children[i] as HTMLElement;
+        if (c === log || !c.offsetHeight || getComputedStyle(c).opacity === '0') continue;
+        cb = Math.max(cb, c.getBoundingClientRect().bottom);
+      }
+      if (cb > top + y - 4) y = Math.round(cb + 6 - top);
+      const lr = log.getBoundingClientRect(), hgt = Math.max(34, this.notices.el.offsetHeight);
+      give = lr.height > 0 && lr.top < top + y + hgt + 4 && lr.bottom > top + y + 1;
+    }
+    if (this.slots.log.classList.contains('yield') !== give) this.slots.log.classList.toggle('yield', give);
     if (y !== this.laneY) { this.laneY = y; s.style.translate = y ? `0 ${y}px` : ''; }
+    // Until the first job is handed in the column is the quest and one other line at most (style.css, `.early`).
+    if (this.early) { const q = this.game.state.d.quests; for (const id in q) if (q[id].state === 'done') { this.early = false; break; } }
+    if (col0.contains('early') !== this.early) col0.toggle('early', this.early);
   }
+  private early = true;
   /** hidden for a cinematic, or stepped out under a panel or a conversation */
   get away() { return !this.visible || this.veiled; }
   /** Pulse a control while a tip teaches it. */
@@ -683,12 +722,12 @@ export class Hud {
   }
 
   // ---- quick wheel ----
-  /** The rare actions (docs/HUD.md): heal kit, mount, emote, chat, view. */
+  /** The rare actions (docs/HUD.md): heal kit, mount, emote, chat, view. Only what the player has: no dead slots. */
   private wheelItems(): QuickItem[] {
     const g = this.game, st = g.state, inp = g.input, out: QuickItem[] = [];
     const tap = (b: Btn) => () => { inp.press(b); inp.release(b); };
     const kit = this.actBase.kit, kits = st.count('kit');
-    out.push({ id: 'kit', icon: 'potion', label: 'Heal Kit', count: kits, off: kits <= 0 || kit?.state === 'cooldown' || this.hpFrac >= 1, run: tap('potion') });
+    if (kits > 0) out.push({ id: 'kit', icon: 'potion', label: 'Heal Kit', count: kits, off: kit?.state === 'cooldown' || this.hpFrac >= 1, run: tap('potion') });
     const mo = this.actOver.mount, live = !!mo && mo.n >= this.actFrame;
     if (live && !mo!.hidden) out.push({ id: 'mount', icon: mo!.icon ?? 'horse', label: this.riding !== 'none' ? (this.riding === 'board' ? 'Stow' : 'Dismount') : mo!.icon === 'board' ? 'Board' : 'Mount', off: !!mo!.off, run: tap('mount') });
     if (this.chatApi) {
@@ -720,6 +759,8 @@ export class Hud {
    * groups on a desktop. A button the layout gives no seat is never shown. Seats are fixed: a
    * button that is not showing leaves its seat empty, so the others never move under the thumb.
    */
+  /** how far up from the bottom safe edge the thumb cluster reaches (its highest seat), px */
+  private actsHigh = 0;
   private layoutActs() {
     const A = this.layout?.acts;
     if (!A) return;
@@ -735,8 +776,10 @@ export class Hud {
       this.barEl.appendChild(ge);
     }
     const across = this.w - this.safe.l - this.safe.r;
+    this.actsHigh = 0;
     for (const [list, far] of [[A.seats, false], [A.far, true]] as const) for (const [id, x, y, d] of list ?? []) {
       const a = this.acts[id], xx = far ? across - x * k : x * k;
+      this.actsHigh = Math.max(this.actsHigh, (y + d / 2) * k);
       if (a.root.parentElement !== this.actsEl) this.actsEl.appendChild(a.root);
       a.root.classList.remove('in-bar');
       a.root.style.left = (dir * xx).toFixed(1) + 'px'; a.root.style.top = (-y * k).toFixed(1) + 'px';

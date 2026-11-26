@@ -106,6 +106,8 @@ export class Notices {
   /** Put the tip away (a tap on it, or its control was used). */
   dismissTip() { if (this.cur?.kind === 'tip') this.t = Math.min(this.t, 0.01); }
   get tipOn() { return this.cur?.kind === 'tip'; }
+  /** something is showing in the lane */
+  get lit() { return !!this.cur; }
 
   private push(n: Note) {
     const c = this.cur;
@@ -151,6 +153,7 @@ export class Notices {
     this.draw(n);
     void this.el.offsetWidth;
     this.el.classList.add('on');
+    this.hud.laneKick();
     this.hud.pointAt(n.at ?? null);
   }
   private hide() {

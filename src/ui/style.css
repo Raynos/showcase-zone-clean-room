@@ -208,9 +208,17 @@
 .s-tracker.k-one .q:nth-child(n+2), .s-tracker.k-two .q:nth-child(n+3), .s-tracker.k-three .q:nth-child(n+4) { display: none; }
 .tracker .qt { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--amber); text-shadow: var(--tsh); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tracker .q.ready .qt { color: var(--gold); }
-/* an off-screen waypoint rides the end of the first quest's line on a phone held sideways (hud.wayDock) */
-.s-tracker.way .tracker .q:first-child .qt { padding-right: 58px; }
-[data-h=r].s-tracker.way > .tracker .q:first-child .qt { padding: 0 0 0 58px; }
+/* On a phone held sideways an off-screen waypoint rides after the tracked quest's first objective (hud.wayDock).
+   That line keeps the room for it whether or not it is there, so the name above is never cut and nothing re-wraps. */
+.hud[data-form=landscape] .tracker .q:first-child:not(.gr-bq) .qo:nth-child(2) { padding-right: 58px; }
+.hud[data-form=landscape] [data-h=r] > .tracker .q:first-child:not(.gr-bq) .qo:nth-child(2) { padding: 0 0 0 58px; }
+/* The column's order and budget. The quest leads; what the zone adds (a crate drop, a bounty) follows it; the feed is last.
+   Until the first job is handed in (`.early`, hud.ts) that is one other line at most: the drop, which is timed, over the bounty. */
+.s-tracker { display: flex; flex-direction: column; }
+.s-tracker > .tracker { order: 0; } .s-tracker > .lz-evcard { order: 1; } .s-tracker > .s-log { order: 2; }
+.s-tracker.early:has(> .lz-evcard.on) .gr-bq { display: none; }
+/* the feed gives way while a notice is lit over it (an upright phone: hud.laneStep) */
+.s-log { transition: opacity .3s; } .s-log.yield { opacity: 0; transition: none; }
 .tracker .qo { font-size: 11px; color: #ece6da; text-shadow: var(--tsh); line-height: 1.25; }
 .tracker .qo.done { color: var(--green); opacity: .8; }
 .tracker .qo b { color: #fff; }

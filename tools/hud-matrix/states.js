@@ -9,6 +9,8 @@ const hmFields = async (G, g, level) => {
   G.place(40, 6, HM_PI / 2 + 0.3);
   G.cam(-HM_PI / 2 + 0.3, 0.1, 1);
 };
+// G.quiet() mutes every later headline (tools/golden/lib.js): a state that raises one takes the lane back first
+const hmLane = (g) => { const l = g.hud.notices; if (l.__quiet) { delete l.push; l.__quiet = false; } l.clear(); };
 const hmFight = async (G, g) => {
   const a = G.spawn('mite', 43.6, 5.2, { level: 2, aggro: true });
   G.spawn('pallet', 46, 9, { level: 3, aggro: true });
@@ -117,7 +119,7 @@ const HM_STATES = [
       await hmFight(G, g);
       await G.secs(0.6); G.quiet();
       window.HM_AFTER = () => {
-        g.hud.notices.clear();
+        hmLane(g);
         g.hud.tip({ title: 'Read the floor', text: 'Red shapes on the ground are incoming attacks. Roll out with the dodge button: a late roll slows time.', at: 'dodge', secs: 999 });
         g.hud.toast('Scrap ×2', 'loot');
       };
@@ -215,7 +217,7 @@ const HM_STATES = [
       g.grind.cheat('streak'); g.grind.cheat('streak');
       window.HM_AFTER = () => {
         const h = g.hud;
-        h.notices.clear();
+        hmLane(g);
         h.toast('Brass Cog', 'loot', 'A collectible cog, off a robot', 'cog');
         h.toast('Crate Mites broken: 4/5', 'quest');
         h.toast('Bounty paid', 'quest', 'Break 5 guards · +10 XP, 60 scrip', 'check');
@@ -235,10 +237,48 @@ const HM_STATES = [
       await G.secs(3.0); G.quiet();
       g.grind.cheat('streak');
       g.grind.cheat('tune'); g.grind.cheat('tune');
-      window.HM_AFTER = () => { g.hud.notices.clear(); g.hud.toast('Vista found', 'secret', 'The Lookout'); g.hud.banner('LEVEL 3', 'Health and energy restored', 'level'); };
+      window.HM_AFTER = () => { hmLane(g); g.hud.toast('Vista found', 'secret', 'The Lookout'); g.hud.banner('LEVEL 3', 'Health and energy restored', 'level'); };
       window.HM_AFTER();
       await G.secs(0.5);
     },
   },
+  {
+    n: 18, name: 'first-minute', what: 'Before the first job: a crate drop and a bounty both want the column (one line shows), chat in the feed, the first tip lit', hour: 11,
+    async setup(G, g) {
+      window.HM_AFTER = null;
+      G.noCamps(); G.clearMobs(); G.level(1);
+      for (const id in g.state.d.quests) delete g.state.d.quests[id];
+      g.grind.ensureBounties();
+      G.place(-30, 6, -HM_PI / 2); G.cam(HM_PI / 2, 0.14, 1);
+      await G.secs(1.0); G.quiet();
+      hmCrate();
+      g.hud.log('Nyx: Shift Boss Slag is up in the Slagworks again', 'chat'); g.hud.log('Kestrel: Selling 9 Blast Bolts, 10 each', 'chat');
+      window.HM_AFTER = () => { hmLane(g); g.hud.tip({ title: 'Find work', text: 'A yellow ! means a job. Walk up and tap the prompt.', secs: 999 }); };
+      window.HM_AFTER();
+      await G.secs(0.6);
+    },
+  },
+  {
+    n: 19, name: 'full-column', what: 'Later, out of a fight: a quest, a crate drop, chat in the feed and a zone headline over them', hour: 11,
+    async setup(G, g) {
+      await hmFields(G, g, 3);
+      g.state.d.quests.q_welcome = { state: 'done', prog: [5] };
+      g.quests.accept('q_salvage');
+      g.grind.ensureBounties();
+      await G.secs(1.0); G.quiet();
+      hmCrate();
+      g.hud.log('Oskar: Rares. More hp, better salvage, boar', 'chat'); g.hud.log('Dace: what are the gold glinting robots', 'chat');
+      window.HM_AFTER = () => { hmLane(g); g.hud.banner(g.zoneName, 'Peaceful'); };
+      window.HM_AFTER();
+      await G.secs(0.6);
+    },
+  },
 ];
+// the crate drop's line as systems/events.ts draws it (the event itself is the zone's to schedule)
+function hmCrate() {
+  const c = document.querySelector('.lz-evcard');
+  if (!c) return;
+  c.className = 'lz-evcard on';
+  c.innerHTML = '<div class="lz-ev-h"><b>CRATEFALL</b><span>2:08</span></div><div class="lz-ev-r"><i><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M5 12h14"/></svg></i>64 m · Guarded · 3 left</div><div class="lz-ev-s">Supply drop · Crate Fields</div>';
+}
 if (window.GOLDEN) window.GOLDEN.scenes = HM_STATES;
