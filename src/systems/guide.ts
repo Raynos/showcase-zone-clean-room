@@ -4,6 +4,7 @@ import { QUESTS, type QuestDef } from '../data/quests';
 import type { Game, System } from '../game';
 import { el } from '../ui/hud';
 import { BEACONS } from '../world/east';
+import { RING as RANGE_RING } from '../world/west/range';
 import { BANDS, GAUNTLET, PADS, ROCK, TITAN_GATE, TOWN, VAULT, VAULT_PORTAL } from '../world/layout';
 import { Router } from './route';
 
@@ -13,6 +14,8 @@ export interface Target { x: number; z: number; y?: number; label: string; r?: n
 export const GUIDE_TARGETS: Array<(key: string) => Target | null> = [];
 /** People the waypoint points at when nothing is tracked and they have work (field outposts add theirs). */
 export const GUIDE_GIVERS: string[] = ['quest1', 'quest2', 'quest3', 'stable'];
+/** Where to point when no job is in hand, before the givers: things offered in the world (after hours' starters). */
+export const GUIDE_IDLE: Array<() => Target | null> = [];
 const _v = new THREE.Vector3();
 
 /**
@@ -63,13 +66,23 @@ export class Guide implements System {
     const n = this.game.town?.npcs?.find((s: any) => s.id === id);
     return n ? { x: n.x, z: n.z, y: this.game.terrain.h(n.x, n.z) + 2.3, label: this.game.npcName(id) } : null;
   }
-  private nearestCamp(kind: string | null): Target | null {
-    const p = this.game.player.pos, lvl = this.game.state.d.level, night = this.game.env.isNight();
+  /**
+   * The nearest camp whose robots count, skipping one that has been cleared and not yet come back (a spawned
+   * camp with every slot empty), so the diamond never sits on an emptied camp while the count still wants more.
+   * `nightOnly`: the night shift's camps (they stand only at night).
+   */
+  private nearestCamp(kind: string | null, nightOnly = false): Target | null {
+    const g = this.game, p = g.player.pos, lvl = g.state.d.level, night = g.env.isNight();
+    const live = new Map(g.mobs.camps.map((c) => [c.def, c]));
     let best: Target | null = null, bd = 1e9;
     for (const c of CAMPS) {
       if (kind ? c.kind !== kind : c.lo > lvl + 1 || c.hi < lvl - 2) continue;
       if (c.night && !night) continue;
-      const d = Math.hypot(c.x - p.x, c.z - p.z);
+      if (nightOnly && !c.night) continue;
+      const rc = live.get(c), d = Math.hypot(c.x - p.x, c.z - p.z);
+      // cleared: nothing standing, and it will not refill soon (its slots are counting down, or the player stands
+      // in it, which holds a camp empty: systems/mobs.ts refills only past 14 m)
+      if (rc && d < 86 && rc.slots.every((s) => !s.mob?.alive) && (d < 16 || rc.slots.some((s) => s.respawn > 0 && s.respawn < 9000))) continue;
       if (d < bd) { bd = d; best = { x: c.x, z: c.z, label: '' }; }
     }
     return best;
@@ -81,10 +94,10 @@ export class Guide implements System {
     if (type === 'kill') {
       if (a === 'warden') return { x: VAULT_PORTAL.x, z: VAULT_PORTAL.z, label: 'Training Vault' };
       if (a === 'titan') return { x: TITAN_GATE.x, z: TITAN_GATE.z, label: "Titan's Arena" };
-      if (a === 'dummy') return this.pad('range');
+      if (a === 'dummy') return { x: RANGE_RING.x, z: RANGE_RING.z, label: 'Dummy ring', r: 6 };
       const e = ELITES.find((x) => x.id === a);
       if (e) return { x: e.x, z: e.z, label: e.name };
-      return this.nearestCamp(a === 'any' ? null : a);
+      return this.nearestCamp(a === 'any' ? null : a, key.endsWith(':night'));
     }
     if (type === 'collect') {
       // head for the nearest camp of the first robot kind that drops it
@@ -98,13 +111,14 @@ export class Guide implements System {
       if (b) { const B = BANDS[+b[1] - 1]; return { x: (B.x0 + B.x1) / 2, z: (B.z0 + B.z1) / 2, label: B.name }; }
       return this.pad(a);
     }
-    if (type === 'course') return this.pad(a === 'riding' ? 'paddock' : a);
+    // a course's own start (its map marker), else the middle of its yard
+    if (type === 'course') { const s = g.pois.find((x) => x.id === a); return s ? { x: s.x, z: s.z, label: s.label } : this.pad(a === 'riding' ? 'paddock' : a); }
     if (type === 'use' && a === 'beacon') {
       const p = g.player.pos; let best: Target | null = null, bd = 1e9;
       BEACONS.forEach((b, i) => { if (g.state.flag('beacon_' + i)) return; const d = Math.hypot(b.x - p.x, b.z - p.z); if (d < bd) { bd = d; best = { x: b.x, z: b.z, label: b.name }; } });
       return best;
     }
-    if (type === 'flag' && a === 'gauntlet_clear') return { x: GAUNTLET.courts[0].x, z: GAUNTLET.courts[0].z + GAUNTLET.size / 2 + 4, label: 'The Gauntlet' };
+    if (type === 'flag' && a === 'gauntlet_clear') { const s = g.interact.list.find((i) => i.id === 'gauntlet_start'); return s ? { x: s.pos.x, z: s.pos.z, label: 'The Gauntlet' } : { x: GAUNTLET.courts[0].x, z: GAUNTLET.courts[0].z + GAUNTLET.size / 2 + 4, label: 'The Gauntlet' }; }
     return null;
   }
   /** Inside the vault the only objective is its Warden: a direction to the boss hall, one floor up at the far end. */
@@ -123,6 +137,7 @@ export class Guide implements System {
     const g = this.game, qs = g.quests;
     if (g.interior) return g.interior === 'vault' ? this.inVault() : null;
     for (const q of qs.active()) { const t = this.forQuest(q); if (t) return t; }
+    for (const f of GUIDE_IDLE) { const t = f(); if (t) return t; }
     // nothing tracked: point at the nearest person with work on offer
     const p = g.player.pos; let best: Target | null = null, bd = 1e9;
     for (const id of GUIDE_GIVERS) {

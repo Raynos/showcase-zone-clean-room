@@ -7,6 +7,8 @@ import type { RobotKind } from '../../entities/robots/types';
 import type { Game } from '../../game';
 import { PAL } from '../../world/layout';
 import type { Mob, MobOpts } from '../mobs';
+import { CAMPS } from '../../data/enemies';
+import { OUTPOST_BY_ID } from '../../data/outposts';
 import { playDt } from '../playclock';
 
 /** A waypoint for the guide: a point, a moving point (re-read twice a second), or an area (r). */
@@ -52,6 +54,11 @@ type S<T extends FieldStep['t']> = Extract<FieldStep, { t: T }>;
 
 const ground = (g: Game, x: number, z: number) => g.terrain.h(x, z);
 const flat = (ax: number, az: number, bx: number, bz: number) => Math.hypot(ax - bx, az - bz);
+/** distance from point p to the segment a-b, on the ground */
+const segD = (px: number, pz: number, ax: number, az: number, bx: number, bz: number) => {
+  const dx = bx - ax, dz = bz - az, L = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / L));
+  return flat(px, pz, ax + dx * t, az + dz * t);
+};
 const pl = (g: Game) => g.player.pos;
 /** a soft pulse of light at a point that marks where to go (fx only: no meshes, no draw calls of its own) */
 function beckon(g: Game, x: number, z: number, color: number, r = 1.6, t = 0) {
@@ -75,23 +82,63 @@ function clear(g: Game, p: THREE.Vector3) {
 function hurtSince(g: Game, hp0: number) { return g.state.d.hp < hp0 - 0.5; }
 
 // ------------------------------------------------------------------ scan (look and hold)
+/**
+ * A spot to count a nest from: out of its robots' reach, with a clear line to it, toward the band's camp where
+ * there is one (the way the player comes from). Tried at 26 then 32 m, round the compass from the camp's side.
+ */
+function vantageFor(g: Game, nest: THREE.Vector3, band: number, range: number): THREE.Vector3 {
+  const o = OUTPOST_BY_ID['b' + band], a0 = o ? Math.atan2(o.x - nest.x, o.z - nest.z) : 0;
+  const camps = (x: number, z: number, d: number) => CAMPS.every((cp) => flat(cp.x, cp.z, nest.x, nest.z) < 3 || flat(cp.x, cp.z, x, z) > d);
+  const furniture = (x: number, z: number) => g.interact.list.every((i) => flat(i.pos.x, i.pos.z, x, z) > 5);
+  // away from other robots' camps (past a mite's notice), off the outpost's furniture (a bench or a stall makes a
+  // poor lookout) and not looking through its stalls; each rule gives way in turn where the ground allows no better
+  const tiers: Array<(x: number, z: number) => boolean> = [
+    (x, z) => camps(x, z, 25) && furniture(x, z) && (!o || segD(o.x, o.z, x, z, nest.x, nest.z) > 11),
+    (x, z) => camps(x, z, 25) && furniture(x, z),
+    (x, z) => camps(x, z, 20),
+    () => true,
+  ];
+  for (const keep of tiers) for (const r of [26, 32, 20]) {
+    if (r > range - 4) continue;
+    for (let k = 0; k < 16; k++) {
+      const a = a0 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 8);
+      const x = nest.x + Math.sin(a) * r, z = nest.z + Math.cos(a) * r;
+      if (Math.abs(x) > 245 || Math.abs(z) > 245 || g.terrain.slope(x, z) > 0.5 || !keep(x, z)) continue;
+      _a.set(x, ground(g, x, z) + 1.7, z);
+      if (clear(g, nest)) return new THREE.Vector3(x, ground(g, x, z), z);
+    }
+  }
+  // (never the nest itself: toward the camp, at the edge of the scope's range)
+  const r = Math.max(14, range - 6), x = nest.x + Math.sin(a0) * r, z = nest.z + Math.cos(a0) * r;
+  return new THREE.Vector3(x, ground(g, x, z), z);
+}
+/**
+ * Count from a distance: each nest has a vantage the waypoint goes to (never the nest itself, which kills a
+ * level 2 hero), and standing there the timer slot says what to do: go first person or aim, hold on the nest.
+ */
 export function scan(c: StepCtx, s: S<'scan'>): Ctl {
   const g = c.g, done = c.points(), P = s.pts.map(([x, z]) => new THREE.Vector3(x, ground(g, x, z) + 0.9, z));
+  const V = P.map((p) => vantageFor(g, p, c.q.band, s.range));
   let hold = 0, cur = -1, cool = 0, hint = 0;
   const spotted = (p: THREE.Vector3) => g.mobs.list.some((m) => m.alive && m.aggro && flat(m.pos.x, m.pos.z, p.x, p.z) < 18);
+  // the first time the job is live: what it asks, said once at the start
+  if (!done.length) g.hud.toast('Count from a distance', 'quest', 'Follow the marker to a lookout, then go first person or aim and hold on the nest');
   return {
     update(dt) {
       cool -= dt; hint -= dt;
-      const fp = eye(g);
-      let best = -1, ba = 0.13, near = false;
+      const fp = eye(g), p0 = pl(g);
+      let best = -1, ba = 0.13, near = false, at = -1;
       P.forEach((p, i) => {
         if (done.includes(i)) return;
+        if (flat(V[i].x, V[i].z, p0.x, p0.z) < 7) at = i;
         const d = p.distanceTo(_a);
         if (d > s.range) return;
         near = true;
         const a = off(p); if (a < ba) { ba = a; best = i; }
       });
-      if (near && !fp && hint <= 0) { hint = 14; g.hud.toast('Scope it', 'info', 'Go first person or aim down the sights, then hold on the nest'); }
+      // at the lookout, out of first person: the slot says what to do here
+      if (at >= 0 && !fp && hold <= 0) g.hud.setTimer(s.label, 'SCOPE IT', 'First person or aim, then hold on the nest');
+      if (near && !fp && hint <= 0 && at < 0) { hint = 14; g.hud.toast('Scope it', 'info', 'Go first person or aim down the sights, then hold on the nest'); }
       if (best >= 0 && fp && cool <= 0 && clear(g, P[best])) {
         if (cur !== best) { cur = best; hold = 0; }
         if (s.spoil && spotted(P[best])) { hold = 0; cur = -1; cool = 5; c.fail('Spotted', 'They know they are being counted. Back off until they settle.'); return; }
@@ -99,11 +146,12 @@ export function scan(c: StepCtx, s: S<'scan'>): Ctl {
         g.hud.setTimer(s.label, `${Math.min(99, Math.round((hold / s.hold) * 100))}%`, 'Hold steady');
         if (hold >= s.hold) { done.push(best); c.save(); hold = 0; cur = -1; g.sfx('checkpoint'); c.bump(); }
       } else if (hold > 0) { hold = Math.max(0, hold - dt * 2); if (hold === 0) cur = -1; }
-      P.forEach((p, i) => { if (!done.includes(i)) beckon(g, p.x, p.z, 0xffcf3a, 2.2, g.time); });
+      P.forEach((p, i) => { if (!done.includes(i)) { beckon(g, p.x, p.z, 0xffcf3a, 2.2, g.time); beckon(g, V[i].x, V[i].z, 0x7ff0ff, 1.4, g.time); } });
     },
     target() {
+      // the nearest nest's lookout, never the nest
       const p = pl(g); let t: Target | null = null, bd = 1e9;
-      P.forEach((q, i) => { if (done.includes(i)) return; const d = flat(q.x, q.z, p.x, p.z); if (d < bd) { bd = d; t = { x: q.x, z: q.z, label: s.label, r: s.range }; } });
+      P.forEach((q, i) => { if (done.includes(i)) return; const d = flat(q.x, q.z, p.x, p.z); if (d < bd) { bd = d; t = { x: V[i].x, z: V[i].z, label: 'Lookout: scope the nest', r: 4 }; } });
       return t;
     },
     dispose() { /* nothing of ours in the world */ },
@@ -115,7 +163,7 @@ export function sabotage(c: StepCtx, s: S<'sabotage'>): Ctl {
   const g = c.g, done = c.points();
   let chan = -1, t = 0, hp0 = 0, alerts = 0;
   const items = s.pts.map(([x, z], i) => g.interact.add({
-    id: `fq_${c.q.id}_dev${i}`, pos: new THREE.Vector3(x, ground(g, x, z) + 0.6, z), radius: 2.8, icon: 'bolt', priority: 2,
+    id: `fq_${c.q.id}_dev${i}`, pos: new THREE.Vector3(x, ground(g, x, z) + 0.6, z), radius: 2.8, icon: 'bolt', priority: 3,
     label: s.label, enabled: () => !done.includes(i) && chan < 0 && !g.player.dead,
     onUse: () => { chan = i; t = 0; hp0 = g.state.d.hp; g.sfx('lever'); },
   }));
@@ -446,12 +494,20 @@ export function rare(c: StepCtx, s: S<'rare'>): Ctl {
 }
 
 // ------------------------------------------------------------------ sequence (read the lamp, touch the stakes)
+/**
+ * Watch the lamp, then touch the stakes in the order it flashes. The rule stays on screen while it is being
+ * solved: near the lamp the timer slot spells out each flash as it is seen; once a whole round has been watched
+ * it holds the order, the count, and which stake is next, and the waypoint goes to that stake.
+ */
 export function sequence(c: StepCtx, s: S<'sequence'>): Ctl {
   const g = c.g, [lx, lz] = s.lamp;
   // a reload starts the reading again (the order is drawn fresh)
   if (c.prog() > 0) c.reset();
   const perm = () => { const o = [0, 1, 2]; for (let i = 2; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [o[i], o[j]] = [o[j], o[i]]; } return o; };
   let order = perm(), t = 0;
+  // the flashes seen in this round (from its first), and whether a whole round has been watched
+  let seen: number[] = [], read = false, lastN = -1;
+  const Name = (i: number) => s.names[i].charAt(0).toUpperCase() + s.names[i].slice(1);
   const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), new THREE.MeshBasicMaterial({ color: 0x222222, fog: false }));
   lamp.position.set(lx, ground(g, lx, lz) + 1.92, lz); g.scene.add(lamp);
   const items = s.stakes.map(([x, z], i) => g.interact.add({
@@ -463,7 +519,7 @@ export function sequence(c: StepCtx, s: S<'sequence'>): Ctl {
       // out of true: the line jumps
       g.sfx('arc_zap'); g.fx.emit({ x, y: ground(g, x, z) + 1, z }, { count: 18, speed: [2, 6], up: 2, life: [0.2, 0.5], size: [0.05, 0.12], color: 0x9fd8ff, glow: 5, gravity: 4, radius: 0.3 });
       g.combat.hurtPlayer(Math.round(g.state.maxHp * 0.06), { x, y: ground(g, x, z) + 1, z }, 1);
-      order = perm(); t = 0; c.reset();
+      order = perm(); t = 0; c.reset(); seen = []; read = false; lastN = -1;
       c.fail('Out of true', 'The order changed. Watch the lamp again.');
     },
   }));
@@ -475,11 +531,22 @@ export function sequence(c: StepCtx, s: S<'sequence'>): Ctl {
       (lamp.material as THREE.MeshBasicMaterial).color.setHex(on ? s.colors[order[n]] : 0x222222);
       lamp.visible = !g.interior && flat(pl(g).x, pl(g).z, lx, lz) < 80;
       if (Math.random() < dt * 3 && on) g.fx.emit(lamp.position, { count: 1, speed: [0.2, 0.5], up: 0.6, life: [0.4, 0.7], size: [0.2, 0.3], color: s.colors[order[n]], glow: 4, gravity: 0, radius: 0.05 });
+      // reading it: a flash counts when the player is near enough to see the lamp; a round read from its first flash is the order
+      const p = pl(g), dl = flat(p.x, p.z, lx, lz);
+      if (on && n !== lastN) {
+        lastN = n;
+        if (dl < 32 && !g.interior) { if (n === 0) seen = []; if (seen.length === n) seen.push(order[n]); if (seen.length === 3) read = true; }
+      }
+      if (!on && n >= 3) lastN = -1;
+      if (c.prog() >= 3 || dl > 60 || g.interior) return;
+      if (read) g.hud.setTimer(`Lamp order: ${order.map((i) => s.names[i]).join(', ')}`, `${c.prog()}/3`, `Next: the ${s.names[order[c.prog()]]} stake`);
+      else g.hud.setTimer('Theodolite lamp', seen.length ? seen.map((i) => s.names[i].toUpperCase()).join(' ') : 'WATCH', dl < 32 ? 'It flashes the stake order' : 'Go closer to read the lamp');
     },
     target() {
       const p = pl(g);
-      // the waypoint never gives the order away: it sits on the lamp, the stakes are the area round it
-      return { x: lx, z: lz, y: ground(g, lx, lz) + 2.6, label: flat(p.x, p.z, lx, lz) > 30 ? 'Theodolite' : 'Watch the lamp', r: 22 };
+      // until the lamp has been read the waypoint sits on it; once read, on the next stake in its order
+      if (read && c.prog() < 3) { const i = order[c.prog()], [x, z] = s.stakes[i]; return { x, z, label: `${Name(i)} stake` }; }
+      return { x: lx, z: lz, y: ground(g, lx, lz) + 2.6, label: flat(p.x, p.z, lx, lz) > 30 ? 'Theodolite' : 'Watch the lamp' };
     },
     dispose() { for (const it of items) g.interact.remove(it); g.scene.remove(lamp); lamp.geometry.dispose(); (lamp.material as THREE.Material).dispose(); },
   };
@@ -543,6 +610,8 @@ export function weak(c: StepCtx, s: S<'weak'>): Ctl {
       if (s.elite) { const slot = g.mobs.elites.find((e) => e.def.id === s.elite)!; const m = slot.mob; return m?.alive ? { x: m.pos.x, z: m.pos.z, label: slot.def.name } : { x: slot.def.x, z: slot.def.z, label: slot.def.name }; }
       const p = pl(g); let best: Target | null = null, bd = 1e9;
       for (const m of g.mobs.list) if (m.alive && m.kind === s.kind) { const d = flat(m.pos.x, m.pos.z, p.x, p.z); if (d < bd) { bd = d; best = { x: m.pos.x, z: m.pos.z, label: s.label }; } }
+      // none standing near yet (camps fill as the player comes): the nearest camp of the kind
+      if (!best) for (const cp of CAMPS) if (cp.kind === s.kind && !cp.night) { const d = flat(cp.x, cp.z, p.x, p.z); if (d < bd) { bd = d; best = { x: cp.x, z: cp.z, label: s.label }; } }
       return best;
     },
     onWeak(m, zone) {

@@ -111,7 +111,7 @@ export const FIELD_QUESTS: FieldQuest[] = [
     intro: ['Plumb Line Prime sits on the east pass and calls everything it sees out of level. Including me.', 'There is a right way to take it down. Shoot its lens first, then the level bubble on its back, in that order, then finish it. Out of order and it just recalibrates.'],
     mid: 'At Plumb Line Prime: shoot the lens, then the bubble, in that order. Then finish it.',
     outro: ['Level. Finally, everything on this hill is level. Thank you. Do not move anything.'],
-    objectives: [{ on: k('b3_level', 0), n: 2, text: 'Prime: lens, then bubble' }, { on: k('b3_level', 1), n: 1, text: 'Level Plumb Line Prime' }],
+    objectives: [{ on: k('b3_level', 0), n: 2, text: 'Shoot Prime: lens, then bubble' }, { on: k('b3_level', 1), n: 1, text: 'Level Plumb Line Prime' }],
     steps: [{ t: 'weak', elite: 'plumb_prime', order: ['LENS', 'BUBBLE'], label: 'Prime' }, { t: 'elite', id: 'plumb_prime' }] }),
   // ------------------------------------------------------------------ The Slagworks: Foundry Steward Okoro Hale
   F({ id: 'b4_hot', band: 4, name: 'Hot Delivery', giver: 'quest_b4', level: 10, min: 1, scrip: 320,
@@ -137,7 +137,7 @@ export const FIELD_QUESTS: FieldQuest[] = [
     intro: ['Copy. You will want to learn the riveters before they learn you. Their drum feeds the gun, their eye aims it.', 'Break a drum, then the eye, on the same riveter. Twice. Eye first and the drum just reloads blind. Over.'],
     mid: 'On one riveter: shoot its drum, then its eye. Do it on two riveters.',
     outro: ['Calibrated. You shoot like a lineman now. That is the best thing I say about anyone.'],
-    objectives: [{ on: k('b5_calib', 0), n: 2, text: 'Riveters: drum, then eye' }],
+    objectives: [{ on: k('b5_calib', 0), n: 2, text: 'Shoot riveters: drum, then eye' }],
     steps: [{ t: 'weak', kind: 'riveter', order: ['DRUM', 'EYE'], label: 'Riveter' }] }),
   F({ id: 'b5_reel', band: 5, name: 'Last Reel', giver: 'quest_b5', level: 14, requires: ['b5_calib'], min: 2, scrip: 700, items: [['core', 1]],
     intro: ['The line to the far gate is down. Dace is carrying the last reel of cable out to the junction. Riveters will hear her coming.', 'Walk her out, keep them off her. Old Reliable sits on the gate itself. When the reel is down, retire him. Over and out.'],
