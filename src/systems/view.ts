@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { FirstPersonFeed, View } from '../core/camera';
 import { clamp, clamp01 } from '../core/util';
+import { GU } from '../gfx/material';
 import { DOWN, type FpDraw, type HumanoidRig } from '../entities/humanoid/types';
 import type { Game } from '../game';
 
@@ -119,6 +120,8 @@ export class ViewSystem {
     // the lens inside a robot (a leap that lands on it, a dash through it): fade the robot out round the eyes
     const n = 0.06 + 0.5 * this.insideK, f = 0.3 + 2.2 * this.insideK;
     out.set(0.38 * k + (n - 0.38 * k) * e, k + (f - k) * e);
+    // the hole a crown opens over the hero is a third-person thing: not at the eyes, not in a cutscene
+    GU.uHeroV.value.w = clamp01(k * (1 - e));
   }
   private insideK = 0;
   /** How deep the eye is inside any robot's body, 0..1, smoothed. */

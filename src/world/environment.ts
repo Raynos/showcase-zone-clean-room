@@ -91,6 +91,8 @@ export interface InteriorLook {
 const cA = new THREE.Color(), cB = new THREE.Color();
 function mixHex(out: THREE.Color, a: number, b: number, t: number) { cA.setHex(a); cB.setHex(b); return out.copy(cA).lerp(cB, t); }
 
+const _q = new THREE.Quaternion(), _v = new THREE.Vector3();
+
 export class Environment {
   sky = new Sky();
   sun = new SunLight(0xffffff, 3);
@@ -292,6 +294,13 @@ export class Environment {
     // under 50 m out in portrait, while the cascades have nearly four times the width to cover. They
     // reach that much less far, and the ground map's stand-in for far shade takes over sooner.
     GU.uHero.value = camera.position.distanceTo(focus);
+    {
+      // the hero's head and the world's up as the camera sees them, for the hole a crown opens over the hero (gfx/material.ts)
+      const q = _q.copy(camera.quaternion).invert(), h = GU.uHeroV.value, w = h.w;
+      _v.set(focus.x, focus.y + 1.5, focus.z).sub(camera.position).applyQuaternion(q);
+      h.set(_v.x, _v.y, _v.z, w);
+      GU.uUpV.value.set(0, 1, 0).applyQuaternion(q);
+    }
     const reach = Math.round(renderer.quality.shadowDist * (camera.aspect > 1.2 ? this.shadowWide : 1));
     if (reach !== CASTER.dist) this.setShadowQuality(renderer.quality.shadowSize, reach);
     if (this.forcedHour !== null) {

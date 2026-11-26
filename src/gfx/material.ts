@@ -23,6 +23,13 @@ export const GU = {
   uNearFade: { value: new THREE.Vector2(0, 0) },
   /** metres from the camera to the hero: foliage standing between the two is not drawn */
   uHero: { value: 6 },
+  /**
+   * the hero's head in view space, and (w) how far the camera is a third-person one (0 at the eyes and in
+   * cutscenes): a crown hanging over the hero or just beyond them opens round the line from lens to hero
+   */
+  uHeroV: { value: new THREE.Vector4(0, 0, -6, 0) },
+  /** the world's up in view space */
+  uUpV: { value: new THREE.Vector3(0, 1, 0) },
 };
 
 /**
@@ -202,7 +209,7 @@ export class WorldMaterial extends THREE.MeshStandardMaterial {
       sh.uniforms.uTime = GU.uTime; sh.uniforms.uWind = GU.uWind; sh.uniforms.uNoise = GU.uNoise;
       sh.uniforms.uWet = GU.uWet; sh.uniforms.uEmitBoost = GU.uEmitBoost; sh.uniforms.uCharFill = GU.uCharFill;
       sh.uniforms.uFlash = this.flash; sh.uniforms.uRim = this.rim; sh.uniforms.uEmitMul = this.emitMul;
-      sh.uniforms.uNearFade = GU.uNearFade; sh.uniforms.uHero = GU.uHero;
+      sh.uniforms.uNearFade = GU.uNearFade; sh.uniforms.uHero = GU.uHero; sh.uniforms.uHeroV = GU.uHeroV; sh.uniforms.uUpV = GU.uUpV;
       sh.uniforms.uKeyRim = GU.uKeyRim; sh.uniforms.uSheen = GU.uSheen;
       if (wind) { ensureFoliage(); sh.uniforms.uLeaf = FOLIAGE.uLeaf; }
       if (!wind && !rim) { ensureDecals(); sh.uniforms.uDecal = DECALS.uDecal; sh.uniforms.uStory = SURF_U.uStory; sh.uniforms.uTrack = SURF_U.uTrack; }
@@ -232,19 +239,36 @@ precision highp sampler2DArray;
 uniform sampler2DArray uTexA; uniform sampler2DArray uTexN; uniform sampler2D uNoise;
 uniform vec4 uFlash; uniform vec4 uRim; uniform float uEmitBoost; uniform float uEmitMul; uniform float uWet; uniform vec3 uCharFill; uniform vec2 uNearFade; uniform vec3 uKeyRim; uniform float uSheen;
 varying float vLayer; varying float vEmit; varying vec2 vWUv;
-${wind ? 'varying float vSway; uniform sampler2D uLeaf; float gLeaf; uniform float uHero;' : ''}
+${wind ? '#define LEAF_CONE 0.46\n#define LEAF_LAYER 19.0\nvarying float vSway; uniform sampler2D uLeaf; float gLeaf; uniform float uHero; uniform vec4 uHeroV; uniform vec3 uUpV;' : ''}
 ${!wind && !rim ? 'uniform sampler2D uDecal;\n' + SURFACE_GLSL : ''}
 vec4 gTA; vec4 gTN;`)
-        .replace('#include <map_fragment>', /* glsl */ `${wind ? /* glsl */ `if (vSway > 0.02) {
+        .replace('#include <map_fragment>', /* glsl */ `${wind ? /* glsl */ `if (vSway > 0.02 || abs(vLayer - LEAF_LAYER) < 0.5) {
+  // (leaves, and the dark core a clump of leaf cards is built round, which barely sways)
   // Leaves at the lens, and leaves standing in the way of the hero, are not drawn. A crown the camera has
   // backed into opens in a round hole with a thin stippled edge (not a sheet of stipple across the
   // screen); what is off to the side of the hero, or beyond them, stays whole.
   float nd = length(vViewPosition);
+  float dn = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
   if (nd < max(4.4, uHero)) {
-    float dn = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
     float side = length(vViewPosition.xy) / max(vViewPosition.z, 0.05);
     float keep = smoothstep(3.0, 4.4, nd) * max(smoothstep(0.26, 0.42, side), smoothstep(uHero - 1.2, uHero - 0.2, nd));
     if (keep < dn) discard;
+  }
+  // The same hole carried on along the line from the lens to the hero, in third person: a crown that hangs
+  // over the hero covered the top half of a portrait screen in a fight. What opens is the part of it within
+  // five metres of the hero on the ground and above their head (grass and bushes at their feet stay), so a
+  // tree that stands clear of the fight is whole; the hole closes round, with the same thin stippled lip.
+  if (uHeroV.w > 0.0) {
+    vec3 pv = -vViewPosition;
+    float hl = length(uHeroV.xyz);
+    vec3 hd = uHeroV.xyz / max(hl, 0.01);
+    float ht = dot(pv, hd);
+    vec3 hv = pv - uHeroV.xyz;
+    float hu = dot(hv, uUpV);
+    // (the dark core a clump of cards is built round goes a card's reach sooner, or it is left hanging bare)
+    float hg = length(hv - uUpV * hu) - (vLayer > 99.5 ? 0.0 : 1.8);
+    float hr = uHeroV.w * LEAF_CONE * smoothstep(0.2, 1.1, hu) * (1.0 - smoothstep(4.6, 5.6, hg));
+    if (ht > 0.5 && hr > 0.02 && smoothstep(hr * 0.86, hr, length(pv - hd * ht) / ht) < dn) discard;
   }
 }` : ''}
 {
