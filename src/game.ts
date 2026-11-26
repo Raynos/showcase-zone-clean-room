@@ -91,6 +91,8 @@ export class Game {
   dev = new URLSearchParams(location.search).has('dev');
   private fpsAcc = 0; private fpsN = 0; fps = 60;
   started = false;
+  /** the WebGL context was lost: the game stops drawing and reloads once it can (boot) */
+  glLost = false;
 
   async boot(canvas: HTMLCanvasElement, progress: (p: number, label: string) => void) {
     installFog();
@@ -188,11 +190,11 @@ export class Game {
     // them when the tab is backgrounded) cannot be rebuilt in place: save, then reload once it is back.
     {
       const cv = this.renderer.canvas, glc = this.renderer.gl.getContext();
-      let lost = false;
-      const recover = () => { if (lost && !document.hidden) location.reload(); };
-      cv.addEventListener('webglcontextlost', (e) => { e.preventDefault(); lost = true; this.savePos(); });
+      // nothing is drawn from the loss until the reload: a restored context has none of the world's buffers
+      const recover = () => { if (this.glLost && !document.hidden) location.reload(); };
+      cv.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.glLost = true; this.savePos(); });
       cv.addEventListener('webglcontextrestored', recover);
-      document.addEventListener('visibilitychange', () => { if (!document.hidden && (lost || glc.isContextLost())) { lost = true; setTimeout(recover, 600); } });
+      document.addEventListener('visibilitychange', () => { if (!document.hidden && (this.glLost || glc.isContextLost())) { this.glLost = true; setTimeout(recover, 600); } });
     }
     this.resize();
     setView(this, this.state.d.settings.view === 'first' ? 'first' : 'third', { instant: true, save: false });
@@ -419,6 +421,7 @@ export class Game {
 
   frame(now: number) {
     requestAnimationFrame((t) => this.frame(t));
+    if (this.glLost) { this.last = now; return; }
     const rdt = Math.min(0.05, Math.max(0.001, (now - this.last) / 1000));
     this.last = now;
     this.time += rdt;
