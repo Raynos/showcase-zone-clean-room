@@ -24,6 +24,12 @@ const FP_BOB = 0.6;
  */
 /** On a horse: how far (m) the eyes sit above and ahead of the rider's, and the share of the gallop's head motion they take (times the bob setting). */
 const FP_RIDE = { up: 0.3, ahead: 0.06, bob: 0.5 };
+/**
+ * Close targets (ViewSystem.close): a robot this tall or taller counts as big; the view widens by `fov`
+ * degrees as the gap to its body closes from `near` to `full` metres. The pitch assist reaches `assistR`
+ * metres past a target's body, leaves `dead` radians of error alone, and closes the rest at `rate` per second.
+ */
+const FP_CLOSE = { bigH: 2.8, near: 4, full: 1, fov: 14, assistR: 6, dead: 0.12, rate: 3 };
 const FP_VIG = { roll: 0.22, down: 0.4, dead: 0.5 };
 const reducedMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
 const ease = (u: number) => { const x = clamp01(u); return x * x * (3 - 2 * x); };
@@ -152,6 +158,7 @@ export class ViewSystem {
     if (cr.view !== 'first' && cr.eyeAmount <= 0 && !cr.fp && !cr.adsEye) { this.vignette(0, dt); this.baseOk = false; return null; }
     if (!rig?.eyes || !rig.eyeRest) return null;
     this.inside(dt);
+    this.close(dt);
     const f = this.feedOut, p = pl.pose, loc = p.locomotion, act = pl.action ?? '';
     // the lens as last drawn, in the hero's own frame: first-person arms are posed to it (humanoid/fpview.ts `fpMove`)
     // (against where the body was when that picture was taken: at a zipline's speed the body has since moved a hand's breadth)
@@ -256,6 +263,35 @@ export class ViewSystem {
     if (k < 0.001) post.vignette -= k;
   }
   private vigAdd = 0;
+  private wideK = 0;
+  /**
+   * Close targets in first person (FP_CLOSE), both under Settings:
+   *  - `fpWideClose` (on unless set false): within a stride of a big robot's body (an elite, a warden, the
+   *    Titan) the field of view widens, so a telegraph or a weak point reads instead of a wall of torso.
+   *  - `fpAssist` (off unless set true): the view's pitch eases toward a locked melee target that is close
+   *    and above or below the crosshair (a mite at the feet). Off by default: first person never turns the
+   *    view by itself unless the player asks for it.
+   */
+  private close(dt: number) {
+    const g = this.game, cr = g.cameraRig, s = g.state.d.settings, eye = cr.eye;
+    let wide = 0;
+    if (s.fpWideClose !== false) for (const m of g.mobs.list) {
+      if (!m.alive || m.height < FP_CLOSE.bigH) continue;
+      const gap = Math.hypot(m.pos.x - eye.x, m.pos.z - eye.z) - m.radius;
+      wide = Math.max(wide, clamp01((FP_CLOSE.near - gap) / (FP_CLOSE.near - FP_CLOSE.full)));
+    }
+    this.wideK += (wide - this.wideK) * Math.min(1, dt * (wide > this.wideK ? 2.5 : 1.2));
+    cr.fpFovOffset += FP_CLOSE.fov * this.wideK * this.wideK * (3 - 2 * this.wideK);
+    const t = g.combat.target;
+    if (s.fpAssist !== true || cr.eyeAmount < 0.9 || g.combat.stance === 'shooter' || !t || !t.alive || g.input.lookX || g.input.lookY) return;
+    const c = t.center(this._c), d = Math.hypot(c.x - eye.x, c.z - eye.z);
+    if (d > FP_CLOSE.assistR + t.radius) return;
+    // aim at the body's middle, or at most a hand above the feet for something short
+    const want = clamp(Math.atan2(eye.y - Math.max(c.y, t.pos.y + 0.35), Math.max(0.5, d)), -0.6, 1.0);
+    const err = want - cr.pitch;
+    if (Math.abs(err) > FP_CLOSE.dead) cr.pitch += (err - Math.sign(err) * FP_CLOSE.dead) * Math.min(1, dt * FP_CLOSE.rate);
+  }
+  private _c = new THREE.Vector3();
   private lastBase = new THREE.Vector3(); private baseOk = false;
   private rideMean = new THREE.Vector3(); private _d = new THREE.Vector3();
   /** +1 when moving to the view's right, -1 to its left. */

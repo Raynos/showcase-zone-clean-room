@@ -87,6 +87,9 @@ export interface SaveData {
     /** first person: degrees added to the landscape field of view (unset: fpFov, which is then portrait's), and how much of the
      *  stride's head motion the eyes take, 0..1 (unset: 0.6; headBob off or reduced motion: none) */
     fpFovWide?: number; bob?: number;
+    /** first person, close targets (systems/view.ts FP_CLOSE): widen the view beside a big robot (unset: on); ease the
+     *  view's pitch toward a close locked melee target (unset: off) */
+    fpWideClose?: boolean; fpAssist?: boolean;
     /** shooter stance (systems/shooter.ts): aim button hold or tap-toggle (unset: toggle, on touch and with a mouse); look speed aimed;
      *  touch aim assist on/off, its slow-down and pull 0..1; gyroscope aiming and its sensitivity */
     adsMode?: 'hold' | 'tap'; adsSens?: number; aimAssist?: boolean; assistSlow?: number; assistPull?: number; gyro?: boolean; gyroSens?: number };
