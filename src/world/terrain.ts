@@ -11,6 +11,8 @@ const TV = TN + 1;
 const MAP = 1024;
 
 export class Terrain {
+  /** metres from the camera past which a 100 m slab of ground is drawn in 4 m blocks, not 2 m cells */
+  static FAR = 150;
   heights = new Float32Array(TV * TV);
   group = new THREE.Group();
   colorMap!: THREE.DataTexture;   // rgb ground colour, a grass density
@@ -243,12 +245,37 @@ ${STORY_GLSL}`)
         const nx = hl - hr, nz = hu - hd2, ny = 2 * TCELL, il = 1 / Math.hypot(nx, ny, nz);
         nor[o] = nx * il; nor[o + 1] = ny * il; nor[o + 2] = nz * il;
       }
-      const idx = new Uint16Array(CS * CS * 6);
+      // Two sets of triangles over the same vertices: every 2 m cell, and (for a slab seen from far
+      // off) 4 m blocks. A block on the slab's edge keeps the edge's middle vertex, as a fan about its
+      // own centre, so a far slab meets a near one without a crack.
+      const fine = CS * CS * 6, HB = CS / 2;
+      const idx = new Uint16Array(fine + (HB * HB * 2 + HB * 4 * 3 + 8) * 3);
       let k = 0;
       for (let j = 0; j < CS; j++) for (let i = 0; i < CS; i++) {
         const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
         idx[k++] = a; idx[k++] = d; idx[k++] = b; idx[k++] = a; idx[k++] = c; idx[k++] = d;
       }
+      for (let j = 0; j < CS; j += 2) for (let i = 0; i < CS; i += 2) {
+        const v = (di: number, dj: number) => (j + dj) * n + i + di;
+        const W = i === 0, E = i === CS - 2, N = j === 0, S = j === CS - 2;
+        if (!W && !E && !N && !S) {
+          const a = v(0, 0), b = v(2, 0), c = v(0, 2), d = v(2, 2);
+          idx[k++] = a; idx[k++] = d; idx[k++] = b; idx[k++] = a; idx[k++] = c; idx[k++] = d;
+          continue;
+        }
+        // the rim of the block, the way the cells above wind (a, c, d): down the west side, along the south, up the east, back along the north
+        const rim = [v(0, 0)];
+        if (W) rim.push(v(0, 1));
+        rim.push(v(0, 2));
+        if (S) rim.push(v(1, 2));
+        rim.push(v(2, 2));
+        if (E) rim.push(v(2, 1));
+        rim.push(v(2, 0));
+        if (N) rim.push(v(1, 0));
+        const mid = v(1, 1);
+        for (let q = 0; q < rim.length; q++) { idx[k++] = mid; idx[k++] = rim[q]; idx[k++] = rim[(q + 1) % rim.length]; }
+      }
+      const coarse = k - fine;
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
       g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
@@ -260,6 +287,11 @@ ${STORY_GLSL}`)
       // slab out of shadow cascades (and views) it only brushes.
       m.receiveShadow = true; m.castShadow = true;
       const box = g.boundingBox!;
+      // (the far set from TERRAIN_FAR metres; a shadow is always thrown by the near one)
+      let far = false;
+      const set = (f: boolean) => { if (f !== far) { far = f; g.setDrawRange(f ? fine : 0, f ? coarse : fine); } };
+      m.onBeforeRender = (_r, _s, camera) => set(box.distanceToPoint(camera.position) > Terrain.FAR);
+      m.onBeforeShadow = () => set(false);
       m.intersectsFrustum = (f) => (f as THREE.Frustum).intersectsBox(box);
       m.matrixAutoUpdate = false;
       // after every other opaque mesh: the ground shader is the costliest per pixel and most of it

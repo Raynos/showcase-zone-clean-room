@@ -170,7 +170,7 @@ export class Environment {
   /** Redraw the far shadow cascade every n-th frame; the near one, where the characters are, is drawn every frame. */
   farEvery = 1;
   /** share of the tier's shadow reach kept in landscape */
-  shadowWide = 0.7;
+  shadowWide = 0.6;
   private farFresh = false; private farAge = 0;
   private farMatrix = new THREE.Matrix4();
   /**

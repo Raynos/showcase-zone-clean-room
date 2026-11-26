@@ -51,7 +51,7 @@ const KEY_FLAT = 1e9, KEY_ALWAYS = 1e6;
 /** Glowing primitives under GLOW_CAST metres are trim (never cast) that carries GLOW_FAR times as far as its size would. */
 const GLOW_CAST = 1.5, GLOW_FAR = 10;
 /** In landscape the view is half as tall in pixels and nearly four times as wide: detail goes this much sooner. */
-const LOD_WIDE = 1.4;
+const LOD_WIDE = 1.7;
 /** Leaf primitives under this size key (a crown's fill cards, see below) throw no shadow in any cascade: the core and the other half of the cards do. */
 const LEAF_CAST = 0.16;
 /** Height above the ground from which a thing counts as standing tall, for the far shade baked into the ground map. */
@@ -217,6 +217,8 @@ export class Chunks {
   group = new THREE.Group();
   /** A primitive stops drawing when it would cover fewer than about this many rendered pixels across. */
   lodPx = 2.5;
+  /** the same, times this, in a landscape frame (see LOD_WIDE) */
+  lodWide = LOD_WIDE;
   /** `ground(x, z)` is the terrain height; with it, slabs lying on the ground are kept out of the shadow pass. */
   constructor(private ground: ((x: number, z: number) => number) | null = null) {
     for (let i = 0; i < N * N; i++) { this.solidG.push(this.staging()); this.leafG.push(this.staging()); }
@@ -704,7 +706,7 @@ export class Chunks {
     this.frame++;
     this.heightsNear(camera.position);
     // metres a primitive must span, per metre of distance, to cover `lodPx` pixels
-    const k = (this.lodPx * (camera.aspect > 1.2 ? LOD_WIDE : 1) * (600 / viewDist) * 2 * Math.tan((camera.fov * Math.PI) / 360)) / Math.max(1, viewportPx);
+    const k = (this.lodPx * (camera.aspect > 1.2 ? this.lodWide : 1) * (600 / viewDist) * 2 * Math.tan((camera.fov * Math.PI) / 360)) / Math.max(1, viewportPx);
     const eye = camera.position;
     // a far-layer square is one mesh from where its cells' tighter culling stops paying: past the shadow cascades at the least
     const farAt = Math.max(FAR_AT, CASTER.dist * 1.25);

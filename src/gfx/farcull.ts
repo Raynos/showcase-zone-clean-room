@@ -15,12 +15,14 @@ import * as THREE from 'three';
 export class FarCull {
   /** rendered pixels across, under which a thing is not drawn */
   px = 9;
+  /** the same in a landscape frame, which is under half as tall in pixels and holds far more of the zone */
+  pxWide = 12;
   private hidden: THREE.Object3D[] = [];
   private size = new WeakMap<THREE.Object3D, { r: number; n: number }>();
 
   hide(scene: THREE.Scene, camera: THREE.PerspectiveCamera, viewportPx: number) {
     // metres across, per metre of distance, that `px` pixels cover
-    const k = (this.px * 2 * Math.tan((camera.fov * Math.PI) / 360)) / camera.zoom / Math.max(1, viewportPx);
+    const k = ((camera.aspect > 1.2 ? this.pxWide : this.px) * 2 * Math.tan((camera.fov * Math.PI) / 360)) / camera.zoom / Math.max(1, viewportPx);
     const eye = camera.position;
     for (const c of scene.children) {
       if (!c.visible || (c as { isLight?: boolean }).isLight) continue;
