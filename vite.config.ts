@@ -1,4 +1,5 @@
 import { defineConfig, type Plugin } from 'vite';
+import { serviceWorker } from './tools/release/pwa';
 
 /**
  * Rapier's compat package carries its 3 MB physics wasm as 4.1 MB of base64 inside the JS, which
@@ -25,6 +26,6 @@ function rapierWasmFile(): Plugin {
 export default defineConfig({
   base: './',
   server: { host: true, port: 5173, hmr: { overlay: false } },
-  plugins: [rapierWasmFile()],
+  plugins: [rapierWasmFile(), serviceWorker()],
   build: { target: 'es2022', chunkSizeWarningLimit: 1200 },
 });

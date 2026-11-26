@@ -88,7 +88,7 @@ export function mountLoading(root: HTMLElement): Loading {
     const dl = files ? (dlTotal ? dlLoaded / dlTotal : filesDone / files) : 0;
     target = loadstats.ready ? 1 : Math.min(0.99, 0.3 * dl + 0.7 * loadstats.build);
     now.textContent = loadstats.ready ? 'Ready' : sentence(loadstats.label);
-    foot.textContent = `${mb(dlLoaded)} downloaded · ${filesDone} of ${files} files${cached ? ` · ${cached} from this device` : ''}${failed ? ` · ${failed} missing, using stand-ins` : ''}`;
+    foot.textContent = `${mb(dlLoaded)} downloaded · ${filesDone} of ${files} files${cached ? ` · ${cached} from this device` : ''}${failed ? ` · ${failed} missing, using stand-ins` : ''}${loadstats.offline === 'ready' ? ' · saved for offline play' : ''}`;
   };
   const unsub = loadstats.subscribe(paint);
   paint();
