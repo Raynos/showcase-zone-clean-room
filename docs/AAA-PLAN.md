@@ -1045,6 +1045,38 @@ one weapon in hand, game seconds from first aggro to death):
 - Shift Boss Slag at level 12 with the Rivet Rifle: 188 s, a win, so
   not trivial. The bow's full draw was not tried.
 
+### Sound, round 2 (2026-11-26)
+
+Measured only. Nobody listened. Headless desktop Chrome, no phone. The
+details and a sentence per new sound are in `docs/AUDIO.md`.
+
+- Effects went from 363 to 481, loops from 32 to 46. Music still has 17
+  states.
+- Every mechanic in COMBAT.md "Elites and bosses" now has a tell, a
+  counter and a fail. So do Exam: Final (8 lamp pitches) and the
+  planted fist. Tells play on a telegraph bus with their own voices,
+  and they duck the music a little.
+- Tell distinctness on a phone-speaker model (300 Hz to 9 kHz): 36
+  tells. The closest pair is tell_slam and tell_spin, at a distance of
+  7.2.
+- Window tones: vent and fist are 40 dB down 6-10 ms after their window
+  closes, measured in the live game.
+- New content with sound: outposts, signal posts, fast travel, field
+  quests, Tally Book, After Hours, the opening shot, the map and the
+  tray. Conversations have five voices. Adventurers and smiths are
+  quiet crowd sounds. Welders, steam vents and cranes are positional
+  loops.
+- Faults fixed:
+  - About six ui_press per tap: the talk sheet ticked every sixth
+    letter. Fixed with the voice and one UI sound per frame.
+  - 1,026 hit_metal_light: the town smiths' hammers, now crowd sounds.
+  - The dialogue duck never fired: the panel is `talk`, not `dialog`.
+  - A sentry volley rang 12 thunder rolls in 10 s.
+- Worst case offline: -2.7 dBFS peak, no clipping. Each of the five
+  sliders moves only its own bus, and the Voices slider is new.
+- The quick wheel keeps its round-1 sounds (open, hover, pick). They
+  were not changed this round.
+
 ## 7. Risks
 
 - **Phone reality.** Every performance number is from desktop Chrome. The
