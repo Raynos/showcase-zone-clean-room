@@ -72,7 +72,7 @@ window.__audit = null;
     row.near = near(obj.on, t2, extra);
     if (!row.near.length) row.fail.push('nothing that counts within ' + Math.max(R, t2.r || 0) + ' m');
     if (!row.verb) row.fail.push('text has no verb');
-    if (extra?.danger) { const d = flat(t2.x, t2.z, extra.danger[0], extra.danger[1]); if (d < extra.dangerR) row.fail.push(`points into what it watches (${Math.round(d)} m)`); }
+    for (const dz of extra?.dangers || []) { const d = flat(t2.x, t2.z, dz[0], dz[1]); if (d < extra.dangerR) row.fail.push(`points into what it watches (${Math.round(d)} m)`); }
     rows.push(row);
     return t2;
   }
@@ -90,7 +90,7 @@ window.__audit = null;
   }
   // ---------------------------------------------------------------- field quests
   const STEP_EXTRA = {
-    scan: (s) => ({ prompts: /^$/, danger: s.pts[0], dangerR: 16, scanFrom: true }),
+    scan: (s) => ({ prompts: /^$/, dangers: s.pts, dangerR: 16, scanFrom: true }),
     escort: () => ({ prompts: /_go$/ }),
     defend: () => ({ prompts: /_def$/ }),
     run: () => ({ prompts: /_run$/ }),
@@ -113,7 +113,7 @@ window.__audit = null;
       // (built outside the runner's live set, which would tidy it away; one update places what it draws)
       const t = await check(q.name, i, o, at, () => { if (!ctl) ctl = runner.make(q, i, step); ctl.update(0.016); return ctl.target(); }, ex);
       // a lookout must see what it watches: the nest within the step's range
-      if (t && step.t === 'scan') { const r = rows[rows.length - 1], d = flat(t.x, t.z, step.pts[0][0], step.pts[0][1]); if (d > step.range) r.fail.push('nest out of scope range'); else r.near.push(`nest ${Math.round(d)} m off, in range`); if (r.fail[0] && /^nothing/.test(r.fail[0])) r.fail.shift(); }
+      if (t && step.t === 'scan') { const r = rows[rows.length - 1], d = Math.min(...step.pts.map((q) => flat(t.x, t.z, q[0], q[1]))); if (d > step.range) r.fail.push('nest out of scope range'); else r.near.push(`nest ${Math.round(d)} m off, in range`); if (r.fail[0] && /^nothing/.test(r.fail[0])) r.fail.shift(); }
       // before the lamp is read the waypoint is the lamp itself, the thing to watch
       if (t && step.t === 'sequence') { const r = rows[rows.length - 1]; if (flat(t.x, t.z, step.lamp[0], step.lamp[1]) < 1) { r.near.push('the lamp to watch'); if (r.fail[0] && /^nothing/.test(r.fail[0])) r.fail.shift(); } }
       if (step.t === 'drop' && step.part !== 'call' && !rows[rows.length - 1].near.length) { const r = rows[rows.length - 1]; r.fail = []; r.near = ['n/a: needs a drop in flight']; }
