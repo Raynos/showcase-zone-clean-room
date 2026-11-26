@@ -147,7 +147,11 @@ export function build(game: Game) {
         if (k === 2) {
           // giant extraction fan
           g.cyl(5.4, 5.4, 0.7, 20, { at: [0, 28, -0.25], rot: [Math.PI / 2, 0, 0], color: PAL.slateDeep, layer: T.METAL });
-          g.cyl(4.5, 4.5, 0.1, 20, { at: [0, 28, -0.64], rot: [Math.PI / 2, 0, 0], color: 0x2a8fa8, emit: 0.9 });
+          // (a dark throat with a lit rim and a guard over the blades: a flat lit disc behind them read as a sticker on the wall)
+          g.cyl(4.5, 4.5, 0.1, 20, { at: [0, 28, -0.64], rot: [Math.PI / 2, 0, 0], color: 0x123842, emit: 0.3 });
+          g.torus(4.3, 0.16, 6, 28, { at: [0, 28, -0.72], color: 0x5ef0ff, emit: 1.6 });
+          for (const rr of [1.9, 3.3]) g.torus(rr, 0.07, 5, 24, { at: [0, 28, -1.16], color: PAL.slateDark, layer: T.METAL });
+          for (let b = 0; b < 4; b++) g.box(9.6, 0.12, 0.12, { at: [0, 28, -1.16], rot: [0, 0, (b / 4) * Math.PI + 0.2], color: PAL.slateDark, layer: T.METAL });
           g.torus(5.1, 0.5, 8, 28, { at: [0, 28, -0.7], color: PAL.orange, layer: T.METAL });
           for (let b = 0; b < 6; b++) { const ba = (b / 6) * TAU + i; g.box(1.1, 4.3, 0.16, { at: [-Math.sin(ba) * 2.4, 28 + Math.cos(ba) * 2.4, -0.85], rot: [0, 0.35, ba], color: PAL.slateDark, layer: T.METAL }); }
           g.cyl(0.9, 0.9, 0.5, 10, { at: [0, 28, -0.95], rot: [Math.PI / 2, 0, 0], color: PAL.orangeDeep, layer: T.METAL });
