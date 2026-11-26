@@ -867,6 +867,87 @@ view and stick. It takes these shortcuts:
 - it hits weak points by name;
 - god mode is on except for the deaths under test.
 
+### Collections and endgame (2026-11-26)
+
+Committed in `020e004`. Data: `src/data/tally.ts`, `src/data/overtime.ts`.
+Systems: `src/systems/tally.ts`, `src/systems/overtime/`. Panel:
+`src/ui/panels/tally.ts`, opened from the menu tray (Tally) and the cog
+exchange.
+
+**Tally Book.** One log of 155 entries. Each reads where the save
+already keeps it, so old finds count.
+
+| Category      | Entries | Source in the save              |
+|---------------|--------:|---------------------------------|
+| Cogs          |      52 | `found`, `flags` (strongboxes)  |
+| Vistas        |       9 | `found`                         |
+| Caches        |      19 | `found`                         |
+| Secrets       |       5 | `found`                         |
+| Signal posts  |       6 | `field.posts`                   |
+| Elites, bosses|      11 | `kills`                         |
+| Named rares   |       6 | `tally.own` (from now on)       |
+| Course medals |       7 | `pbs` against par               |
+| Trophies      |      19 | `trophies`                      |
+| Armoury       |      13 | `weapons`                       |
+| After hours   |       8 | `tally.own`                     |
+
+- Totals by category, by area (town and west, six bands, underground)
+  and overall.
+- A missing entry shows its area and a one-line clue, never coordinates.
+  Dressing nooks get a clue from their height and the nearest map name.
+- 18 sets pay scrip, items, titles, perk points (`tally.perks`, added in
+  `state.perksFree`) or a weapon tuning. No XP.
+- A cog toast in the notice lane names the cog and the running count.
+  A set fires a `SET COMPLETE` headline, `victory_sting` and the level
+  burst.
+- Old Bram in Brasswick trades pack cogs: kits (3), 250 scrip (4), blast
+  bolts (4), a logic core (6), a tuning (12), a one-off tuning (25), the
+  title Brass Baron (30, once).
+- 11 new cogs, two a band (one in band 1), drawn by the west kit. Each
+  was picked up by walking and jumping from open ground nearby.
+- Save: a `tally` block. Absent on old saves: the first load enters all
+  existing finds quietly, pays the sets they complete, and posts one feed
+  line.
+
+**After hours.** Opens with the first Titan kill. A headline and a tip
+point to the menu; Brask's outro gains one line.
+
+| Activity    | Way in            | Record               | Reset      |
+|-------------|-------------------|----------------------|------------|
+| Overtime    | vault, arena door | best, medal, clears  | rule daily |
+| Backhaul    | town board        | freight points       | day, week  |
+| Long Shift  | gauntlet prompt   | best waves           | week       |
+| Course medal| any course        | best medal           | none       |
+
+- Overtime: robots at level 20 with health x1.35 and damage x1.25
+  (vault), x1.4 and x1.3 (Titan), one of four rules a day, par 6, 8, 11
+  min (vault) and 5, 7, 10 min (Titan). A death, leaving or the bronze
+  time ends it. Paid by medal, once a week, and for each first medal.
+- Backhaul: two band orders and one course at silver a day, two weekly.
+  While clocked in, robots spawning in an ordered band are raised to the
+  player's level less one (elites to it). A weekly track at 4, 9, 15
+  and 22 freight points; a title at 60 lifetime.
+- Long Shift: court A, endless waves at level 20 that grow 6% in health
+  a wave, an elite every fifth. Medals at 5, 10 and 15 waves, a weekly
+  target of 10.
+- Days are local midnights and weeks start on Monday, from the device
+  clock. `game.overtime.clock.now` is the test stub.
+
+**Verified** at 402x874 (and the panel at 874x402) on `?q=medium`:
+- a fresh save walked to a cog, got the toast, and opened the book from
+  the tray;
+- a rewritten pre-book save kept its 26 finds and was paid the medal set
+  once;
+- a level-20 save killed the Titan, got the hand-over, failed an
+  overtime vault (death), finished an overtime Titan (gold), ran six Long
+  Shift waves, clocked in and filled a scrap order with level-19 robots;
+- moving the stubbed clock a day and a week reset the orders, the
+  freight track and the weekly bonuses and kept the records.
+
+Shortcuts: teleports between places, robots and the Titan defeated with
+`combat.strikeTarget`, god mode except for the death. The overtime vault
+was never finished, and no par time has been timed by a person.
+
 ## 7. Risks
 
 - **Phone reality.** Every performance number is from desktop Chrome. The
