@@ -10,8 +10,8 @@ import { SP } from '../gfx/fx';
 import { RAY_WORLD } from '../core/physics';
 import type { HitInfo, Hittable } from './combat';
 import { Statuses, applyStatus, tickStatus } from './status';
-import { BREAK, MECH_ATTACKS, TELE_RED, threatMul } from '../data/enemies';
-import { Mech } from './mechanics';
+import { BREAK, TELE_RED, threatMul } from '../data/enemies';
+import { makeMech, type Mech } from './mechanics';
 import { WindupArrows } from './warn';
 import { Finishers } from './finisher';
 import { SHIELD_ARC, SHIELD_FRONT, roleFor, type RoleDef } from '../data/shooter-roles';
@@ -22,6 +22,8 @@ type MState = 'spawn' | 'idle' | 'chase' | 'windup' | 'active' | 'recover' | 'st
 export const BROKEN_TAKEN = 1.4;
 const NO_FX: string[] = [];
 
+/** A run's modifiers on a robot (Mob.run): damage taken, stagger taken, the signature mechanic's pace, the rule. */
+export interface RunMods { taken: number; poise: number; trick: number; rule: string }
 export interface MobOpts {
   level: number; variant?: RobotVariant; x: number; z: number; y?: number; elite?: EliteDef; name?: string;
   camp?: Camp; hpMul?: number; dmgMul?: number; scale?: number; noLoot?: boolean; aggro?: boolean;
@@ -88,6 +90,20 @@ export class Mob implements Hittable {
   mech: Mech | null = null;
   /** stagger damage multiplier (elite armour) */
   poiseMul = 1;
+  /** damage taken while stunned by a trick (vented, unhorsed, dazed, reloading); back to 1 when it stands */
+  stunTaken = 1;
+  /** a heat glow over the body (0..1, Overheat) */
+  heatGlow = 0;
+  /** lying as if dead (Lucky Lid) */
+  fakeDead = false;
+  /** seconds a finisher is offered whatever its health or class (a perfect-dodge counter broke it) */
+  freeFinish = 0;
+  /**
+   * A run's modifiers (overtime, systems/overtime/): a layer of its own on top of everything the
+   * encounter scripts set (`poiseMul`, `dmgTakenMul`, phase changes), so neither overwrites the other.
+   * `trick` speeds the signature mechanics' clocks (2 = twice as often). Set once, with applyRun().
+   */
+  run: RunMods = { taken: 1, poise: 1, trick: 1, rule: '' };
   /** height a flyer holds above its feet in the shooter stance (data/shooter-roles.ts) */
   fly = 0;
   private roleDef: RoleDef | null | undefined; private roleAtk: AttackDef[] | null = null; private laneL = 0;
@@ -137,8 +153,8 @@ export class Mob implements Hittable {
     g.scene.add(this.rig.root);
     this.rig.update(0, this.pose);
     this.flank = (this.id % 2 ? 1 : -1) * rand(0.5, 1.1);
-    if (o.elite?.mech) this.mech = new Mech(this, o.elite.mech);
-    this.attacks = o.elite?.mech && MECH_ATTACKS[o.elite.mech] ? [...this.def.attacks, ...MECH_ATTACKS[o.elite.mech]!] : this.def.attacks;
+    this.mech = makeMech(this, o);
+    this.attacks = this.mech?.extra.length ? [...this.def.attacks, ...this.mech.extra] : this.def.attacks;
   }
   private get brk() { return this.isBoss ? BREAK.boss : this.cls === 'elite' ? BREAK.elite : BREAK.common; }
   /** stagger damage that breaks this robot */
@@ -171,8 +187,9 @@ export class Mob implements Hittable {
   takeDot(n: number, color: number) {
     if (!this.alive || this.invuln || this.state === 'spawn') return;
     const g = this.mobs.game;
-    const dmg = Math.max(1, Math.round(n * this.dmgTakenMul * (this.state === 'broken' ? BROKEN_TAKEN : 1) * (this.mech?.takenMul(null) ?? 1)));
+    const dmg = Math.max(1, Math.round(n * this.dmgTakenMul * this.run.taken * (this.state === 'broken' ? BROKEN_TAKEN : 1) * (this.mech?.takenMul(null) ?? 1)));
     this.hp -= dmg;
+    if (this.hp <= 0 && this.mech?.cheatDeath()) this.hp = 1;
     if (g.state.d.settings.dmgNumbers) { this.center(_v); g.hud.damage({ x: _v.x + rand(-0.4, 0.4), y: _v.y + this.height * 0.2, z: _v.z + rand(-0.4, 0.4) }, String(dmg), 'dot'); }
     void color;
     if (!this.aggro) { this.aggro = true; this.mobs.alertNear(this); }
@@ -234,7 +251,7 @@ export class Mob implements Hittable {
     if (!this.alive || this.invuln || this.state === 'spawn') return 0;
     const g = this.mobs.game;
     const mechMul = (this.mech ? this.mech.takenMul(h) : 1) * (this.summoner?.mech?.larvaMul(h) ?? 1);
-    let dmg = Math.max(1, Math.round(h.dmg * this.dmgTakenMul * mechMul * (this.state === 'broken' ? BROKEN_TAKEN : 1)));
+    let dmg = Math.max(1, Math.round(h.dmg * this.dmgTakenMul * this.run.taken * mechMul * (this.state === 'broken' ? BROKEN_TAKEN : this.state === 'stun' ? this.stunTaken : 1)));
     if (this.guarded) dmg = Math.max(1, Math.round(dmg * GUARD));
     else if (this.state === 'return') dmg = Math.max(1, Math.round(dmg * 0.2));
     this.hurtT = 0; this.mending = false;
@@ -249,11 +266,12 @@ export class Mob implements Hittable {
     const tough = this.isBoss || this.cls === 'elite';
     // the stagger meter: heavies, breakers and counters fill it fastest; it drains when the robot is left alone
     if (this.state !== 'broken' && this.breakImmune <= 0) {
-      this.stag += dmg * (h.poise ?? 1) * (h.heavy ? 1.15 : 1) * this.poiseMul * (this.mech ? this.mech.poiseMul(h) : 1);
+      this.stag += dmg * (h.poise ?? 1) * (h.heavy ? 1.15 : 1) * this.poiseMul * this.run.poise * (this.mech ? this.mech.poiseMul(h) : 1);
       this.stagIdle = 0;
     }
     if (h.status) applyStatus(this, h.status, g.state.attackPower);
     const interruptible = this.state === 'chase' || this.state === 'windup' || this.state === 'recover' || this.state === 'idle';
+    if (this.hp <= 0 && this.mech?.cheatDeath()) { this.hp = 1; this.mech.onHit(h, dmg); return dmg; }
     if (this.hp <= 0) { this.hp = 0; this.die(); return dmg; }
     if (this.state !== 'broken' && this.breakImmune <= 0 && this.stag >= this.staggerCap) this.breakNow();
     else if (h.stun && !this.isBoss && this.state !== 'broken') {
@@ -290,6 +308,8 @@ export class Mob implements Hittable {
     this.stagIdle += dt;
     if (this.state !== 'broken' && this.stagIdle > 2.2 && this.stag > 0) this.stag = Math.max(0, this.stag - this.staggerCap * 0.14 * dt);
     if (this.breakImmune > 0) this.breakImmune -= dt;
+    if (this.freeFinish > 0) this.freeFinish -= dt;
+    if (this.state !== 'stun') { this.stunTaken = 1; this.fakeDead = false; }
     this.seesT -= dt;
     tickStatus(this, dt);
     if (!this.alive && this.state !== 'dead') return;
@@ -369,7 +389,7 @@ export class Mob implements Hittable {
         if (!this.aggro) { this.setState('return'); break; }
         const seen = this.isBoss || !outdoors || this.sees();
         // tied to home: past its reach it falls back on guard (a ranged robot first holds the edge and shoots)
-        const lim = this.reachLeash, ranged = !!(this.role?.keep ?? this.def.keep);
+        const lim = this.reachLeash, ranged = !!(this.mech?.keep ?? this.role?.keep ?? this.def.keep);
         // and when it cannot close on a player beyond its attacks (a ledge, a wall, a player out past its reach),
         // it breaks off rather than stand there being plinked
         if (dist < this.bestD - 1) { this.bestD = dist; this.stuckT = 0; } else this.stuckT += dt;
@@ -379,7 +399,7 @@ export class Mob implements Hittable {
         const reach = this.radius + 0.5;
         // against a ranged weapon some robots fight differently (data/shooter-roles.ts)
         const role = this.role;
-        const keep = role?.keep ?? this.def.keep, sk = role?.strafe ?? 0.45;
+        const keep = this.mech?.keep ?? role?.keep ?? this.def.keep, sk = role?.strafe ?? 0.45;
         if (role?.turn) turn *= role.turn;
         this.strafeT -= dt;
         if (this.strafeT <= 0) { this.strafeT = role?.strafe ? rand(0.9, 2.2) : rand(1.5, 3.5); this.strafe = Math.random() < 0.5 ? -1 : 1; }
@@ -406,7 +426,7 @@ export class Mob implements Hittable {
           else if (waiting) { wantVx = -dz * this.strafe * speed * 0.5; wantVz = dx * this.strafe * speed * 0.5; if (dist < stop - 1) { wantVx -= dx * speed * 0.5; wantVz -= dz * speed * 0.5; } }
         }
         // pick an attack (needs a line of sight; a player who stands still invites the leaps, lobs and charges)
-        if (this.gcd <= 0 && this.mobs.canAttack(this) && Math.abs(angleDiff(this.yaw, toPlayer)) < 0.9 && seen && (this.isBoss || this.sees())) {
+        if (this.gcd <= 0 && !this.mech?.busy && this.mobs.canAttack(this) && Math.abs(angleDiff(this.yaw, toPlayer)) < 0.9 && seen && (this.isBoss || this.sees())) {
           const eff = dist - this.radius * (this.isBoss ? 0.5 : 0.3);
           const still = this.mobs.playerStill > 1.6;
           let total = 0;
@@ -494,9 +514,10 @@ export class Mob implements Hittable {
         break;
       }
       case 'stun': {
-        this.pose.action = 'stun'; this.pose.t = (this.pose.time * 0.8) % 1; this.pose.charge = 0;
+        if (this.fakeDead) { this.pose.action = 'death'; this.pose.t = 0.75; } else { this.pose.action = 'stun'; this.pose.t = (this.pose.time * 0.8) % 1; }
+        this.pose.charge = 0;
         if (this.atk) { this.mobs.release(this); this.atk = null; this.lift = 0; }
-        if (Math.random() < dt * 8) g.fx.emit(this.center(_v), { count: 1, speed: [1, 3], life: [0.2, 0.4], size: [0.05, 0.1], color: 0x7ff0ff, glow: 4, sprite: SP.STREAK, stretch: 0.08, radius: this.radius });
+        if (!this.fakeDead && Math.random() < dt * 8) g.fx.emit(this.center(_v), { count: 1, speed: [1, 3], life: [0.2, 0.4], size: [0.05, 0.1], color: 0x7ff0ff, glow: 4, sprite: SP.STREAK, stretch: 0.08, radius: this.radius });
         if (this.stT >= 0.6) { this.setState('chase'); this.gcd = Math.max(this.gcd, 0.3); }
         break;
       }
@@ -605,6 +626,7 @@ export class Mob implements Hittable {
     else if (S.t.burn > 0) { const b = 0.2 + 0.12 * Math.sin(t * 17) * Math.sin(t * 5.3); if (b > w) { col = 0xff5a10; w = b; } }
     else if (S.t.shock > 0) { const b = Math.random() < 0.25 ? 0.55 : 0.12; if (b > w) { col = 0x9ff6ff; w = b; } }
     else if (S.t.jam > 0) { const b = Math.sin(t * 11) > 0.55 ? 0.45 : 0.26; if (b > w) { col = 0xffc21a; w = b; } }
+    else if (this.heatGlow > 0.02) { const b = this.heatGlow * (0.8 + 0.2 * Math.sin(t * 13)); if (b > w) { col = 0xff8a2a; w = b; } }
     if (col !== this.tintCol) { this.tintCol = col; _c.setHex(col); for (const m of this.rig.materials) m.flash.value.set(_c.r, _c.g, _c.b, w); }
     else for (const m of this.rig.materials) m.flash.value.w = w;
   }
@@ -689,11 +711,33 @@ export class Mob implements Hittable {
 
   private hurt(a: AttackDef, mult = 1, from?: THREE.Vector3) {
     const g = this.mobs.game;
-    return g.combat.hurtPlayer(this.dmg * a.dmg * mult, from ?? this.pos, a.knock ?? 2, this);
+    if (this.mech?.strike(a)) return false;
+    const hit = g.combat.hurtPlayer(this.dmg * a.dmg * mult, from ?? this.pos, a.knock ?? 2, this);
+    if (hit) this.mech?.landed();
+    return hit;
+  }
+  /** Apply a run's modifiers: health and damage now, the rest as a standing layer (see `run`). */
+  applyRun(o: Partial<RunMods> & { hp?: number; dmg?: number }) {
+    if (o.hp && o.hp !== 1) { this.maxHp = Math.round(this.maxHp * o.hp); this.hp = Math.round(this.hp * o.hp); }
+    if (o.dmg) this.dmg *= o.dmg;
+    const r = this.run;
+    if (o.taken) r.taken *= o.taken;
+    if (o.poise) r.poise *= o.poise;
+    if (o.trick) r.trick *= o.trick;
+    if (o.rule) r.rule = o.rule;
+  }
+  /** Start an attack now, whatever the AI would have picked (a mechanic's own move). */
+  forceAttack(a: AttackDef) {
+    if (!this.alive || this.state === 'broken' || this.state === 'dead' || this.state === 'spawn' || this.state === 'stun' || this.state === 'return') return false;
+    this.endTele(); this.locked = false; this.lift = 0;
+    if (this.atk) this.mobs.release(this);
+    this.beginAttack(a);
+    return true;
   }
 
   private onActiveStart(a: AttackDef) {
     const g = this.mobs.game, pl = g.player, fx = g.fx;
+    this.mech?.onActive(a);
     const y = this.pos.y;
     switch (a.type) {
       case 'melee': {
@@ -829,6 +873,7 @@ export class Mob implements Hittable {
           const hit = g.physics.raycast(_v, _d, this.radius + sp * dt + 0.3);
           if (hit || (this.floor === null && g.terrain.h(this.pos.x + sy * 1.5, this.pos.z + cy * 1.5) - this.pos.y > 1.6)) {
             this.fired = 2; this.stT = a.active; // crash: end early, long recover
+            this.mech?.onCrash(a);
             fx.hitSparks(_v.addScaledVector(_d, this.radius), _d.clone().negate(), 0xffc46a, 1.5);
             g.cameraRig.shake(0.2); g.sfx('enemy_crash', { pos: this.pos });
           } else { this.pos.x += sy * sp * dt; this.pos.z += cy * sp * dt; }
@@ -890,14 +935,21 @@ export class Mob implements Hittable {
         this.yaw = yaw;
         const sy = Math.sin(yaw), cy = Math.cos(yaw);
         const src = this.rig.sockets.core.getWorldPosition(_v); src.y = this.pos.y + 1.0;
-        _v2.set(this.pos.x + sy * a.length!, this.pos.y + 1.0, this.pos.z + cy * a.length!);
+        // the beam stops at anything solid: the Warden's hall pillars are cover from it
+        _d.set(sy, 0, cy);
+        const r0 = this.radius + 0.2;
+        _v2.copy(src).addScaledVector(_d, r0);
+        const block = g.physics.raycast(_v2, _d, a.length! - r0, RAY_WORLD);
+        const reach = block ? r0 + block.dist : a.length!;
+        _v2.set(this.pos.x + sy * reach, this.pos.y + 1.0, this.pos.z + cy * reach);
         fx.beam(src, _v2, a.color ?? 0x7ff0ff, a.width!, 0.06, 0.08, 5);
         fx.beam(src, _v2, 0xffffff, a.width! * 0.3, 0.06, 0, 6);
+        if (block && Math.random() < dt * 30) fx.emit(_v2, { count: 2, speed: [2, 5], life: [0.1, 0.3], size: [0.06, 0.12], color: a.color ?? 0x7ff0ff, glow: 5, sprite: SP.STREAK, stretch: 0.07 });
         if (this.tele) { const m = this.tele.mesh, l = a.length! / 2; m.rotation.y = yaw; m.position.set(this.pos.x + sy * l, this.pos.y + 0.07, this.pos.z + cy * l); }
         this.tick -= dt;
         const dx = pl.pos.x - this.pos.x, dz = pl.pos.z - this.pos.z;
         const along = dx * sy + dz * cy, side = Math.abs(dx * cy - dz * sy);
-        if (this.tick <= 0 && along > 0 && along < a.length! && side < a.width! / 2 + 0.4 && Math.abs(pl.pos.y - this.pos.y) < 2.4) {
+        if (this.tick <= 0 && along > 0 && along < reach && side < a.width! / 2 + 0.4 && Math.abs(pl.pos.y - this.pos.y) < 2.4) {
           this.tick = a.interval ?? 0.4;
           this.hurt(a);
         }
@@ -926,6 +978,7 @@ export class Mob implements Hittable {
 
   dispose() {
     this.endTele();
+    this.mech?.dispose();
     this.mobs.game.scene.remove(this.rig.root);
     this.rig.dispose();
   }

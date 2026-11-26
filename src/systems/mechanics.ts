@@ -1,11 +1,16 @@
 import * as THREE from 'three';
 import { angleDiff, rand } from '../core/util';
-import type { AttackDef, MechDef } from '../data/enemies';
+import { MECH_ATTACKS, type AttackDef, type EliteDef, type MechDef } from '../data/enemies';
 import { SP } from '../gfx/fx';
 import type { HitInfo } from './combat';
-import type { Mob } from './mobs';
+import type { Mob, MobOpts } from './mobs';
+import { CHAMPION } from '../data/grind';
+import { HINT, makeTricks } from './mechanics/roster';
+import type { Grudge, Overheat, Trick, TrickId } from './mechanics/tricks';
 
 const _v = new THREE.Vector3(), _w = new THREE.Vector3();
+/** when each named robot last introduced itself (game time): once in ten minutes is enough */
+const TOLD = new Map<string, number>();
 
 /**
  * Elite signature mechanics. Each gate elite has one, and each asks for one specific answer:
@@ -16,48 +21,74 @@ const _v = new THREE.Vector3(), _w = new THREE.Vector3();
  *   ram      Big Pallet's forklift plating takes a quarter of the stagger damage. Its ram is fast and
  *            floors the player; roll through it and counter while it skids, and it breaks outright.
  *   plumb    Plumb Line Prime holds a laser on the player for three seconds. Rolling dodges a tick at
- *            a time; standing behind something solid stops it. Answer: break line of sight.
+ *            a time; standing behind something solid stops it. A heavy blow, a full-draw shot or a
+ *            shot to the lens while it aims or holds cuts the line and leaves it reeling for 2.4 s.
+ *            Answer: break line of sight, or cut the line.
  *   plate    Shift Boss Slag wears a slag plate that turns aside 80% of damage and all stagger. Only a
- *            breaker (or a full-charge rifle round) cracks it, for nine seconds. Answer: a breaker.
+ *            breaker (or a full-draw arrow, bolt or rifle round) cracks it, for nine seconds. Answer: a breaker.
  *   bulwark  Old Reliable's riveted front takes a quarter of the damage and turns slowly. Its flanks
  *            and back take a quarter more. Answer: get round it.
  */
 export class Mech {
-  speedMul = 1;
+  private baseSpeed = 1;
   turnMul = 1;
   /** plate: seconds until the plate re-forms (0 while it is up) */
   private crackT = 0;
   /** ram: seconds since the ram ended (the counter window) */
   private sinceRam = 99;
-  private fxT = 0; private hintT = 0;
-  constructor(public m: Mob, public kind: MechDef) {
-    if (kind === 'bulwark') { this.turnMul = 0.4; this.speedMul = 0.75; }
+  private fxT = 0; private hintT = 0; private told = false;
+  /** the attacks the mechanic and the tricks bring on top of the kind's kit */
+  readonly extra: AttackDef[];
+  /**
+   * `kind` is a gate elite's own mechanic (null for everyone else); `tricks` are the signature tricks of
+   * night elites, rares, champions and the named elites of the gauntlet and the vault (mechanics/tricks.ts).
+   */
+  constructor(public m: Mob, public kind: MechDef | null, public tricks: Trick[] = [], private hint = '') {
+    if (kind === 'bulwark') { this.turnMul = 0.4; this.baseSpeed = 0.75; }
     if (kind === 'ram') m.poiseMul = 0.25;
+    this.extra = [...(kind ? MECH_ATTACKS[kind] ?? [] : []), ...tricks.flatMap((t) => t.attacks)];
   }
   private get g() { return this.m.mobs.game; }
+  trick<T extends Trick = Trick>(id: TrickId): T | null { return (this.tricks.find((t) => t.id === id) as T) ?? null; }
+  /** a trick is doing something else: the robot picks none of its own attacks */
+  get busy() { return this.tricks.some((t) => t.busy); }
+  get speedMul() { let k = this.baseSpeed; for (const t of this.tricks) k *= t.speedMul; return k; }
+  get keep() { for (const t of this.tricks) if (t.keep) return t.keep; return null; }
   /** brood: larvae still alive */
   private brood() { return this.m.mobs.countSummons(this.m); }
   get shielded() { return this.kind === 'brood' && this.brood() >= 2; }
-  get plated() { return this.kind === 'plate' && this.crackT <= 0; }
+  /** plate: up, unless cracked, or melted off while the robot vents (Hot Mess) */
+  get plated() { return this.kind === 'plate' && this.crackT <= 0 && !this.trick<Overheat>('overheat')?.venting; }
+  onActive(a: AttackDef) { for (const t of this.tricks) t.onActive(a); }
+  strike(a: AttackDef) { for (const t of this.tricks) if (t.strike(a)) return true; return false; }
+  onCrash(a: AttackDef) { for (const t of this.tricks) t.onCrash(a); }
+  cheatDeath() { for (const t of this.tricks) if (t.cheatDeath()) return true; return false; }
+  /** the robot's own blow landed on the player */
+  landed() { this.trick<Grudge>('grudge')?.landed(); }
+  dispose() { for (const t of this.tricks) t.dispose(); }
   /** Is the hit coming at the robot's front? (dirX/dirZ point from the attacker to the robot) */
   private frontal(h: HitInfo) {
     const fx = Math.sin(this.m.yaw), fz = Math.cos(this.m.yaw);
     return -(h.dirX * fx + h.dirZ * fz) > Math.cos(1.2);
   }
   takenMul(h: HitInfo | null): number {
+    let k = 1;
+    for (const t of this.tricks) k *= t.takenMul(h);
     switch (this.kind) {
-      case 'brood': return this.shielded ? 0.2 : 1;
-      case 'plate': return this.plated ? 0.2 : 1.15;
-      case 'bulwark': return h ? (this.frontal(h) ? 0.25 : 1.25) : 1;
-      default: return 1;
+      case 'brood': return k * (this.shielded ? 0.2 : 1);
+      case 'plate': return k * (this.plated ? 0.2 : 1.15);
+      case 'bulwark': return k * (h ? (this.frontal(h) ? 0.25 : 1.25) : 1);
+      default: return k;
     }
   }
   poiseMul(h: HitInfo): number {
+    let k = 1;
+    for (const t of this.tricks) k *= t.poiseMul(h);
     switch (this.kind) {
-      case 'plate': return this.plated ? 0 : 1;
-      case 'bulwark': return this.frontal(h) ? 0.3 : 1.2;
-      case 'brood': return this.shielded ? 0.2 : 1;
-      default: return 1;
+      case 'plate': return k * (this.plated ? 0 : 1);
+      case 'bulwark': return k * (this.frontal(h) ? 0.3 : 1.2);
+      case 'brood': return k * (this.shielded ? 0.2 : 1);
+      default: return k;
     }
   }
   /**
@@ -70,13 +101,14 @@ export class Mech {
   }
   allow(a: AttackDef): boolean {
     if (this.kind === 'brood' && a.id === 'unpack') return this.brood() === 0;
+    for (const t of this.tricks) if (!t.allow(a)) return false;
     return true;
   }
   onHit(h: HitInfo, dmg: number) {
     const m = this.m, g = this.g;
-    void dmg;
     if (!m.alive) return;
-    if (this.kind === 'plate' && this.plated && (h.breaker || (h.heavy && (h.poise ?? 1) >= 3 && h.source === 'rifle'))) {
+    for (const t of this.tricks) t.onHit(h, dmg);
+    if (this.kind === 'plate' && this.plated && (h.breaker || (h.heavy && (h.poise ?? 1) >= 2.5 && h.source !== 'melee'))) {
       // cracked: the plate falls away in glowing pieces and the elite reels
       this.crackT = 9;
       m.center(_v);
@@ -87,6 +119,14 @@ export class Mech {
     } else if (this.kind === 'plate' && this.plated) this.deflect(h, 'PLATED');
     else if (this.kind === 'brood' && this.shielded) this.deflect(h, 'SHELLED');
     else if (this.kind === 'bulwark' && this.frontal(h) && !h.status) this.deflect(h, 'ARMOURED');
+    else if (this.kind === 'plumb' && m.atk?.id === 'plumbline' && (m.state === 'windup' || m.state === 'active') && (h.breaker || h.weak || (h.poise ?? 1) >= 2 || (h.heavy && h.source === 'melee'))) {
+      // the line cut: a heavy blow, a full-draw shot or a shot to the lens knocks the level out of true
+      m.center(_v);
+      g.hud.damage({ x: _v.x, y: _v.y + m.height * 0.5 + 0.6, z: _v.z }, 'LINE CUT', 'crit');
+      g.fx.play('robot.crack', _v, undefined, 0x3fe3ff, m.radius, m.height, [0xff4a3a, 0x3fe3ff, 0xffffff]);
+      g.sfx('enemy_crash', { pos: m.pos, vol: 0.9 }); g.cameraRig.shake(0.3);
+      m.interrupt(2.4); m.stunTaken = 1.4;
+    }
     else if (this.kind === 'ram' && h.forced && (h.poise ?? 1) >= 3 && this.sinceRam < 2.2 && !m.broken && m.breakImmune <= 0) {
       // countered out of its skid: the plating gives way at once
       g.hud.damage(m.center(_v), 'COUNTERED', 'crit');
@@ -101,9 +141,16 @@ export class Mech {
     g.fx.hitSparks(_v, _w.set(-h.dirX, 0.4, -h.dirZ).normalize(), this.kind === 'brood' ? 0x7ff0ff : 0xffc46a, 1.2);
     if (g.time - this.hintT > 0.5) { this.hintT = g.time; g.hud.damage({ x: _v.x, y: _v.y + 0.8, z: _v.z }, word, 'miss'); g.sfx('hit_metal', { pos: m.pos, pitch: 0.7 }); }
   }
-  onBreak() { if (this.kind === 'plate') this.crackT = Math.max(this.crackT, 6); }
+  onBreak() { if (this.kind === 'plate') this.crackT = Math.max(this.crackT, 6); for (const t of this.tricks) t.onBreak(); }
   update(dt: number) {
     const m = this.m, g = this.g;
+    for (const t of this.tricks) t.update(dt);
+    // the first time a fight with it starts, a line says what it does and how to answer it
+    if (this.hint && m.aggro && m.alive && m.state !== 'spawn' && !this.told && Math.hypot(g.player.pos.x - m.pos.x, g.player.pos.z - m.pos.z) < 40) {
+      this.told = true;
+      const last = TOLD.get(m.name) ?? -1e9;
+      if (g.time - last > 600) { TOLD.set(m.name, g.time); g.hud.toast(m.name, 'warn', this.hint); }
+    }
     if (this.crackT > 0) {
       this.crackT -= dt;
       if (this.crackT <= 0 && m.alive) {
@@ -141,4 +188,19 @@ export class Mech {
     }
     void angleDiff;
   }
+}
+
+/**
+ * The mechanic a new robot carries, if any: a gate elite's own (`mech`), a night elite's twist, and
+ * the tricks of rares, champions and named elites (mechanics/roster.ts). Null for everything else.
+ */
+export function makeMech(m: Mob, o: MobOpts): Mech | null {
+  const e: EliteDef | undefined = o.elite;
+  // champions (systems/grind.ts) are elite-variant robots named from the champion roll, with a rank after a nemesis win
+  const champion = !e && m.variant === 'elite' && !m.isBoss && !!o.name && CHAMPION.names.some((n) => o.name === n || o.name!.startsWith(n + ' '));
+  const tricks = makeTricks(m, { twist: e?.twist, name: o.name, champion });
+  if (!e?.mech && !tricks.length) return null;
+  const lines = [e?.mech ? HINT[e.mech] : '', ...tricks.map((t) => HINT[t.id] ?? '')].filter(Boolean);
+  // a night elite's twist comes after its band's mechanic; one line for both
+  return new Mech(m, e?.mech ?? null, tricks, e?.hint ?? lines.join('. '));
 }

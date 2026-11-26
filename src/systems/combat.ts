@@ -37,6 +37,8 @@ export interface HitInfo {
   /** which blow of the weapon's set landed (the Gatecrasher's larvae shrug off the light string) */
   move?: TraitMove;
   source: 'melee' | 'arrow' | 'bolt' | 'rifle' | 'skill'; color: number;
+  /** the weak point a player shot found, by name (elite tricks read it: Slow Burn's tank, Staccato's drum) */
+  weak?: string;
 }
 export interface Hittable {
   pos: THREE.Vector3; radius: number; height: number; alive: boolean; targetable: boolean;
@@ -330,7 +332,7 @@ export class Combat {
     let dx = h.pos.x - fx0, dz = h.pos.z - fz0; const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
     const color = st.weapon.color;
     const mob = h as Partial<Mob>, was = mob.state;
-    const dealt = h.takeHit({ dmg, crit, dirX: dx, dirZ: dz, knock: (o.knock ?? 2) * tr.knock, heavy: !!o.heavy, stun: o.stun, poise, source: o.source, color, status, forced: o.crit === true, breaker: o.breaker || move === 'breaker', move });
+    const dealt = h.takeHit({ dmg, crit, dirX: dx, dirZ: dz, knock: (o.knock ?? 2) * tr.knock, heavy: !!o.heavy, stun: o.stun, poise, source: o.source, color, status, forced: o.crit === true, breaker: o.breaker || move === 'breaker', move, weak: o.weak });
     if (dealt > 0) this.afterHit(h, dealt, o.source, move, broken);
     if (dealt <= 0) { h.center(_c); g.hud.damage({ x: _c.x, y: _c.y + 0.6, z: _c.z }, 'IMMUNE', 'miss'); return 0; }
     h.center(_c);
@@ -447,6 +449,8 @@ export class Combat {
    * Damage the player. Returns true when it landed.
    * `knock` is the attack's knockback; at KNOCKDOWN_KNOCK and above it floors the player whatever the damage.
    */
+  /** what last hurt the player and when (a death report reads it: the nearest robot is not always the culprit) */
+  lastHurt = { by: '', t: -99 };
   hurtPlayer(amount: number, from: { x: number; y: number; z: number }, knock = 2, _src?: Mob | null, dot = false): boolean {
     const g = this.game, pl = g.player, st = g.state;
     if (pl.dead || !this.enabled) return false;
@@ -454,6 +458,7 @@ export class Combat {
     if (st.god) return false;
     const dmg = Math.max(1, Math.round(amount * rand(0.92, 1.08)));
     st.d.hp -= dmg; st.touch();
+    this.lastHurt = { by: _src ? `${_src.name} L${_src.level}${_src.atk ? ' (' + _src.atk.id + ')' : ''}` : dot ? 'damage over time' : 'hazard', t: g.time };
     this.sinceHurt = 0; pl.sinceCombat = 0;
     const c = pl.center;
     // 1 flinch, 2 stagger, 3 knockdown. Mounted or climbing, a hit can only flinch.

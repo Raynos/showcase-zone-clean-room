@@ -1,4 +1,5 @@
 import type { RobotKind, RobotVariant } from '../entities/robots/types';
+import type { TrickId } from '../systems/mechanics/tricks';
 
 export type AttackType = 'melee' | 'leap' | 'charge' | 'shot' | 'lob' | 'cone' | 'ring' | 'beam' | 'slam' | 'summon' | 'rain'
   /** a beam held on the player for `active` seconds, ticking every `interval`; only cover stops it */
@@ -181,17 +182,23 @@ export const ENEMIES: Record<RobotKind, EnemyDef> = {
 };
 
 /** Named elites. Gate elites open their band gate when first beaten. */
-export interface EliteDef { id: string; name: string; kind: RobotKind; level: number; variant: RobotVariant; x: number; z: number; gate?: string; night?: boolean; title: string; respawn: number; hpMul?: number; scale?: number; mech?: MechDef }
+export interface EliteDef {
+  id: string; name: string; kind: RobotKind; level: number; variant: RobotVariant; x: number; z: number; gate?: string; night?: boolean; title: string; respawn: number; hpMul?: number; scale?: number; mech?: MechDef;
+  /** a signature trick on top of (or instead of) `mech`: a night elite's twist, the Foreman's deadline (systems/mechanics/tricks.ts) */
+  twist?: TrickId;
+  /** the line that introduces the fight; by default it is made from the mechanic and the twist */
+  hint?: string;
+}
 export const ELITES: EliteDef[] = [
   { id: 'gatecrasher', name: 'Gatecrasher', kind: 'mite', level: 3, variant: 'elite', x: 65, z: 74, gate: 'g12', title: 'Bane of Boxes', respawn: 300, scale: 2.1, mech: 'brood', hpMul: 1.8 },
   { id: 'big_pallet', name: 'Big Pallet', kind: 'pallet', level: 6, variant: 'elite', x: 108, z: 165, gate: 'g23', title: 'Forklift Certified', respawn: 300, mech: 'ram' },
   { id: 'plumb_prime', name: 'Plumb Line Prime', kind: 'drone', level: 9, variant: 'elite', x: 185, z: 93, gate: 'g34', title: 'Level Headed', respawn: 300, mech: 'plumb', hpMul: 2 },
   { id: 'slag_boss', name: 'Shift Boss Slag', kind: 'welder', level: 12, variant: 'elite', x: 185, z: -68, gate: 'g45', title: 'Union Buster', respawn: 300, mech: 'plate' },
   { id: 'old_reliable', name: 'Old Reliable', kind: 'riveter', level: 15, variant: 'elite', x: 132, z: -165, gate: 'g56', title: 'Riveting Company', respawn: 300, mech: 'bulwark' },
-  { id: 'foreman', name: 'Foreman Unit 7', kind: 'foreman', level: 18, variant: 'elite', x: 78, z: -118, gate: 'shortcut', title: 'Middle Management', respawn: 420, hpMul: 1 },
-  { id: 'sir_nibbles', name: 'Sir Nibbles', kind: 'mite', level: 5, variant: 'nightElite', x: 92, z: -38, night: true, title: 'Knight of the Nibble', respawn: 600, scale: 2.4 },
-  { id: 'hot_mess', name: 'Hot Mess', kind: 'welder', level: 12, variant: 'nightElite', x: 222, z: 52, night: true, title: 'Certified Hot Mess', respawn: 600 },
-  { id: 'riveting_rita', name: 'Riveting Rita', kind: 'riveter', level: 16, variant: 'nightElite', x: 214, z: -196, night: true, title: 'Rita\'s Favourite', respawn: 600 },
+  { id: 'foreman', name: 'Foreman Unit 7', kind: 'foreman', level: 18, variant: 'elite', x: 78, z: -118, gate: 'shortcut', title: 'Middle Management', respawn: 420, hpMul: 1, twist: 'deadline' },
+  { id: 'sir_nibbles', name: 'Sir Nibbles', kind: 'mite', level: 5, variant: 'nightElite', x: 92, z: -38, night: true, title: 'Knight of the Nibble', respawn: 600, scale: 2.4, hpMul: 0.7, mech: 'brood', twist: 'joust', hint: 'Shelled while its larvae live, and it jousts: sweep the larvae, dodge the lance into a wall' },
+  { id: 'hot_mess', name: 'Hot Mess', kind: 'welder', level: 12, variant: 'nightElite', x: 222, z: 52, night: true, title: 'Certified Hot Mess', respawn: 600, mech: 'plate', twist: 'overheat', hint: 'Plated, and it runs hot: when it vents the plate melts off. Back off, then strike' },
+  { id: 'riveting_rita', name: 'Riveting Rita', kind: 'riveter', level: 16, variant: 'nightElite', x: 214, z: -196, night: true, title: 'Rita\'s Favourite', respawn: 600, mech: 'bulwark', twist: 'rivetring', hint: 'Riveted front, and she rivets you in: stay inside the ring and get round her back' },
 ];
 
 /**
@@ -200,7 +207,7 @@ export const ELITES: EliteDef[] = [
 export const MECH_ATTACKS: Partial<Record<MechDef, AttackDef[]>> = {
   brood: [M({ id: 'unpack', type: 'summon', range: [0, 30], windup: 0.9, cd: 13, dmg: 0, summon: 'mite', count: 4, weight: 4, anim: 'attack2' })],
   ram: [M({ id: 'ram', type: 'charge', range: [5, 20], windup: 0.9, active: 0.8, recover: 1.9, cd: 6, dmg: 2.0, width: 2.6, length: 18, speed: 22, knock: 11, weight: 4, anim: 'attack2' })],
-  plumb: [M({ id: 'plumbline', type: 'channel', range: [0, 30], windup: 0.9, active: 3.2, recover: 0.8, cd: 8, dmg: 0.22, interval: 0.2, width: 0.5, length: 32, color: 0xff4a3a, weight: 5, anim: 'attack2' })],
+  plumb: [M({ id: 'plumbline', type: 'channel', range: [0, 30], windup: 1.3, active: 3.2, recover: 0.8, cd: 8, dmg: 0.22, interval: 0.2, width: 0.5, length: 32, color: 0xff4a3a, weight: 5, anim: 'attack2' })],
 };
 
 /** Camps: packs of commons. Positions are hand-placed inside each band; count scales with radius. */

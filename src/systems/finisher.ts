@@ -21,7 +21,7 @@ const DUR = 1.45, IMPACT = 0.62;
 export class Finishers {
   private prompt: Interactable;
   private pos = new THREE.Vector3();
-  private cur: { m: Mob; t: number; yaw: number; pitch: number; hit: boolean; side: number; anim: HumanAction; melee: boolean } | null = null;
+  private cur: { m: Mob; t: number; yaw: number; pitch: number; hit: boolean; side: number; anim: HumanAction; melee: boolean; free: boolean } | null = null;
   private camPos = new THREE.Vector3(); private camLook = new THREE.Vector3();
   constructor(private game: Game) {
     this.prompt = game.interact.add({ id: 'finisher', pos: this.pos, radius: REACH, label: 'Finish', icon: 'skull', priority: 5, enabled: () => !this.cur && !!this.candidate(), onUse: () => this.start() });
@@ -32,8 +32,10 @@ export class Finishers {
     const g = this.game, p = g.player.pos;
     let best: Mob | null = null, bd = REACH;
     for (const m of g.mobs.list) {
-      if (!m.alive || m.state !== 'broken' || m.hpFrac > 0.25) continue;
-      if (m.cls !== 'elite' && m.kind !== 'foreman') continue;
+      // a perfect-dodge counter (an elite trick's freeFinish) offers one whatever the health or class
+      const free = m.freeFinish > 0;
+      if (!m.alive || m.state !== 'broken' || (m.hpFrac > 0.25 && !free)) continue;
+      if (m.cls !== 'elite' && m.kind !== 'foreman' && !free) continue;
       const d = Math.hypot(m.pos.x - p.x, m.pos.z - p.z) - m.radius;
       if (d < bd) { bd = d; best = m; }
     }
@@ -73,7 +75,8 @@ export class Finishers {
     pl.yaw = Math.atan2(-dx, -dz);
     if (Math.abs(step) > 0.1) pl.startLunge(-dx / d * Math.sign(step), -dz / d * Math.sign(step), Math.abs(step), 0.28);
     const anim: HumanAction = k === 'sword' ? SWORD.breaker.anim : k === 'spear' ? SPEAR.breaker.anim : k === 'bow' ? 'bowRelease' : k === 'crossbow' ? 'xbowFire' : 'rifleFire';
-    this.cur = { m, t: 0, yaw: g.cameraRig.yaw, pitch: g.cameraRig.pitch, hit: false, side: 1, anim, melee };
+    this.cur = { m, t: 0, yaw: g.cameraRig.yaw, pitch: g.cameraRig.pitch, hit: false, side: 1, anim, melee, free: m.hpFrac > 0.25 };
+    m.freeFinish = 0;
     const c = this.cur;
     // shoot from whichever shoulder has the clearer view (crates and walls crowd camps)
     const room = (side: number) => { c.side = side; const p = this.shot(0); return this.clear(p, 9); };
@@ -111,11 +114,15 @@ export class Finishers {
       g.hitStop(0.16); g.slowMo(0.2, 0.45); g.cameraRig.shake(0.85); g.cameraRig.punch(-6);
       g.renderer.post.flash.w = Math.max(g.renderer.post.flash.w, 0.12);
       g.sfx('hit_heavy', { pos: m.pos, pitch: 0.7 }); g.sfx('boss_slam', { pos: m.pos, vol: 0.8 }); g.haptic(70);
-      g.hud.damage({ x: _v.x, y: _v.y + m.height * 0.5 + 0.8, z: _v.z }, 'FINISHED', 'crit');
+      g.hud.damage({ x: _v.x, y: _v.y + m.height * 0.5 + 0.8, z: _v.z }, c.free ? 'PUNISHED' : 'FINISHED', 'crit');
       m.invuln = false;
       g.state.events.emit('finisher', { id: m.id, kind: m.kind });
-      g.combat.strikeTarget(m, (m.hp + 10) / Math.max(1, g.state.attackPower) * 1.2, { source: 'melee', heavy: true, knock: 8, crit: true, quiet: true });
-      if (m.alive) { m.hp = 0; m.takeDot(1, 0xffffff); }
+      // a free finisher on a robot above a quarter of its health takes about a third of it (x1.4 broken), not the rest
+      if (c.free) g.combat.strikeTarget(m, (m.maxHp * 0.22) / Math.max(1, g.state.attackPower), { source: 'melee', heavy: true, knock: 8, crit: false, quiet: true });
+      else {
+        g.combat.strikeTarget(m, (m.hp + 10) / Math.max(1, g.state.attackPower) * 1.2, { source: 'melee', heavy: true, knock: 8, crit: true, quiet: true });
+        if (m.alive) { m.hp = 0; m.takeDot(1, 0xffffff); }
+      }
       g.combat.addOverdrive(25);
       g.state.d.energy = g.state.maxEnergy;
     }
