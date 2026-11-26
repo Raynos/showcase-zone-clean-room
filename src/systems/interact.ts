@@ -12,13 +12,16 @@ export interface Interactable {
   onUse: () => void;
   /** higher wins when several overlap */
   priority?: number;
+  /** used from the saddle: the rider stays on the horse (a riding course's start). Anything else is done on foot,
+   *  so using it from horseback steps the rider down first. */
+  saddle?: boolean;
 }
 
 /** Proximity prompts: the nearest enabled interactable shows the context button. */
 export class Interact {
   list: Interactable[] = [];
   current: Interactable | null = null;
-  /** suppress prompts (cutscenes, riding...) */
+  /** suppress prompts (cutscenes, the hoverboard, a grapple swing). A horse does not: prompts work from the saddle. */
   blocked = false;
   constructor(private game: Game) {}
   add(i: Interactable): Interactable { this.list.push(i); return i; }
@@ -41,7 +44,10 @@ export class Interact {
     this.current = best;
     if (best) {
       g.hud.setInteract(typeof best.label === 'function' ? best.label() : best.label, best.icon ?? 'interact');
-      if (g.input.consume('interact')) { g.state.events.emit('interact', { id: best.id }); best.onUse(); }
+      if (g.input.consume('interact')) {
+        if (!best.saddle && g.hooks.mountState?.() === 'horse') g.hooks.dismount?.();
+        g.state.events.emit('interact', { id: best.id }); best.onUse();
+      }
     } else g.hud.setInteract(null);
   }
 }

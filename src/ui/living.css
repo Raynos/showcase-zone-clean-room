@@ -40,8 +40,12 @@
 .hud[data-form=desktop] .lz-chan-b { height: 7px; }
 
 /* ------------------------------------------------------------------ plates */
-.plate.lz-adv .pn { color: #8dffbf; }
-.plate.lz-adv .pt { color: #bfe9d0; letter-spacing: .08em; }
+/* Another player (systems/adventurers.ts): a plate of their own. A cool blue that no townsperson (green, a trade in
+   amber capitals) and no robot (white, gold, purple, red bars) wears; the level as a small figure in a chip before the
+   name; the guild or title under it in the same blue and in its own case. */
+.plate.lz-adv .pn { color: #a9bcff; }
+.plate.lz-adv .pn .pl { display: inline-block; margin-right: 4px; padding: 0 3.5px; border-radius: 3px; font-size: 9.5px; line-height: 1.35; vertical-align: 1px; color: #e6ebff; background: rgba(38, 50, 112, .78); box-shadow: 0 0 0 1px rgba(169, 188, 255, .5); text-shadow: none; }
+.plate.npc.lz-adv .pt { font-size: 9.5px; font-weight: 700; letter-spacing: .03em; text-transform: none; color: #c9d3ff; }
 .plate.lz-tag .pn { color: #b9bec6; }
 .plate.lz-tag .pn .pl { color: #9aa0a8; }
 .plate.lz-tag .pt { font-size: 9px; font-weight: 800; color: #9aa0a8; letter-spacing: .1em; text-transform: uppercase; text-shadow: 0 1px 2px #000; }

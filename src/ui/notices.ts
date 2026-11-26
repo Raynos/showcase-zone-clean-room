@@ -12,6 +12,7 @@
  * quest complete, a zone's name) wait for the fight to end.
  */
 import type { Game } from '../game';
+import { enclosed, screenBusy } from '../systems/intro';
 import type { Hud } from './hud';
 import { icon } from './icons';
 
@@ -60,9 +61,14 @@ export class Notices {
   /** A fight the lane must stay out of. A cinematic is not one: it owns the screen. */
   private fighting() { return this.hud.ctx === 'fight' && !this.game.cameraRig.cine; }
   /** A boss, a vault chamber, the gauntlet: fights whose banners and call-outs are the fight's own directions. */
-  private encounter() {
-    const g = this.game, gs = (g.east as { gState?: string } | null)?.gState;
-    return this.hud.bossUp || !!g.interior || (!!gs && gs !== 'idle');
+  private encounter() { return this.hud.bossUp || enclosed(this.game); }
+  /**
+   * A zone's headline is true only while the hero stands in that zone, in the open and on their feet: a fast travel,
+   * a door into the vault, the gauntlet or the arena, or a fall puts it away at once (the place announces itself).
+   */
+  private stale(n: Note) {
+    const g = this.game;
+    return n.cls.includes(' zone') && (n.title !== g.zoneName || enclosed(g) || g.player.dead);
   }
 
   toast(text: string, kind = 'info', sub = '', ic = '') {
@@ -79,6 +85,8 @@ export class Notices {
 
   banner(b1: string, b2 = '', cls = '') {
     const zone = b1 === this.game.zoneName, danger = cls.includes('danger'), level = cls.includes('level');
+    // zone-wide news has no place indoors (systems/intro.ts, `enclosed`)
+    if (zone && (enclosed(this.game) || this.game.player.dead)) return;
     // the fall owns the screen (hud.downed): the lane says nothing over it
     if (danger && this.game.player.dead) { this.hud.downed(b1, b2); return; }
     // a level is a moment: it lands on the kill that earned it, not after the fight
@@ -166,6 +174,7 @@ export class Notices {
   update(dt: number) {
     this.flushFeed();
     const fight = this.fighting();
+    if (this.cur && this.stale(this.cur)) this.hide();
     if (this.cur) {
       this.t -= dt; this.shown += dt;
       // a tip teaches a control: with the controls away (a panel, a conversation, a cinematic) it goes too
@@ -182,11 +191,15 @@ export class Notices {
       else return;
     }
     if (this.gap > 0) { this.gap -= dt; }
+    const busy = screenBusy(this.game);
     let best = -1;
     for (let i = this.q.length - 1; i >= 0; i--) {
       const n = this.q[i];
       n.age += dt;
       if (n.age > n.hold) { this.q.splice(i, 1); this.drop(n, true); if (best > i) best--; continue; }
+      if (this.stale(n)) { this.q.splice(i, 1); if (best > i) best--; continue; }
+      // a zone's name waits while a conversation, a menu or a cutscene has the screen (`screenBusy`)
+      if (busy && n.cls.includes(' zone')) continue;
       if (fight && !n.fight) continue;
       if (best < 0 || n.pri > this.q[best].pri || (n.pri === this.q[best].pri && n.age >= this.q[best].age)) best = i;
     }

@@ -108,9 +108,10 @@ export function startCinematics(game: Game): Cinematics {
    * HOOK for the HUD (the wording is theirs, docs/PLAYTEST.md finding 10): the skip line for the
    * controls on screen. Touch says tap; keyboard and mouse say click or a key.
    */
-  const skipWords = () => (game.hud?.touchUi ?? game.input.isTouch) ? 'TAP TO SKIP' : 'CLICK OR SPACE TO SKIP';
+  const skipWords = () => game.hud?.skipWords() ?? (game.input.isTouch ? 'TAP TO SKIP' : 'CLICK OR SPACE TO SKIP');
   hint.textContent = skipWords();
-  hint.style.cssText = 'position:absolute;left:0;right:0;bottom:calc(64px + env(safe-area-inset-bottom));text-align:center;font:800 11px/1 system-ui,sans-serif;letter-spacing:.3em;color:#fff;opacity:.55;pointer-events:none;text-shadow:0 1px 3px #000;display:none';
+  hint.className = 'skiphint';   // ui/style.css
+  hint.style.display = 'none';
   document.getElementById('ui')?.appendChild(hint);
 
   const pose = (keys: Key[], t: number) => {

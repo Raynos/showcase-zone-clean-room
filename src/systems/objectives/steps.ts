@@ -200,6 +200,8 @@ export function escort(c: StepCtx, s: S<'escort'>): Ctl {
         // robots on top of the escort wear it down
         for (const m of near) if (flat(m.pos.x, m.pos.z, pos.x, pos.z) < 3.4 + m.radius) hp -= (4 + m.level * 0.25) * dt;
         if (hp <= 0) { failEscort(); return; }
+        // the escort's health rides in the HUD's timer slot, where it can be read with the escort off screen
+        g.hud.setTimer(s.who, `${Math.ceil((hp / s.hp) * 100)}%`, near.length ? 'Under attack' : dp > 16 ? 'Waiting for you' : 'Escort', hp / s.hp);
         // keeps a brisk pace, but waits for the player and ducks while a fight is on top of it
         const wantHold = dp > 16 || near.length > 0;
         if (wantHold && state === 'walk') { state = 'hold'; if (dp > 16 && said <= 0) { said = 8; g.hud.toast(`${s.who}: "Not without you."`, 'quest'); } }
@@ -273,7 +275,7 @@ export function defend(c: StepCtx, s: S<'defend'>): Ctl {
       if (hp <= 0) { fail(`The ${s.label.toLowerCase()} is scattered`); return; }
       if (state === 'gap') {
         gap -= dt;
-        g.hud.setTimer(`Wave ${wave + 1}/${s.waves.length}`, `${Math.max(0, gap).toFixed(0)}s`, away > 0 ? `Back to the stack: ${Math.ceil(8 - away)}s` : `${s.label} ${Math.round((hp / s.hp) * 100)}%`);
+        g.hud.setTimer(`Wave ${wave + 1}/${s.waves.length}`, `${Math.max(0, gap).toFixed(0)}s`, away > 0 ? `Back to the stack: ${Math.ceil(8 - away)}s` : `${s.label} ${Math.round((hp / s.hp) * 100)}%`, hp / s.hp);
         if (gap <= 0) {
           const w = s.waves[wave]; state = 'wave'; live = [];
           for (let n = 0; n < w.n; n++) { const a = (n / w.n) * Math.PI * 2 + wave * 1.3, r = 22; live.push(c.spawn(w, x + Math.cos(a) * r, z + Math.sin(a) * r, true)); }
@@ -282,7 +284,7 @@ export function defend(c: StepCtx, s: S<'defend'>): Ctl {
         return;
       }
       const left = live.filter((m) => m.alive).length;
-      g.hud.setTimer(`Wave ${wave + 1}/${s.waves.length}`, `${left} left`, away > 0 ? `Back to the stack: ${Math.ceil(8 - away)}s` : `${s.label} ${Math.round((hp / s.hp) * 100)}%`);
+      g.hud.setTimer(`Wave ${wave + 1}/${s.waves.length}`, `${left} left`, away > 0 ? `Back to the stack: ${Math.ceil(8 - away)}s` : `${s.label} ${Math.round((hp / s.hp) * 100)}%`, hp / s.hp);
       // a robot that wandered off home is pulled back into the fight
       for (const m of live) if (m.alive && !m.aggro) m.aggro = true;
       if (!left) {
@@ -309,7 +311,7 @@ export function run(c: StepCtx, s: S<'run'>): Ctl {
   const horse = s.mode === 'horse';
   const go = () => { on = true; t = 0; gate = 0; g.sfx('course_start'); g.hud.banner(horse ? 'CHARGE RUN' : 'HOT DELIVERY', `${s.gates.length} gates · ${s.time}s`, ''); };
   const it = g.interact.add({
-    id: `fq_${c.q.id}_run`, pos: new THREE.Vector3(sx, ground(g, sx, sz) + 0.8, sz), radius: horse ? 4.5 : 3, icon: horse ? 'horse' : 'kit', priority: 3,
+    id: `fq_${c.q.id}_run`, pos: new THREE.Vector3(sx, ground(g, sx, sz) + 0.8, sz), radius: horse ? 4.5 : 3, icon: horse ? 'horse' : 'kit', priority: 3, saddle: horse,
     label: () => (horse ? (g.state.flag('horse_whistle') ? 'Mount up, ride through the pylon' : 'Needs a horse: the Stable in Brasswick') : 'Pour an ingot'),
     enabled: () => !on && !g.player.dead,
     onUse: () => {

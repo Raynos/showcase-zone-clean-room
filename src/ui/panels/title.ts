@@ -51,7 +51,7 @@ export function showTitle(host: Host, root: HTMLElement): Promise<void> {
       if (done) return;
       done = true;
       g.audio?.unlock?.();
-      g.sfx('quest_accept');
+      g.sfx('ui_open');   // the interface's own rising cue: no job was taken
       t.classList.add('out');
       setTimeout(() => { t.remove(); resolve(); }, 200);
     };

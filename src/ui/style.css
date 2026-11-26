@@ -483,6 +483,18 @@ body.desktop .ibtn small { display: block; }
 .s-timer.k-small .ctimer .ct { font-size: 15px; }
 .s-timer.k-small .ctimer .cs { font-size: 9.5px; }
 .s-timer.k-small .ctimer .cs:empty { display: none; }
+/* The line under a cutscene ("TAP TO SKIP"): the HUD's own bare type, low on the frame and above the home bar. On a
+   desktop it is larger, as all its type is. */
+.skiphint { position: absolute; left: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom)); text-align: center; font-size: 11px; font-weight: 800; line-height: 1; letter-spacing: .3em; text-transform: uppercase; color: #fff; opacity: .7; pointer-events: none; text-shadow: var(--tsh); }
+body.desktop .skiphint { font-size: 13px; bottom: 56px; }
+/* the ward: what the player is keeping alive (an escort, a stack under attack), in an ally's green */
+.ctimer .cw { display: none; width: 96px; height: 5px; margin: 4px auto 0; background: #0009; box-shadow: 0 0 0 1px #000; border-radius: 3px; overflow: hidden; }
+.ctimer .cw.on { display: block; }
+.ctimer .cw i { display: block; height: 100%; background: linear-gradient(180deg, #8dffbf, #2fae6c); transform-origin: left; transition: transform .25s; }
+.ctimer .cw.low i { background: linear-gradient(180deg, #ff8a6a, #d83424); }
+.s-timer.k-small .ctimer .cw { width: 52px; height: 4px; margin: 0; align-self: center; }
+/* a friend's plate wears a friend's bar: green, where a robot's is red */
+.plate.npc .pb i { background: linear-gradient(180deg, #8dffbf, #2fae6c); }
 
 /* ---------- quick wheel (ui/quick.ts) ----------
    A fan of the rare actions on the inward side of the weapon chip. */

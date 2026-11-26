@@ -222,8 +222,7 @@ class Mounts implements System, MountApi {
     if (this.riderRoot) { h.saddle.add(this.riderRoot); this.riderRoot.position.set(0, 0, 0); this.riderRoot.rotation.set(0, 0, 0); }
     p.grounded = true; p.action = null;
     g.combat.cancel();
-    g.interact.blocked = true;
-    this.hPose.rear = 0.55;
+    this.hPose.rear = 0.55;   // (prompts stay live in the saddle: systems/interact.ts steps the rider down for anything done on foot)
     g.sfx('horse_whinny', { vol: 0.8 }); g.fx.dust(p.pos, 6, 1.1); g.haptic(18);
   }
   private rideExit(p: Player) {

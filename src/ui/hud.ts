@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { bountiesOpen } from '../systems/intro';
 import type { Btn } from '../core/input';
 import { clamp, clamp01, fmtNum } from '../core/util';
 import type { Game } from '../game';
@@ -98,6 +99,9 @@ export type HudContext = 'explore' | 'fight' | 'ride';
  * locked, rare actions behind the quick wheel and the menu glyph, and information that fades when
  * it stops changing.
  */
+/** interiors by name (game.interior), for the line under the minimap and the map's place chip */
+const PLACES: Record<string, string> = { vault: 'Training Vault', arena: "Titan's Arena" };
+
 export class Hud {
   root: HTMLElement;
   hud: HTMLElement;
@@ -114,7 +118,7 @@ export class Hud {
   readonly notices: Notices;
   private streakEl!: HTMLElement; private streakSig = ''; private streakTier = 0; private pointed: HTMLElement | null = null;
   private floatEl!: HTMLElement; private reticle!: HTMLElement; private lowHp!: HTMLElement;
-  private timerEl!: HTMLElement; private timerT = 0; private timerSig = '';
+  private timerEl!: HTMLElement; private timerT = 0; private timerSig = ''; private timerWard = -1;
   private plates = new Map<string, Plate>();
   private plateList: Plate[] = []; private plateBoxes: number[] = [];
   private dmgs: Dmg[] = []; private dmgPool: HTMLElement[] = [];
@@ -398,7 +402,7 @@ export class Hud {
     h.addEventListener('pointerdown', (e) => { const b = (e.target as Element | null)?.closest?.('button, .mini, .tracker'); if (b && !b.classList.contains('abtn')) g.haptic(8); }, true);
     S.prompt.appendChild(this.ibtn);
 
-    this.timerEl = el('div', 'ctimer', '<div class="cl"></div><div class="ct"></div><div class="cs"></div>'); S.timer.appendChild(this.timerEl);
+    this.timerEl = el('div', 'ctimer', '<div class="cl"></div><div class="ct"></div><div class="cs"></div><div class="cw"><i></i></div>'); S.timer.appendChild(this.timerEl);
     // the notice lane: one toast, headline or tip at a time (notices.ts). A tap puts a tip away.
     S.banner.appendChild(this.notices.el);
     this.notices.el.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.notices.dismissTip(); });
@@ -465,6 +469,10 @@ export class Hud {
   tip(o: TipOpts): boolean { return this.notices.tip(o); }
   /** true while the controls on screen are touch controls: tips word themselves by this, not by the pointer last seen */
   get touchUi() { return this.layout.form !== 'desktop'; }
+  /** Where the hero is, by name: indoors the place's own name (the zone outside is not where they are). */
+  get placeName() { const i = this.game.interior; return i ? PLACES[i] ?? 'Indoors' : this.game.zoneName; }
+  /** The line under a cutscene, for the controls on screen: touch says tap; a keyboard and mouse say click or a key. */
+  skipWords() { return this.touchUi ? 'TAP TO SKIP' : 'CLICK OR SPACE TO SKIP'; }
   get bossUp() { return this.bossOn; }
   /**
    * The part of the view an edge marker may sit in (the quest waypoint when its target is off
@@ -568,11 +576,11 @@ export class Hud {
     }
     if (this.slots.log.classList.contains('yield') !== give) this.slots.log.classList.toggle('yield', give);
     if (y !== this.laneY) { this.laneY = y; s.style.translate = y ? `0 ${y}px` : ''; }
-    // Until the first job is handed in the column is the quest and one other line at most (style.css, `.early`).
-    if (this.early) { const q = this.game.state.d.quests; for (const id in q) if (q[id].state === 'done') { this.early = false; break; } }
-    if (col0.contains('early') !== this.early) col0.toggle('early', this.early);
+    // Until bounties open (systems/intro.ts keeps that rule) the column is the quest and one other line at most
+    // (style.css, `.early`).
+    const early = !bountiesOpen(this.game);
+    if (col0.contains('early') !== early) col0.toggle('early', early);
   }
-  private early = true;
   /** hidden for a cinematic, or stepped out under a panel or a conversation */
   get away() { return !this.visible || this.veiled; }
   /** Pulse a control while a tip teaches it. */
@@ -959,9 +967,20 @@ export class Hud {
   }
 
   /** Course / event timer; call every frame while it should show. */
-  setTimer(label: string, time: string, sub = '') {
+  /**
+   * The timer slot's line: a label, the figure, a line under it. `ward` (0 to 1) adds the health of what the player
+   * is keeping alive (an escort, a stack under attack) as an ally's bar: green, red under a third.
+   */
+  setTimer(label: string, time: string, sub = '', ward?: number) {
     this.timerT = 0.3;
     this.timerEl.classList.add('on');
+    const w = ward === undefined ? -1 : Math.round(clamp(ward, 0, 1) * 100);
+    if (w !== this.timerWard) {
+      this.timerWard = w;
+      const bar = this.timerEl.children[3] as HTMLElement;
+      bar.classList.toggle('on', w >= 0); bar.classList.toggle('low', w >= 0 && w < 34);
+      if (w >= 0) (bar.firstElementChild as HTMLElement).style.transform = `scaleX(${w / 100})`;
+    }
     (this.timerEl.children[1] as HTMLElement).textContent = time;
     const sig = label + '|' + sub;
     if (sig !== this.timerSig) { this.timerSig = sig; (this.timerEl.children[0] as HTMLElement).textContent = label; (this.timerEl.children[2] as HTMLElement).textContent = sub; }
@@ -1178,7 +1197,8 @@ export class Hud {
     // clock + zone
     const ck = g.env.clockText();
     if (ck !== this.lastClock) { this.lastClock = ck; this.clockEl.innerHTML = icon(g.env.isNight() ? 'moon' : g.env.weather === 'storm' ? 'storm' : g.env.weather === 'rain' ? 'rain' : 'sun', 10, 2.2) + ck; }
-    if (g.zoneName !== this.lastZone) { this.lastZone = g.zoneName; this.zoneEl.textContent = g.zoneName; this.fresh.zone = 5; }
+    const place = this.placeName;
+    if (place !== this.lastZone) { this.lastZone = place; this.zoneEl.textContent = place; this.fresh.zone = 5; }
     // minimap at 15 Hz
     this.miniT -= dt;
     if (this.miniT <= 0 && this.drawMini) { this.miniT = 1 / 15; this.drawMini(this.mini.getContext('2d')!, 208); }
