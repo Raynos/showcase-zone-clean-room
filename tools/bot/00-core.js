@@ -138,7 +138,7 @@
     ev.on('xp', (e) => {
       if (!B.rep) return;
       B.xpEvents = true;
-      const src = e.src && e.src !== 'other' ? e.src : B.xpSrc || 'other';
+      const src0 = e.src && e.src !== 'other' ? e.src : B.xpSrc || 'other', src = src0 === 'quest' && B.turningField ? 'field' : src0;
       const lv = B.lvl(g.state.d.level);
       lv.xp[src] = (lv.xp[src] || 0) + e.amount;
       B.rep.xpBySrc = B.rep.xpBySrc || {}; B.rep.xpBySrc[src] = (B.rep.xpBySrc[src] || 0) + e.amount;

@@ -278,6 +278,9 @@
     const g = G();
     if (!g.quests.anyClaimable()) return false;
     if (!(await B.goUse('contract_board', { fight: false }))) return false;
+    // after the Titan the board first asks which board (backhaul orders or the contracts): the contracts
+    const pick = await B.rawUntil(() => document.querySelector('.pn-opt[data-m="board"]') || g.panels.current, 3);
+    if (pick && pick.classList && pick.classList.contains('pn-opt')) { B.tapEl(pick); await B.rawSleep(0.5); }
     if (!(await B.rawUntil(() => g.panels.current, 3))) return false;
     try {
       for (const tab of ['hunts', 'wanted']) {

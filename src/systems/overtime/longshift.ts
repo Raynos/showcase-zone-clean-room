@@ -27,6 +27,8 @@ export class LongShift {
   private run = 0;
 
   constructor(private game: Game, private note: (on: 'shift', n: number) => void) {
+    // an instanced fight: the open world's robots outside court A leave the player alone (systems/mobs.ts)
+    game.mobs.instanced.push(() => this.on);
     const g = game, it = g.interact.list.find((i) => i.id === 'gauntlet_start');
     if (it) {
       const use = it.onUse, label = it.label, enabled = it.enabled;

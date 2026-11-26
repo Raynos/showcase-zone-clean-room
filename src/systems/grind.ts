@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { TAU, clamp, rand } from '../core/util';
 import { killScrip, killXp, questXp } from '../data/balance';
+import { PERKS } from '../data/perks';
+const PERK_RANKS = PERKS.reduce((n, p) => n + p.ranks, 0);
 import { CAMPS, ENEMIES } from '../data/enemies';
 import { BAND_KIND, BONUS, BOUNTY, CAMP_CLEAR, CHAMPION, FIELD, KIND_NAME, NAMED_RARES, RARE, STREAK, streakMul, type RareDef } from '../data/grind';
 import { RARE_TUNE_CHANCE, ROLLED, TRAITS, UNIQUE, type TraitId } from '../data/traits';
@@ -46,7 +48,7 @@ export class Grind {
   private refillT: number[] = [];
   /** bounties have been dealt this session (they open with the first hand-in, systems/intro.ts) */
   private opened = false;
-  private tuneEl: HTMLElement; private tuneSig = '';
+  private tuneEl: HTMLElement; private tuneSig = ''; private cashT = 2;
   private boostEl: HTMLElement | null = null;
   private rarePoi = { id: 'rare', x: 0, z: 0, icon: 'star', label: 'Rare', color: '#c79bff', big: true, show: () => !!this.rare && this.rare.alive };
   private champPoi = { id: 'champion', x: 0, z: 0, icon: 'skull', label: 'Champion', color: '#ff5a3c', big: true, show: () => !!this.champ && this.champ.alive };
@@ -168,16 +170,34 @@ export class Grind {
   }
   private field(n: number) {
     const s = this.s, g = this.game;
-    if (s.perks >= FIELD.max) return;
+    // points cashed as tunings (cashSparePerks) still count against Field Training's three
+    const cashed = (s as { cashed?: number }).cashed ?? 0;
+    if (s.perks + cashed >= FIELD.max) return;
     s.field += n;
-    while (s.field >= FIELD.step && s.perks < FIELD.max) {
+    while (s.field >= FIELD.step && s.perks + cashed < FIELD.max) {
       s.field -= FIELD.step; s.perks++;
       g.hud.toast('Field Training: a bonus perk point', 'level', `${s.perks} of ${FIELD.max} earned by fighting`, 'rise');
       this.say(`Field Training complete: a bonus perk point (${s.perks}/${FIELD.max}). Spend it in Character, Perks.`, 'quest');
       g.sfx('levelup', { vol: 0.6 });
       g.state.events.emit('stateChanged', {});
     }
-    if (s.perks >= FIELD.max) s.field = 0;
+    if (s.perks + cashed >= FIELD.max) s.field = 0;
+  }
+  /**
+   * Perk points past the ranks: levels (19), Field Training (3) and the Tally Book (3) pay 25 points
+   * against 22 ranks. A point that can never be spent (more free than ranks left to learn) is cashed:
+   * a Field Training point is taken back and paid as a tuning for the weapon in hand. Only Field
+   * Training points are cashed, so at most three, and the Tally Book's points always stay points.
+   */
+  private cashSparePerks() {
+    const g = this.game, st = g.state, s = this.s;
+    const left = PERK_RANKS - st.perksSpent, spare = st.perksFree - Math.max(0, left);
+    if (spare <= 0 || s.perks <= 0 || screenBusy(g)) return;
+    s.perks--; (s as { cashed?: number }).cashed = ((s as { cashed?: number }).cashed ?? 0) + 1; st.touch();
+    this.offerTrait(st.weaponId, this.rollTrait(st.weaponId, false), 'Field Training');
+    g.hud.toast('Field Training: a tuning', 'level', 'Every perk rank is learned: a spare perk point became a weapon tuning', 'rise');
+    this.say('Field Training: every perk rank is learned, so a spare perk point became a weapon tuning.', 'quest');
+    g.state.events.emit('stateChanged', {});
   }
   private extras(m: Mob) {
     const g = this.game, st = g.state;
@@ -480,6 +500,7 @@ export class Grind {
   update(dt: number) {
     const g = this.game, st = g.state, p = g.player.pos;
     if (!this.opened && bountiesOpen(g)) { this.opened = true; this.ensureBounties(); }
+    if ((this.cashT -= dt) <= 0) { this.cashT = 1; this.cashSparePerks(); }
     // bounties introduce themselves once, after the hand-in conversation has closed
     if (this.opened && !st.flag('intro_bounties') && this.s.bounties.length && !screenBusy(g) && !enclosed(g)
       && g.hud.tip({ title: 'Bounties', text: 'Side jobs that pay XP and scrip. The one nearest done shows under your quest; the board in town lists them all.', secs: 7 })) st.setFlag('intro_bounties');

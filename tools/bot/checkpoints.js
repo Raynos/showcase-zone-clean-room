@@ -29,9 +29,11 @@
   };
 
   window.__pbCheckpoints = () => Object.fromEntries(Object.entries(POINTS).map(([k, v]) => [k, v.about]));
-  window.__pbCheckpoint = async (name) => {
-    const c = POINTS[name], g = window.game, st = g.state, d = st.d;
-    if (!c) return 'unknown checkpoint: ' + name;
+  // o (tools/bot/boss.mjs): { level, weapon } play the checkpoint at another level with one weapon in hand
+  window.__pbCheckpoint = async (name, o = {}) => {
+    const c0 = POINTS[name], g = window.game, st = g.state, d = st.d;
+    if (!c0) return 'unknown checkpoint: ' + name;
+    const c = { ...c0, level: o.level || c0.level };
     // the game's own data chunk (works on a build); the dev server's source for a page from before it
     const src = (p) => import(/* @vite-ignore */ new URL('src/' + p, document.baseURI).href);
     const { QUEST_BY_ID, xpToNext } = g.botData ? await g.botData() : { ...(await src('data/quests.ts')), ...(await src('data/balance.ts')) };
@@ -40,6 +42,7 @@
     const RANGED = ['trainer_bow', 'bolt_driver', 'tension_bow', 'twin_driver', 'arcstring', 'rail_rifle'];
     const best = (ranged) => WEAPONS.filter(([id, lvl]) => lvl <= c.level && RANGED.includes(id) === ranged).pop()[0];
     st.equip(best(false), 0); if (c.level >= 2) st.equip(best(true), 1);
+    if (o.weapon) { st.giveWeapon(o.weapon); d.loadout = [o.weapon, null]; }
     d.active = 0;
     // upgrades a player of this level would plausibly own: every tier unlocked at least a level ago
     for (const id in UPG) { let t = 0; while (t + 1 < UPG[id].length && UPG[id][t + 1] <= c.level - 1) t++; d.upgrades[id] = t; }

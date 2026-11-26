@@ -329,7 +329,8 @@ export class Mob implements Hittable {
     const toPlayer = Math.atan2(px, pz);
     // the town is a safe zone: nothing out in the yard hunts a player who is inside it
     const outdoors = this.floor === null;
-    const hostile = !pl.dead && this.mobs.playerHostile && !(outdoors && inTown(pl.pos.x, pl.pos.z));
+    // nor does it hunt one inside an instanced fight (the gauntlet's courts, the Long Shift, an interior)
+    const hostile = !pl.dead && this.mobs.playerHostile && !(outdoors && (inTown(pl.pos.x, pl.pos.z) || this.mobs.sealed));
     const canSee = hostile && Math.abs(pl.pos.y - this.pos.y) < (this.isBoss ? 40 : 9);
     let wantVx = 0, wantVz = 0, face: number | null = null;
     this.hurtT += dt;
@@ -1015,6 +1016,14 @@ export class Mobs {
   bounds: ((pos: THREE.Vector3, r: number) => void) | null = null;
   /** outdoor camps are suspended while inside an interior */
   outdoor = true;
+  /**
+   * Instanced fights held out in the open (the gauntlet, the Long Shift): while any says it holds the
+   * player, the open world's robots do not hunt them, so nothing outside the activity shoots in.
+   * Robots an activity spawns stand on a floor of their own (`floor` set) and are not affected.
+   */
+  instanced: Array<() => boolean> = [];
+  /** an instanced fight holds the player this frame (from `instanced`, or any interior) */
+  sealed = false;
   inCombat = 0;
   /** robots fighting the player last frame: a lone robot does not bother flanking */
   packSize = 0;
@@ -1172,6 +1181,7 @@ export class Mobs {
 
   update(dt: number) {
     const g = this.game, pl = g.player, p = pl.pos;
+    this.sealed = !!g.interior || this.instanced.some((f) => f());
     this.manageCamps(dt);
     for (let i = this.pending.length - 1; i >= 0; i--) {
       const q = this.pending[i];

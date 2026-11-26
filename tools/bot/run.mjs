@@ -116,11 +116,11 @@ function summary(r) {
   L.push('', 'band    time      kills  deaths  dmg taken  kits');
   for (const k of ['1-3', '4-6', '7-9', '10-12', '13-15', '16-18', '19-20']) { const b = r.bands[k]; if (b) L.push(`  ${k.padEnd(6)}${t(b.gameSec).padEnd(10)}${String(b.kills).padEnd(7)}${String(b.deaths).padEnd(8)}${String(Math.round(b.damageTaken)).padEnd(11)}${b.kitsUsed}`); }
   if (r.perLevel) {
-    L.push('', 'per level (in-game): time   kills  dmg taken (x max hp)  kits  deaths  XP from quests/contracts/kills/bounties/events/other');
+    L.push('', 'per level (in-game): time   kills  dmg taken (x max hp)  kits  deaths  XP from quests/field/contracts/kills/bounties/events/other');
     for (const l of Object.keys(r.perLevel).map(Number).sort((a, b) => a - b)) {
       const x = r.perLevel[l], xp = x.xp || {}, tot = Object.values(xp).reduce((a, b) => a + b, 0) || 1;
       const pc = (k) => String(Math.round(100 * (xp[k] || 0) / tot)).padStart(3) + '%';
-      L.push(`  L${String(l).padEnd(3)} ${t(x.sec).padEnd(8)} ${String(x.kills).padEnd(6)} ${String(Math.round(x.dmg)).padEnd(6)} (${(x.dmg / Math.max(1, x.maxHp || 1)).toFixed(1).padStart(4)})       ${String(x.kits).padEnd(5)} ${String(x.deaths).padEnd(7)} ${pc('quest')} ${pc('contract')} ${pc('kill')} ${pc('bounty')} ${pc('event')} ${pc('other')}`);
+      L.push(`  L${String(l).padEnd(3)} ${t(x.sec).padEnd(8)} ${String(x.kills).padEnd(6)} ${String(Math.round(x.dmg)).padEnd(6)} (${(x.dmg / Math.max(1, x.maxHp || 1)).toFixed(1).padStart(4)})       ${String(x.kits).padEnd(5)} ${String(x.deaths).padEnd(7)} ${pc('quest')} ${pc('field')} ${pc('contract')} ${pc('kill')} ${pc('bounty')} ${pc('event')} ${pc('other')}`);
     }
   }
   if (r.fights && r.fights.length) {
@@ -141,6 +141,8 @@ function summary(r) {
     L.push('', `grind: camps cleared ${G.camps}, bounties paid ${G.bounties}, best streak ${G.bestStreak} kills (peak heat ${Math.round(G.bestHeat)}), field perks ${G.fieldPerks}, tuning cards ${G.tuneCards || 0} (Fit tapped ${G.tuneTaps || 0})`);
     L.push(`  rares: ${life(G.rares)}`, `  champions: ${life(G.champs)}`);
   }
+  if (r.fieldSteps) L.push('', 'field quest steps played: ' + Object.entries(r.fieldSteps).map(([k, v]) => k + ' ' + v).join(', '));
+  if (r.fieldSkipped) L.push('field quests not taken (steps the bot does not play): ' + Object.entries(r.fieldSkipped).map(([k, v]) => k + ' (' + v + ')').join(', '));
   if (r.tools) L.push('', 'tools used: ' + Object.entries(r.tools).map(([k, v]) => k + ' ' + v).join(', '));
   if (r.perks && r.perks.length) L.push('perks learned: ' + r.perks.map((p) => p.id + ' (L' + p.level + ')').join(', '));
   L.push('', 'quests (accepted -> turned in, in-game):');
@@ -151,13 +153,14 @@ function summary(r) {
     L.push('', 'hits in the 8 s before each death (dmg by [attack] at m, on screen?, tell s, attacker age s, aggro):');
     for (const d of r.deathLog) {
       L.push(`  ${t(d.game)} L${d.level} (${d.pos.x}, ${d.pos.z})`);
-      for (const h of d.hits) L.push(`    -${h.dmg} (${h.hp}/${h.max}) ${h.by}${h.atk ? ' [' + h.atk + ']' : ''} at ${h.dist} m, ${h.seen ? 'on screen' : 'OFF SCREEN'}, tell ${h.tell ?? 'none'}, age ${h.age ?? '?'}, aggro ${h.aggro}`);
+      for (const h of d.hits) L.push(`    -${h.dmg} (${h.hp}/${h.max}) ${h.by}${h.atk ? ' [' + h.atk + ']' : ''} at ${h.dist} m, ${h.seen ? 'on screen' : 'OFF SCREEN' + (h.arrow ? ' (edge arrow up)' : h.arrow === false ? ' (NO edge arrow)' : '')}, tell ${h.tell ?? 'none'}, age ${h.age ?? '?'}, aggro ${h.aggro}`);
+      if (!d.hits.length) L.push(`    no hit logged; last hurt: ${d.lastHurt ? d.lastHurt.by + ' ' + d.lastHurt.ago + ' s before' : 'none'}; hp changes: ${(d.hpTrail || []).map((x) => x.d).join(' ')}`);
     }
   }
-  if (r.lifts && r.lifts.length) { L.push('', 'vertical jumps over 8 m outside a fade (teleports and moves):'); for (const x of r.lifts) L.push(`  ${t(x.game)} ${x.interior || 'surface'} ${x.from ? 'teleport ' + x.from.join(',') + ' -> ' + x.to.join(',') + ' by ' + x.stack : 'moved ' + x.jump.join(' -> ') + ' at ' + x.at.join(',') + (x.mode ? ' in ' + x.mode : '')} while: ${x.goal}`); }
+  if (r.lifts && r.lifts.length) { L.push('', 'vertical jumps over 8 m outside a fade (teleports and moves):'); for (const x of r.lifts) if (x.under) L.push(`  ${t(x.game)} ${x.interior} FELL BELOW THE FLOOR (y ${x.floorY}) at ${x.at.join(',')} while: ${x.goal}; near: ${x.mobs.join('; ') || 'nothing'} (frames in report.json lifts[].trail)`); else L.push(`  ${t(x.game)} ${x.interior || 'surface'} ${x.from ? 'teleport ' + x.from.join(',') + ' -> ' + x.to.join(',') + ' by ' + x.stack : 'moved ' + x.jump.join(' -> ') + ' at ' + x.at.join(',') + (x.mode ? ' in ' + x.mode : '')} while: ${x.goal}`); }
   if (r.travel) L.push('', `fast travel: ${r.travel.jumps} jumps, ${r.travel.saved} m of walking saved`);
   if (r.stalls.length) { L.push('', 'stalls (3 in-game minutes without quest, level or kill progress):'); for (const s of r.stalls) L.push(`  ${t(s.game)} L${s.level} ${s.where} (${s.pos.x}, ${s.pos.y}, ${s.pos.z}) while: ${s.goal}\n      screenshot: ${s.shot || 'none'}`); }
-  const notes = r.notes.filter((n) => /cannot|could not|blocked|no path|leashed|wrong plate|error|not strong|died \d|no cover|did nothing|thrown|no lap|not in the saddle|did not come|no waypoint passed|did not happen|could not light the post|fast travel:/.test(n.text));
+  const notes = r.notes.filter((n) => /cannot|could not|blocked|no path|leashed|wrong plate|error|not strong|died \d|no cover|did nothing|thrown|no lap|not in the saddle|did not come|no waypoint passed|did not happen|could not light the post|fast travel:|field/.test(n.text));
   if (notes.length) { L.push('', 'trouble noted:'); for (const n of notes.slice(0, 40)) L.push(`  ${t(n.game)} L${n.level} (${n.pos.x}, ${n.pos.z}) ${n.text}${n.n ? ' x' + n.n : ''}`); }
   return L.join('\n');
 }

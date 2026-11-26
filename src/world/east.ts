@@ -248,6 +248,8 @@ export class East implements System {
 
   constructor(private game: Game) {
     const g = game, st = g.state, terrain = g.terrain;
+    // the gauntlet is an instanced fight: the open world's robots leave a player in its courts alone (systems/mobs.ts)
+    g.mobs.instanced.push(() => this.gState !== 'idle' && this.gState !== 'done');
     // ---- band gate barriers ----
     for (const def of BAND_GATES) {
       const [dx, dz] = gateDir(def), y = terrain.h(def.x, def.z) - 0.2, yaw = yawOf(dx, dz), H = 8.6;
