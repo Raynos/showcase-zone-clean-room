@@ -104,6 +104,8 @@ export interface HumanPose {
   shoot?: ShootPose | null; shootK?: number; shootT?: number; shootKick?: number;
   /** the lens and the way it looks, in the hero's own frame (metres), while fp > 0: first-person arms are posed to it (fpview.ts `fpMove`) */
   fpEye?: THREE.Vector3; fpDir?: THREE.Vector3;
+  /** the view's half-width and half-height as tangents (x, y): first-person framing places things by share of the view (fpview.ts) */
+  fpTan?: THREE.Vector2;
   /** first person with a ranged weapon: the weapon is on the view and the hands go to it (systems/viewmodel.ts, fpview.ts `fpHold`) */
   fpHold?: FpHold | null;
 }

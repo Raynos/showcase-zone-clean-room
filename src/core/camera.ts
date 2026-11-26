@@ -118,6 +118,8 @@ export class CameraRig {
   private fpK = 0;
   /** degrees added to the first-person field of view (Settings) */
   fpFovOffset = 0;
+  /** the player's screen-shake scale (Settings, 0 none), and the share of it the eyes take (systems/view.ts: less for reduced motion) */
+  shakeScale = 1; fpShake = 1;
   private fpFov = FP_FOV.portrait;
   private fpOff = new THREE.Vector3(); private fpBaseY = 0; private fpInit = false;
   private fpDip = 0; private fpRoll = 0; private fpTilt = 0;
@@ -465,7 +467,7 @@ export class CameraRig {
 
     // shake + kicks
     this.trauma = Math.max(0, this.trauma - dt * 1.6);
-    const s = this.trauma * this.trauma;
+    const s = this.trauma * this.trauma * this.shakeScale * lerp(1, this.fpShake, this.eyeAmount);
     if (s > 0.0001) {
       const t = this.time * 34;
       cam.rotateX((vnoise(t, 1.3, 1) - 0.5) * 0.11 * s);

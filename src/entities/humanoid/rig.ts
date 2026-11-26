@@ -19,7 +19,7 @@ import { GU, WorldMaterial } from '../../gfx/material';
 import { instantiate } from '../../gfx/models';
 import { AnimState, evaluate, L, R, SK } from './anim';
 import { applyFit, fitLook } from './fit';
-import { FpArms, fpHold, fpMove, fpPresent, fpSteady } from './fpview';
+import { FpArms, fpHold, fpMove, fpPresent, fpShoulders, fpSteady } from './fpview';
 import { GunNodes, readNodes, shootPose } from './shootpose';
 import { basisYZ, solve2 as solve } from './ik';
 import { Ribbon } from './ribbon';
@@ -32,6 +32,12 @@ import type { FpDraw, HumanLook, HumanPose, HumanoidRig, WeaponKind, WeaponModel
  * first-person arms arrive, ViewSystem.draw (systems/view.ts) is where the body is traded for them.
  */
 const FP_HIDE = (bone: THREE.Bone, head: THREE.Bone) => { for (let b: THREE.Object3D | null = bone; b; b = b.parent) if (b === head) return true; return false; };
+/**
+ * ...and the body's own skin round the neck (model space, metres, feet at 0): everything not on the arms above `y`,
+ * and within `x` of the middle above `yIn` (collar, scarf, the neck's root; the shoulders start at 1.36), and the
+ * arms' own tops above `arm` (the shoulder plates and the ball of the shoulder, a hand's breadth beside the lens).
+ */
+const FP_NECKLINE = { y: 1.42, yIn: 1.32, x: 0.17, arm: 1.27 };
 
 const damp1 = (a: number, b: number, k: number) => a + (b - a) * Math.min(1, k);
 
@@ -140,14 +146,22 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
     // the arms come first, so a move that hides the body can still draw them alone
     const armBone = inst.mesh.skeleton.bones.map((b) => FP_HIDE(b, armU[L]) || FP_HIDE(b, armU[R]));
     const onArm = (v: number) => { let w = 0; for (let j = 0; j < 4; j++) if (armBone[si.getComponent(v, j)]) w += sw.getComponent(v, j); return w >= 0.5; };
-    const limbs: number[] = [], front: number[] = [], back: number[] = [];
+    // the neckline: what the torso carries round the neck (scarf, collar, the neck's root, the yoke's top edge) sits
+    // a hand's breadth under the lens and rides up into it whenever the chest pitches forward (a jump's crouch,
+    // a swing, a stagger), so the eye camera never draws it (FP_NECKLINE)
+    const pos = src.getAttribute('position');
+    const onNeck = (v: number) => {
+      const y = pos.getY(v), x = Math.abs(pos.getX(v));
+      return onArm(v) ? y > FP_NECKLINE.arm : y > FP_NECKLINE.y || (y > FP_NECKLINE.yIn && x < FP_NECKLINE.x);
+    };
+    const limbs: number[] = [], front: number[] = [], neck: number[] = [], back: number[] = [];
     for (let i = 0; i < ix.count; i += 3) {
       const a = ix.getX(i), b = ix.getX(i + 1), c = ix.getX(i + 2);
-      (onHead(a) || onHead(b) || onHead(c) ? back : onArm(a) && onArm(b) && onArm(c) ? limbs : front).push(a, b, c);
+      (onHead(a) || onHead(b) || onHead(c) ? back : onNeck(a) || onNeck(b) || onNeck(c) ? neck : onArm(a) && onArm(b) && onArm(c) ? limbs : front).push(a, b, c);
     }
     const geo = new THREE.BufferGeometry();
     for (const k in src.attributes) geo.setAttribute(k, src.attributes[k]);
-    const n = src.getAttribute('position').count, all = limbs.concat(front, back);
+    const n = src.getAttribute('position').count, all = limbs.concat(front, neck, back);
     geo.setIndex(new THREE.BufferAttribute(n > 65535 ? new Uint32Array(all) : new Uint16Array(all), 1));
     geo.boundingSphere = src.boundingSphere ? src.boundingSphere.clone() : null;
     geo.boundingBox = src.boundingBox ? src.boundingBox.clone() : null;
@@ -238,16 +252,25 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
       // hands on it are re-framed for the eye (fpview.ts)
       fpLift = damp1(fpLift, (pose.fp ?? 0) * (pose.drawn && (pose.weapon === 'sword' || pose.weapon === 'spear') && pose.locomotion !== 'dead' ? 1 : 0), dt * 8);
       const sc = body.scale.y || 1;
-      fpPresent(P, pose, fpLift < 0.002 ? 0 : fpLift, eyeRest.y / sc, eyeRest.z / sc, arms);
+      fpPresent(P, pose, fpLift < 0.002 ? 0 : fpLift, eyeRest.y / sc, eyeRest.z / sc, arms, sc, dt);
       // first person with a ranged weapon: the weapon is on the view (systems/viewmodel.ts) and the hands go to it
       if (pose.fpHold) fpHold(arms, pose.fpHold);
+      // ...and whichever it is, the shoulders sit under and outside the lens
+      fpShoulders(P, pose, arms.presentK, pose.fpHold ? pose.fpHold.k * fp : 0, arms, sc);
       // first person: the arms of a roll, a knockdown, a death and a ride are posed to the lens
       fpMove(P, pose, dt, pose.fpEye ? _eye.copy(pose.fpEye).divideScalar(sc) : null, pose.fpDir ?? null, arms);
       hips.position.copy(P.hipsPos); hips.quaternion.copy(P.hipsQ);
       spine.quaternion.copy(P.spineQ); chest.quaternion.copy(P.chestQ); head.quaternion.copy(P.headQ);
       for (let s = 0; s < 2; s++) {
         // arm, in chest space
-        _sh.copy(shoulder[s]); if (arms.free > 0) _sh.lerp(arms.shoulder[s], arms.free);
+        _sh.copy(shoulder[s]);
+        if (arms.free > 0) {
+          _sh.lerp(arms.shoulder[s], arms.free);
+          // never further from the hand than the arm reaches, or the hand would fall short of its grip
+          _a.copy(_sh).sub(arms.handPos[s]);
+          const d = _a.length(), reach = (SK.upper + SK.fore) * 0.97;
+          if (d > reach) _sh.copy(arms.handPos[s]).addScaledVector(_a, reach / d);
+        }
         armU[s].position.copy(shRest[s]).add(_sh).sub(shoulder[s]);
         solve(_sh, arms.handPos[s], arms.elbow[s], SK.upper, SK.fore, _q1, _q2);
         armU[s].quaternion.copy(_q1);

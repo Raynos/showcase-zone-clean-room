@@ -477,7 +477,7 @@ export class Game {
     // things within a metre of the lens dissolve, except in cutscenes, which frame their own close-ups
     this.view.nearFade(GU.uNearFade.value);
     this.cameraRig.shoulder = damp(this.cameraRig.shoulder, this.combat.aiming ? 0.7 : 0, 8, rdt);
-    if (this.state.d.settings.shake !== 1) this.cameraRig.trauma *= 0.5 + 0.5 * this.state.d.settings.shake;
+    this.cameraRig.shakeScale = this.state.d.settings.shake ?? 1;
 
     // world + fx
     this.env.update(rdt, this.camera, pl.pos, this.renderer);

@@ -14,6 +14,8 @@ const STEERED = new Set(['ride', 'board', 'zipline', 'grapple']);
 /** Moves that turn the whole body under the head: the lens takes only a little of the head's path. */
 const SPINS = /^(swordSkill|spearSpin|spearSkill|ult_)/;
 
+/** How much of the stride's head motion the eyes take by default (Settings `bob`): enough to feel the feet, little enough for a phone held close. */
+const FP_BOB = 0.6;
 const reducedMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
 const ease = (u: number) => { const x = clamp01(u); return x * x * (3 - 2 * x); };
 
@@ -82,6 +84,9 @@ export class ViewSystem {
     const k = g.cameraRig.eyeAmount;
     if (k <= 0) return 'full';
     if (k > 0.9) return this.treat;
+    // a cutscene handing back to the eyes brings the lens in from behind and through the back and the pack:
+    // within arm's reach of the eyes the hero is not drawn at all until the lens is home
+    if (g.cameraRig.cineAmount > 0.002 && !g.cameraRig.aimBlend && cam.position.distanceToSquared(this.eyeW) < 1.44) return 'none';
     // blending in or out of the eyes (a view switch, a cutscene taking over): the head goes only while the lens is inside it;
     // an aim from the shoulder passes close over it, so there it goes as soon as the lens is within reach of it
     return cam.position.distanceToSquared(this.eyeW) < (g.cameraRig.aimBlend ? 2.9 : 0.25) ? (this.treat === 'none' ? 'none' : this.treat === 'arms' ? 'arms' : 'body') : 'full';
@@ -112,12 +117,24 @@ export class ViewSystem {
     this.insideK += (k - this.insideK) * Math.min(1, dt * (k > this.insideK ? 25 : 6));
   }
 
-  get headBob() { return this.game.state.d.settings.headBob !== false && !reducedMotion?.matches; }
+  get headBob() { return this.bobAmount > 0; }
+  /**
+   * How much of the stride's head motion the eyes take, 0..1 (Settings `bob`, default FP_BOB). The
+   * stride's rise and fall and its sway are scaled about their running mean, so the eye still sits
+   * where a runner's eyes sit. None when head bob is off or the device asks for reduced motion.
+   */
+  get bobAmount() {
+    const s = this.game.state.d.settings;
+    return s.headBob === false || reducedMotion?.matches ? 0 : clamp01(s.bob ?? FP_BOB);
+  }
+  private bobMean = new THREE.Vector3(); private bobInit = false;
 
   /** Once a frame, before the camera: the first-person feed, or null when there is nothing to feed. */
   feed(dt: number): FirstPersonFeed | null {
-    const g = this.game, pl = g.player, rig = pl.rig, cr = g.cameraRig;
-    cr.fpFovOffset = g.state.d.settings.fpFov ?? 0;
+    const g = this.game, pl = g.player, rig = pl.rig, cr = g.cameraRig, s = g.state.d.settings;
+    // comfort: the field of view per orientation, and the eyes' share of screen shake (a head's shudder, less for reduced motion)
+    cr.fpFovOffset = g.camera.aspect < 1 ? s.fpFov ?? 0 : s.fpFovWide ?? s.fpFov ?? 0;
+    cr.fpShake = reducedMotion?.matches ? 0.35 : 1;
     if (rig !== this.rig) { this.rig = rig; if (cr.view === 'first') this.hook(); }
     // aiming down sights from third person goes to the eyes too (core/camera.ts `adsEye`)
     if (cr.adsEye) this.hook();
@@ -128,12 +145,15 @@ export class ViewSystem {
     // the lens as last drawn, in the hero's own frame: first-person arms are posed to it (humanoid/fpview.ts `fpMove`)
     (p.fpEye ??= new THREE.Vector3()).copy(g.camera.position).sub(pl.pos).applyAxisAngle(UP, -pl.yaw);
     g.camera.getWorldDirection(p.fpDir ??= new THREE.Vector3()).applyAxisAngle(UP, -pl.yaw);
+    // ...and how wide it is, so first-person framing places things by share of the picture
+    const ty = Math.tan((g.camera.fov * Math.PI) / 360);
+    (p.fpTan ??= new THREE.Vector2()).set(ty * g.camera.aspect, ty);
     rig.eyes(this.eyeW);
     f.base.copy(pl.pos);
     const head = this._o.copy(this.eyeW).sub(pl.pos);
     const rest = this._r.set(Math.sin(pl.yaw) * rig.eyeRest.z, rig.eyeRest.y, Math.cos(pl.yaw) * rig.eyeRest.z);
-    const bob = this.headBob;
-    f.hRate = bob ? 14 : 7; f.vRate = bob ? 18 : 3.5;
+    const bob = this.bobAmount;
+    f.hRate = 7 + 7 * Math.min(1, bob * 2); f.vRate = 3.5 + 14.5 * Math.min(1, bob * 2);
     f.dip = 0; f.roll = 0; f.tilt = 0; f.heading = null;
     this.treat = 'body';
     this.deadT = pl.dead ? this.deadT + dt : 0;
@@ -154,6 +174,10 @@ export class ViewSystem {
       if (loc === 'roll' || loc === 'down' || loc === 'dead') follow = 0;
       const d = head.sub(rest);
       d.x = clamp(d.x, -0.3, 0.3); d.z = clamp(d.z, -0.3, 0.3); d.y = clamp(d.y, -0.7, 0.15);
+      // comfort: the stride's rise, fall and sway, scaled about where the head has been lately
+      if (!this.bobInit) { this.bobMean.copy(d); this.bobInit = true; }
+      this.bobMean.lerp(d, Math.min(1, dt * 2.5));
+      if (bob < 1) d.sub(this.bobMean).multiplyScalar(bob).add(this.bobMean);
       if (follow >= 0.99) this.held.copy(d);
       else this.held.multiplyScalar(Math.exp(-dt * 1.5));
       f.off.copy(rest).addScaledVector(d, follow).addScaledVector(this.held, 1 - follow);
@@ -187,6 +211,8 @@ export class ViewSystem {
     if (pl.grounded && pl.landT > 0.5) this.airMinVy = 0;
     const u = pl.landT / 0.42;
     if (u < 1) f.dip += this.landDip * (u < 0.22 ? Math.sin((u / 0.22) * Math.PI / 2) : Math.cos(((u - 0.22) / 0.78) * Math.PI / 2) ** 2);
+    // reduced motion: the horizon barely tips (a knockdown, a death, a roll, a blow)
+    if (reducedMotion?.matches) { f.roll *= 0.25; f.tilt *= 0.5; }
     return f;
   }
   /** +1 when moving to the view's right, -1 to its left. */

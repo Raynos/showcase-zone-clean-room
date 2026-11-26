@@ -84,6 +84,9 @@ export interface SaveData {
   settings: { quality: string; sfx: number; music: number; sens: number; invertY: boolean; autoFollow: boolean; shake: number; dmgNumbers: boolean; haptics: boolean; lefty: boolean; /** the always-on frame-rate readout */ fps: boolean;
     /** third or first person (systems/view.ts); degrees added to the first-person field of view; head bob in first person */
     view: 'third' | 'first'; fpFov: number; headBob: boolean;
+    /** first person: degrees added to the landscape field of view (unset: fpFov, which is then portrait's), and how much of the
+     *  stride's head motion the eyes take, 0..1 (unset: 0.6; headBob off or reduced motion: none) */
+    fpFovWide?: number; bob?: number;
     /** shooter stance (systems/shooter.ts): aim button hold or tap-toggle (unset: toggle, on touch and with a mouse); look speed aimed;
      *  touch aim assist on/off, its slow-down and pull 0..1; gyroscope aiming and its sensitivity */
     adsMode?: 'hold' | 'tap'; adsSens?: number; aimAssist?: boolean; assistSlow?: number; assistPull?: number; gyro?: boolean; gyroSens?: number };

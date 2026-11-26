@@ -8,11 +8,15 @@
  * direction from the eye is squeezed into the frame, raised toward the clear band between the
  * reticle and the buttons, and the weapon is tipped up and forward so its length crosses the view.
  * A cut that went from behind the right shoulder to behind the left now goes from the right edge of
- * the frame to the left edge, with the same timing. The result follows the view's pitch, so
- * looking up or down carries the weapon with it.
+ * the frame to the left edge, with the same timing. Between moves the weapon rests low on the right
+ * (CARRY). Everything is placed on the lens as last drawn and by share of the picture's width, so
+ * looking up or down carries the weapon with it and landscape spreads it out. Whenever the hands are
+ * posed to the lens the shoulders sit under and outside it (fpShoulders), and the moves that tumble
+ * the body keep their hands to the picture's lower corners (fpMove).
  *
  * rig.ts calls `fpPresent` after `evaluate` whenever `pose.fp` > 0 and a sword or spear is drawn,
- * and solves the arms to what it returns. Nothing here runs in third person.
+ * and solves the arms to what it returns. Nothing here runs in third person. The rig also keeps the
+ * body's own neckline and the arms' shoulder plates out of the eye camera (rig.ts FP_NECKLINE).
  */
 import * as THREE from 'three';
 import { L, R, SK, type Pose } from './anim';
@@ -29,6 +33,8 @@ export class FpArms {
   /** fpMove: the move in hand, how far it is in, where the shoulders go when the arms are drawn alone, and how far they have left the body */
   move: FpMove | null = null; moveK = 0; deadT = 0; free = 0;
   shoulder = [new THREE.Vector3(), new THREE.Vector3()];
+  /** fpPresent: how far a move (rather than the carry) has the hands, and how much of the arms it owns */
+  actK = 0; presentK = 0;
   copy(P: Pose) { for (let s = 0; s < 2; s++) { this.handPos[s].copy(P.handPos[s]); this.handQ[s].copy(P.handQ[s]); this.elbow[s].copy(P.elbow[s]); } return this; }
 }
 
@@ -40,11 +46,11 @@ export class FpArms {
  * lifted (by, bUp), and never pointing back past the shoulder (bz, bOut).
  */
 interface Frame { a0: number; ax: number; e0: number; ey: number; r0: number; rz: number; rMin: number; rMax: number; bx: number; bIn: number; by: number; bUp: number; bz: number; bOut: number }
-const SWORD: Frame = { a0: 0.08, ax: 0.22, e0: -0.28, ey: 0.46, r0: 0.44, rz: 0.25, rMin: 0.42, rMax: 0.58, bx: 0.55, bIn: 0.2, by: 0.5, bUp: 0.7, bz: 0.7, bOut: 0.35 };
-const SPEAR: Frame = { a0: 0.12, ax: 0.3, e0: -0.36, ey: 0.4, r0: 0.4, rz: 0.5, rMin: 0.34, rMax: 0.6, bx: 0.3, bIn: 0.06, by: 0.5, bUp: 0.22, bz: 0.8, bOut: 0.45 };
+const SWORD: Frame = { a0: 0.08, ax: 0.2, e0: -0.32, ey: 0.46, r0: 0.6, rz: 0.25, rMin: 0.56, rMax: 0.7, bx: 0.55, bIn: 0.2, by: 0.5, bUp: 0.7, bz: 0.7, bOut: 0.35 };
+const SPEAR: Frame = { a0: 0.12, ax: 0.28, e0: -0.38, ey: 0.4, r0: 0.55, rz: 0.5, rMin: 0.5, rMax: 0.7, bx: 0.3, bIn: 0.06, by: 0.5, bUp: 0.22, bz: 0.8, bOut: 0.45 };
 
 const _tq = new THREE.Quaternion(), _tqi = new THREE.Quaternion(), _q = new THREE.Quaternion();
-const _tc = new THREE.Vector3(), _v = new THREE.Vector3(), _h = new THREE.Vector3(), _b = new THREE.Vector3(), _z = new THREE.Vector3(), _l = new THREE.Vector3();
+const _tc = new THREE.Vector3(), _v = new THREE.Vector3(), _h = new THREE.Vector3(), _b = new THREE.Vector3(), _z = new THREE.Vector3();
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 
 /** Torso orientation and chest joint of P in root space (the frame the hand targets live in). */
@@ -58,66 +64,117 @@ function torso(P: Pose) {
 }
 
 /**
- * Re-frame the weapon hands of `P` for the eye at (0, eyeY, eyeZ) in root space (body units).
- * `k` 0..1 blends from the third-person pose. `out` receives chest-space targets for both arms.
+ * The carry: a drawn weapon between moves. The third-person carry swings the hand by the hip with
+ * the stride, which re-framed puts a fist and a blade across the middle of the picture. In first
+ * person the weapon hand rests low on the right instead, as a share of the view (`x`, `y` as
+ * tangents from the view axis at portrait width, widened toward `xWide` as the view widens), `r`
+ * metres out, the long axis (`b`, lens space: x right, y up, z ahead) kept right of the middle. The
+ * off hand is under the picture. The stride sways it.
  */
-export function fpPresent(P: Pose, hp: HumanPose, k: number, eyeY: number, eyeZ: number, out: FpArms): FpArms {
+const CARRY = {
+  sword: { x: 0.2, xWide: 0.36, y: -0.62, r: 0.5, b: [0.12, 0.62, 0.78] },
+  spear: { x: 0.16, xWide: 0.3, y: -0.66, r: 0.48, b: [-0.03, 0.1, 1] },
+} as const;
+/**
+ * Where the shoulders sit whenever the hands are posed to the lens (lens space, metres; x right): under
+ * it and outside it, wherever the torso has turned, so a wound-up swing or a raised bow arm never
+ * brings the shoulder or the upper arm across the picture. `k` is how far they leave the body for a
+ * melee weapon, `hold` for a ranged one (whose hands are further out, so the arm needs its reach).
+ */
+const FP_SHOULDER = { x: 0.24, y: -0.42, z: -0.06, k: 0.9, hold: 0.9 };
+
+/** The lens in root space (body units): origin and its right, up and forward axes. */
+const LE = new THREE.Vector3(), LR = new THREE.Vector3(), LU = new THREE.Vector3(), LF = new THREE.Vector3();
+const _w = new THREE.Vector3();
+function lensFrame(hp: HumanPose, sc: number, eyeY: number, eyeZ: number) {
+  if (hp.fpEye && hp.fpDir) { LE.copy(hp.fpEye).divideScalar(sc || 1); LF.copy(hp.fpDir).normalize(); }
+  else { const th = clamp(hp.fpPitch ?? 0, -1.2, 1.4); LE.set(0, eyeY, eyeZ); LF.set(0, -Math.sin(th), Math.cos(th)); }
+  LR.crossVectors(LF, UP0); if (LR.lengthSq() < 1e-6) LR.set(-1, 0, 0); LR.normalize();
+  LU.crossVectors(LR, LF).normalize();
+}
+const UP0 = new THREE.Vector3(0, 1, 0);
+/** lens space (x right, y up, z ahead) to root space, as a point and as a direction */
+const lensPt = (o: THREE.Vector3, x: number, y: number, z: number) => o.copy(LE).addScaledVector(LR, x).addScaledVector(LU, y).addScaledVector(LF, z);
+const lensDir = (o: THREE.Vector3, x: number, y: number, z: number) => o.set(0, 0, 0).addScaledVector(LR, x).addScaledVector(LU, y).addScaledVector(LF, z);
+
+/**
+ * Re-frame the weapon hands of `P` for the lens. The lens is the one the view feeds (`hp.fpEye`,
+ * `hp.fpDir`, `hp.fpTan`), else the resting eye at (0, eyeY, eyeZ) turned by the view's pitch (root
+ * space, body units; `sc` metres per body unit). `k` 0..1 blends from the third-person pose; between
+ * moves the hands go to the carry (CARRY), through a move to the move re-framed. `out` receives
+ * chest-space targets for both arms.
+ */
+export function fpPresent(P: Pose, hp: HumanPose, k: number, eyeY: number, eyeZ: number, out: FpArms, sc = 1, dt = 1 / 60): FpArms {
   out.copy(P);
-  if (k <= 0 || (hp.weapon !== 'sword' && hp.weapon !== 'spear')) return out;
-  const F = hp.weapon === 'spear' ? SPEAR : SWORD;
+  out.presentK = 0; out.free = 0;
+  if (k <= 0 || (hp.weapon !== 'sword' && hp.weapon !== 'spear')) { out.actK = 0; return out; }
+  out.presentK = k;
+  const F = hp.weapon === 'spear' ? SPEAR : SWORD, C = hp.weapon === 'spear' ? CARRY.spear : CARRY.sword;
   torso(P);
-  // the lens rides the head for part of its travel through a move (systems/view.ts): go with it
+  lensFrame(hp, sc, eyeY, eyeZ);
+  // how wide the view is: portrait is about 0.33 either side of the axis, landscape about 1
+  const tx = hp.fpTan?.x ?? 0.334, ty = hp.fpTan?.y ?? 0.73, wide = clamp((tx - 0.334) / 0.66, 0, 1), wS = 1 + 0.7 * wide;
+  const act = hp.action ? 1 : 0;
+  out.actK += (act - out.actK) * Math.min(1, dt * (act ? 18 : 6));
+  const a = out.actK;
+  // the lens rides the head for part of its travel through a move (systems/view.ts): measure the move from there
   const follow = hp.action ? 0.7 : 1;
   _v.set(0, SK.neck + 0.1, 0.08).applyQuaternion(_tq).add(_tc);
   eyeY += clamp(_v.y - (SK.hipY + SK.spine + SK.chest + SK.neck + 0.1), -0.7, 0.15) * follow;
   eyeZ += clamp(_v.z - 0.08, -0.3, 0.3) * follow;
   const eyeX = clamp(_v.x, -0.3, 0.3) * follow;
-  // the view's pitch: + looks down. The frame is built level and then turned with the view.
-  const th = clamp(hp.fpPitch ?? 0, -1.0, 1.0) * 0.9, c = Math.cos(th), s = Math.sin(th);
-  const turn = (v: THREE.Vector3) => { const y = v.y * c - v.z * s, z = v.y * s + v.z * c; v.y = y; v.z = z; return v; };
 
-  // the weapon hand, root-aligned from the eye (+X is the hero's left, so the view's right is -X)
+  // the move: the weapon hand, root-aligned from the eye (+X is the hero's left, so the view's right is -X)
   _h.copy(P.handPos[R]).applyQuaternion(_tq).add(_tc); _h.x -= eyeX; _h.y -= eyeY; _h.z -= eyeZ;
-  const az2 = F.a0 - _h.x * F.ax, el2 = F.e0 + _h.y * F.ey, r2 = clamp(F.r0 + _h.z * F.rz, F.rMin, F.rMax);
+  // squeezed into the view's width, never above the middle of the picture (a hand there lifts the upper arm across the lens)
+  const az2 = (F.a0 - _h.x * F.ax) * wS, el2 = clamp(F.e0 + _h.y * F.ey, -Math.atan(ty * 0.92), 0.04), r2 = clamp(F.r0 + _h.z * F.rz, F.rMin, F.rMax);
   // the weapon's long axis and the way the knuckles face
   _q.copy(_tq).multiply(P.handQ[R]);
   _b.set(0, 1, 0).applyQuaternion(_q); _z.set(0, 0, 1).applyQuaternion(_q);
-  // how far apart the hands sit along the shaft, if the off hand is on it at all
-  _l.copy(P.handPos[L]).sub(P.handPos[R]).applyQuaternion(_tq);
-  const along = _l.dot(_b), off = _l.addScaledVector(_b, -along).length();
-  const both = hp.weapon === 'spear' && off < 0.12 && Math.abs(along) > 0.15;
-
-  _h.set(-Math.sin(az2) * Math.cos(el2) * r2, Math.sin(el2) * r2, Math.cos(az2) * Math.cos(el2) * r2);
   _b.set(_b.x * F.bx + F.bIn, _b.y * F.by + F.bUp, Math.max(_b.z, -0.2) * F.bz + F.bOut).normalize();
-  turn(_h); turn(_b); turn(_z);
-  _h.x += eyeX; _h.y += eyeY; _h.z += eyeZ;
+  // into the lens: root-aligned (x left) becomes lens space (x right)
+  lensPt(_h, Math.sin(az2) * Math.cos(el2) * r2, Math.sin(el2) * r2, Math.cos(az2) * Math.cos(el2) * r2);
+  lensDir(_b, -_b.x, _b.y, _b.z);
+  lensDir(_z, -_z.x, _z.y, _z.z);
+  // the carry, swaying a little with the stride (a breath at rest)
+  if (a < 0.999) {
+    const sp = clamp((hp.speed ?? 0) / 6, 0, 1), t = hp.time ?? 0, ph = t * (5 + 4 * sp);
+    const cz = C.r, cx = (C.x + (C.xWide - C.x) * wide) * cz + Math.sin(ph) * 0.012 * sp, cy = C.y * ty * cz + Math.abs(Math.cos(ph)) * 0.014 * sp + Math.sin(t * 1.7) * 0.003;
+    lensPt(_w, cx, cy, cz);
+    _h.lerp(_w, 1 - a);
+    lensDir(_w, C.b[0], C.b[1], C.b[2]).normalize();
+    _b.lerp(_w, 1 - a).normalize();
+  }
 
   _v.copy(_h).sub(_tc).applyQuaternion(_tqi);
   out.handPos[R].lerp(_v, k);
   basisYZ(_q, _b, _z);
   out.handQ[R].slerp(_q.premultiply(_tqi), k);
   out.elbow[R].lerp(_v.set(-0.75, -0.7, -0.15), k);
-  // the frame is too narrow for a forearm across it. A sword's off hand rides low by the hip, under
-  // the picture, whatever it does in third person; a spear's stays on the shaft only while the
-  // shoulders are square to the view (a wound-up torso swings the near shoulder across the lens)
-  let on = 0;
-  if (both) {
-    _l.set(0, 0, 1).applyQuaternion(_tq);
-    const yaw = Math.abs(Math.atan2(_l.x, _l.z)), lean = Math.abs(_l.y);
-    on = (1 - clamp((yaw - 0.25) / 0.35, 0, 1)) * (1 - clamp((lean - 0.25) / 0.25, 0, 1));
-    _v.copy(_h).addScaledVector(_b, along).sub(_tc).applyQuaternion(_tqi);
-    out.handPos[L].lerp(_v, k * on);
-    _q.copy(_tq).multiply(P.handQ[L]);
-    _z.set(0, 0, 1).applyQuaternion(_q); turn(_z);
-    basisYZ(_q, _b, _z);
-    out.handQ[L].slerp(_q.premultiply(_tqi), k * on);
-    out.elbow[L].lerp(_v.set(0.8, -0.75, -0.1), k * on);
+  // the frame is too narrow for a forearm across it: the off hand rides low by the hip, under the
+  // picture, whatever it does in third person. A spear is wielded one-handed through the eyes: its
+  // off forearm on the shaft was a striped bar across the bottom third of a portrait picture.
+  _v.copy(P.handPos[L]).applyQuaternion(_tq).add(_tc);
+  _v.y = Math.min(_v.y, eyeY - 0.62); _v.z = Math.min(_v.z, eyeZ + 0.16); _v.x = Math.max(_v.x, 0.2);
+  out.handPos[L].lerp(_v.sub(_tc).applyQuaternion(_tqi), k);
+  return out;
+}
+
+/**
+ * The shoulders under and outside the lens (FP_SHOULDER) while the hands are posed to it: `melee`
+ * and `hold` 0..1 are how far fpPresent and fpHold have the arms. rig.ts moves the upper arms there
+ * by `out.free` and keeps each within reach of its hand.
+ */
+export function fpShoulders(P: Pose, hp: HumanPose, melee: number, hold: number, out: FpArms, sc = 1) {
+  const k = Math.max(melee * FP_SHOULDER.k, hold * FP_SHOULDER.hold);
+  if (k <= 0.002 || !hp.fpEye || !hp.fpDir) return out;
+  torso(P);
+  lensFrame(hp, sc, 0, 0);
+  for (let s = 0; s < 2; s++) {
+    lensPt(_w, (s === R ? 1 : -1) * FP_SHOULDER.x, FP_SHOULDER.y, FP_SHOULDER.z);
+    out.shoulder[s].copy(_w).sub(_tc).applyQuaternion(_tqi);
   }
-  if (on < 1) {
-    _v.copy(P.handPos[L]).applyQuaternion(_tq).add(_tc);
-    _v.y = Math.min(_v.y, eyeY - 0.62); _v.z = Math.min(_v.z, eyeZ + 0.16); _v.x = Math.max(_v.x, 0.2);
-    out.handPos[L].lerp(_v.sub(_tc).applyQuaternion(_tqi), k * (1 - on));
-  }
+  out.free = k;
   return out;
 }
 
@@ -220,7 +277,7 @@ function moveHand(m: FpMove, hp: HumanPose, deadT: number, s: number, p: THREE.V
     if (t < DOWN_LIE) {
       // thrown back: the hands fly up, fingers spread, then fall away as the back meets the ground
       const e = smooth(0, DOWN_FALL, t), d = smooth(DOWN_FALL + 0.05, DOWN_LIE - 0.1, t);
-      p.set(g * (0.085 + 0.03 * d), -0.36 + 0.33 * e - 0.5 * d, 0.37 - 0.06 * d);
+      p.set(g * (0.085 + 0.03 * d), -0.36 + 0.2 * e - 0.5 * d, 0.37 - 0.06 * d);
       z.set(-g * 0.15, 1, 0.15 + 0.5 * d); y.set(-g, 0, 0);
     } else {
       // getting up: the right hand plants and pushes, the left reaches for balance
@@ -231,7 +288,7 @@ function moveHand(m: FpMove, hp: HumanPose, deadT: number, s: number, p: THREE.V
   } else if (m === 'dead') {
     // a last reach, and the hands sink
     const r = bell(deadT, 0, 0.25, 0.3, 0.9), f = smooth(0.3, 1.0, deadT);
-    p.set(g * (0.085 + 0.05 * f), -0.34 + 0.24 * r - 0.35 * f, 0.36);
+    p.set(g * (0.085 + 0.05 * f), -0.34 + 0.15 * r - 0.35 * f, 0.36);
     z.set(-g * 0.2, 0.8 - 1.2 * f, 0.5 + 0.3 * f); y.set(-g, 0, 0);
   } else {
     // riding: both fists on the reins over the horse's withers, giving with its stride
@@ -252,22 +309,28 @@ export function fpMove(P: Pose, hp: HumanPose, dt: number, eye: THREE.Vector3 | 
   out.moveK += ((m ? 1 : 0) - out.moveK) * Math.min(1, dt * (m ? 16 : 7));
   out.deadT = hp.locomotion === 'dead' ? out.deadT + dt : 0;
   if (m) out.move = m;
-  if (out.moveK < 0.002 || !out.move || !eye || !dir) { out.moveK = m ? out.moveK : 0; out.free = 0; return out; }
+  if (out.moveK < 0.002 || !out.move || !eye || !dir) { out.moveK = m ? out.moveK : 0; return out; }
   const K = out.moveK * (hp.fp ?? 0), ride = out.move === 'ride';
-  out.free = ride ? 0 : out.moveK;
+  // the shoulders: from wherever a held weapon had them (fpShoulders) to under the lens
+  const shK = ride ? 0 : out.free > 0 ? out.moveK : 1;
+  out.free = ride ? out.free * (1 - out.moveK) : Math.max(out.free, out.moveK);
+  // the hands keep to the picture's lower corners and a forearm's length out, whatever its width:
+  // a knockdown or a death is read by what the world does, not by two fists across it
+  const tx = hp.fpTan?.x ?? 0.334, edge = 0.8 - 0.3 * clamp((tx - 0.334) / 0.66, 0, 1);
   torso(P);
   // a rider's hands stay with the horse whichever way the head turns; the rest follow the view
   if (ride) _fq.identity(); else basisZY(_fq, dir, up ?? UP);
   for (let s = 0; s < 2; s++) {
     const g = s === L ? 1 : -1;
     moveHand(out.move, hp, out.deadT, s, _p, _z, _b);
+    if (!ride) { _p.z += 0.08; _p.x = g * Math.max(Math.abs(_p.x), edge * tx * _p.z); }
     _h.copy(_p).applyQuaternion(_fq).add(eye);
     out.handPos[s].lerp(_v.copy(_h).sub(_tc).applyQuaternion(_tqi), K);
     _z.applyQuaternion(_fq); _b.applyQuaternion(_fq);
     basisZY(_q, _z, _b);
     out.handQ[s].slerp(_q.premultiply(_tqi), K);
     out.elbow[s].lerp(_v.set(g * (ride ? 0.6 : 0.8), ride ? -1 : -0.8, -0.2), K);
-    out.shoulder[s].set(g * 0.19, -0.25, -0.06).applyQuaternion(_fq).add(eye).sub(_tc).applyQuaternion(_tqi);
+    if (shK > 0) out.shoulder[s].lerp(_v.set(g * 0.19, -0.25, -0.06).applyQuaternion(_fq).add(eye).sub(_tc).applyQuaternion(_tqi), shK);
   }
   return out;
 }
