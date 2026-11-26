@@ -195,7 +195,8 @@ const GOLDEN_SCENES = [
     async setup(G, g) {
       G.noCamps(); G.clearMobs(); G.level(9);
       g.east.lightBeacon(1, true);
-      G.place(-11 + Math.sin(0.6) * 12, 146 + Math.cos(0.6) * 12, 0.6 + PI);
+      // on the causeway that runs up to the beacon (from the verge a paddock rail cut across the hero)
+      G.place(-11, 146 + 12, PI);
       G.camBehind(-11, 146, -0.06, 1.25, 0.25);
       await G.secs(2); G.quiet();
     },
