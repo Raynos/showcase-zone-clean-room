@@ -565,8 +565,9 @@ export class Arena implements System {
       const s = m.rig.sockets.handR ?? m.rig.sockets.handL;
       if (s) s.getWorldPosition(f.pos); else f.pos.copy(m.pos);
       f.pos.y = Y;
-      if (Math.random() < dt * 14) g.fx.emit(_v.set(f.pos.x, Y + 0.6, f.pos.z), { count: 1, speed: [0.5, 2], up: 2, life: [0.4, 0.8], size: [0.12, 0.3], color: 0xffc46a, glow: 4, sprite: SP.EMBER, radius: 1.6 });
-      if (Math.random() < dt * 2.5) g.fx.ring(_v.set(f.pos.x, Y + 0.12, f.pos.z), 4.4, 0xffc46a, 0.5, 2);
+      // the fist burns: a column of embers and a pulse on the floor, readable from across the arena
+      if (Math.random() < dt * 30) g.fx.emit(_v.set(f.pos.x, Y + 0.8, f.pos.z), { count: 2, speed: [0.8, 2.6], up: 4, life: [0.5, 0.9], size: [0.2, 0.45], color: 0xffc46a, color2: 0xff7a2a, glow: 6, sprite: SP.EMBER, radius: 1.4 });
+      if (Math.random() < dt * 4) g.fx.ring(_v.set(f.pos.x, Y + 0.12, f.pos.z), 3.6, 0xffb04a, 0.45, 3);
       if (this.plantT <= 0 || m.state === 'broken') this.endPlant();
     }
     // a break in phase 1: it topples

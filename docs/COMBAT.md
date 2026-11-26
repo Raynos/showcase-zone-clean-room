@@ -205,15 +205,111 @@ A robot is tied to its home, not to the player, and in both stances:
     live. Answer: clear the larvae with a sweep.
   - Big Pallet's ram hardly staggers (×0.25). Answer: a counter within
     2.2 s of a ram breaks it on the spot.
-  - Plumb Line Prime channels a tracking laser. Answer: break line of
-    sight behind cover.
+  - Plumb Line Prime channels a tracking laser (1.3 s wind-up). Answer:
+    break line of sight behind cover, or cut the line: a heavy blow, a
+    full-draw shot or a shot to the lens while it aims or burns stuns it
+    for 2.4 s (×1.4 damage).
   - Shift Boss Slag is plated: ×0.2 damage and no stagger. Answer: a
-    breaker or a heavy rifle round cracks the plate for 9 s (×1.15).
+    breaker, or a full-draw arrow, bolt or rifle round, cracks the plate
+    for 9 s (×1.15).
   - Old Reliable is a bulwark: ×0.25 from the front and ×1.25 from behind,
     and it turns slowly. Answer: get behind it.
-- **Vault Warden phase 3** below a third of its health: the shield blows off, it takes
-  ×1.15 damage, and it adds a sweeping beam, triple rings and a chasing
-  stamp.
+- **Vault Warden phase 3** below a third of its health: the shield blows
+  off and it sets the final question on the hall's pillars. See "Elites
+  and bosses" below.
+
+## Elites and bosses
+
+Every elite-class robot has one signature mechanic: a tell that reads with
+the sound off (a floor shape, a glow, a word over its head) and with the
+picture off (a sound from the telegraph bank), an answer that works in
+melee, in the shooter stance and in first person, and a fail that hurts
+but never kills from full health. A line under the robot's name says what
+it does the first time a fight with it starts (`Mech.hint`).
+
+Code: gate mechanics in `src/systems/mechanics.ts`; everything else is a
+trick in `src/systems/mechanics/tricks.ts`, matched in `roster.ts` (night
+elites by `twist` in `data/enemies.ts`, rares by kind, champions by name,
+named elites by name). Tricks reuse the kit: their attacks are ordinary
+`AttackDef`s, so floor shape, wind-up pose and `tell_<type>` sound come
+for free. The bot's answers are in `tools/bot/27-mechanics.js`.
+
+| Robot (band)          | Mechanic and tell          | Answer                  |
+| --------------------- | -------------------------- | ----------------------- |
+| Gatecrasher (1)       | shell while 2+ larvae live | sweep the larvae        |
+| Big Pallet (2)        | ram, plating vs stagger    | roll in, counter: break |
+| Plumb Line Prime (3)  | tracking laser             | cover, or cut the line  |
+| Shift Boss Slag (4)   | slag plate, ×0.2           | breaker, full-draw shot |
+| Old Reliable (5)      | riveted front, ×0.25       | get behind it           |
+| Foreman Unit 7 (6)    | amber deadline ring fills  | break it before it ends |
+| Sir Nibbles (night 2) | shell + lance charge       | dodge: it overruns      |
+| Hot Mess (night 4)    | plate + heat glow, vent    | back off, hit the vent  |
+| Riveting Rita (n. 6)  | front + ring round her     | inside, her front opens |
+| Lucky Lid (rare)      | plays dead, gold glint     | hit it while it lies    |
+| Pallet Royale (rare)  | fork lunge, pin and throw  | perfect roll: finisher  |
+| Glimmer (rare)        | turns to glass, dives      | dodge: lands dazed      |
+| Slow Burn (rare)      | fuse climbs its back       | hit the tank / its back |
+| Staccato (rare)       | encore of 3 lane bursts    | close in, or hit drum   |
+| Static Cling (rare)   | charging tether            | heavy, full shot, coil  |
+| Champions             | grudge pips, settle slam   | break it to cash in     |
+| Shift Lead Cinder     | overheat (gauntlet 3)      | as Hot Mess             |
+| Overseer Volt         | links to adds, ×0.3        | roll through the lines  |
+| Proctor Slagjaw       | guard, parries, riposte    | wait it out: it opens   |
+
+Rules the tricks share:
+
+- A trick's opening is a stun with `Mob.stunTaken` (×1.25–1.6 damage):
+  UNHORSED, OVERRAN, VENTING, DAZED, RELOADING, JAMMED, OPEN, LINE CUT.
+- Fails: joust 1.6×, vent 1.1×, fuse 1.7×, settle 1.6×, tether 1.5×,
+  forks pin 0.55 + 0.55 + 0.8× robot damage. Rivet ring and Volt's lines
+  tick (0.22× per 0.5 s, 0.3×). None reaches a full health bar at band
+  level.
+- A perfect dodge through Pallet Royale's forks sets `Mob.freeFinish`:
+  the finisher prompt shows whatever its health or class, and takes 22%
+  of its health (×1.4 broken) instead of the rest.
+- Rares get the lighter version: one trick, first use after 3–4 s.
+- Flyers (elite, rare and champion drones) give melee a way in: against
+  a melee weapon they hold 4.5–7 m instead of 7–12 m, and every dive
+  ends GROUNDED for 1.6 s (×1.25 damage) beside the player.
+
+### Vault Warden, phase 3: "Exam: Final"
+
+`src/systems/mechanics/exam.ts`. Below a third of its health:
+
+- **The question.** Three of the eight pillar lamps light cyan one after
+  another, each with its own note (the logic chamber's plate pitches) and
+  a pillar of light. Strike them in that order within 14 s: a shot at the
+  lamp, or a blow to the pillar. Right turns the lamp green; wrong costs a
+  red zap (0.55× damage) and the question again. Three right: the current
+  runs into the Warden and breaks it for at least 5 s.
+- **Marking the paper.** Between questions, five red bars cross the hall
+  one after another toward the player (1 s tell each, `tell_beam`).
+  Stand between them or roll through.
+- **Cover.** The sweeping beam stops at anything solid
+  (`systems/mobs.ts`, spin), so the pillars are cover as well as answers.
+- **Damage.** ×0.85 taken outside a break (×1.15 before): the lamps are
+  the way through.
+- **Ending.** Broken under a quarter of its health, by the lamps or any
+  other way, it offers the finisher prompt.
+
+### Crate Titan, phase 1: the planted fist
+
+`src/world/arena.ts`. Phase 1 was "dodge the fist, poke the shins". Now a
+fist slam leaves the fist planted for 2.6 s (at most every 8 s), glowing
+amber with ember rings. The fist is a target of its own: ×1.3 damage and
+×3 stagger, so a full punish topples the Titan (a break, TOPPLED) before
+the crates start to fall. Bow and rifle can hit it too.
+
+### Run modifiers
+
+A run (overtime, `src/systems/overtime/`) changes robots through one
+hook, `Mob.applyRun({ hp, dmg, taken, poise, trick, rule })`, called once
+after the spawn. Health and damage are scaled there; damage taken, stagger
+taken and the trick pace stay on `Mob.run`, a layer of their own that the
+vault and arena scripts never write, so their phase changes
+(`dmgTakenMul`, `poiseMul`) keep the run's numbers. `run.trick` speeds
+every trick clock, the Warden's questions and lanes and the Titan's fist
+(the overtime rule Double Time sets 2).
 
 ## Shooter stance
 
