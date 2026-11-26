@@ -24,7 +24,9 @@ export class Guide implements System {
   private target: Target | null = null; private refreshT = 0;
   /** the objective itself; `target` is where to walk now (the near side of a gate when a wall or ridge is in the way) */
   private goal: Target | null = null; private rest = 0; private router: Router;
-  private poi = { id: 'quest_target', x: 0, z: 0, icon: 'star', label: 'Objective', color: '#ffcf3a', big: true, show: () => !!this.goal };
+  /** the objective on the maps (ui/map.ts): `r` rings an area, `moving` says it walks (an escort) */
+  private poi = { id: 'quest_target', x: 0, z: 0, icon: 'star', label: 'Objective', color: '#ffcf3a', big: true, r: 0, moving: false, show: () => !!this.goal };
+  private movedT = 0;
   constructor(private game: Game) {
     const css = document.createElement('style');
     css.textContent = `
@@ -136,7 +138,12 @@ export class Guide implements System {
   update(_dt: number, rdt: number) {
     const g = this.game;
     this.refreshT -= rdt;
-    if (this.refreshT <= 0) { this.refreshT = 0.5; this.goal = this.pick(); this.target = this.route(this.goal); if (this.goal) { this.poi.x = this.goal.x; this.poi.z = this.goal.z; this.poi.label = this.goal.label || 'Objective'; } g.hud.wayDock(true); }
+    if (this.refreshT <= 0) { this.refreshT = 0.5; this.goal = this.pick(); this.target = this.route(this.goal); if (this.goal) {
+      // a goal that shifts a little between looks is something walking; a jump is a new goal
+      const moved = Math.hypot(this.goal.x - this.poi.x, this.goal.z - this.poi.z);
+      this.movedT = moved > 8 ? 0 : moved > 0.15 ? 6 : Math.max(0, this.movedT - 0.5);
+      this.poi.x = this.goal.x; this.poi.z = this.goal.z; this.poi.label = this.goal.label || 'Objective'; this.poi.r = this.goal.r ?? 0; this.poi.moving = this.movedT > 0;
+    } g.hud.wayDock(true); }
     const t = this.target, p = g.player.pos;
     const d = t ? Math.hypot(t.x - p.x, t.z - p.z) + this.rest : 0;
     if (!t || d < 7 || !g.started || g.cameraRig.cine || g.panels?.isOpen || g.player.dead) { this.mark.classList.remove('on'); g.hud.wayDocked(false); return; }

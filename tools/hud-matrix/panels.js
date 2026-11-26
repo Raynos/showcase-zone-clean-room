@@ -58,7 +58,7 @@ const PN_STATES = [
   { n: 8, name: 'quests-available', what: 'Journal: what is on offer', hour: 11,
     async setup(G, g) { await pnBase(G, g); await pnOpen(g, 'quests', { tab: 'avail' }); } },
   { n: 9, name: 'map', what: 'Zone map: bands, the player arrow, markers, the legend', hour: 11,
-    async setup(G, g) { await pnBase(G, g); await pnOpen(g, 'map'); await pnWait(400); } },
+    async setup(G, g) { await pnBase(G, g); await pnOpen(g, 'map'); await pnWait(400); window.HM_AFTER = () => g.panels.view && g.panels.view.update(0); } },
   { n: 10, name: 'settings', what: 'Settings: controls, the first group', hour: 11,
     async setup(G, g) { await pnBase(G, g); await pnOpen(g, 'menu'); } },
   { n: 11, name: 'settings-camera', what: 'Settings: camera, with the first-person sliders', hour: 11,
@@ -100,5 +100,9 @@ const PN_STATES = [
     async setup(G, g) { await pnBase(G, g); await pnTalk(g, 'weapons'); } },
   { n: 29, name: 'settings-comfort', what: 'Settings: motion, shake, bob and flashes', hour: 11,
     async setup(G, g) { await pnBase(G, g); await pnOpen(g, 'menu', { tab: 'comfort' }); } },
+  { n: 30, name: 'map-travel', what: 'Fast travel: the signal posts listed over the map, three lit, three unknown', hour: 11,
+    async setup(G, g) { await pnBase(G, g); (g.state.d.field ??= {}).posts = ['b1', 'b2', 'b4']; g.player.teleport(40, g.terrain.h(40, 6), 6, 1.6); await pnWait(300); await pnOpen(g, 'map', { travel: true }); await pnWait(400); window.HM_AFTER = () => g.panels.view && g.panels.view.update(0); } },
+  { n: 31, name: 'shop-outpost', what: "An outpost's stall: supplies and selling, under its own name", hour: 11,
+    async setup(G, g) { await pnBase(G, g); await pnOpen(g, 'shop', { tab: 'supplies', from: 'vend_b1' }); } },
 ];
 if (window.GOLDEN) window.GOLDEN.scenes = PN_STATES;

@@ -8,7 +8,8 @@ const SIZE = HALF * 2 * MS;
 export const MAP_FONT = '"Avenir Next Condensed","Roboto Condensed","Arial Narrow","Helvetica Neue",system-ui,sans-serif';
 const TAU = Math.PI * 2;
 
-export interface MapPoi { id: string; x: number; z: number; icon: string; label: string; color?: string; show?: () => boolean; big?: boolean; minor?: boolean }
+/** A marker. `r` (metres) makes it an area, drawn as a ring; `moving` says it walks (an escort), drawn as a live dot. */
+export interface MapPoi { id: string; x: number; z: number; icon: string; label: string; color?: string; show?: () => boolean; big?: boolean; minor?: boolean; r?: number; moving?: boolean }
 
 // icons.ts markup -> Path2D (24x24 box), so HUD icons can be stamped on canvases
 const pathCache = new Map<string, Path2D>();
@@ -219,9 +220,26 @@ export class ZoneMap {
     if (!g.interior) for (const poi of this.pois()) {
       let x = (poi.x - p.x) * k, y = (poi.z - p.z) * k;
       const d = Math.hypot(x, y), lim = c - 9;
+      const col = poi.color ?? '#ffd9a8';
+      // an area objective: its ground, ringed (the disc clips whatever falls outside the minimap)
+      if (poi.r && d - poi.r * k < c) {
+        ctx.beginPath(); ctx.arc(c + x, c + y, poi.r * k, 0, TAU);
+        ctx.globalAlpha = 0.16; ctx.fillStyle = col; ctx.fill();
+        ctx.globalAlpha = 0.95; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.6; ctx.strokeStyle = col; ctx.stroke(); ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+        if (d < poi.r * k) continue;   // standing in it: the ring is the marker
+      }
       let edge = false;
       if (d > lim) { if (!poi.big) continue; x *= lim / d; y *= lim / d; edge = true; }
-      const col = poi.color ?? '#ffd9a8', r = edge ? 4 : poi.minor ? 4 : 6;
+      const r = edge ? 4 : poi.minor ? 4 : 6;
+      // something that walks: a dot with a beat, not a place's diamond
+      if (poi.moving) {
+        const beat = (performance.now() / 900) % 1;
+        ctx.beginPath(); ctx.arc(c + x, c + y, 5 + beat * 7, 0, TAU); ctx.globalAlpha = (1 - beat) * 0.8; ctx.lineWidth = 1.6; ctx.strokeStyle = col; ctx.stroke();
+        ctx.globalAlpha = edge ? 0.75 : 1;
+        ctx.beginPath(); ctx.arc(c + x, c + y, edge ? 4 : 5, 0, TAU); ctx.fillStyle = col; ctx.strokeStyle = '#14171c'; ctx.lineWidth = 2; ctx.stroke(); ctx.fill();
+        continue;
+      }
       ctx.beginPath(); ctx.moveTo(c + x, c + y - r); ctx.lineTo(c + x + r, c + y); ctx.lineTo(c + x, c + y + r); ctx.lineTo(c + x - r, c + y); ctx.closePath();
       ctx.fillStyle = col; ctx.strokeStyle = '#14171c'; ctx.lineWidth = 2; ctx.globalAlpha = edge ? 0.75 : 1;
       ctx.stroke(); ctx.fill();

@@ -1,15 +1,21 @@
 import { BANDS, HALF, LAKE, PADS, ROCK, TOWN, bandAt, inTown } from '../../world/layout';
 import { icon } from '../icons';
 import { BAND_TINT, MAP_FONT, ZoneMap, iconPath, type MapPoi } from '../map';
+import type { TravelDest } from '../../systems/travel';
 import type { PanelSpec } from './common';
 
 const TAU = Math.PI * 2;
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 
-/** Full zone map: pan, pinch and wheel zoom, live markers. */
+/**
+ * Full zone map: pan, pinch and wheel zoom, live markers. It is also the zone's fast travel: every signal post is a
+ * marker to tap (and a row in the Travel list, which a post's own terminal opens: `arg.travel`). A lit post asks
+ * before it takes you; a dark one is a question mark that says to reach it on foot; a refusal says why
+ * (systems/travel.ts answers `travelBlocked`: in a fight, indoors, during a timed run or an escort).
+ */
 export const mapPanel: PanelSpec = {
   title: 'The Proving Yard', icon: 'map', cls: 'map',
-  make(host) {
+  make(host, arg) {
     const g = host.game, zm: ZoneMap = g.panels?.zoneMap ?? (host as any).zoneMap;
     const p = g.player.pos;
     let cv!: HTMLCanvasElement, ctx!: CanvasRenderingContext2D, w = 0, h = 0, dpr = 1;
@@ -17,6 +23,77 @@ export const mapPanel: PanelSpec = {
     const pts = new Map<number, { x: number; y: number }>();
     let pinch = 0;
     let locEl: HTMLElement | null = null, lastLoc = '';
+    // ---- fast travel
+    const dests = (): TravelDest[] => (g.hooks.travelList?.() as TravelDest[] | undefined) ?? [];
+    const blocked = (): string | null => (g.hooks.travelBlocked?.() as string | null | undefined) ?? null;
+    const hasNet = dests().length > 0;
+    let travel = hasNet && !!arg?.travel, travelSig = '', tapAt: { x: number; y: number; t: number; far: boolean } | null = null;
+    const bandOf = (d: TravelDest) => BANDS[d.band - 1];
+    const whereOf = (d: TravelDest) => (d.band ? `${bandOf(d)?.name ?? 'The yard'} · Lv ${bandOf(d)?.lo}-${bandOf(d)?.hi}` : 'Town · the east gate');
+    /** A post was chosen (its marker or its row): say why not, or ask, then go. */
+    const pick = (id: string) => {
+      const d = dests().find((x) => x.id === id);
+      if (!d) return;
+      if (!d.unlocked) { g.sfx('ui_deny'); void host.notice('Unknown signal post', `Somewhere in ${bandOf(d)?.name ?? 'the yard'}. Reach it on foot to light it; after that it is one tap away.`); return; }
+      if (d.here) { void host.notice('You are here', `${d.name} · ${whereOf(d)}`); return; }
+      const why = blocked();
+      if (why) { g.sfx('ui_deny'); void host.notice('Cannot travel now', why); return; }
+      void host.confirm(`Travel to ${d.name}?<small>${whereOf(d)}. You step out at its signal post.</small>`, 'Travel', 'Stay')
+        .then((ok) => { if (ok && !blocked()) { host.close(true); void g.hooks.travelTo?.(d.id); } });
+    };
+    const travelHtml = () => {
+      const why = blocked(), ds = dests(), lit = ds.filter((d) => d.unlocked).length;
+      travelSig = (why ?? '') + ds.map((d) => (d.unlocked ? 1 : 0) + (d.here ? 2 : 0)).join('');
+      return `<h4>Signal posts${why ? `<em class="why">${icon('lock', 13, 2.4)}${why}</em>` : `<em>${lit} / ${ds.length} lit</em>`}</h4>`
+        + ds.map((d) => (d.unlocked
+          ? `<div class="tv${d.here ? ' here' : why ? ' no' : ''}" data-a="go" data-v="${d.id}" style="--tc:${d.css}"><i>${icon('bolt', 15, 2.4)}</i><div class="grow"><b>${d.name}</b><small>${whereOf(d)}</small></div><em>${d.here ? 'Here' : 'Travel'}</em></div>`
+          : `<div class="tv dark" data-a="go" data-v="${d.id}"><i>?</i><div class="grow"><b>Unknown post</b><small>${bandOf(d)?.name ?? 'The yard'} · not reached</small></div><em>${icon('lock', 13, 2.4)}</em></div>`)).join('');
+    };
+    /** a post's marker: lit, a disc in its colour with a collar that says it can be tapped; dark, a question mark */
+    const postMarker = (d: TravelDest) => {
+      const x = sx(d.x), y = sz(d.z);
+      if (x < -30 || y < -30 || x > w + 30 || y > h + 30) return;
+      ctx.beginPath(); ctx.arc(x, y, d.unlocked ? 12 : 10, 0, TAU);
+      ctx.fillStyle = 'rgba(20,23,28,0.92)'; ctx.fill();
+      if (!d.unlocked) {
+        ctx.setLineDash([3, 3]); ctx.lineWidth = 1.5; ctx.strokeStyle = '#8a929c'; ctx.stroke(); ctx.setLineDash([]);
+        ctx.font = `800 13px ${MAP_FONT}`; (ctx as any).letterSpacing = '0px'; ctx.fillStyle = '#aab1ba'; ctx.fillText('?', x, y + 0.5);
+        taken.push(x, y, 22, 22);
+        return;
+      }
+      ctx.lineWidth = 2; ctx.strokeStyle = d.css; ctx.stroke();
+      const beat = (t * 0.55 + d.band * 0.17) % 1;
+      ctx.beginPath(); ctx.arc(x, y, 14 + beat * 7, 0, TAU); ctx.globalAlpha = (1 - beat) * 0.7; ctx.lineWidth = 1.5; ctx.stroke(); ctx.globalAlpha = 1;
+      ctx.save();
+      const s = 12 * 1.2 / 24;
+      ctx.translate(x - 12 * s, y - 12 * s); ctx.scale(s, s);
+      ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = d.css;
+      ctx.stroke(iconPath('bolt'));
+      ctx.restore();
+      taken.push(x, y, 26, 26);
+    };
+    const isPost = (poi: MapPoi) => hasNet && poi.id.startsWith('post_');
+    /** an area objective's ground: a wash and a turning dashed ring */
+    const ring = (poi: MapPoi) => {
+      if (!poi.r) return;
+      const x = sx(poi.x), y = sz(poi.z), r = poi.r * zoom, col = poi.color ?? '#ffcf3a';
+      if (x + r < 0 || y + r < 0 || x - r > w || y - r > h) return;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, TAU);
+      ctx.globalAlpha = 0.16; ctx.fillStyle = col; ctx.fill();
+      ctx.globalAlpha = 0.95; ctx.setLineDash([7, 5]); ctx.lineDashOffset = -t * 8; ctx.lineWidth = 2; ctx.strokeStyle = col; ctx.stroke();
+      ctx.setLineDash([]); ctx.lineDashOffset = 0; ctx.globalAlpha = 1;
+    };
+    /** something that walks (an escort): a beat around its marker, which eases after it between the guide's looks */
+    const live = new Map<string, { x: number; z: number }>();
+    const walker = (poi: MapPoi): MapPoi => {
+      if (!poi.moving) { live.delete(poi.id); return poi; }
+      let at = live.get(poi.id);
+      if (!at || Math.hypot(at.x - poi.x, at.z - poi.z) > 12) { at = { x: poi.x, z: poi.z }; live.set(poi.id, at); }
+      at.x += (poi.x - at.x) * 0.12; at.z += (poi.z - at.z) * 0.12;
+      const x = sx(at.x), y = sz(at.z), beat = (t * 1.1) % 1;
+      ctx.beginPath(); ctx.arc(x, y, 14 + beat * 12, 0, TAU); ctx.globalAlpha = (1 - beat) * 0.8; ctx.lineWidth = 2; ctx.strokeStyle = poi.color ?? '#ffcf3a'; ctx.stroke(); ctx.globalAlpha = 1;
+      return { ...poi, x: at.x, z: at.z };
+    };
     const sx = (x: number) => (x - cx) * zoom + w / 2, sz = (z: number) => (z - cz) * zoom + h / 2;
     const limit = () => {
       zoom = clamp(zoom, minZoom, 7);
@@ -100,10 +177,16 @@ export const mapPanel: PanelSpec = {
       const ts = clamp(9 + zoom * 3, 12, 18);
       text('BRASSWICK', sx((TOWN.x0 + TOWN.x1) / 2 - 22), sz(TOWN.z0 + 12), ts, '#ffcf5a', 800, 0.14);
       // markers first (their discs keep names off them), then names in order of weight
-      for (const poi of zm.pois()) if (poi.minor) marker(poi, false);
-      for (const poi of zm.pois()) if (!poi.minor) marker(poi, !!poi.big);
-      for (const poi of zm.pois()) if (!poi.minor && poi.big) markerName(poi, true);
-      for (const poi of zm.pois()) if (!poi.minor && !poi.big) markerName(poi, false);
+      const ds = dests();
+      const all = [...zm.pois()].filter((poi) => !isPost(poi));
+      for (const poi of all) ring(poi);
+      for (const poi of all) if (poi.minor) marker(poi, false);
+      for (const d of ds) postMarker(d);
+      const main = all.filter((poi) => !poi.minor).map(walker);
+      for (const poi of main) marker(poi, !!poi.big);
+      for (const poi of main) if (poi.big) markerName(poi, true);
+      for (const d of ds) if (d.unlocked && zoom > 1.05) text(d.name.toUpperCase(), sx(d.x), sz(d.z) + 12 + 11, 11.5, d.css, 800, 0.06, false);
+      for (const poi of main) if (!poi.big) markerName(poi, false);
       const ps = clamp(7.5 + zoom * 1.6, 11, 13);
       const named = new Set<string>();
       for (const poi of zm.pois()) named.add(poi.label.toLowerCase());
@@ -140,7 +223,7 @@ export const mapPanel: PanelSpec = {
       ctx.restore();
     };
     const where = () => {
-      if (g.interior) return 'Interior';
+      if (g.interior) return g.hud.placeName;
       if (inTown(p.x, p.z)) return 'Brasswick';
       const b = bandAt(p.x, p.z);
       return b ? `${b.name} · Lv ${b.lo}-${b.hi}` : g.zoneName || 'The Proving Yard';
@@ -160,10 +243,11 @@ export const mapPanel: PanelSpec = {
       host.body.innerHTML = `<canvas class="pn-mapcv"></canvas>
         <div class="pn-maploc"></div>
         <div class="pn-mapbtns"><div class="pn-rb" data-a="zin" aria-label="Zoom in"><span>+</span></div><div class="pn-rb" data-a="zout" aria-label="Zoom out"><span>−</span></div><div class="pn-rb cy" data-a="me" aria-label="Centre on me">${icon('target', 20)}</div></div>
-        <div class="pn-mapleg"><div class="pn-btn sm" data-a="legend">${icon('map', 16)}Legend</div><div class="pn-btn sm" data-a="town" title="Return to the town square">${icon('dash', 16)}Brasswick</div></div>
+        <div class="pn-mapleg"><div class="pn-btn sm" data-a="legend">${icon('map', 16)}Legend</div>${hasNet ? `<div class="pn-btn sm${travel ? ' on' : ''}" data-a="travel" title="Signal posts: fast travel">${icon('bolt', 16)}Travel</div>` : `<div class="pn-btn sm" data-a="town" title="Return to the town square">${icon('dash', 16)}Brasswick</div>`}</div>
+        <div class="pn-travel bev${travel ? ' on' : ''}">${hasNet ? travelHtml() : ''}</div>
         ${questChip()}
         <div class="pn-legend bev${legend ? ' on' : ''}" data-a="legend"><h4>Legend</h4><div class="lg">
-          <div><i class="you"></i>You</div><div><i class="obj">${icon('star', 12, 2.4)}</i>Quest objective</div><div><i class="dot q"></i>Place of interest</div><div><i class="dot r"></i>Robot</div><div><i class="dot e"></i>Elite or boss</div>
+          <div><i class="you"></i>You</div><div><i class="obj">${icon('star', 12, 2.4)}</i>Quest objective</div><div><i class="dot q"></i>Place of interest</div><div><i class="post">${icon('bolt', 11, 2.6)}</i>Signal post: tap to travel</div><div><i class="area"></i>Objective area</div><div><i class="dot r"></i>Robot</div><div><i class="dot e"></i>Elite or boss</div>
           <div><i class="ln road"></i>Road</div><div><i class="ln trail"></i>Trail</div><div><i class="ln track"></i>Riding track</div><div><i class="bx"></i>Test course</div><div><i class="wall"></i>Blast wall</div></div>
           <div class="lb">${BANDS.map((b) => `<div><i style="background:${BAND_TINT[b.id]}"></i><span>${b.name}</span><em>Lv ${b.lo}-${b.hi}</em></div>`).join('')}</div></div>`;
       cv = host.body.querySelector('canvas')!; ctx = cv.getContext('2d')!;
@@ -172,6 +256,7 @@ export const mapPanel: PanelSpec = {
       cv.addEventListener('pointerdown', (e) => {
         try { cv.setPointerCapture(e.pointerId); } catch { /* ignore */ }
         pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        tapAt = pts.size === 1 ? { x: e.clientX, y: e.clientY, t: performance.now(), far: false } : null;
         if (pts.size === 2) { const a = [...pts.values()]; pinch = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); }
       });
       cv.addEventListener('pointermove', (e) => {
@@ -179,6 +264,7 @@ export const mapPanel: PanelSpec = {
         if (!q) return;
         const dx = e.clientX - q.x, dy = e.clientY - q.y;
         q.x = e.clientX; q.y = e.clientY;
+        if (tapAt && Math.hypot(e.clientX - tapAt.x, e.clientY - tapAt.y) > 9) tapAt.far = true;
         if (pts.size >= 2) {
           const a = [...pts.values()], d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y), r = cv.getBoundingClientRect();
           if (pinch > 0 && d > 0) zoomAt(d / pinch, (a[0].x + a[1].x) / 2 - r.left, (a[0].y + a[1].y) / 2 - r.top);
@@ -186,7 +272,17 @@ export const mapPanel: PanelSpec = {
         } else { cx -= dx / zoom; cz -= dy / zoom; follow = false; limit(); }
       });
       const up = (e: PointerEvent) => { pts.delete(e.pointerId); pinch = 0; };
-      cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+      cv.addEventListener('pointerup', (e) => {
+        // a tap (not a drag) on or beside a post's marker picks it: a finger's reach, the nearest wins
+        const tap = tapAt; tapAt = null;
+        up(e);
+        if (!tap || tap.far || performance.now() - tap.t > 600) return;
+        const r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+        let best: TravelDest | null = null, bd = 26;
+        for (const d of dests()) { const dd = Math.hypot(sx(d.x) - px, sz(d.z) - py); if (dd < bd) { bd = dd; best = d; } }
+        if (best) { g.sfx('ui_click'); pick(best.id); }
+      });
+      cv.addEventListener('pointercancel', (e) => { tapAt = null; up(e); });
       cv.addEventListener('wheel', (e) => { e.preventDefault(); const r = cv.getBoundingClientRect(); zoomAt(Math.exp(-e.deltaY * 0.0016), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
       fit(); draw();
     };
@@ -199,11 +295,15 @@ export const mapPanel: PanelSpec = {
         draw();
         const loc = where() + ` · ${Math.round(p.x)}, ${Math.round(p.z)}`;
         if (loc !== lastLoc && locEl) { lastLoc = loc; locEl.innerHTML = `${icon('map', 14)}${loc}`; }
+        if (travel) {
+          const why = blocked();
+          if ((why ?? '') + dests().map((d) => (d.unlocked ? 1 : 0) + (d.here ? 2 : 0)).join('') !== travelSig) { const el = host.body.querySelector('.pn-travel'); if (el) el.innerHTML = travelHtml(); }
+        }
         const qsig = JSON.stringify(g.state.d.quests) + (g.state.d.track ?? '');
         if (qsig !== questSig) { questSig = qsig; host.body.querySelector('.pn-mapq')?.remove(); host.body.querySelector('.pn-maploc')?.insertAdjacentHTML('afterend', questChip()); }
       },
       dispose() { pts.clear(); },
-      act(a) {
+      act(a, v) {
         if (a === 'zin') zoomAt(1.5, w / 2, h / 2);
         else if (a === 'zout') zoomAt(1 / 1.5, w / 2, h / 2);
         else if (a === 'me') { follow = true; cx = p.x; cz = p.z; zoom = Math.max(zoom, Math.min(w, h) / 230); limit(); g.sfx('ui_click'); }
@@ -215,7 +315,17 @@ export const mapPanel: PanelSpec = {
           void host.confirm('Return to Brasswick?<small>You will be taken to the town square. Anything you are in the middle of out there is abandoned.</small>', 'Return', 'Stay')
             .then((ok) => { if (ok && !g.returnBlocked()) { host.close(true); void g.returnToTown(); } });
         }
-        else if (a === 'legend') { legend = !legend; host.body.querySelector('.pn-legend')?.classList.toggle('on', legend); g.sfx('ui_click'); }
+        else if (a === 'legend' || a === 'travel') {
+          // one card at a time over the chart
+          if (a === 'legend') { legend = !legend; travel = false; } else { travel = !travel; legend = false; }
+          const tv = host.body.querySelector('.pn-travel');
+          if (tv && travel) tv.innerHTML = travelHtml();
+          tv?.classList.toggle('on', travel);
+          host.body.querySelector('[data-a=travel]')?.classList.toggle('on', travel);
+          host.body.querySelector('.pn-legend')?.classList.toggle('on', legend);
+          g.sfx('ui_click');
+        }
+        else if (a === 'go') pick(v);
       },
     };
   },

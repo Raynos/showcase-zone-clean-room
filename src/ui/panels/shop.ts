@@ -1,4 +1,5 @@
 import { ITEMS } from '../../data/items';
+import { OUTPOSTS } from '../../data/outposts';
 import { UPGRADES } from '../../data/upgrades';
 import { AMMO, WEAPONS, WEAPON_ORDER, type AmmoId } from '../../data/weapons';
 import type { WeaponId, WeaponKind } from '../../entities/humanoid/types';
@@ -20,7 +21,11 @@ export const shopPanel: PanelSpec = {
   title: 'Armoury', icon: 'sword', scrip: true,
   make(host, arg) {
     const g = host.game, st = g.state;
-    let tab: string = arg?.tab ?? 'weapons', sig = '';
+    // An outpost's stall (`from` names its keeper, world/outposts.ts) sells supplies and buys salvage: it is not the
+    // armoury and does not wear its name or its weapons rack.
+    const post = OUTPOSTS.find((o) => o.vendor === arg?.from);
+    let tab: string = post && arg?.tab === 'weapons' ? 'supplies' : arg?.tab ?? 'weapons', sig = '';
+    if (post) host.setTitle(`${post.short} Supplies`, 'kit');
     const signature = () => tab + st.d.scrip + st.d.level + st.d.weapons.length + st.d.loadout.join() + JSON.stringify(st.d.inv);
     const sellList = () => Object.keys(st.d.inv).filter((id) => st.d.inv[id] > 0 && ITEMS[id] && ITEMS[id].value > 0 && ITEMS[id].kind !== 'quest' && ITEMS[id].kind !== 'key')
       .sort((a, b) => ITEMS[b].value * st.count(b) - ITEMS[a].value * st.count(a));
@@ -32,7 +37,7 @@ export const shopPanel: PanelSpec = {
     };
     const render = () => {
       sig = signature();
-      host.setTabs([{ id: 'weapons', label: 'Weapons' }, { id: 'supplies', label: 'Supplies' }, { id: 'sell', label: 'Sell' }], tab);
+      host.setTabs([...(post ? [] : [{ id: 'weapons', label: 'Weapons' }]), { id: 'supplies', label: 'Supplies' }, { id: 'sell', label: 'Sell' }], tab);
       let h = '';
       if (tab === 'weapons') {
         for (const k of KINDS) {

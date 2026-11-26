@@ -42,6 +42,12 @@
     under(e, menu) {
       const r = e.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
       if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return '';
+      // (scrolled out of a list of its own: a scroll brings it back, so it is not covered)
+      for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) {
+        if (!/auto|scroll/.test(getComputedStyle(p).overflowY)) continue;
+        const b = p.getBoundingClientRect();
+        if (y < b.top || y > b.bottom || x < b.left || x > b.right) return '';
+      }
       const hit = document.elementFromPoint(x, y);
       if (hit && (hit === e || e.contains(hit) || (menu && hit.closest(menu)))) return '';
       if (!hit) return 'nothing';

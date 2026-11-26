@@ -1,8 +1,11 @@
+import { ELITES } from '../../data/enemies';
 import { CONTRACTS, type ContractDef } from '../../data/quests';
 import { icon } from '../icons';
 import { art, btn, glyph, pips, scripHtml, type PanelSpec } from './common';
 
 const isWanted = (c: ContractDef) => c.tiers.length === 1;
+/** the robot kinds that have an outline drawn (public/ui/robot-<kind>.webp) */
+const SIL = new Set(['mite', 'pallet', 'drone', 'welder', 'riveter', 'sentry', 'warden', 'foreman', 'titan']);
 
 /** Kill-contract board: tiered hunts per robot kind, one-off WANTED posters for elites and the Titan. */
 export const boardPanel: PanelSpec = {
@@ -83,7 +86,10 @@ export const trophiesPanel: PanelSpec = {
       const where = wanted ? `${a} · ${b ?? 'the yard'}` : b ?? (c.target === 'any:night' ? 'Anywhere, after dark' : 'Anywhere past the wall');
       const need = c.tiers[c.tiers.length - 1], k = Math.min(need, st.d.kills[c.target] ?? 0);
       const how = wanted ? (k ? 'Broken: claim it at the board' : 'Not yet broken') : `${k} / ${need} broken`;
-      return `<div class="un${wanted ? ' wanted' : ''}"><span>${wanted ? icon('skull', 32, 1.7) : art('trophy', 34)}<u class="lk">${icon('lock', 11, 2.6)}</u></span><b>${who}</b><small>${where}</small>`
+      // the quarry's own outline (public/ui/robot-<kind>.webp, white on clear): an elite wears its family's, in red
+      const kind = SIL.has(c.target) ? c.target : ELITES.find((e) => e.id === c.target)?.kind;
+      const pic = kind && SIL.has(kind) ? `<img class="sil" src="ui/robot-${kind}.webp" alt="" onerror="this.remove()">` : wanted ? icon('skull', 32, 1.7) : art('trophy', 34);
+      return `<div class="un${wanted ? ' wanted' : ''}"><span>${pic}<u class="lk">${icon('lock', 11, 2.6)}</u></span><b>${who}</b><small>${where}</small>`
         + `<div class="pn-bar"><i style="transform:scaleX(${k / need})"></i></div><em>${how}</em></div>`;
     };
     const render = () => {

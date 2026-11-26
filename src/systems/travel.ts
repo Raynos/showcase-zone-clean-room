@@ -77,22 +77,12 @@ export class Travel {
     g.state.events.emit('reach', { place: 'post_' + id });
     return true;
   }
-  /** The post's own list: every lit destination, the dark ones shown so the player knows they exist. */
-  async open(from?: string) {
+  /** The post's own terminal: the map, with every post listed (the lit ones to travel to, the dark ones unknown). */
+  open(from?: string) {
     const g = this.game, panels = g.panels;
     if (!panels) return;
-    const why = this.blocked();
-    const rows = this.list().filter((d) => d.id !== from).map((d) => {
-      const lock = !d.unlocked, band = d.band ? `Band ${d.band}` : 'Town';
-      const st = `display:flex;justify-content:space-between;align-items:center;width:100%;min-height:44px;margin:6px 0 0;padding:0 14px;${lock ? 'opacity:.42;' : ''}border-left:4px solid ${d.css}`;
-      return `<div class="pn-btn ${lock ? 'ghost' : 'cy'}" ${lock || why ? '' : `data-m="1" data-dest="${d.id}"`} style="${st}"><span>${d.name}</span><small style="font-size:12px;opacity:.8">${lock ? 'Not reached' : band}</small></div>`;
-    }).join('');
-    let pick: string | null = null;
-    const grab = (e: Event) => { const el = (e.target as HTMLElement).closest?.('[data-dest]') as HTMLElement | null; if (el) pick = el.dataset.dest ?? null; };
-    window.addEventListener('pointerup', grab, true);
-    g.sfx('ui_open');
-    const ok = await panels.confirm(`Signal Post<small>${why ? why : 'Jump to any lit mast'}</small><div style="margin-top:10px;max-height:52vh;overflow:auto">${rows}</div>`, why ? 'OK' : 'Close', '');
-    window.removeEventListener('pointerup', grab, true);
-    if (ok && pick) await this.go(pick);
+    // the map is the travel screen (ui/panels/mapPanel.ts): the post opens it with the list of posts up
+    void from;
+    panels.open('map', { travel: true });
   }
 }

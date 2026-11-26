@@ -151,6 +151,9 @@ body.desktop .pn-kx { margin-right: -4px; }
 .pn-wall .un { background: linear-gradient(180deg, #14181e, #0c0f13) padding-box, linear-gradient(145deg, #3a414b, #171a20) border-box; box-shadow: inset 0 2px 8px rgba(0, 0, 0, .5); }
 .pn-wall .un span { position: relative; color: #6b7480; filter: none; }
 .pn-wall .un span .art { filter: brightness(0) invert(.4); }
+/* the quarry's outline: white art, shown as a dim shape (an elite's has the red of a wanted notice) */
+.pn-wall .un span .sil { width: 46px; height: 46px; object-fit: contain; opacity: .42; }
+.pn-wall .un.wanted span .sil { opacity: .8; filter: brightness(0) invert(.5) sepia(1) saturate(4.2) hue-rotate(-28deg) brightness(.82); }
 .pn-wall .un.wanted span { color: #a8584a; }
 .pn-wall .un span > .lk { text-decoration: none; position: absolute; right: -3px; bottom: -2px; width: 19px; height: 19px; border-radius: 50%; display: grid; place-items: center; color: #c9cfd8; background: #1c2128; box-shadow: 0 0 0 1.5px #3a414b, 0 1px 3px #000; }
 .pn-wall .un b { color: #d5dae1; }
@@ -301,6 +304,39 @@ body.desktop .pn-kx { margin-right: -4px; }
 .pn-legend .track::before { background: #f0b97a; }
 .pn-legend .bx::before { width: 15px; height: 11px; border: 1.5px dashed #ffe6c2; }
 .pn-legend .wall::before { width: 7px; height: 15px; background: repeating-linear-gradient(180deg, #ff9a3c 0 3px, #2c3138 3px 7px); }
+.pn-legend .lg i.post { width: 18px; height: 18px; border-radius: 50%; color: var(--cyan); background: rgba(20, 23, 28, .92); box-shadow: inset 0 0 0 2px var(--cyan); }
+.pn-legend .lg i.post::before { display: none; }
+.pn-legend .area::before { width: 15px; height: 15px; border-radius: 50%; border: 1.5px dashed #ffcf3a; background: rgba(255, 207, 58, .16); }
+/* Fast travel: the signal posts as a list over the chart (the same posts are markers to tap). A lit post is a row in
+   its own colour; a dark one is unknown, named only by where to look; a refusal heads the list in words. */
+.pn-travel { position: absolute; z-index: 2; left: 10px; right: 66px; bottom: 64px; max-width: 420px; max-height: calc(100% - 74px); overflow-y: auto; display: none; padding: 12px 12px 10px 14px; --c: 11px; --rimg: var(--rim); }
+.pn-travel.on { display: block; animation: pn-pop .14s var(--ease); }
+/* (the list is the screen while it is up: the place and quest chips step aside for it) */
+.pn-body:has(> .pn-travel.on) > .pn-maploc, .pn-body:has(> .pn-travel.on) > .pn-mapq { display: none; }
+.pn-travel h4 { margin: 0 0 6px; display: flex; justify-content: space-between; align-items: baseline; font-size: var(--fs-cap); font-weight: 800; letter-spacing: var(--track-wide); text-transform: uppercase; color: var(--orange); }
+.pn-travel h4 em { font-style: normal; font-size: 12px; letter-spacing: .06em; color: var(--text-2); }
+.pn-travel .tv { min-height: var(--hit); margin-top: 6px; padding: 5px 12px 5px 8px; display: flex; align-items: center; gap: 10px; border-radius: var(--rad-2); background: linear-gradient(90deg, color-mix(in srgb, var(--tc, #8a929c) 16%, #0e1116), #0e1116 70%); box-shadow: inset 3px 0 0 var(--tc, #4a515b), inset 0 0 0 1px rgba(255, 255, 255, .07); cursor: pointer; }
+.pn-travel .tv > i { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-weight: 800; font-size: 14px; color: var(--tc, #aab1ba); background: rgba(20, 23, 28, .92); box-shadow: inset 0 0 0 2px var(--tc, #5a626c); }
+.pn-travel .tv b { display: block; font-size: 14px; font-weight: 800; letter-spacing: .03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pn-travel .tv small { display: block; font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pn-travel .tv .grow { flex: 1 1 0; min-width: 0; }
+.pn-travel .tv > em { flex: none; font-style: normal; font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--tc, var(--text-3)); display: grid; place-items: center; }
+.pn-travel .tv.press { filter: brightness(1.35); }
+.pn-travel .tv.no b, .pn-travel .tv.no > em { opacity: .5; }
+.pn-travel .tv.here > em { color: var(--text-2); }
+.pn-travel .tv.dark { background: #0c0f13; box-shadow: inset 3px 0 0 #3a414b, inset 0 0 0 1px rgba(255, 255, 255, .05); }
+.pn-travel .tv.dark > i { box-shadow: inset 0 0 0 1.5px #5a626c; color: #aab1ba; }
+.pn-travel .tv.dark b { color: #aab1ba; font-weight: 700; }
+.pn-travel .tv.dark > em { color: #8a929c; }
+.pn-mapleg .pn-btn.on { filter: brightness(1.25); box-shadow: 0 0 0 2px var(--cyan); }
+.pn-travel h4 em.why { display: flex; align-items: center; gap: 6px; letter-spacing: .02em; text-transform: none; color: #ffb39c; }
+/* a phone on its side has the width, not the height: the posts in two columns, from the chart's top edge */
+@media (orientation: landscape) and (max-height: 520px) {
+  .pn-travel { top: 8px; bottom: 60px; max-width: 640px; max-height: none; padding: 9px 10px 8px 12px; grid-template-columns: 1fr 1fr; gap: 4px 8px; align-content: start; z-index: 2; }
+  .pn-travel.on { display: grid; }
+  .pn-travel h4 { grid-column: 1 / -1; margin: 0 0 1px; }
+  .pn-travel .tv { margin-top: 0; padding: 3px 10px 3px 8px; }
+}
 
 /* ------------------------------------------------------------------ title screen */
 .pn-title { position: absolute; inset: 0; z-index: 1; pointer-events: auto; display: flex; flex-direction: column; align-items: center; justify-content: space-between; opacity: 0; transition: opacity var(--t-sheet);
