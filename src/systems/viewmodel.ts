@@ -68,8 +68,8 @@ function aimQ(out: THREE.Quaternion, z: THREE.Vector3, y: THREE.Vector3, roll: n
   return out;
 }
 
-/** Seconds a weapon newly in the hand takes to come up into its hold. */
-const DRAW_T = 0.36;
+/** Seconds a weapon newly in the hand takes to come up into its hold, and how far under its hold it starts (a share of the half-view at its distance, plus metres). */
+const DRAW_T = 0.3, DRAW_UNDER = { share: 0.62, add: 0.05 };
 
 /**
  * The first-person view model of the shooter stance (docs/COMBAT.md, "First person"). The weapon
@@ -92,7 +92,7 @@ export class ViewModel {
   /** the weapon object last placed, so it can be handed back to the hand cleanly */
   private placed: THREE.Object3D | null = null;
   /** the weapon last in the hand, and how long it has been there: a swap brings the new one up from under the picture */
-  private drawn: THREE.Object3D | null = null; private drawT = 9;
+  private drawn: THREE.Object3D | null = null; private drawT = 9; private lastLow = 0;
 
   constructor(private game: Game, private sh: Shooter) {}
 
@@ -102,20 +102,26 @@ export class ViewModel {
   get active() { return this.k > 0.01; }
 
   update(dt: number) {
-    const g = this.game, pl = g.player, cr = g.cameraRig, sh = this.sh, w = pl.weaponModel, kind = sh.kind;
+    const g = this.game, pl = g.player, cr = g.cameraRig, sh = this.sh;
+    // a swap in progress: the weapon on its way out of the hand is still the one on the view (rig.ts FP_SWAP)
+    const out = pl.rig?.fpOut ?? null, ok0 = out ? out.model.kind : '';
+    const w = out ? out.model : pl.weaponModel, kind: Kind | null = out ? (ok0 === 'bow' || ok0 === 'crossbow' || ok0 === 'rifle' ? ok0 : null) : sh.kind;
     const grip = w?.object.parent ?? null;
     const inHand = !!w && !!grip && (grip === pl.rig?.sockets.handR || grip === pl.rig?.sockets.handL);
     const loc = pl.pose.locomotion;
     if (!inHand) this.drawn = null;
-    else if (this.drawn !== w!.object) { this.drawn = w!.object; this.drawT = 0; }
+    // (a swap cut short by a shot: the new weapon starts as far down as the old one had got, not from the bottom)
+    else if (this.drawn !== w!.object) { this.drawn = w!.object; this.drawT = this.lastLow < 0.95 && this.lastLow > 0 ? DRAW_T * (1 - Math.sqrt(this.lastLow)) : 0; }
     this.drawT += dt;
-    const want = g.combat.stance === 'shooter' && !!kind && inHand && w!.kind === kind && !pl.dead && (loc === 'ground' || loc === 'air') && !g.combat.skillRunning ? 1 : 0;
+    const want = (out ? !!kind : g.combat.stance === 'shooter' && !!kind && w?.kind === kind) && inHand && !pl.dead && (loc === 'ground' || loc === 'air') && !g.combat.skillRunning ? 1 : 0;
+    // a shot or a draw of the string does not wait for the weapon to finish coming up: it is there in a third of the time
+    if (this.drawT < DRAW_T && (sh.firing || sh.drawing || sh.sinceShot < 0.1)) this.drawT += dt * 2;
     this.k = want ? Math.min(1, this.k + dt * 6) : Math.max(0, this.k - dt * 6);
     // a weapon that has just come to the hand at the eyes is the view's from its first frame (it comes up from under
     // the picture, below): eased in, that frame was the third-person hand's weapon across the lens
     if (want && this.drawT <= dt * 1.5 && cr.eyeAmount > 0.9) this.k = 1;
     const k = this.k * cr.eyeAmount;
-    if (k <= 0.001 || !w || !kind || !grip) { this.release(); return; }
+    if (k <= 0.001 || !w || !kind || !grip) { this.lastLow = 0; this.release(); return; }
     if (this.placed && this.placed !== w.object) this.release();
     const P = FP_PLACE[kind], cam = g.camera;
     this.scoped = P.scope !== undefined && sh.adsK >= P.scope && k > 0.5;
@@ -163,9 +169,17 @@ export class ViewModel {
     _p.x += R.side * rl - 0.04 * spr + mp.x + rc.side * rk;
     _p.y += -R.dip * rl - 0.06 * spr + mp.y;
     _p.z += rc.back * rk + 0.02 * spr - mp.z;
+    // aimed, the sights drift about the mark and settle onto it (fpmotion.ts `hold`): the weapon moves, the shot does not
+    const hd = mo.hold, hz = 0.12 + (P.adsP ? P.adsP[2] : P.relief);
+    _p.x += hd.x * hz; _p.y += hd.y * hz;
+    this.ring(this.scoped ? hd.x : 0, this.scoped ? hd.y : 0, tv);
     // the draw: up from under the picture's lower edge and in from the side, muzzle low, rolling level as it arrives
-    const du = clamp01(this.drawT / DRAW_T), up = (1 - du * du * (3 - 2 * du)) * (1 - rel);
-    _p.y -= (tv * z0 * 0.9 + 0.08) * up; _p.x += 0.05 * up;
+    // ...and a swap sends the old one back down the same way first (reduced motion: a plain dip, no turn)
+    const du = clamp01(this.drawT / DRAW_T), ou = out ? out.k : 0, plain = g.view.still ? 0 : 1;
+    // (it leaves slowly and is gone fast, and comes up fast and settles: the picture is empty for as short a time as the travel allows)
+    const low = Math.max((1 - du) * (1 - du) * (1 - rel), ou * ou), up = low * plain;
+    _p.y -= (tv * z0 * DRAW_UNDER.share + DRAW_UNDER.add) * low; _p.x += 0.05 * up;
+    this.lastLow = out ? low : 0;
     // rotations in view space: muzzle up for the kick and a reload, down and in for a sprint, rolled to reload
     // (the view's +y turn is to the left and its +z roll is anticlockwise: the weight's are to the right and clockwise)
     _qa.setFromEuler(_e.set(rc.up * rk + R.tip * rl - 0.55 * spr + mr.x - 0.6 * up, 0.5 * spr - mr.y, R.roll * rl - 0.4 * up - mr.z - rc.roll * rk));
@@ -248,8 +262,24 @@ export class ViewModel {
     pl.pose.fpHold = H;
   }
 
+  /**
+   * Through the scope the rifle is not drawn, so its drift is the scope's own: the dark ring moves about the fine
+   * cross (which stays on the mark) by `x`, `y` radians and settles round it. Written to the overlay's `--sx`,
+   * `--sy` (ui/crosshair.css) in whole half-pixels, and only when they change.
+   */
+  private ring(x: number, y: number, tv: number) {
+    const f = innerHeight / 2 / Math.max(0.01, tv), sx = Math.round(x * f * 2) / 2, sy = Math.round(-y * f * 2) / 2;
+    if (sx === this.ringX && sy === this.ringY) return;
+    this.ringX = sx; this.ringY = sy;
+    const el = (this.ringEl ??= document.querySelector<HTMLElement>('.xh-scope'));
+    if (!el) return;
+    el.style.setProperty('--sx', sx + 'px'); el.style.setProperty('--sy', sy + 'px');
+  }
+  private ringX = 0; private ringY = 0; private ringEl: HTMLElement | null = null;
+
   /** Hand the weapon back to the hand as the third-person pose holds it. */
   private release() {
+    this.ring(0, 0, 1);
     const pl = this.game.player;
     if (this.placed) {
       this.placed.position.set(0, 0, 0); this.placed.quaternion.identity(); this.placed.scale.copy(ONE);

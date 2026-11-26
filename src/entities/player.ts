@@ -209,10 +209,12 @@ export class Player {
    * Slide `dist` metres along (dx, dz) in `dur` seconds, quick off the mark and braking into the
    * strike. The speed profile runs from 1.2 to 0.8 of the average, so the distance is exact.
    */
-  startLunge(dx: number, dz: number, dist: number, dur: number) {
+  startLunge(dx: number, dz: number, dist: number, dur: number, soft = false) {
     const l = Math.hypot(dx, dz) || 1, v = dist / Math.max(dur, 1e-3);
-    this.lunge.set((dx / l) * v, 0, (dz / l) * v); this.lungeT = dur; this.lungeDur = dur;
+    this.lunge.set((dx / l) * v, 0, (dz / l) * v); this.lungeT = dur; this.lungeDur = dur; this.lungeSoft = soft;
   }
+  /** first person: the slide eases in and out (same distance, same time), so the eyes are carried to the target, not thrown at it */
+  private lungeSoft = false;
 
   /**
    * Can the ground under the hero be stood on (no steeper than WALK)? Leaves its normal in _gn. The
@@ -367,7 +369,8 @@ export class Player {
       this.vel.x = this.rollDir.x * sp; this.vel.z = this.rollDir.z * sp;
       if (this.rollT >= 1) { this.rolling = false; this.vel.x = this.rollDir.x * this.runSpeed; this.vel.z = this.rollDir.z * this.runSpeed; }
     } else if (this.lungeT > 0) {
-      const k = this.lungeDur > 0 ? 1.2 - 0.4 * clamp(1 - this.lungeT / this.lungeDur, 0, 1) : 1;
+      const lu = this.lungeDur > 0 ? clamp(1 - this.lungeT / this.lungeDur, 0, 1) : 0, lm = clamp(lu + 0.5 * dt / Math.max(this.lungeDur, 1e-3), 0, 1);
+      const k = this.lungeDur <= 0 ? 1 : this.lungeSoft ? 6 * lm * (1 - lm) : 1.2 - 0.4 * lu;
       this.lungeT -= dt;
       this.vel.x = this.lunge.x * k; this.vel.z = this.lunge.z * k;
       if (this.lungeT <= 0) { this.vel.x *= 0.3; this.vel.z *= 0.3; this.lungeDur = 0; }

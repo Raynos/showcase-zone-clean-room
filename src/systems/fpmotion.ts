@@ -57,6 +57,12 @@ export const FP_MOTION = {
   miss: { roll: 1.5, nod: 1.1, across: 0.32 },
   /** the camera's nudge toward a struck target: radians at a heavy hit, before the shake setting */
   nudge: 0.016,
+  /**
+   * aimed: the sights drift about the point aimed at and come to rest, which is how steady the hold is read
+   * (not a HUD mark). Radians off the aim at rest and added when the hold is fresh or the feet are moving;
+   * `rise` and `fall` are how fast (per second) the drift takes up a disturbance and lets it go.
+   */
+  hold: { rest: 0.0005, drift: 0.011, rise: 14, fall: 5 },
 };
 
 /** A spring pulled to zero: `p` position, `v` speed. Semi-implicit, stepped in slices so a slow frame cannot blow it up. */
@@ -82,6 +88,8 @@ export class FpMotion {
   readonly recoil = { back: 0, up: 0, roll: 0, side: 0 };
   /** 0..1: how much of a stride's weapon motion is in play this frame (tests and the audit harness read it) */
   stride = 0;
+  /** aimed: where the sights are off the point aimed at (radians, x right, y up), and how unsettled the hold is, 0..1 */
+  readonly hold = { x: 0, y: 0, k: 0 };
 
   private lagY = new Spring(); private lagP = new Spring();
   private inX = new Spring(); private inY = new Spring(); private inZ = new Spring();
@@ -100,14 +108,16 @@ export class FpMotion {
     this.pos.set(0, 0, 0); this.rot.set(0, 0, 0);
     this.recoil.back = this.recoil.up = this.recoil.roll = this.recoil.side = 0;
     this.inited = false; this.stride = 0; this.stepK = 0;
+    this.hold.x = this.hold.y = this.hold.k = 0;
   }
 
   /**
    * Once a frame while the picture is taken from the eyes, before the camera (systems/view.ts `feed`).
    * `bob` is the head-bob amount (0..1, 0.6 by default), `still` is reduced motion, `aim` 0..1 is how far
-   * a ranged weapon is brought to its sights (an aimed weapon is held: it moves a third as much).
+   * a ranged weapon is brought to its sights (an aimed weapon is held: it moves a third as much), `unsteady`
+   * 0..1 how far that hold is from settled (just raised, or the feet moving).
    */
-  update(dt: number, bob: number, still: boolean, aim: number) {
+  update(dt: number, bob: number, still: boolean, aim: number, unsteady = 0) {
     const g = this.game, pl = g.player, cr = g.cameraRig, cam = g.camera, sh = g.combat.shooter;
     const h = Math.min(dt, 0.05);
     if (h <= 0) return;
@@ -219,6 +229,13 @@ export class FpMotion {
       this.nod.v -= 0.8;
     }
     this.lastFlinch = fl;
+
+    // ---- aimed: the sights drift round the point aimed at and settle onto it (none under reduced motion)
+    const HD = M.hold, hk = this.hold;
+    hk.k += (clamp01(unsteady) - hk.k) * Math.min(1, h * (unsteady > hk.k ? HD.rise : HD.fall));
+    const amp = still ? 0 : clamp01(aim) * (HD.rest + HD.drift * hk.k * hk.k);
+    hk.x = amp * (Math.sin(this.t * 4.1) + 0.45 * Math.sin(this.t * 6.7 + 1.3));
+    hk.y = amp * 0.75 * (Math.sin(this.t * 5.3 + 0.6) + 0.4 * Math.sin(this.t * 2.9));
 
     // ---- together
     // (an aimed weapon is still: the sight stays where the shot goes)

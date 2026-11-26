@@ -53,7 +53,14 @@ const FP_GLOVE = 0.78;
 /** ...and the forearm's girth, a touch: built for the outfit to read, a forearm's length from the lens it is still a lot of picture. */
 const FP_FORE = 0.86;
 /** Seconds a melee weapon newly in the hand takes to come up into the picture (a swap; a swing that draws it does not wait). */
-const FP_DRAW = 0.34;
+const FP_DRAW = 0.3;
+/**
+ * First person: a weapon leaving the hand in a swap is seen going: it is kept in the hand for `down` seconds
+ * while it sinks under the picture, point first, and only then does the next one come up (FP_DRAW here,
+ * DRAW_T in systems/viewmodel.ts). `calm` is the time under reduced motion, where it is a plain dip. An
+ * attack, a blow or leaving the eyes ends it at once: the new weapon is in the hand.
+ */
+const FP_SWAP = { down: 0.15, calm: 0.09 };
 
 const damp1 = (a: number, b: number, k: number) => a + (b - a) * Math.min(1, k);
 
@@ -188,6 +195,9 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
   /** the zipline's trolley handle, part of the first-person arms: between the fists on the wire, folded to nothing otherwise */
   let zipBar: THREE.Bone | null = null;
   let fpHeld: THREE.Object3D | null = null, fpDrawT = 9;
+  /** a swap in progress (FP_SWAP): the weapon to come, and how long the one going has been on its way */
+  let fpNext: WeaponModel | null | undefined, fpOutT = 0;
+  const fpOutS = { model: null as unknown as WeaponModel, k: 0 };
   let fpGeo: THREE.BufferGeometry | null = null, fpBody = 0, fpArmsN = 0;
   const buildFp = () => {
     const src = inst.mesh.geometry, ix = src.index!, si = src.getAttribute('skinIndex'), sw = src.getAttribute('skinWeight');
@@ -366,6 +376,20 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
   let effort = 0, talk = 0, mouth = 0, glance = 0, glanceIn = 2 + Math.random() * 4;
   const phase = Math.random() * 10;
 
+  /** Put a weapon model on this body: slung on its back mount until the pose draws it. */
+  const attach = (model: WeaponModel | null) => {
+    if (weapon && weapon !== model) weapon.object.removeFromParent();
+    weapon = model;
+    if (model && fpFn) cullWeapon(model.object);
+    readNodes(model, nodes);
+    if (model && model.kind !== 'none') {
+      const bm = BACK_MOUNT[model.kind];
+      backMount.position.set(bm.pos[0], bm.pos[1], bm.pos[2]);
+      basisYZ(backMount.quaternion, _a.set(bm.y[0], bm.y[1], bm.y[2]), _b.set(bm.z[0], bm.z[1], bm.z[2]));
+      model.object.position.set(0, 0, 0); model.object.quaternion.identity();
+      backMount.add(model.object);
+    }
+  };
   const rig: HumanoidDevRig = {
     root,
     sockets: { handR: grip[R], handL: grip[L], back, head: headSock, chest, hips },
@@ -388,20 +412,41 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
       if (fn && weapon) cullWeapon(weapon.object);
     },
     setWeapon(model) {
-      if (weapon && weapon !== model) weapon.object.removeFromParent();
-      weapon = model;
-      if (model && fpFn) cullWeapon(model.object);
-      readNodes(model, nodes);
-      if (model && model.kind !== 'none') {
-        const bm = BACK_MOUNT[model.kind];
-        backMount.position.set(bm.pos[0], bm.pos[1], bm.pos[2]);
-        basisYZ(backMount.quaternion, _a.set(bm.y[0], bm.y[1], bm.y[2]), _b.set(bm.z[0], bm.z[1], bm.z[2]));
-        model.object.position.set(0, 0, 0); model.object.quaternion.identity();
-        backMount.add(model.object);
+      // first person: the weapon in the hand is seen leaving it before the next one arrives (FP_SWAP)
+      const p = weapon?.object.parent;
+      if (fpFn && fpArmK > 0.9 && weapon && model && weapon !== model && weapon.kind !== 'none' && (p === grip[L] || p === grip[R])) {
+        if (fpNext === undefined) fpOutT = 0;
+        fpNext = model;
+        return;
       }
+      // back to the one that was on its way out: it comes up again from where it had got to
+      if (fpNext !== undefined && weapon === model) fpDrawT = FP_DRAW * (1 - Math.min(1, fpOutS.k));
+      fpNext = undefined; rig.fpOut = null;
+      attach(model);
     },
     update(dt, pose) {
       time += dt;
+      // ---- first person: a weapon on its way out of the hand (FP_SWAP). Until it is under the picture the pose is
+      // the one that holds it (its kind, drawn), whatever the fight has already moved on to
+      const pw = pose.weapon, pd = pose.drawn;
+      let out = false;
+      {
+        const fp0 = pose.fp ?? 0, loc = pose.locomotion, held = weapon && (weapon.object.parent === grip[L] || weapon.object.parent === grip[R]);
+        const can = !!fpFn && fp0 > 0.9 && !!held && !pose.action && (loc === 'ground' || loc === 'air');
+        if (fpNext !== undefined) {
+          const dur = pose.fpCalm ? FP_SWAP.calm : FP_SWAP.down;
+          fpOutT += dt;
+          if (!can || fpOutT >= dur) {
+            const n = fpNext;
+            fpNext = undefined; rig.fpOut = null;
+            attach(n);
+          } else {
+            out = true;
+            pose.weapon = weapon!.kind; pose.drawn = true;
+            fpOutS.model = weapon!; fpOutS.k = fpOutT / dur; rig.fpOut = fpOutS;
+          }
+        }
+      }
       const ud = root.parent?.userData;
       st.rideSync = pose.locomotion === 'ride' && ud && typeof ud.gaitPhase === 'number' ? ud.gaitPhase : -1;
       st.ridePitch = pose.locomotion === 'ride' && ud && typeof ud.pitch === 'number' ? ud.pitch : 0;
@@ -425,11 +470,10 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
       if (held !== fpHeld) { fpHeld = held; fpDrawT = held && !pose.action ? 0 : 9; if (held && fp > 0.9) fpLift = fpWant; }
       fpDrawT += dt;
       const sc = body.scale.y || 1;
-      fpPresent(P, pose, fpLift < 0.002 ? 0 : fpLift, eyeRest.y / sc, eyeRest.z / sc, arms, sc, dt);
-      if (fpLift > 0.002 && fpDrawT < FP_DRAW) {
-        const u = fpDrawT / FP_DRAW, up = (1 - u * u * (3 - 2 * u)) * fpLift;
-        for (let s = 0; s < 2; s++) if (s === R || pose.weapon === 'spear') { arms.handPos[s].y -= 0.44 * up; arms.handPos[s].z -= 0.07 * up; arms.handPos[s].x -= 0.05 * up; }
-      }
+      // how far under the picture the weapon is: on its way out (FP_SWAP), or still coming up (FP_DRAW)
+      const ou = out ? fpOutS.k : 0, du = Math.min(1, fpDrawT / FP_DRAW);
+      const low = out ? ou * ou : fpDrawT < FP_DRAW ? (1 - du) * (1 - du) : 0;
+      fpPresent(P, pose, fpLift < 0.002 ? 0 : fpLift, eyeRest.y / sc, eyeRest.z / sc, arms, sc, dt, low);
       // first person with a ranged weapon: the weapon is on the view (systems/viewmodel.ts) and the hands go to it
       if (pose.fpHold) fpHold(arms, pose.fpHold);
       // ...and whichever it is, the shoulders sit under and outside the lens
@@ -605,6 +649,7 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
           r.update(dt, time, _anchor, _side, _back, _c0, _c1, rad, floorY, _inv, sc);
         }
       }
+      if (out) { pose.weapon = pw; pose.drawn = pd; }
     },
     bake() {
       root.updateWorldMatrix(true, true);

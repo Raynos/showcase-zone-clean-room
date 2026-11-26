@@ -5,6 +5,7 @@ import { GU } from '../gfx/material';
 import { TRAIL_EYE } from '../gfx/vfx/ribbons';
 import { grassU } from '../world/grass';
 import { FpMotion } from './fpmotion';
+import { RIFLE_STEADY } from '../data/moves';
 import { DOWN, type FpDraw, type HumanoidRig } from '../entities/humanoid/types';
 import type { Game } from '../game';
 
@@ -47,6 +48,15 @@ const FP_INSIDE = { pad: 0.16, lead: 0.05, below: 0.25, above: 0.2 };
 const FP_MOUNT = 0.9;
 /** On a board: the horizon leans into a carve by `roll` radians at full lean, and the eyes sink `crouch` metres at full speed (both within the comfort settings). */
 const FP_BOARD = { roll: 0.075, crouch: 0.07, top: 14 };
+/**
+ * Seconds a blade or a spear swapped to stays in the hand at the eyes when there is no fight (out of one it lives on
+ * the back, and a swap that ended in an empty hand read as the swap failing). After it, it is put away like any other.
+ */
+const FP_READY = 6;
+/** Seconds an aimed crossbow or bow takes to come to rest on its mark (the rifle's is its steady time, data/moves.ts RIFLE_STEADY). */
+const FP_SETTLE = 0.7;
+/** Seconds an empty hand takes to reach out and come back when something is used (a chest, a lever, a door). */
+const FP_USE = 0.55;
 const reducedMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
 const ease = (u: number) => { const x = clamp01(u); return x * x * (3 - 2 * x); };
 
@@ -83,9 +93,16 @@ export class ViewSystem {
   readonly motion: FpMotion;
   private sway = { pos: new THREE.Vector3(), rot: new THREE.Vector3() };
   private mountT = 9; private lastLoc = '';
+  private useT = 9; private readyT = 99;
 
   constructor(private game: Game) {
     this.motion = new FpMotion(game);
+    game.state.events.on('equip', () => { if (this.game.cameraRig && this.game.cameraRig.eyeAmount > 0.9) this.readyT = 0; });
+    game.state.events.on('interact', () => {
+      const pl = this.game.player;
+      if (this.game.cameraRig.eyeAmount < 0.9 || pl.pose.drawn || pl.mode) return;
+      this.useT = 0;
+    });
     window.addEventListener('keydown', (e) => {
       if (e.code !== 'KeyV' || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
@@ -203,9 +220,18 @@ export class ViewSystem {
     if (!rig?.eyes || !rig.eyeRest) return null;
     // the weight of the weapon in the hands, for this frame's pose and view model
     const still = this.still;
-    this.motion.update(dt, this.bobAmount, still, g.combat.stance === 'shooter' ? g.combat.shooter.adsK : 0);
+    const sh = g.combat.shooter, shoot = g.combat.stance === 'shooter';
+    // how far an aimed hold is from settled: fresh (the rifle's own steady time, FP_SETTLE for the others) or on the move
+    const unsteady = shoot ? Math.max(1 - clamp01(sh.adsT / (sh.kind === 'rifle' ? RIFLE_STEADY : FP_SETTLE)), clamp01((pl.speed2d - 0.6) / 4)) : 0;
+    this.motion.update(dt, this.bobAmount, still, shoot ? sh.adsK : 0, unsteady);
     this.sway.pos.copy(this.motion.pos); this.sway.rot.copy(this.motion.rot);
     pl.pose.fpSway = this.sway;
+    pl.pose.fpCalm = still;
+    // a weapon just swapped to is in the hand (FP_READY)
+    this.readyT += dt;
+    if (this.readyT < FP_READY && !pl.pose.drawn && !pl.mode && !pl.dead && (pl.pose.weapon === 'sword' || pl.pose.weapon === 'spear')) pl.pose.drawn = true;
+    this.useT += dt;
+    pl.pose.fpUse = Math.min(1, this.useT / (still ? FP_USE * 0.7 : FP_USE));
     this.inside(dt);
     this.close(dt);
     const f = this.feedOut, p = pl.pose, loc = p.locomotion, act = pl.action ?? '';

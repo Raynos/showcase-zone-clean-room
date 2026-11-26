@@ -7,8 +7,13 @@ import type { Terrain } from './terrain';
 import { TCELL, TN } from './terrain';
 
 const MAXPUSH = 8;
-/** From the eyes (grassU.uEyeK): blades stand `low` of their height within `near` metres of the lens, full at `far`; tramplers reach `push` metres further. */
-const EYE = { low: 0.4, near: 2, far: 8, push: 1.4 };
+/**
+ * From the eyes (grassU.uEyeK): blades stand `low` of their height within `near` metres of the lens, full at `far`;
+ * tramplers reach `push` metres further and lay the blades `flat` (0.72 from behind the shoulder). A robot's parting
+ * also runs toward the lens for `lane` of the distance to it (at most `laneMax` metres): the blades that hide a
+ * small robot from a standing eye are the ones between the two, not the ones round its feet.
+ */
+const EYE = { low: 0.3, near: 4, far: 13, push: 1.4, flat: 0.92, lane: 0.5, laneMax: 6 };
 export const grassU = {
   uCam: { value: new THREE.Vector3() },
   uPush: { value: [0, 1, 2, 3, 4, 5, 6, 7].map(() => new THREE.Vector4()) }, // xyz pos, w radius
@@ -292,10 +297,14 @@ if (aTileRnd.x < 0.0) {
   for (int i = 0; i < ${MAXPUSH}; i++) {
     if (i >= uPushN) break;
     vec2 dp = wxz - uPush[i].xz;
+    // from the eyes a robot's parting is a lane toward the lens (EYE.lane); the hero's own (0) stays a disc
+    vec2 tc = uCam.xz - uPush[i].xz; float dc = max(length(tc), 1e-3);
+    float lane = i > 0 ? uEyeK * min(dc * ${EYE.lane.toFixed(2)}, ${EYE.laneMax.toFixed(1)}) : 0.0;
+    dp -= tc / dc * clamp(dot(dp, tc) / dc, 0.0, lane);
     float pd = length(dp);
     float k = 1.0 - smoothstep(uPush[i].w * 0.35, uPush[i].w, pd);
     p.xz += normalize(dp + 1e-4) * k * y * bh * 0.85;
-    p.y *= 1.0 - k * 0.72;
+    p.y *= 1.0 - k * mix(0.72, ${EYE.flat.toFixed(2)}, uEyeK);
   }
 }
 vec3 transformed = vec3(wxz.x, terrH(wxz) - 0.03, wxz.y) + p;
@@ -347,7 +356,7 @@ totalEmissiveRadiance += vLamp * diffuseColor.rgb;
   /** Pick the tiles to draw for this camera. */
   cull(frustum: THREE.Frustum) {
     const cam = grassU.uCam.value, T = this.T, NT = this.NT, R = this.reach, R2 = R * R;
-    const P = grassU.uPush.value, pn = grassU.uPushN.value;
+    const P = grassU.uPush.value, pn = grassU.uPushN.value, eyeK = grassU.uEyeK.value;
     // how far a blade can lean out of its tile, and sag below its root, in this wind
     const lean = (0.75 + 0.06) * Math.abs(GU.uWind.value.z) + 0.175;
     const mg = this.bladeMax * (0.9 * lean + 0.25) + 0.15, pushMg = this.bladeMax * 0.85 * 1.5;
@@ -364,9 +373,17 @@ totalEmissiveRadiance += vLamp * diffuseColor.rgb;
       const dx = cam.x < x0 ? x0 - cam.x : cam.x > x1 ? cam.x - x1 : 0, dz = cam.z < z0 ? z0 - cam.z : cam.z > z1 ? cam.z - z1 : 0;
       if (dx * dx + dz * dz >= R2) continue;
       let pushed = false;
-      for (let i = 0; i < pn; i++) {
+      for (let i = 0; i < pn && !pushed; i++) {
         const p = P[i], px = p.x < x0 ? x0 - p.x : p.x > x1 ? p.x - x1 : 0, pz = p.z < z0 ? z0 - p.z : p.z > z1 ? p.z - z1 : 0;
         if (px * px + pz * pz < p.w * p.w) { pushed = true; break; }
+        // the lane toward the lens (EYE.lane), as two more discs along it
+        if (i === 0 || eyeK <= 0) continue;
+        const cx = cam.x - p.x, cz = cam.z - p.z, dc = Math.hypot(cx, cz) || 1, lane = eyeK * Math.min(dc * EYE.lane, EYE.laneMax), w2 = p.w * p.w * 1.26;
+        for (let j = 1; j <= 2; j++) {
+          const lx = p.x + (cx / dc) * lane * j * 0.5, lz = p.z + (cz / dc) * lane * j * 0.5;
+          const qx = lx < x0 ? x0 - lx : lx > x1 ? lx - x1 : 0, qz = lz < z0 ? z0 - lz : lz > z1 ? lz - z1 : 0;
+          if (qx * qx + qz * qz < w2) { pushed = true; break; }
+        }
       }
       const e = pushed ? mg + pushMg : mg;
       _box.min.set(x0 - e, this.hmin[k] - sag, z0 - e); _box.max.set(x1 + e, this.hmax[k] + top, z1 + e);

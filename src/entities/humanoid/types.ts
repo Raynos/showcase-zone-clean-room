@@ -121,6 +121,10 @@ export interface HumanPose {
    * carry and swings take it in fpview.ts; the ranged view model reads the same source (systems/viewmodel.ts).
    */
   fpSway?: { pos: THREE.Vector3; rot: THREE.Vector3 } | null;
+  /** first person, empty-handed: 0..1 through a reach for something used (a chest, a lever, a door), 1 or absent when there is none (systems/view.ts) */
+  fpUse?: number;
+  /** first person under reduced motion (Settings > Comfort or the device): the hands' own flourishes are cut to plain, short moves */
+  fpCalm?: boolean;
 }
 
 /** The shooter stance's named holds for the orbit camera (shootpose.ts). */
@@ -218,6 +222,11 @@ export interface HumanoidRig {
    * (systems/view.ts decides). The shadow is always the whole body. null turns it off.
    */
   setFirstPerson?(fn: ((cam: THREE.Camera) => FpDraw) | null): void;
+  /**
+   * First person: a weapon on its way out of the hand in a swap, and how far it has gone, 0..1
+   * (rig.ts FP_SWAP). Until it is gone it stays this body's weapon, whatever has been equipped since.
+   */
+  fpOut?: { model: WeaponModel; k: number } | null;
 }
 
 /** What the eye camera draws of the hero: everything, all but the head (face, hair, scarf), the arms alone (posed to the lens by fpview.ts `fpMove`), or nothing but the shadow. */

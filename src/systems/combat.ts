@@ -823,7 +823,8 @@ export class Combat {
     const lt = s.dur * (s.hitAt - t0) * 0.85, ld = Math.max(lt, step / (s.crit ? 26 : LUNGE_SPEED));
     this.windK = lt / ld;
     if (step > 0.05 && pl.grounded) {
-      pl.startLunge(Math.sin(yaw), Math.cos(yaw), step, ld);
+      // (through the eyes the slide eases in and out: the same step in the same time)
+      pl.startLunge(Math.sin(yaw), Math.cos(yaw), step, ld, !!g.cameraRig.fp);
       if (step > 1.2) g.fx.dust(pl.pos, 3, 0.7);
     }
     g.sfx(s.heavy ? 'swing_heavy' : this.kind === 'spear' ? 'swing_spear' : 'swing_sword', { pitch: light ? 0.95 + (this.combo % 3) * 0.06 : 0.84 + lv * 0.08 });

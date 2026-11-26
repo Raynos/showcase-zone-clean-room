@@ -90,6 +90,12 @@ const CARRY_RUN = { from: 6.4, to: 8.4, y: -0.2, x: 0.02, sword: [-0.42, 0.06, 0
  */
 /** The top of the lower third, as a share of the half-height under the middle: the weapon hand stays below it through a move. */
 const FP_LOW = 0.34;
+/**
+ * A melee weapon going under the picture and coming up into it (a swap, a draw, putting it away: rig.ts FP_SWAP,
+ * FP_DRAW): at the bottom the hand is `drop` metres under its carry and `out`, `back` metres to the side and
+ * nearer, and the long axis has tipped toward `b` (lens space), so the point leads down and trails up.
+ */
+const FP_UNDER = { drop: 0.36, out: 0.05, back: 0.06, b: [0.2, -0.62, 0.76], tip: 0.92 } as const;
 const FP_SHOULDER = { x: 0.24, y: -0.42, z: -0.06, k: 0.9, hold: 0.9 };
 
 /** The lens in root space (body units): origin and its right, up and forward axes. */
@@ -113,7 +119,7 @@ const lensDir = (o: THREE.Vector3, x: number, y: number, z: number) => o.set(0, 
  * moves the hands go to the carry (CARRY), through a move to the move re-framed. `out` receives
  * chest-space targets for both arms.
  */
-export function fpPresent(P: Pose, hp: HumanPose, k: number, eyeY: number, eyeZ: number, out: FpArms, sc = 1, dt = 1 / 60): FpArms {
+export function fpPresent(P: Pose, hp: HumanPose, k: number, eyeY: number, eyeZ: number, out: FpArms, sc = 1, dt = 1 / 60, low = 0): FpArms {
   out.copy(P);
   out.presentK = 0; out.free = 0;
   if (k <= 0 || (hp.weapon !== 'sword' && hp.weapon !== 'spear')) { out.actK = 0; return out; }
@@ -166,6 +172,13 @@ export function fpPresent(P: Pose, hp: HumanPose, k: number, eyeY: number, eyeZ:
     const m = 1 - (1 - CARRY_RUN.swing) * a, p = sw.pos, r = sw.rot;
     _h.add(lensDir(_w, p.x * m, p.y * m, p.z * m));
     _b.add(lensDir(_w, (r.y + r.z * 0.8) * m, r.x * m, 0)).normalize();
+  }
+
+  // going under the picture or coming up into it (FP_UNDER): a plain dip under reduced motion
+  if (low > 0) {
+    const U = FP_UNDER, calm = hp.fpCalm ? 0 : 1;
+    _h.add(lensDir(_w, U.out * low * calm, -U.drop * low, -U.back * low * calm));
+    _b.lerp(lensDir(_w, U.b[0], U.b[1], U.b[2]), low * U.tip * (0.35 + 0.65 * calm)).normalize();
   }
 
   _v.copy(_h).sub(_tc).applyQuaternion(_tqi);
@@ -262,13 +275,28 @@ export function fpHold(out: FpArms, h: FpHold): FpArms {
 
 // ---- moves that used to hide the body -------------------------------------------------------------
 
-/** The moves whose arms are posed to the lens: a dodge roll, a knockdown and getting up from it, dying, and riding. */
-export type FpMove = 'roll' | 'down' | 'dead' | 'ride' | 'zip' | 'board';
+/**
+ * The moves whose arms are posed to the lens: a dodge roll, a knockdown and getting up from it, dying, riding,
+ * the wire and the board; and what empty hands do (`use` a reach to open, press or take; `pickup`; `climb` hand
+ * over hand; `swing` on the grapple's line; the `cheer`, `wave` and `point` gestures).
+ */
+export type FpMove = 'roll' | 'down' | 'dead' | 'ride' | 'zip' | 'board' | 'use' | 'pickup' | 'climb' | 'swing' | 'cheer' | 'wave' | 'point';
 export const FP_MOVES: readonly FpMove[] = ['roll', 'down', 'dead', 'ride'];
+/** ...of those, the ones whose fists are kept to the picture's lower corners (the world is what is read there). */
+const CORNERED = new Set<FpMove>(['roll', 'down', 'dead']);
 function moveOf(hp: HumanPose): FpMove | null {
   const l = hp.locomotion as string;
   if (l === 'zipline') return 'zip';
   if (l === 'board' && !hp.drawn && !(hp.action ?? '').startsWith('boardTrick')) return 'board';
+  if (l === 'ladder' || l === 'climb') return 'climb';
+  if (l === 'grapple') return 'swing';
+  // empty hands on foot: a reach, a grab, a gesture
+  if ((l === 'ground' || l === 'air') && (!hp.drawn || hp.weapon === 'none')) {
+    if ((hp.fpUse ?? 1) < 1) return 'use';
+    const a = hp.action;
+    if (a === 'cheer' || a === 'wave' || a === 'point' || a === 'pickup') return a;
+    if (a === 'interact') return 'use';
+  }
   return l === 'roll' ? 'roll' : l === 'down' ? 'down' : l === 'dead' ? 'dead' : l === 'ride' && !hp.drawn ? 'ride' : null;
 }
 const DOWN_FALL = 0.3, DOWN_LIE = 0.8, DOWN_END = 1.2;      // types.ts DOWN
@@ -321,6 +349,40 @@ function moveHand(m: FpMove, hp: HumanPose, deadT: number, s: number, p: THREE.V
     z.set(-g * 0.45, -0.5, 0.74).normalize(); y.set(-g, 0, 0);
     // (the bar lies through the grip, 0.06 along the hand from the wrist)
     p.set(g * Math.min(0.13, 0.5 * tx * d), 0.56 * ty * d + hum, d).addScaledVector(z, -0.06);
+  } else if (m === 'use') {
+    // a reach: the right hand goes out to what is opened, pressed or taken, palm down, and comes back; the left stays under
+    const u = clamp((hp.fpUse ?? 1) < 1 ? hp.fpUse! : hp.actionT, 0, 1), a = Math.sin(Math.PI * Math.min(1, u * 1.15)) ** 0.8;
+    if (s === R) { p.set(-0.055 + 0.02 * a, -0.4 + 0.2 * a, 0.3 + 0.22 * a); z.set(0.12, 0.3 - 0.25 * a, 1); y.set(1, 0.25, 0); }
+    else { p.set(0.14, -0.62, 0.3); z.set(-0.1, 0.2, 1); y.set(-1, 0.3, 0); }
+  } else if (m === 'pickup') {
+    // both hands down and forward to the ground, and up with it
+    const a = Math.sin(Math.PI * clamp(hp.actionT, 0, 1));
+    p.set(g * 0.075, -0.42 + 0.14 * a, 0.3 + 0.12 * a); z.set(-g * 0.15, -0.55, 0.8); y.set(-g, 0, 0.2);
+  } else if (m === 'climb') {
+    // hand over hand: each fist goes up past the eyes to the next hold and pulls down to the chest, in turn
+    const ty = hp.fpTan?.y ?? 0.73, tx = hp.fpTan?.x ?? 0.334, d = 0.4, ph = hp.climbPhase * 2.6 + (s === L ? 0 : Math.PI), c = Math.sin(ph);
+    p.set(g * Math.min(0.15, 0.62 * tx * d), (0.06 + 0.3 * c) * ty * d, d - 0.03 * Math.cos(ph));
+    z.set(-g * 0.15, 0.85, 0.5); y.set(-g, 0, 0.2);
+  } else if (m === 'swing') {
+    // the grapple: the left fist high on the line toward its anchor, the right arm out low for balance
+    const ty = hp.fpTan?.y ?? 0.73, tx = hp.fpTan?.x ?? 0.334;
+    if (s === L) { p.set(Math.min(0.1, 0.5 * tx * 0.5), 0.5 * ty * 0.5, 0.5); z.set(-0.25, 0.75, 0.6); y.set(-1, 0, 0.2); }
+    else { p.set(-Math.min(0.2, 0.75 * tx * 0.46), -0.8 * ty * 0.46 + Math.sin(hp.time * 2.3) * 0.012, 0.46); z.set(-0.3, 0.1, 1); y.set(1, 0.3, 0); }
+  } else if (m === 'cheer') {
+    // the right fist goes up into the picture twice
+    const u = clamp(hp.actionT, 0, 1), a = Math.abs(Math.sin(Math.PI * 2 * u)) * (1 - 0.3 * u);
+    if (s === R) { p.set(-0.1, -0.36 + 0.3 * a, 0.44); z.set(0.1, 1, 0.25); y.set(1, 0, 0); }
+    else { p.set(0.14, -0.6, 0.32); z.set(-0.1, 0.3, 1); y.set(-1, 0.3, 0); }
+  } else if (m === 'wave') {
+    // the open right hand, up at the side of the picture, palm out, side to side
+    const u = clamp(hp.actionT, 0, 1), up = bell(u, 0, 0.18, 0.8, 1), wag = Math.sin(u * Math.PI * 6) * 0.35 * up;
+    if (s === R) { p.set(-0.1 - 0.02 * wag, -0.42 + 0.3 * up, 0.44); z.set(wag, 1, 0.12); y.set(1, 0, 0); }
+    else { p.set(0.14, -0.6, 0.32); z.set(-0.1, 0.3, 1); y.set(-1, 0.3, 0); }
+  } else if (m === 'point') {
+    // the right arm out along the view, a finger on what is meant
+    const u = clamp(hp.actionT, 0, 1), up = bell(u, 0, 0.2, 0.8, 1);
+    if (s === R) { p.set(-0.07, -0.44 + 0.22 * up, 0.38 + 0.2 * up); z.set(0.1, 0.12, 1); y.set(1, 0.35, 0); }
+    else { p.set(0.14, -0.6, 0.32); z.set(-0.1, 0.3, 1); y.set(-1, 0.3, 0); }
   } else if (m === 'board') {
     // on the board: arms out for balance, palms down at the picture's lower corners, one dipping as the board leans
     const ty = hp.fpTan?.y ?? 0.73, lean = clamp(hp.lean ?? 0, -1, 1), d = s === L ? 0.52 : 0.47;
@@ -362,7 +424,7 @@ export function fpMove(P: Pose, hp: HumanPose, dt: number, eye: THREE.Vector3 | 
   for (let s = 0; s < 2; s++) {
     const g = s === L ? 1 : -1;
     moveHand(out.move, hp, out.deadT, s, _p, _z, _b);
-    if (!ride && out.move !== 'zip' && out.move !== 'board') { _p.z += 0.08; _p.x = g * Math.max(Math.abs(_p.x), edge * tx * _p.z); }
+    if (CORNERED.has(out.move)) { _p.z += 0.08; _p.x = g * Math.max(Math.abs(_p.x), edge * tx * _p.z); }
     _h.copy(_p).applyQuaternion(_fq).add(eye);
     out.handPos[s].lerp(_v.copy(_h).sub(_tc).applyQuaternion(_tqi), K);
     _z.applyQuaternion(_fq); _b.applyQuaternion(_fq);
@@ -370,6 +432,7 @@ export function fpMove(P: Pose, hp: HumanPose, dt: number, eye: THREE.Vector3 | 
     out.handQ[s].slerp(_q.premultiply(_tqi), K);
     // elbows down and out; on the wire they hang out to the sides, so the forearms come in from the picture's edges
     if (out.move === 'zip') out.elbow[s].lerp(_v.set(g, 0.7, -0.5), K);
+    else if (out.move === 'climb' || out.move === 'swing') out.elbow[s].lerp(_v.set(g * 0.7, -1, -0.1), K);
     else out.elbow[s].lerp(_v.set(g * (ride ? 0.6 : 0.8), ride ? -1 : -0.8, -0.2), K);
     if (shK > 0) out.shoulder[s].lerp((out.move === 'zip' ? _v.set(g * 0.26, 0.1, -0.1) : _v.set(g * 0.19, -0.25, -0.06)).applyQuaternion(_fq).add(eye).sub(_tc).applyQuaternion(_tqi), shK);
   }

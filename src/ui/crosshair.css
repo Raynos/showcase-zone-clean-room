@@ -56,7 +56,7 @@
 
 /* the rifle scope at the eyes: a dark ring with a fine cross, the view a circle in the middle */
 .xh-scope { position: absolute; inset: 0; opacity: 0; display: none;
-  background: radial-gradient(circle at 50% 50%, transparent 0, transparent min(42vw, 42vh), rgba(4, 6, 10, .55) calc(min(42vw, 42vh) + 1px), rgba(4, 6, 10, .96) calc(min(42vw, 42vh) + 6px)); }
+  background: radial-gradient(circle at calc(50% + var(--sx, 0px)) calc(50% + var(--sy, 0px)), transparent 0, transparent min(42vw, 42vh), rgba(4, 6, 10, .55) calc(min(42vw, 42vh) + 1px), rgba(4, 6, 10, .96) calc(min(42vw, 42vh) + 6px)); }
 .xh-scope.vis { display: block; }
 .xh-scope i { position: absolute; background: rgba(10, 14, 20, .85); }
 .xh-scope .h { left: 50%; top: 50%; width: min(84vw, 84vh); height: 1.5px; transform: translate(-50%, -50%); background: linear-gradient(90deg, rgba(10,14,20,.9) 0 40%, transparent 40% 60%, rgba(10,14,20,.9) 60% 100%); }
