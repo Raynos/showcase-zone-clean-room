@@ -40,7 +40,7 @@ export const bagPanel: PanelSpec = {
       h += '</div>';
       if (sell) {
         const w = salvageWorth();
-        h += `<div class="pn-row sellall"><div class="grow"><b>Sell all salvage</b><small>Keeps kits, bolts and anything epic</small></div>${btn(scripHtml(w), 'sellall', '', 'pri sm' + (w > 0 ? '' : ' off'))}</div>`;
+        h += `<div class="pn-row sellall"><div class="grow"><b>Sell all salvage</b><small>Keeps kits, bolts and anything epic</small></div>${btn(scripHtml(w), 'sellall', '', 'buy sm' + (w > 0 ? '' : ' off'))}</div>`;
       }
       if (!list.length) {
         h += `<div class="pn-empty"><div class="ei">${icon('bag', 40, 1.6)}</div><b>Pack is empty</b><span>Robots drop salvage when they pop. Voss sells repair kits and bolts in Brasswick.</span></div>`;

@@ -53,7 +53,7 @@ export function showTitle(host: Host, root: HTMLElement): Promise<void> {
       g.audio?.unlock?.();
       g.sfx('quest_accept');
       t.classList.add('out');
-      setTimeout(() => { t.remove(); resolve(); }, 620);
+      setTimeout(() => { t.remove(); resolve(); }, 200);
     };
     let down: HTMLElement | null = null;
     t.addEventListener('pointerdown', (e) => { down = (e.target as HTMLElement).closest('[data-t]') as HTMLElement | null; down?.classList.add('press'); });

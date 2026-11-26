@@ -47,7 +47,7 @@ export const shopPanel: PanelSpec = {
             let right: string;
             if (owned) right = `<div class="own">${btn('<small>Slot</small>1', 'equip0', id, 'sq' + (st.d.loadout[0] === id ? ' on' : ''))}${btn('<small>Slot</small>2', 'equip1', id, 'sq' + (st.d.loadout[1] === id ? ' on' : ''))}</div>`;
             else if (locked) right = `<div class="lockd">${icon('lock', 16)}Level ${w.level}</div>`;
-            else right = btn(`${scripHtml(w.price)}${poor ? `<small class="why">Need ${(w.price - st.d.scrip).toLocaleString('en-US')} more</small>` : ''}`, 'buy', id, 'pri sm' + (poor ? ' off' : ''));
+            else right = btn(`${scripHtml(w.price)}${poor ? `<small class="why">Need ${(w.price - st.d.scrip).toLocaleString('en-US')} more</small>` : ''}`, 'buy', id, 'buy sm' + (poor ? ' off' : ''));
             void col;
             h += `<div class="pn-row bev wpn${locked && !owned ? ' locked' : ''}${owned ? ' owned' : ''}">${weaponTile(id, { level: w.level })}<div class="grow"><b>${w.name}</b><small>Power ${w.power}${up} · Level ${w.level}${owned ? ' · Owned' : ''}</small><p>${w.desc}</p></div>${right}</div>`;
           }
@@ -57,13 +57,13 @@ export const shopPanel: PanelSpec = {
         for (const s of SUPPLIES) {
           const d = ITEMS[s.id], locked = st.d.level < s.level, poor = st.d.scrip < s.price, full = st.count(s.id) + s.n > d.stack;
           h += `<div class="pn-row${locked ? ' locked' : ''}">${itemTile(s.id, s.n > 1 ? '×' + s.n : '', { size: 30 })}<div class="grow"><b>${d.name}</b><small>In pack: ${st.count(s.id)}</small><p>${d.desc}</p></div>
-            ${locked ? `<div class="lockd">${icon('lock', 16)}Level ${s.level}</div>` : btn(scripHtml(s.price), 'supply', s.id, 'pri sm' + (poor || full ? ' off' : ''))}</div>`;
+            ${locked ? `<div class="lockd">${icon('lock', 16)}Level ${s.level}</div>` : btn(scripHtml(s.price), 'supply', s.id, 'buy sm' + (poor || full ? ' off' : ''))}</div>`;
         }
         h += '<div class="pn-note">Cycle bolt types in a fight with the crossbow\'s first skill. Steel bolts never run out.</div>';
       } else {
         const list = sellList();
         const worth = list.filter((id) => ITEMS[id].kind === 'salvage' && ITEMS[id].rarity !== 'epic').reduce((s, id) => s + ITEMS[id].value * st.count(id), 0);
-        h += `<div class="pn-row bev sellall"><div class="grow"><b>Sell all salvage</b><small>Keeps kits, bolts and anything epic</small></div>${btn(scripHtml(worth), 'sellall', '', 'pri sm' + (worth > 0 ? '' : ' off'))}</div>`;
+        h += `<div class="pn-row bev sellall"><div class="grow"><b>Sell all salvage</b><small>Keeps kits, bolts and anything epic</small></div>${btn(scripHtml(worth), 'sellall', '', 'buy sm' + (worth > 0 ? '' : ' off'))}</div>`;
         if (!list.length) h += `<div class="pn-empty"><div class="ei">${icon('coin', 40, 1.6)}</div><b>Nothing to sell</b><span>Salvage from scrapped robots sells here. Quest items and keys are never bought.</span></div>`;
         for (const id of list) {
           const d = ITEMS[id], n = st.count(id);
@@ -127,7 +127,7 @@ export const tinkerPanel: PanelSpec = {
           const parts = (c.parts ?? []).map(([id, n]) => `<span class="part ${st.count(id) >= n ? 'ok' : 'no'}">${itemTile(id, null, { size: 16 })}${ITEMS[id]?.name ?? id} <b>${st.count(id)}/${n}</b></span>`).join('');
           const can = !locked && st.d.scrip >= c.scrip && (c.parts ?? []).every(([id, n]) => st.count(id) >= n);
           body = `<p>${cur > 0 ? `<s>${u.desc(cur)}</s> ` : ''}${u.desc(t)}</p><div class="cost">${parts}</div>`;
-          right = locked ? `<div class="lockd">${icon('lock', 16)}Level ${lvl}</div>` : btn(scripHtml(c.scrip), 'buy', u.id, 'pri sm' + (can ? '' : ' off'));
+          right = locked ? `<div class="lockd">${icon('lock', 16)}Level ${lvl}</div>` : btn(scripHtml(c.scrip), 'buy', u.id, 'buy sm' + (can ? '' : ' off'));
         }
         h += `<div class="pn-row bev upg${maxed ? ' maxed' : ''}"><div class="wi sm cy">${UP_ART[u.id] ? art(UP_ART[u.id]) : icon(u.icon, 24)}</div><div class="grow"><b>${u.name}</b><small>${pips(cur, u.max)} Tier ${cur}/${u.max}</small>${body}</div>${right}</div>`;
       }

@@ -40,7 +40,7 @@ export const charPanel: PanelSpec = {
     };
     const render = () => {
       sig = signature();
-      host.setTabs([{ id: 'stats', label: 'Overview' }, { id: 'gear', label: 'Loadout' }, { id: 'perks', label: st.perksFree ? `Perks (${st.perksFree})` : 'Perks' }, { id: 'records', label: 'Records' }], tab);
+      host.setTabs([{ id: 'stats', label: 'Overview' }, { id: 'gear', label: 'Loadout' }, { id: 'perks', label: st.perksFree ? `Perks <em>${st.perksFree}</em>` : 'Perks' }, { id: 'records', label: 'Records' }], tab);
       const d = st.d;
       let h = '';
       if (tab === 'stats') {

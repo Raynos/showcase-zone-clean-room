@@ -44,7 +44,7 @@ export const questsPanel: PanelSpec = {
       const by = (s: string[]) => QUESTS.filter((q) => s.includes(qs.status(q.id)));
       const act = by(['ready', 'active']).sort((a, b) => (qs.status(a.id) === 'ready' ? 0 : 1) - (qs.status(b.id) === 'ready' ? 0 : 1));
       const avail = by(['available']), low = by(['low']), done = by(['done']);
-      host.setTabs([{ id: 'active', label: `Active ${act.length ? `(${act.length})` : ''}`, pip: act.some((q) => qs.status(q.id) === 'ready') }, { id: 'avail', label: `Available ${avail.length ? `(${avail.length})` : ''}` }, { id: 'done', label: `Done ${done.length}/${QUESTS.length}` }], tab);
+      host.setTabs([{ id: 'active', label: `Active${act.length ? ` <em>${act.length}</em>` : ''}`, pip: act.some((q) => qs.status(q.id) === 'ready') }, { id: 'avail', label: `Open${avail.length ? ` <em>${avail.length}</em>` : ''}` }, { id: 'done', label: `Done <em>${done.length}/${QUESTS.length}</em>` }], tab);
       let h = '';
       if (tab === 'active') {
         if (!act.length) h = `<div class="pn-empty">${icon('quests', 36, 1.6)}<b>No active quests</b><span>${avail.length ? 'Someone in Brasswick has work for you. Look for the yellow <em>!</em>' : 'Level up to unlock more work.'}</span></div>`;

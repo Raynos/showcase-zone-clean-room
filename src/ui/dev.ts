@@ -12,6 +12,8 @@ export function installDev(game: Game) {
   @media (orientation: portrait) { #dev { left: 178px; } }
   #dev > button { background: #0006; color: #7ff0ffb0; border: 1px solid #7ff0ff40; border-radius: 6px; padding: 4px 6px; font: 700 9px/1 system-ui, sans-serif; letter-spacing: .1em; }
   #dev.open > button { background: #000c; color: #7ff0ff; }
+  /* a menu, the title or a conversation owns the screen: the drawer's button waits */
+  body:has(#ui .pn.show) #dev:not(.open) { display: none; }
   #dev .dd { display: none; margin-top: 6px; background: #0b0f14ee; border: 1px solid #ffffff22; border-radius: 10px; padding: 8px; width: 236px; max-height: 60vh; overflow-y: auto; }
   #dev.open .dd { display: block; }
   #dev h5 { margin: 8px 0 5px; font-size: 9px; letter-spacing: .18em; color: #ffb04a; }

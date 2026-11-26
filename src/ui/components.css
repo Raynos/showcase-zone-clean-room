@@ -24,6 +24,9 @@
 .pn-btn.pri { --rimg: var(--rim-warm); --faceg: var(--face-warm); color: #2a1406; text-shadow: 0 1px 0 rgba(255, 217, 168, .6); }
 .pn-btn.pri::before { box-shadow: inset 0 2px 2px rgba(255, 255, 255, .6), inset 0 -9px 12px rgba(106, 36, 0, .5); }
 .pn-btn.pri .pn-scrip { color: #2a1406; }
+/* a price in a list row: gold on dark. Orange is kept for the one action a screen is for. */
+.pn-btn.buy { --rimg: var(--rim-gold); --faceg: linear-gradient(180deg, #33290f, #171208); color: var(--gold); }
+.pn-btn.buy::before { box-shadow: var(--lit), inset 0 0 12px rgba(255, 207, 90, .16); }
 .pn-btn.cy { --rimg: var(--rim-cyan); color: #c9f9ff; }
 .pn-btn.cy::before { box-shadow: var(--lit), inset 0 0 14px rgba(94, 240, 255, .22); }
 .pn-btn.danger { --rimg: linear-gradient(145deg, #ffd2c6, #a3200f 30%, #ff9a84 52%, #5e0f05 78%, #ffd2c6); --faceg: var(--face-danger); color: #fff; }
@@ -31,12 +34,15 @@
 .pn-btn.sm { min-width: 84px; padding: 0 12px; font-size: 13.5px; }
 .pn-btn.lg { min-height: 52px; font-size: 16px; letter-spacing: .14em; }
 .pn-btn.sq { --c: 7px; width: 46px; min-width: 46px; padding: 0; flex-direction: column; gap: 0; font-size: 17px; line-height: 1; color: var(--dim); }
-.pn-btn.sq small { font-size: 9px; letter-spacing: .14em; opacity: .85; }
+.pn-btn.sq small { font-size: 11px; letter-spacing: .04em; opacity: .85; }
 .pn-btn.sq.on, .pn-btn.on { --rimg: var(--rim-cyan); --faceg: var(--face-cyan); color: #06242a; text-shadow: none; }
-.pn-btn.off { filter: saturate(.25) brightness(.62); }
-.pn-btn.off, .pn-btn.off .pn-scrip { color: #9aa3ad; }
+/* not now: a dark face and grey words that still read, whatever the button is when it is live */
+.pn-btn.off { --rimg: var(--rim-soft); --faceg: linear-gradient(180deg, #20252c, #14181d); text-shadow: none; filter: none; }
+.pn-btn.off::before { box-shadow: var(--lit); }
+.pn-btn.off, .pn-btn.off .pn-scrip { color: #8f97a2; }
+.pn-btn.off small.why { color: #b4bbc4; }
 .pn-btn.press { transform: scale(.955); filter: brightness(1.28); }
-.pn-btn.off.press { filter: saturate(.25) brightness(.7); }
+.pn-btn.off.press { filter: brightness(1.1); }
 .pn-btn.glow { animation: pn-glow 1.3s ease-in-out infinite; }
 @keyframes pn-glow { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.24) drop-shadow(0 0 7px rgba(255, 180, 80, .85)); } }
 .pn-btn small.why { display: block; font-size: 11px; letter-spacing: .06em; font-weight: 700; opacity: .9; text-transform: none; }
@@ -94,11 +100,13 @@
 .pn-cap .pn-bar { flex: 1; }
 
 .pn-seg, .pn-tabs { display: flex; gap: 3px; padding: 3px; border-radius: 12px; background: var(--ink-0); box-shadow: var(--lit-well), 0 1px 0 rgba(255, 255, 255, .09); }
-.pn-seg > div, .pn-tab { flex: 1 1 0; min-width: 0; min-height: 40px; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 9px; font-size: 13px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); white-space: nowrap; position: relative;
+.pn-seg > div, .pn-tab { flex: 1 1 0; min-width: 0; min-height: var(--hit); display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 9px; font-size: 13px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); white-space: nowrap; position: relative;
   transition: color var(--t-fast); }
 .pn-seg > div.on, .pn-tab.on { color: #fff; text-shadow: var(--ts); border: 1.5px solid transparent; background: linear-gradient(180deg, #3a434f, #1d222a) padding-box, var(--rim) border-box; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), 0 2px 5px rgba(0, 0, 0, .6); }
 .pn-seg > div.on { color: #2a1406; text-shadow: none; background: var(--face-warm) padding-box, var(--rim-warm) border-box; }
 .pn-seg > div.press, .pn-tab.press { filter: brightness(1.4); }
+.pn-tab svg { display: none; }
+.pn-tab span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .pn-tab i { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 8px var(--gold); }
 .pn-tab em { font-size: 11.5px; color: var(--amber); letter-spacing: .04em; }
 

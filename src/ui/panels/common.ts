@@ -19,7 +19,7 @@ export interface Host {
   back(): void;
   confirm(text: string, yes?: string, no?: string, danger?: boolean): Promise<boolean>;
   notice(text: string, sub?: string): Promise<void>;
-  setTabs(tabs: Array<{ id: string; label: string; pip?: boolean }>, active: string): void;
+  setTabs(tabs: Array<{ id: string; label: string; pip?: boolean; ic?: string }>, active: string): void;
   setTitle(title: string, ic?: string): void;
   setFoot(html: string): void;
   showScrip(on: boolean): void;

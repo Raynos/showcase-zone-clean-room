@@ -68,6 +68,9 @@ const P: Record<string, string> = {
   mine: '<circle cx="12" cy="14" r="5"/><path d="M12 9V5m-2 0h4M5 14H3m18 0h-2M7 9L5.5 7.5M17 9l1.5-1.5M9 20l-1 1.5m7-1.5l1 1.5"/><circle cx="12" cy="14" r="1.4"/>',
   // status effects
   burn: '<path d="M12 3c1 4 5 5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-5 1-9z"/>',
+  sound: '<path d="M4 9.500v5h3.500l4.500 4V5.500l-4.500 4z"/><path d="M15.500 9a4.500 4.500 0 0 1 0 6M18 6.500a8 8 0 0 1 0 11"/>',
+  pad: '<path d="M7.500 8h9a5 5 0 0 1 5 5v1.500a2.500 2.500 0 0 1-4.700 1.200L15.500 13.500h-7l-1.300 2.200A2.500 2.500 0 0 1 2.500 14.500V13a5 5 0 0 1 5-5z"/><path d="M7.500 10v3M6 11.500h3"/><circle cx="16.500" cy="11.500" r=".6"/>',
+  screen: '<path d="M3 5h18v11H3zM8.500 20h7M12 16v4"/>',
   broken: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM12 3l-2 6 4 3-3 4 1 5"/>',
 };
 export function icon(name: string, size = 24, strokeWidth = 2): string {

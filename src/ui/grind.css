@@ -37,7 +37,7 @@
 .gr-tu-w small { display: block; font-size: var(--fs-sm); font-weight: 600; color: var(--dim); }
 .gr-tu-row { padding: 7px 10px; margin-bottom: 6px; border-radius: var(--rad-1); background: var(--ink-0); box-shadow: var(--lit-well); }
 .gr-tu-row b { display: block; font-size: 14px; font-weight: 800; color: var(--text-2); }
-.gr-tu-row em { font-style: normal; margin-left: 5px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+.gr-tu-row em { font-style: normal; margin-left: 5px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
 .gr-tu-row span { display: block; font-size: var(--fs-sm); line-height: 1.35; color: var(--dim); }
 .gr-tu-row.new { box-shadow: var(--lit-well), inset 0 0 0 1px var(--r-rare); }
 .gr-tu-row.new b { color: var(--r-rare); }

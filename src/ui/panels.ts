@@ -16,8 +16,19 @@ import { showTitle } from './panels/title';
 
 export type PanelId = 'bag' | 'char' | 'quests' | 'map' | 'menu' | 'talk' | 'shop' | 'tinker' | 'board' | 'trophies';
 const KEYS: Record<string, PanelId> = { KeyI: 'bag', KeyB: 'bag', KeyL: 'quests', KeyJ: 'quests', KeyM: 'map', KeyP: 'char' };
+/** The five screens behind the menu glyph, in the order of the tray: id, icon, name, key. On a wide screen the head carries them as a switcher. */
+const NAV: Array<[PanelId, string, string, string]> = [['bag', 'bag', 'Pack', 'I'], ['char', 'char', 'Character', 'P'], ['quests', 'quests', 'Quests', 'L'], ['map', 'map', 'Map', 'M'], ['menu', 'gear', 'Settings', 'Esc']];
+/** An icon per tab id: the phone's tab bar sits under the thumb and reads by icon first. */
+const TAB_IC: Record<string, string> = { items: 'bag', gear: 'sword', stats: 'char', perks: 'star', records: 'trophy', active: 'quests', avail: 'exclaim', done: 'check', weapons: 'sword', supplies: 'potion', sell: 'coin',
+  bounties: 'board', hunts: 'target', wanted: 'skull', controls: 'pad', camera: 'eye', aiming: 'target', display: 'screen', sound: 'sound', game: 'gear' };
+const PHONE_SHEET = '(max-width: 699.98px) and (orientation: portrait)';
 
-/** Every menu in the game: one sheet that slides up (phone) or a centred card (desktop). */
+/**
+ * Every menu in the game: one frame. A phone held upright gets a bottom sheet (drag its head down or
+ * tap outside to close; tabs along the bottom, under the thumb); a phone on its side and a desktop get
+ * a window (tabs as a rail on the left, the detail in a column on the right, the five menu screens as
+ * a switcher in the head, with their keys on a desktop). docs/HUD.md, "Panels".
+ */
 export class Panels implements System, Host {
   current: string | null = null;
   onOpen: (id: string, arg?: any) => void = () => {};
@@ -25,7 +36,7 @@ export class Panels implements System, Host {
   zoneMap: ZoneMap;
   private specs: Record<string, PanelSpec>;
   private root: HTMLElement; private scrim: HTMLElement; private sheet: HTMLElement;
-  private headIcon: HTMLElement; private headTitle: HTMLElement; private headScrip: HTMLElement; private backBtn: HTMLElement;
+  private headIcon: HTMLElement; private headTitle: HTMLElement; private headScrip: HTMLElement; private backBtn: HTMLElement; private navEl: HTMLElement;
   private tabsEl: HTMLElement;
   body: HTMLElement; foot: HTMLElement;
   private modal: HTMLElement;
@@ -46,8 +57,8 @@ export class Panels implements System, Host {
     const ui = document.getElementById('ui')!;
     this.root = el('div', 'pn');
     this.root.innerHTML = `<div class="pn-scrim"></div>
-      <div class="pn-sheet"><div class="pn-grab" data-a="close"><i></i></div>
-        <div class="pn-head"><div class="pn-rb pn-back" data-a="back" aria-label="Back">${icon('dash', 18)}</div><div class="pn-hi"></div><div class="pn-ht"></div><div class="pn-hs"></div><div class="pn-rb pn-x" data-a="close" aria-label="Close">${icon('close', 20, 2.4)}</div></div>
+      <div class="pn-sheet"><div class="pn-grab"><i></i></div>
+        <div class="pn-head"><div class="pn-rb pn-back" data-a="back" aria-label="Back">${icon('dash', 18)}</div><div class="pn-hi"></div><div class="pn-ht"></div><div class="pn-nav"></div><div class="pn-hs"></div><kbd class="pn-kx">Esc</kbd><div class="pn-rb pn-x" data-a="close" aria-label="Close">${icon('close', 20, 2.4)}</div></div>
         <div class="pn-tabs"></div><div class="pn-body"></div><div class="pn-foot"></div></div>
       <div class="pn-modal"></div>`;
     // sit under the banner and toast slots so purchase / quest toasts stay readable over an open sheet
@@ -55,7 +66,7 @@ export class Panels implements System, Host {
     ui.insertBefore(this.root, ui.querySelector(':scope > .s-banner'));
     const q = (s: string) => this.root.querySelector(s) as HTMLElement;
     this.scrim = q('.pn-scrim'); this.sheet = q('.pn-sheet'); this.headIcon = q('.pn-hi'); this.headTitle = q('.pn-ht'); this.headScrip = q('.pn-hs');
-    this.backBtn = q('.pn-back'); this.tabsEl = q('.pn-tabs'); this.body = q('.pn-body'); this.foot = q('.pn-foot'); this.modal = q('.pn-modal');
+    this.backBtn = q('.pn-back'); this.navEl = q('.pn-nav'); this.tabsEl = q('.pn-tabs'); this.body = q('.pn-body'); this.foot = q('.pn-foot'); this.modal = q('.pn-modal');
     this.bind();
     game.hud.onMenu = (id) => this.toggle(id);
     game.hud.drawMini = this.zoneMap.drawMini;
@@ -91,6 +102,7 @@ export class Panels implements System, Host {
     let scrimDown = false;
     this.scrim.addEventListener('pointerdown', () => { scrimDown = true; });
     this.scrim.addEventListener('pointerup', () => { if (scrimDown && !this.sheet.classList.contains('dialog')) this.close(true); scrimDown = false; });
+    this.bindSwipe();
     // the game loop (and so update()) is frozen while paused: handle keys directly then
     window.addEventListener('keydown', (e) => {
       if (e.repeat || !this.game.paused || this.titleOpen) return;
@@ -101,9 +113,33 @@ export class Panels implements System, Host {
       if (e.code === 'Escape') this.close(); else this.toggle(KEYS[e.code]);
     });
   }
+  /** The phone sheet follows a finger dragged down from its head and closes past a third of a thumb's travel, or on a flick. */
+  private bindSwipe() {
+    const sheet = this.sheet, mq = matchMedia(PHONE_SHEET);
+    let d: { id: number; y: number; t: number; dy: number } | null = null;
+    const down = (e: PointerEvent) => {
+      if (!mq.matches || sheet.classList.contains('dialog') || (e.target as HTMLElement).closest('[data-a]')) return;
+      d = { id: e.pointerId, y: e.clientY, t: performance.now(), dy: 0 };
+    };
+    for (const sel of ['.pn-grab', '.pn-head']) (this.root.querySelector(sel) as HTMLElement).addEventListener('pointerdown', down);
+    this.root.addEventListener('pointermove', (e) => {
+      if (!d || e.pointerId !== d.id) return;
+      d.dy = Math.max(0, e.clientY - d.y);
+      if (d.dy > 4) { sheet.style.transition = 'none'; sheet.style.transform = `translateY(${d.dy}px)`; }
+    });
+    const up = (e: PointerEvent) => {
+      if (!d || e.pointerId !== d.id) return;
+      const go = e.type === 'pointerup' && (d.dy > 96 || (d.dy > 28 && d.dy / Math.max(1, performance.now() - d.t) > 0.45));
+      d = null;
+      sheet.style.transition = '';
+      if (go) { this.close(true); requestAnimationFrame(() => { sheet.style.transform = ''; }); } else sheet.style.transform = '';
+    };
+    this.root.addEventListener('pointerup', up); this.root.addEventListener('pointercancel', up);
+  }
   private fire(t: HTMLElement) {
     const a = t.dataset.a!, v = t.dataset.v ?? '';
     if (a === 'close') { this.close(true); return; }
+    if (a === 'nav') { if (v !== this.current) this.open(v); return; }
     if (a === 'back') { this.back(); return; }
     if (a === 'tab') { this.game.sfx('ui_tab'); this.view?.act?.('tab', v, t); return; }
     this.view?.act?.(a, v, t);
@@ -160,6 +196,10 @@ export class Panels implements System, Host {
     this.body.innerHTML = ''; this.body.scrollTop = 0;
     this.showScrip(!!spec.scrip); this.scripShown = -1;
     this.backBtn.classList.toggle('on', this.stack.length > 0);
+    // the five menu screens switch among themselves from the head (a window only: the phone sheet has the tray for it)
+    const menu = !this.stack.length && NAV.some((n) => n[0] === id);
+    this.navEl.innerHTML = menu ? NAV.map(([nid, ic, name, key]) => `<div class="pn-nb${nid === id ? ' on' : ''}" data-a="nav" data-v="${nid}" aria-label="${name}" title="${name} (${key})">${icon(ic, 18)}<kbd>${key}</kbd></div>`).join('') : '';
+    this.sheet.style.transform = ''; this.sheet.style.transition = '';
     if (spec.pause && !g.paused) { g.paused = true; this.pausedByMe = true; }
     this.root.classList.add('show');
     this.view = spec.make(this, arg);
@@ -205,9 +245,10 @@ export class Panels implements System, Host {
   // ------------------------------------------------------------------ host services for panel views
   setTitle(title: string, ic?: string) { this.headTitle.textContent = title; if (ic) this.headIcon.innerHTML = icon(ic, 20); }
   showScrip(on: boolean) { this.headScrip.classList.toggle('on', on); }
-  setTabs(tabs: Array<{ id: string; label: string; pip?: boolean }>, active: string) {
+  setTabs(tabs: Array<{ id: string; label: string; pip?: boolean; ic?: string }>, active: string) {
     this.tabsEl.classList.toggle('on', tabs.length > 0);
-    this.tabsEl.innerHTML = tabs.map((t) => `<div class="pn-tab${t.id === active ? ' on' : ''}" data-a="tab" data-v="${t.id}">${t.label}${t.pip ? '<i></i>' : ''}</div>`).join('');
+    const html = tabs.map((t) => `<div class="pn-tab${t.id === active ? ' on' : ''}" data-a="tab" data-v="${t.id}" role="tab" aria-selected="${t.id === active}">${icon(t.ic ?? TAB_IC[t.id] ?? 'more', 18)}<span>${t.label}</span>${t.pip ? '<i></i>' : ''}</div>`).join('');
+    if (this.tabsEl.innerHTML !== html) this.tabsEl.innerHTML = html;
   }
   setFoot(html: string) { this.foot.classList.toggle('on', !!html); if (this.foot.innerHTML !== html) this.foot.innerHTML = html; }
 
