@@ -47,6 +47,8 @@ export class PostState {
   vignette = 0.42;
   /** red damage vignette 0..1 */
   hurt = 0;
+  /** 0..1: the damage vignette keeps to the picture's corners and edges (first person, systems/view.ts) */
+  hurtEdge = 0;
   /** low-health desaturation 0..1 */
   desat = 0;
   /** speed radial blur 0..1 */
@@ -165,7 +167,7 @@ export class Renderer {
     this.mFinal = fsMat(/* glsl */ `
       varying vec2 vUv;
       uniform sampler2D tMap; uniform sampler2D tBloom; uniform sampler2D tRays; uniform sampler2D tDepth; uniform float uNear;
-      uniform float uExposure, uBloom, uSat, uContrast, uVig, uHurt, uDesat, uSpeed, uFade, uLetter, uChroma, uRays, uTime, uAspect, uSharp;
+      uniform float uExposure, uBloom, uSat, uContrast, uVig, uHurt, uHurtEdge, uDesat, uSpeed, uFade, uLetter, uChroma, uRays, uTime, uAspect, uSharp;
       uniform vec2 uTexel;
       uniform vec4 uFlash; uniform vec4 uLift; uniform float uVib; uniform vec3 uTint, uShadowTint, uHighTint, uSunCol; uniform vec3 uSun;
       vec3 aces(vec3 x) {
@@ -227,8 +229,9 @@ export class Renderer {
         float vig = smoothstep(0.75, 0.12, r2 * 1.9);
         col *= mix(1.0, vig, uVig);
         // damage pulse
-        float edge = smoothstep(0.08, 0.5, dot(cc, cc) * 1.4);
-        col = mix(col, vec3(0.85, 0.05, 0.02), edge * uHurt * 0.75);
+        // (from the eyes the fight is the middle of the picture: the pulse is a frame round it, not a wash over it)
+        float edge = smoothstep(mix(0.08, 0.26, uHurtEdge), mix(0.5, 0.78, uHurtEdge), dot(cc, cc) * 1.4);
+        col = mix(col, vec3(0.85, 0.05, 0.02), edge * uHurt * mix(0.75, 0.6, uHurtEdge));
         // a screen flash brightens toward its colour without flattening what is already on screen
         col += uFlash.rgb * uFlash.a * (1.0 - clamp(col, 0.0, 1.0)) * 0.6;
         col = pow(max(col, 0.0), vec3(1.0 / 2.2));
@@ -244,7 +247,7 @@ export class Renderer {
       }`, {
       tMap: { value: null }, tBloom: { value: null }, tRays: { value: null }, tDepth: { value: null }, uNear: { value: 0.1 },
       uExposure: { value: 1 }, uBloom: { value: 1 }, uSat: { value: 1 }, uContrast: { value: 1 }, uVig: { value: 0.4 },
-      uHurt: { value: 0 }, uDesat: { value: 0 }, uSpeed: { value: 0 }, uFade: { value: 0 }, uLetter: { value: 0 }, uChroma: { value: 0 },
+      uHurt: { value: 0 }, uHurtEdge: { value: 0 }, uDesat: { value: 0 }, uSpeed: { value: 0 }, uFade: { value: 0 }, uLetter: { value: 0 }, uChroma: { value: 0 },
       uRays: { value: 0 }, uTime: { value: 0 }, uAspect: { value: 1 }, uSharp: { value: 0 }, uTexel: { value: new THREE.Vector2() },
       uFlash: { value: new THREE.Vector4() }, uLift: { value: new THREE.Vector4() }, uVib: { value: 0 }, uTint: { value: new THREE.Color() }, uShadowTint: { value: new THREE.Color() },
       uHighTint: { value: new THREE.Color() }, uSunCol: { value: new THREE.Color() }, uSun: { value: new THREE.Vector3() },
@@ -349,7 +352,7 @@ export class Renderer {
     u.tDepth.value = this.rtMain.depthTexture; u.uNear.value = camera.near;
     u.tBloom.value = B.length ? B[0].texture : null;
     u.uExposure.value = p.exposure; u.uBloom.value = q.bloom ? p.bloom : 0; u.uSat.value = p.saturation; u.uContrast.value = p.contrast;
-    u.uVig.value = p.vignette; u.uHurt.value = p.hurt; u.uDesat.value = p.desat; u.uSpeed.value = p.speed; u.uFade.value = p.fade;
+    u.uVig.value = p.vignette; u.uHurt.value = p.hurt; u.uHurtEdge.value = p.hurtEdge; u.uDesat.value = p.desat; u.uSpeed.value = p.speed; u.uFade.value = p.fade;
     u.uLetter.value = p.letterbox; u.uChroma.value = p.chroma; u.uRays.value = rays; u.uTime.value = this.time % 100;
     u.uAspect.value = this.width / this.height;
     // the more the browser has to stretch the canvas to the screen, the more sharpening it needs

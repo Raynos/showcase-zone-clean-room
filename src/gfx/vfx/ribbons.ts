@@ -28,6 +28,14 @@ export const TRAIL_LOOKS: Record<string, TrailLook> = {
   ult: { row: RB.WAVE, life: 0.4, glow: 1.2, core: 0.5, reach: 0.05, taper: 0.35, tile: 1.3, edge: 1.0 },
 };
 
+/**
+ * A blade's ribbon seen from the hero's own eyes (`k` 0..1, systems/view.ts sets it): the ribbon is `narrow` of
+ * the blade narrower (the point's part of the arc, not a sheet from the guard out) and `dim` dimmer, because
+ * it is drawn a forearm from the lens and across the thing being hit; and the point's own line, which is
+ * metres wide for a heavy cut seen from behind, is at most `line` times as wide as it is far from the lens.
+ */
+export const TRAIL_EYE = { k: 0, narrow: 0.88, dim: 0.45, line: 0.09 };
+
 export class Trail {
   active = false; life = 0.2;
   color = new THREE.Color(1, 1, 1);
@@ -224,7 +232,8 @@ export class Ribbons {
     const k = t.count;
     if (k < 2) return;
     const lk = t.look, bx = t.bx, tx = t.tx, age = t.age, life = t.life;
-    const r = t.color.r * lk.glow, g = t.color.g * lk.glow, b = t.color.b * lk.glow;
+    const ek = TRAIL_EYE.k, eg = lk.glow * (1 - TRAIL_EYE.dim * ek);
+    const r = t.color.r * eg, g = t.color.g * eg, b = t.color.b * eg;
     this.first = true;
     let np = 0;
     for (let i = 0; i < k - 1; i++) {
@@ -239,7 +248,7 @@ export class Ribbons {
         // a crescent at every moment: the tail is thin and breaking up however young it is
         const u = Math.min(1, Math.max((age[i] + (age[i + 1] - age[i]) * f) / life, (i + f) / (k - 1) * 0.82));
         // the ribbon narrows toward its tail: a tapered arc, not a fan
-        const tp = u * u * lk.taper;
+        const tp = 1 - (1 - u * u * lk.taper) * (1 - TRAIL_EYE.narrow * ek);
         bxx += (txx - bxx) * tp; bxy += (txy - bxy) * tp; bxz += (txz - bxz) * tp;
         const head = Math.min(1, u * 14 + 0.25);
         this.put(bxx, bxy, bxz, txx, txy, txz, u * lk.tile, r * 0.8, g * 0.8, b * 0.8, (1 - u * u * 0.6) * head, lk.row, Math.pow(u, 1.25) * 1.12, lk.core * (1 - u * 0.5), 1);
@@ -254,11 +263,12 @@ export class Ribbons {
       _a.set(TP[o], TP[o + 1], TP[o + 2]);
       _t.set(TP[nx] - TP[pv], TP[nx + 1] - TP[pv + 1], TP[nx + 2] - TP[pv + 2]);
       _c.subVectors(cam, _a);
+      const far = _c.length();
       _b.crossVectors(_t, _c);
       if (_b.lengthSq() < 1e-10) _b.set(0, 1, 0);
       _b.normalize();
       if (_b.x * TP[o + 4] + _b.y * TP[o + 5] + _b.z * TP[o + 6] < 0) _b.negate();
-      const w = lk.edge * Math.pow(1 - u, 0.6) * Math.min(1, u * 9 + 0.3);
+      const w0 = lk.edge * Math.pow(1 - u, 0.6) * Math.min(1, u * 9 + 0.3), w = w0 + (Math.min(w0, far * TRAIL_EYE.line) - w0) * ek;
       this.put(_a.x - _b.x * w, _a.y - _b.y * w, _a.z - _b.z * w, _a.x + _b.x * w * 0.12, _a.y + _b.y * w * 0.12, _a.z + _b.z * w * 0.12, u * lk.tile, r, g, b, 1 - u * 0.4, lk.row, Math.pow(u, 1.3) * 1.1, lk.core, 1);
     }
   }

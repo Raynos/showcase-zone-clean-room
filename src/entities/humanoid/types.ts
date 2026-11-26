@@ -115,6 +115,12 @@ export interface HumanPose {
   fpTan?: THREE.Vector2;
   /** first person with a ranged weapon: the weapon is on the view and the hands go to it (systems/viewmodel.ts, fpview.ts `fpHold`) */
   fpHold?: FpHold | null;
+  /**
+   * first person: the weight of what is in the hands this frame, in the lens's own frame (systems/fpmotion.ts):
+   * `pos` metres (x right, y up, z ahead), `rot` radians (x tip up, y to the right, z rolled clockwise). The melee
+   * carry and swings take it in fpview.ts; the ranged view model reads the same source (systems/viewmodel.ts).
+   */
+  fpSway?: { pos: THREE.Vector3; rot: THREE.Vector3 } | null;
 }
 
 /** The shooter stance's named holds for the orbit camera (shootpose.ts). */

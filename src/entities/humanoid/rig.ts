@@ -417,13 +417,15 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
       // first person: the eyes sit above a blade swung at chest height, so a drawn melee weapon and the
       // hands on it are re-framed for the eye (fpview.ts); a swing that draws the weapon is re-framed from its
       // first frame (eased in, its wind-up was the third-person hand behind the lens: light 1 had no weapon)
-      fpLift = damp1(fpLift, (pose.fp ?? 0) * (pose.drawn && (pose.weapon === 'sword' || pose.weapon === 'spear') && pose.locomotion !== 'dead' ? 1 : 0), dt * (pose.action && pose.drawn ? 60 : 8));
+      const fpWant = (pose.fp ?? 0) * (pose.drawn && (pose.weapon === 'sword' || pose.weapon === 'spear') && pose.locomotion !== 'dead' ? 1 : 0);
+      fpLift = damp1(fpLift, fpWant, dt * (pose.action && pose.drawn ? 60 : 8));
+      // a melee weapon that has just come to the hand without a swing (a swap) is brought up from under the picture:
+      // re-framed from its first frame (eased in, that frame was the third-person hand and a blade across the lens)
+      const held = weapon && pose.drawn && pose.weapon !== 'none' && pose.locomotion !== 'dead' ? weapon.object : null;
+      if (held !== fpHeld) { fpHeld = held; fpDrawT = held && !pose.action ? 0 : 9; if (held && fp > 0.9) fpLift = fpWant; }
+      fpDrawT += dt;
       const sc = body.scale.y || 1;
       fpPresent(P, pose, fpLift < 0.002 ? 0 : fpLift, eyeRest.y / sc, eyeRest.z / sc, arms, sc, dt);
-      // a melee weapon that has just come to the hand without a swing (a swap) is brought up from under the picture
-      const held = weapon && pose.drawn && pose.weapon !== 'none' && pose.locomotion !== 'dead' ? weapon.object : null;
-      if (held !== fpHeld) { fpHeld = held; fpDrawT = held && !pose.action ? 0 : 9; }
-      fpDrawT += dt;
       if (fpLift > 0.002 && fpDrawT < FP_DRAW) {
         const u = fpDrawT / FP_DRAW, up = (1 - u * u * (3 - 2 * u)) * fpLift;
         for (let s = 0; s < 2; s++) if (s === R || pose.weapon === 'spear') { arms.handPos[s].y -= 0.44 * up; arms.handPos[s].z -= 0.07 * up; arms.handPos[s].x -= 0.05 * up; }

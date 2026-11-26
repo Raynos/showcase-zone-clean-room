@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import type { FirstPersonFeed, View } from '../core/camera';
 import { clamp, clamp01 } from '../core/util';
 import { GU } from '../gfx/material';
+import { TRAIL_EYE } from '../gfx/vfx/ribbons';
+import { FpMotion } from './fpmotion';
 import { DOWN, type FpDraw, type HumanoidRig } from '../entities/humanoid/types';
 import type { Game } from '../game';
 
@@ -32,6 +34,18 @@ const FP_RIDE = { up: 0.3, ahead: 0.06, bob: 0.5 };
  */
 const FP_CLOSE = { bigH: 2.8, bigR: 1.1, near: 4, full: 1, fov: 14, assistR: 6, dead: 0.12, rate: 3 };
 const FP_VIG = { roll: 0.22, down: 0.4, dead: 0.5 };
+/**
+ * A robot's body round the lens (ViewSystem.inside). A robot that is not big (FP_CLOSE) and has the eye within
+ * `pad` metres of its body's width is not drawn that frame: a dash goes through it, a lunge ends on top of the
+ * lens, and what was drawn then was the inside of a chest. The eye is looked for `lead` seconds ahead along
+ * the hero's own motion, so the frame the lens arrives is covered too. Big robots keep the dissolve round the
+ * lens instead (a leg of the Titan is not the Titan).
+ */
+const FP_INSIDE = { pad: 0.16, lead: 0.05, below: 0.25, above: 0.2 };
+/** Seconds after swinging into a saddle or onto a board in which the eyes draw none of the hero (the body passes through the lens on the way up). */
+const FP_MOUNT = 0.9;
+/** On a board: the horizon leans into a carve by `roll` radians at full lean, and the eyes sink `crouch` metres at full speed (both within the comfort settings). */
+const FP_BOARD = { roll: 0.075, crouch: 0.07, top: 14 };
 const reducedMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
 const ease = (u: number) => { const x = clamp01(u); return x * x * (3 - 2 * x); };
 
@@ -64,8 +78,13 @@ export class ViewSystem {
   private treat: FpDraw = 'body';
   private deadT = 0; private sinceRoll = 9; private airMinVy = 0; private lastLandT = 9; private landDip = 0;
   private _o = new THREE.Vector3(); private _r = new THREE.Vector3();
+  /** the weight of the weapon in the hands (systems/fpmotion.ts): the melee carry and the ranged view model both read it */
+  readonly motion: FpMotion;
+  private sway = { pos: new THREE.Vector3(), rot: new THREE.Vector3() };
+  private mountT = 9; private lastLoc = '';
 
   constructor(private game: Game) {
+    this.motion = new FpMotion(game);
     window.addEventListener('keydown', (e) => {
       if (e.code !== 'KeyV' || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
@@ -107,7 +126,9 @@ export class ViewSystem {
     if (g.cameraRig.cineAmount > 0.002 && !g.cameraRig.aimBlend && cam.position.distanceToSquared(this.eyeW) < 1.44) return 'none';
     // blending in or out of the eyes (a view switch, a cutscene taking over): the head goes only while the lens is inside it;
     // an aim from the shoulder passes close over it, so there it goes as soon as the lens is within reach of it
-    return cam.position.distanceToSquared(this.eyeW) < (g.cameraRig.aimBlend ? 2.9 : 0.25) ? (this.treat === 'none' ? 'none' : this.treat === 'arms' ? 'arms' : 'body') : 'full';
+    // (the arms and the weapon are posed to the eyes all the while: drawn before the lens is home they were a sleeve across it)
+    if (g.cameraRig.aimBlend) return cam.position.distanceToSquared(this.eyeW) < 2.9 ? 'none' : 'full';
+    return cam.position.distanceToSquared(this.eyeW) < 0.25 ? (this.treat === 'none' ? 'none' : this.treat === 'arms' ? 'arms' : 'body') : 'full';
   }
 
   /**
@@ -124,18 +145,33 @@ export class ViewSystem {
     GU.uHeroV.value.w = clamp01(k * (1 - e));
   }
   private insideK = 0;
-  /** How deep the eye is inside any robot's body, 0..1, smoothed. */
+  /**
+   * The eye inside a robot's body (FP_INSIDE). A big one: how deep, 0..1, smoothed, which widens the dissolve
+   * round the lens (nearFade). Any other is simply not drawn this frame (mobs.ts shows every robot again each
+   * frame before this runs), so the other robots of a crowd keep their bodies.
+   */
   private inside(dt: number) {
-    const g = this.game, eye = g.cameraRig.eye;
+    const g = this.game, cr = g.cameraRig, eye = cr.eye, v = g.player.vel, I = FP_INSIDE;
     let k = 0;
-    if (g.cameraRig.eyeAmount > 0) for (const m of g.mobs.list) {
+    if (cr.eyeAmount > 0.5) for (const m of g.mobs.list) {
       if (!m.alive) continue;
-      const d = Math.hypot(m.pos.x - eye.x, m.pos.z - eye.z), y = eye.y - m.pos.y - (m.lift ?? 0);
-      if (d > m.radius + 0.5 || y < -0.3 || y > m.height + 0.3) continue;
-      k = Math.max(k, clamp01((m.radius + 0.5 - d) / 0.6));
+      const y = eye.y - m.pos.y - (m.lift ?? 0);
+      const d = Math.hypot(m.pos.x - eye.x, m.pos.z - eye.z);
+      const big = m.isBoss || m.height >= FP_CLOSE.bigH || m.radius >= FP_CLOSE.bigR;
+      if (big) {
+        if (d > m.radius + 0.5 || y < -0.3 || y > m.height + 0.3) continue;
+        k = Math.max(k, clamp01((m.radius + 0.5 - d) / 0.6));
+      } else {
+        if (y < -I.below || y > m.height + I.above) continue;
+        // now, or where the hero's own motion takes the eye by the time this frame is drawn and the next
+        const d2 = Math.hypot(m.pos.x - eye.x - v.x * I.lead, m.pos.z - eye.z - v.z * I.lead);
+        if (Math.min(d, d2) < m.radius + I.pad && m.rig?.root) m.rig.root.visible = false;
+      }
     }
     this.insideK += (k - this.insideK) * Math.min(1, dt * (k > this.insideK ? 25 : 6));
   }
+  /** Reduced motion: the device's setting or Settings > Comfort. Every motion added to the view stops for it. */
+  get still() { return !!this.game.state.d.settings.reduceMotion || !!reducedMotion?.matches; }
 
   get headBob() { return this.bobAmount > 0; }
   /**
@@ -155,11 +191,20 @@ export class ViewSystem {
     // comfort: the field of view per orientation, and the eyes' share of screen shake (a head's shudder, less for reduced motion)
     cr.fpFovOffset = g.camera.aspect < 1 ? s.fpFov ?? 0 : s.fpFovWide ?? s.fpFov ?? 0;
     cr.fpShake = reducedMotion?.matches ? 0.35 : 1;
+    // what the effects kit, the blade's ribbon and the hurt pulse need to know: how much of the picture is the eyes'
+    const eyeK = cr.eyeAmount, post = g.renderer?.post;
+    g.fx.eye = eyeK; TRAIL_EYE.k = eyeK;
+    if (post) post.hurtEdge = eyeK;
     if (rig !== this.rig) { this.rig = rig; if (cr.view === 'first') this.hook(); }
     // aiming down sights from third person goes to the eyes too (core/camera.ts `adsEye`)
     if (cr.adsEye) this.hook();
-    if (cr.view !== 'first' && cr.eyeAmount <= 0 && !cr.fp && !cr.adsEye) { this.vignette(0, dt); this.baseOk = false; return null; }
+    if (cr.view !== 'first' && cr.eyeAmount <= 0 && !cr.fp && !cr.adsEye) { this.vignette(0, dt); this.baseOk = false; pl.pose.fpSway = null; this.motion.reset(); return null; }
     if (!rig?.eyes || !rig.eyeRest) return null;
+    // the weight of the weapon in the hands, for this frame's pose and view model
+    const still = this.still;
+    this.motion.update(dt, this.bobAmount, still, g.combat.stance === 'shooter' ? g.combat.shooter.adsK : 0);
+    this.sway.pos.copy(this.motion.pos); this.sway.rot.copy(this.motion.rot);
+    pl.pose.fpSway = this.sway;
     this.inside(dt);
     this.close(dt);
     const f = this.feedOut, p = pl.pose, loc = p.locomotion, act = pl.action ?? '';
@@ -184,6 +229,8 @@ export class ViewSystem {
     this.deadT = pl.dead ? this.deadT + dt : 0;
     this.sinceRoll = p.locomotion === 'roll' ? 0 : this.sinceRoll + dt;
     const trick = loc === 'board' && (act.startsWith('boardTrick') || Math.abs(pl.root.rotation.x) > 0.25 || Math.abs(pl.root.rotation.z) > 0.35);
+    if (loc !== this.lastLoc) { if (loc === 'ride' || loc === 'board') this.mountT = 0; this.lastLoc = loc; }
+    this.mountT += dt;
 
     if (CARRIED.has(loc) && !pl.dead) {
       // on a horse, a board, a wire, a ladder: the eyes are where the rider's head is, smoothed
@@ -198,6 +245,15 @@ export class ViewSystem {
         f.vRate = Math.min(f.vRate, 8);
       } else this.rideMean.copy(f.off);
       if (STEERED.has(loc)) f.heading = pl.yaw;
+      // swinging up: the body passes through the lens on its way into the saddle or onto the deck
+      if ((loc === 'ride' || loc === 'board') && this.mountT < FP_MOUNT) this.treat = 'none';
+      if (loc === 'board' && !trick) {
+        // a board is ridden with the whole body: the horizon leans into the carve and the knees take the speed
+        const sp = clamp01(Math.hypot(pl.vel.x, pl.vel.z) / FP_BOARD.top), lean = clamp(p.lean ?? 0, -1, 1);
+        this.boardRoll += (lean * FP_BOARD.roll * (0.4 + 0.6 * sp) - this.boardRoll) * Math.min(1, dt * 5);
+        f.roll += this.boardRoll * (still ? 0 : 1);
+        f.dip += FP_BOARD.crouch * sp * sp;
+      } else this.boardRoll = 0;
       f.anchor.set(pl.pos.x, pl.pos.y + 1.0, pl.pos.z);
     } else {
       // on foot: rest height plus as much of the head's own motion as the move allows
@@ -266,6 +322,7 @@ export class ViewSystem {
     if (k < 0.001) post.vignette -= k;
   }
   private vigAdd = 0;
+  private boardRoll = 0;
   private wideK = 0;
   /**
    * Close targets in first person (FP_CLOSE), both under Settings:

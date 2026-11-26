@@ -103,14 +103,14 @@ class Pool {
     mk(this.aPos, 'iPos'); mk(this.aCol, 'iCol'); mk(this.aVel, 'iVel'); mk(this.aMisc, 'iMisc'); mk(this.aFx, 'iFx');
     g.instanceCount = 0;
     this.geo = g;
-    this.uniforms = { uTex: { value: tex }, uFogD: { value: 0.002 }, uFogC: { value: new THREE.Color() }, uLit: { value: new THREE.Color(1, 1, 1) } };
+    this.uniforms = { uTex: { value: tex }, uFogD: { value: 0.002 }, uFogC: { value: new THREE.Color() }, uLit: { value: new THREE.Color(1, 1, 1) }, uEye: { value: 0 } };
     const mat = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
       transparent: true, depthWrite: false, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
       vertexShader: /* glsl */ `
         attribute vec4 iPos; attribute vec4 iCol; attribute vec4 iVel; attribute vec4 iMisc; attribute vec4 iFx;
         varying vec2 vUv; varying vec4 vCol; varying float vFog; varying vec3 vFx;
-        uniform float uFogD;
+        uniform float uFogD; uniform float uEye;
         void main() {
           float size = iPos.w, rot = iMisc.x, sprite = iMisc.y, stretch = iVel.w, mode = iMisc.z, aspect = iMisc.w;
           vec2 q = vec2(position.x, position.y * aspect);
@@ -144,14 +144,19 @@ class Pool {
           // thins with its area, so it puts the same light on screen however close it is, and a
           // blast beside the camera stays a blast and not a whiteout
           if ((mode < 0.5 && stretch <= 0.0) || mode > 1.5) {
-            float cover = 0.3 / max(size * projectionMatrix[1][1] * 0.5 / max(-mv.z, 0.25), 0.3);
-            vCol.a *= max(cover * cover, 0.05);
+            // (from the eyes, uEye: measured against the narrower side of the picture, so a burst at arm's length
+            // in a portrait frame is not wider than the frame, and held to a quarter of it)
+            float pm = mix(projectionMatrix[1][1], max(projectionMatrix[0][0], projectionMatrix[1][1]), uEye), cap = mix(0.3, 0.24, uEye);
+            float cover = cap / max(size * pm * 0.5 / max(-mv.z, 0.25), cap);
+            vCol.a *= max(cover * cover, mix(0.05, 0.015, uEye));
           }
           // and anything within arm's reach of the lens (first person: the muzzle, the blade) thins away
           vCol.a *= 0.12 + 0.88 * smoothstep(0.3, 1.5, -mv.z);
-${additive ? '' : `          // a cloud between the eyes and the fight (a slam three metres off, seen from the eyes) is a veil
+${additive ? `          // from the eyes, a flame or a burst the hero stands in (a welder's cone) is licks of fire over the fight, not a white wall
+          if (mode < 0.5 && stretch <= 0.0) vCol.a *= mix(1.0, 0.22 + 0.78 * smoothstep(1.0, 6.0, -mv.z), uEye * smoothstep(0.25, 0.7, size));
+` : `          // a cloud between the eyes and the fight (a slam three metres off, seen from the eyes) is a veil
           // and not a wall: the nearer a puff, the thinner. Grit and clippings are left alone.
-          if (mode < 0.5 && stretch <= 0.0) vCol.a *= mix(1.0, 0.16 + 0.84 * smoothstep(1.5, 8.0, -mv.z), smoothstep(0.25, 0.7, size));
+          if (mode < 0.5 && stretch <= 0.0) vCol.a *= mix(1.0, mix(0.16, 0.05, uEye) + mix(0.84, 0.95, uEye) * smoothstep(1.5, mix(8.0, 10.0, uEye), -mv.z), smoothstep(0.25, 0.7, size));
 `}          // soft where it meets the ground: height of this corner over the floor, in units of the fade band
           float wy = iPos.y + dot(viewMatrix[1].xyz, off);
           vFx = vec3(iFx.x, iFx.y, iFx.z > -1e5 ? (wy - iFx.z) / max(size * 0.3, 0.06) : 1.0);
@@ -556,9 +561,12 @@ export class FX {
     if (lk.fly) { const c = this.ctx[5]; c.p.set(s.x, s.y, s.z); c.d.copy(dir); c.tint = s.color; c.s = s.radius; c.k = s.life; c.paint = null; lk.fly(this, c, s); }
   }
 
+  /** 0..1 while the picture is taken from the hero's eyes (systems/view.ts sets it): sprites are held to the narrower side of the picture and near dust thins further */
+  eye = 0;
   update(dt: number, camera: THREE.Camera, fogColor: THREE.Color, fogDensity: number) {
     this.time += dt;
     this.camPos.copy(camera.position);
+    this.add.uniforms.uEye.value = this.alpha.uniforms.uEye.value = this.eye;
     this.reach = 2.6 * Math.max(1, camera.projectionMatrix.elements[5] / 1.6);
     // timeline: beats that were set to follow
     for (let i = 0; i < this.cueN; i++) {

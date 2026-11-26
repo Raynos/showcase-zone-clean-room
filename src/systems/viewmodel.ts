@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { clamp, clamp01, damp, lerp, smooth } from '../core/util';
+import { clamp01, damp, lerp, smooth } from '../core/util';
 import { SK } from '../entities/humanoid/anim';
 import type { FpHold } from '../entities/humanoid/types';
 import type { Game } from '../game';
@@ -15,7 +15,10 @@ type Kind = 'bow' | 'crossbow' | 'rifle';
  *   barrel line meets the crosshair; `roll` cants it (+ tips the top to the right).
  * relief: aimed, how far ahead of the eye the `sight` node sits on the view axis; `roll` there.
  * reload: how far the weapon dips, rolls and tips its muzzle up at the middle of a reload.
- * kick: how far a shot throws it back (m) and up (rad).
+ * rollP, adsPP: a bow in a portrait picture. Canted the way it is in a wide one, the stave crossed the
+ *   whole narrow frame through its middle; there it stands near upright down the left third instead.
+ * A shot's throw and return are the weapon's own, in systems/fpmotion.ts (RECOIL), with its lag behind a
+ *   turn, its weight through a start and a stop and its drop on each footfall.
  * adsP: aimed, a bow is not brought to the eye: it is held like the hip (`hipP` terms) nearer the middle,
  *   the arrow meeting the crosshair at `conv`, so the bow arm stays in the lower left corner.
  * scope: the rifle's scope takes over the picture from this much of the aim; from there the eyes draw
@@ -30,20 +33,22 @@ export const FP_PLACE: Record<Kind, {
   /** aimed: how far (m) the sight sits under the view axis and right of it, so a solid sight never hides the point aimed at */
   drop?: number; side?: number;
   adsP?: [number, number, number]; scope?: number;
+  rollP?: number; adsPP?: [number, number, number];
   reload: { dip: number; roll: number; tip: number; side: number };
-  kick: { back: number; up: number };
 }> = {
   rifle: {
     hipP: [0.62, -0.88, 0.34], hipL: [0.5, -0.8, 0.36], conv: 60, roll: 0.05, relief: 0.085, adsRoll: 0, drop: 0.09, scope: 0.45,
-    reload: { dip: 0.11, roll: 0.6, tip: 0.1, side: -0.02 }, kick: { back: 0.07, up: 0.11 },
+    reload: { dip: 0.11, roll: 0.6, tip: 0.1, side: -0.02 },
   },
+  // (aimed, the sight's top is a finger under the point aimed at and on its line: the crosshair stands on the sight)
   crossbow: {
-    hipP: [0.7, -1.05, 0.4], hipL: [0.5, -0.85, 0.34], conv: 40, roll: 0.22, relief: 0.24, adsRoll: 0, drop: 0.05, side: 0.03,
-    reload: { dip: 0.1, roll: 0.65, tip: 0.08, side: -0.02 }, kick: { back: 0.025, up: 0.035 },
+    hipP: [0.7, -1.05, 0.4], hipL: [0.5, -0.85, 0.34], conv: 40, roll: 0.22, relief: 0.24, adsRoll: 0, drop: 0.024, side: 0,
+    reload: { dip: 0.1, roll: 0.65, tip: 0.08, side: -0.02 },
   },
   bow: {
-    hipP: [-0.42, -0.72, 0.58], hipL: [-0.32, -0.62, 0.58], conv: 30, roll: 0.5, relief: 0.52, adsRoll: 0.12, adsP: [-0.42, -0.5, 0.72],
-    reload: { dip: 0, roll: 0, tip: 0, side: 0 }, kick: { back: 0.02, up: 0.03 },
+    hipP: [-0.76, -0.8, 0.66], hipL: [-0.32, -0.62, 0.58], conv: 30, roll: 0.5, relief: 0.52, adsRoll: 0.12, adsP: [-0.42, -0.5, 0.72],
+    rollP: 0.05, adsPP: [-0.64, -0.56, 0.8],
+    reload: { dip: 0, roll: 0, tip: 0, side: 0 },
   },
 };
 
@@ -84,7 +89,6 @@ export class ViewModel {
     handPos: [new THREE.Vector3(), new THREE.Vector3()], handQ: [new THREE.Quaternion(), new THREE.Quaternion()],
   };
   private aimK = 0; private sprintK = 0; private reloadK = 0; private drawUp = 0;
-  private lagX = 0; private lagY = 0; private lastYaw = 0; private lastPitch = 0; private bob = 0;
   /** the weapon object last placed, so it can be handed back to the hand cleanly */
   private placed: THREE.Object3D | null = null;
   /** the weapon last in the hand, and how long it has been there: a swap brings the new one up from under the picture */
@@ -107,6 +111,9 @@ export class ViewModel {
     this.drawT += dt;
     const want = g.combat.stance === 'shooter' && !!kind && inHand && w!.kind === kind && !pl.dead && (loc === 'ground' || loc === 'air') && !g.combat.skillRunning ? 1 : 0;
     this.k = want ? Math.min(1, this.k + dt * 6) : Math.max(0, this.k - dt * 6);
+    // a weapon that has just come to the hand at the eyes is the view's from its first frame (it comes up from under
+    // the picture, below): eased in, that frame was the third-person hand's weapon across the lens
+    if (want && this.drawT <= dt * 1.5 && cr.eyeAmount > 0.9) this.k = 1;
     const k = this.k * cr.eyeAmount;
     if (k <= 0.001 || !w || !kind || !grip) { this.release(); return; }
     if (this.placed && this.placed !== w.object) this.release();
@@ -119,33 +126,26 @@ export class ViewModel {
     this.sprintK = damp(this.sprintK, pl.sprinting && !sh.firing && !sh.drawing ? 1 : 0, 9, dt);
     this.reloadK = damp(this.reloadK, reloading ? 1 : 0, 10, dt);
     this.drawUp = damp(this.drawUp, kind === 'bow' && sh.drawing ? 1 : 0, 12, dt);
-    // look lag: the weapon trails a quick turn by a hair and settles
-    const dyaw = Math.atan2(Math.sin(cr.yaw - this.lastYaw), Math.cos(cr.yaw - this.lastYaw)), dp = cr.pitch - this.lastPitch;
-    this.lastYaw = cr.yaw; this.lastPitch = cr.pitch;
-    const lagK = 1 - 0.75 * this.aimK;
-    this.lagX = clamp(damp(this.lagX, 0, 14, dt) + dyaw * 0.35 * lagK, -0.05, 0.05);
-    this.lagY = clamp(damp(this.lagY, 0, 14, dt) - dp * 0.35 * lagK, -0.05, 0.05);
-    // walking bob, small, and less aimed
-    const sp = Math.min(1, pl.speed2d / 6) * (pl.grounded ? 1 : 0);
-    this.bob += dt * (4 + 6 * sp);
-    const bobK = sp * (1 - 0.7 * this.aimK);
+    // the weapon's weight this frame: its lag behind a turn, its carry through a start, a stop and a landing, its drop
+    // on each footfall, and a shot's throw and return (systems/fpmotion.ts; all of it within the comfort settings)
+    const mo = g.view.motion, mp = mo.pos, mr = mo.rot, rc = mo.recoil;
 
     // ---- hip: the grip's place on the view, the barrel meeting the crosshair at `conv`
     const tv = Math.tan((cam.fov * Math.PI) / 360), th = tv * cam.aspect;
-    const hip = cam.aspect < 1 ? P.hipP : P.hipL;
+    const tall = cam.aspect < 1, hip = tall ? P.hipP : P.hipL, hipRoll = tall ? P.rollP ?? P.roll : P.roll;
     const raise = kind === 'bow' ? Math.max(this.aimK, this.drawUp * 0.85) : this.aimK;
     const z0 = hip[2];
     _p.set(hip[0] * th * z0, hip[1] * tv * z0, -z0);
     _d.set(-_p.x, -_p.y, -P.conv - _p.z).normalize();
-    aimQ(_q, _d, _y.set(0, 1, 0), P.roll);
+    aimQ(_q, _d, _y.set(0, 1, 0), hipRoll);
     // ---- aimed: the sight on the axis, the barrel along it
     const s = _s.setFromMatrixScale(grip.matrixWorld).x;
     if (P.adsP) {
       // a bow: held out low and left of the middle, the arrow on the crosshair (FP_PLACE `adsP`)
-      const a = P.adsP, z1 = a[2];
+      const a = tall ? P.adsPP ?? P.adsP : P.adsP, z1 = a[2];
       _p2.set(a[0] * th * z1, a[1] * tv * z1, -z1);
       _v.set(-_p2.x, -_p2.y, -P.conv - _p2.z).normalize();
-      aimQ(_q2, _v, _y.set(0, 1, 0), P.roll * 0.6 + P.adsRoll);
+      aimQ(_q2, _v, _y.set(0, 1, 0), hipRoll * 0.6 + (tall && P.rollP !== undefined ? 0 : P.adsRoll));
     } else {
       aimQ(_q2, _v.set(0, 0, -1), _y.set(0, 1, 0), 0);
       const sightL = w.sight ? w.sight.position : _p2.set(0, 0.1, 0);
@@ -157,18 +157,18 @@ export class ViewModel {
     _q.slerp(_q2, rel);
 
     // ---- what the hands are doing to it: sprint low, reload tipped and dipped, a shot's kick
-    const e = sh.sinceShot < 0.02 ? sh.sinceShot / 0.02 : Math.exp(-(sh.sinceShot - 0.02) * 13);
-    const kick = e * (1 - this.reloadK);
+    const rk = 1 - this.reloadK;
     const rl = this.reloadK * Math.sin(Math.PI * Math.min(1, rt * 1.05 + 0.05)) ** 0.5;
     const R = P.reload, spr = this.sprintK * (1 - rel);
-    _p.x += R.side * rl - 0.04 * spr + this.lagX * 0.6 * (1 - rel) + Math.sin(this.bob) * 0.006 * bobK;
-    _p.y += -R.dip * rl - 0.06 * spr + this.lagY * 0.6 * (1 - rel) - Math.abs(Math.cos(this.bob)) * 0.008 * bobK;
-    _p.z += P.kick.back * kick + 0.02 * spr;
+    _p.x += R.side * rl - 0.04 * spr + mp.x + rc.side * rk;
+    _p.y += -R.dip * rl - 0.06 * spr + mp.y;
+    _p.z += rc.back * rk + 0.02 * spr - mp.z;
     // the draw: up from under the picture's lower edge and in from the side, muzzle low, rolling level as it arrives
     const du = clamp01(this.drawT / DRAW_T), up = (1 - du * du * (3 - 2 * du)) * (1 - rel);
     _p.y -= (tv * z0 * 0.9 + 0.08) * up; _p.x += 0.05 * up;
     // rotations in view space: muzzle up for the kick and a reload, down and in for a sprint, rolled to reload
-    _qa.setFromEuler(_e.set(P.kick.up * kick + R.tip * rl - 0.55 * spr + this.lagY * 0.5 - 0.6 * up, this.lagX * 0.8 + 0.5 * spr, R.roll * rl - 0.4 * up));
+    // (the view's +y turn is to the left and its +z roll is anticlockwise: the weight's are to the right and clockwise)
+    _qa.setFromEuler(_e.set(rc.up * rk + R.tip * rl - 0.55 * spr + mr.x - 0.6 * up, 0.5 * spr - mr.y, R.roll * rl - 0.4 * up - mr.z - rc.roll * rk));
     // rotate about the grip
     _q.premultiply(_qa);
 

@@ -49,6 +49,7 @@ interface Frame { a0: number; ax: number; e0: number; ey: number; r0: number; rz
 const SWORD: Frame = { a0: 0.08, ax: 0.2, e0: -0.32, ey: 0.46, r0: 0.6, rz: 0.25, rMin: 0.56, rMax: 0.7, bx: 0.55, bIn: 0.2, by: 0.5, bUp: 0.7, bz: 0.7, bOut: 0.35 };
 const SPEAR: Frame = { a0: 0.12, ax: 0.28, e0: -0.38, ey: 0.4, r0: 0.55, rz: 0.5, rMin: 0.5, rMax: 0.7, bx: 0.3, bIn: 0.06, by: 0.5, bUp: 0.22, bz: 0.8, bOut: 0.45 };
 
+const smooth = (a: number, b: number, x: number) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const _tq = new THREE.Quaternion(), _tqi = new THREE.Quaternion(), _q = new THREE.Quaternion();
 const _tc = new THREE.Vector3(), _v = new THREE.Vector3(), _h = new THREE.Vector3(), _b = new THREE.Vector3(), _z = new THREE.Vector3();
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
@@ -75,6 +76,12 @@ const CARRY = {
   sword: { x: 0.2, xWide: 0.36, y: -0.62, r: 0.5, b: [0.12, 0.62, 0.78] },
   spear: { x: 0.16, xWide: 0.3, y: -0.66, r: 0.48, b: [-0.03, 0.1, 1] },
 } as const;
+/**
+ * The carry at a sprint: the hand drops by `y` (share of the half-height) and comes in by `x`, and the long
+ * axis goes to `b` (a sword laid forward and across, point low; a spear levelled), between `from` and `to` m/s.
+ * `swing` is how much of the weapon's weight (pose.fpSway, systems/fpmotion.ts) a move in progress still shows.
+ */
+const CARRY_RUN = { from: 6.4, to: 8.4, y: -0.2, x: 0.02, sword: [-0.42, 0.06, 0.9], spear: [-0.12, 0.0, 1], swing: 0.4 } as const;
 /**
  * Where the shoulders sit whenever the hands are posed to the lens (lens space, metres; x right): under
  * it and outside it, wherever the torso has turned, so a wound-up swing or a raised bow arm never
@@ -141,13 +148,24 @@ export function fpPresent(P: Pose, hp: HumanPose, k: number, eyeY: number, eyeZ:
   lensDir(_b, -_b.x, _b.y, _b.z);
   lensDir(_z, -_z.x, _z.y, _z.z);
   // the carry, swaying a little with the stride (a breath at rest)
+  const sw = hp.fpSway ?? null;
   if (a < 0.999) {
     const sp = clamp((hp.speed ?? 0) / 6, 0, 1), t = hp.time ?? 0, ph = t * (5 + 4 * sp);
-    const cz = C.r, cx = (C.x + (C.xWide - C.x) * wide) * cz + Math.sin(ph) * 0.012 * sp, cy = C.y * ty * cz + Math.abs(Math.cos(ph)) * 0.014 * sp + Math.sin(t * 1.7) * 0.003;
+    // without the view's own simulation of the weapon's weight (pose.fpSway), a plain sway with the stride
+    const ox = sw ? 0 : Math.sin(ph) * 0.012 * sp, oy = sw ? 0 : Math.abs(Math.cos(ph)) * 0.014 * sp + Math.sin(t * 1.7) * 0.003;
+    const run = hp.locomotion === 'ground' ? smooth(CARRY_RUN.from, CARRY_RUN.to, hp.speed ?? 0) : 0, RB = hp.weapon === 'spear' ? CARRY_RUN.spear : CARRY_RUN.sword;
+    const cz = C.r, cx = (C.x + (C.xWide - C.x) * wide + CARRY_RUN.x * run) * cz + ox, cy = (C.y + CARRY_RUN.y * run) * ty * cz + oy;
     lensPt(_w, cx, cy, cz);
     _h.lerp(_w, 1 - a);
-    lensDir(_w, C.b[0], C.b[1], C.b[2]).normalize();
+    lensDir(_w, C.b[0] + (RB[0] - C.b[0]) * run, C.b[1] + (RB[1] - C.b[1]) * run, C.b[2] + (RB[2] - C.b[2]) * run).normalize();
     _b.lerp(_w, 1 - a).normalize();
+  }
+  // the weapon's weight: it trails a turn, hangs back at a start, drops with each footfall, and is knocked by a blow
+  // (all of it at the carry, a share of it through a move: the move is the motion there)
+  if (sw) {
+    const m = 1 - (1 - CARRY_RUN.swing) * a, p = sw.pos, r = sw.rot;
+    _h.add(lensDir(_w, p.x * m, p.y * m, p.z * m));
+    _b.add(lensDir(_w, (r.y + r.z * 0.8) * m, r.x * m, 0)).normalize();
   }
 
   _v.copy(_h).sub(_tc).applyQuaternion(_tqi);
@@ -203,7 +221,6 @@ const HOLD_ELBOW: Record<string, THREE.Vector3[]> = {
 };
 /** Where a fresh power cell and a bolt are carried (left of the belt) and the quiver's mouth (over the right shoulder), chest space. */
 const POUCH = new THREE.Vector3(0.2, -0.32, 0.1), QUIVER = new THREE.Vector3(-0.15, 0.3, -0.2);
-const smooth = (a: number, b: number, x: number) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const bell = (t: number, a: number, b: number, c: number, d: number) => smooth(a, b, t) * (1 - smooth(c, d, t));
 const _e = new THREE.Vector3();
 
