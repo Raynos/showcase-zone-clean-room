@@ -1,7 +1,11 @@
-import { Kit } from './kit';
+import { Kit, mtof, type Inst } from './kit';
 
-export type MusicState = 'none' | 'title' | 'town' | 'wild' | 'night' | 'combat' | 'dungeon' | 'gauntlet' | 'boss' | 'boss3' | 'storm' | 'victory';
-export const MUSIC_STATES: MusicState[] = ['title', 'town', 'wild', 'night', 'combat', 'dungeon', 'gauntlet', 'boss', 'boss3', 'storm', 'victory'];
+export type MusicState = 'none' | 'title' | 'town' | 'wild' | 'night' | 'combat' | 'dungeon' | 'gauntlet' | 'boss' | 'boss3' | 'storm' | 'victory'
+  | 'band1' | 'band2' | 'band3' | 'band4' | 'band5' | 'band6';
+export const MUSIC_STATES: MusicState[] = ['title', 'town', 'wild', 'night', 'combat', 'dungeon', 'gauntlet', 'boss', 'boss3', 'storm', 'victory',
+  'band1', 'band2', 'band3', 'band4', 'band5', 'band6'];
+/** states with explore / combat / elite layers (setIntensity 0..2) */
+export const LAYERED: MusicState[] = ['wild', 'night', 'dungeon', 'storm', 'band1', 'band2', 'band3', 'band4', 'band5', 'band6'];
 
 // ---- harmony: everything lives on the D-major / B-minor pentatonic so cross-fades stay consonant
 type Q = 'maj' | 'min' | 'sus' | 'maj7' | 'min7' | 'add9' | 'pow';
@@ -71,7 +75,10 @@ const M_BOSS: Motif[] = [
 
 interface Layer {
   state: MusicState; def: Def;
-  main: GainNode; over: GainNode; send: GainNode;
+  /** main: the state's own music; over: the combat layer; elite: the elite layer (all inside main) */
+  main: GainNode; over: GainNode; elite: GainNode; send: GainNode;
+  /** the intensity this layer's gains were last scheduled toward */
+  intAt: number;
   /** next step time, step counter */
   t: number; step: number;
   active: boolean; fadeEnd: number;
@@ -132,8 +139,102 @@ function overlay(m: Music, L: Layer, s: number, t: number, sd: number, ch: Chord
   const BASS = 'x.xx.x.xx.x.xx.x';
   if (on(BASS, s)) k.note(t, sd * 1.6, ch.r + ((s === 6 || s === 14) ? 12 : 0), 0.3, 'bass');
   if (s === 0 && heavy) k.taiko(t, 0.4);
+  if (m.eliteOn) {
+    k.out = L.elite;
+    if (s === 0 || s === 8) k.taiko(t, s === 0 ? 0.5 : 0.35, s === 0 ? 64 : 82);
+    if (s === 0 || s === 6 || s === 10) for (let i = 0; i < 3; i++) k.note(t, sd * (s === 0 ? 3 : 1.5), ch.r + 24 + TONES[ch.q][i % TONES[ch.q].length], 0.09, 'brass');
+    if (s === 0 && L.step % 64 === 0) k.cym(t, 1.2, 0.08);
+  }
   k.out = L.main;
 }
+
+// ------------------------------------------------------------------ band themes
+/**
+ * The zone motif: every band theme is built on this two-bar figure (rising three, a leap, falling
+ * back), so walking from one band to the next feels like the same place getting harder. Each band
+ * transforms it (displaced, inverted, augmented, clipped) and voices it with the same family of
+ * instruments: a mallet or pluck lead, pads, bass, bells, brass for the elites, the same kit.
+ */
+const M_ZONE: Motif = [[0, 0, 2], [2, 1, 2], [4, 2, 3], [8, 4, 2], [10, 3, 2], [12, 2, 4]];
+const M_ZONE_B: Motif = [[0, 4, 3], [4, 3, 2], [6, 2, 2], [8, 1, 3], [12, 0, 4]];
+type Tf = (m: Motif) => Motif;
+const shiftT = (n: number): Tf => (m) => m.map(([s, d, l]) => [(s + n) % 16, d, Math.min(l, 16 - ((s + n) % 16))]);
+const invert: Tf = (m) => m.map(([s, d, l]) => [s, 4 - d, l]);
+const clip: Tf = (m) => m.flatMap(([s, d, l]) => (l >= 3 ? [[s, d, 1], [s + 2, d, 1]] : [[s, d, 1]]));
+const sparse: Tf = (m) => m.filter((_, i) => i % 2 === 0).map(([s, d, l]) => [s, d, l + 2]);
+const up = (n: number): Tf => (m) => m.map(([s, d, l]) => [s, d + n, l]);
+const pool = (...tf: Tf[]): Motif[] => [M_ZONE, M_ZONE_B].flatMap((b) => [b, ...tf.map((f) => f(b))]);
+
+interface BandCfg {
+  seed: number; motifs: Motif[];
+  lead: Inst; colour: Inst; leadLow: number; leadG: number;
+  /** combat drums and bass (16-step patterns) */
+  K: string; S: string; H: string; B: string;
+  /** ostinato chord-tone indices for the combat layer, one per 8th */
+  ost: number[]; ostInst: Inst; ostOct: number;
+  /** band colour: 'metal' anvil hits (Slagworks, Rivet Row), 'glass' sparkle (Heights, Arc), 'hand' percussion (Fields, Docks) */
+  tex: 'metal' | 'glass' | 'hand';
+  /** play the explore lead on this share of bars */
+  sing: number;
+}
+function bandGen(cf: BandCfg) {
+  return (m: Music, L: Layer, step: number, t: number, sd: number) => {
+    const k = m.kit, p = pos(L, step), s = p.s, tn = TONES[p.ch.q];
+    // ---- explore
+    if (p.chordStart) { pad(k, p.ch, t, sd * 16 * L.def.barsPerChord + sd * 2, 0.085, 12, 3); k.note(t, sd * 16 * L.def.barsPerChord, p.ch.r, 0.26, 'sub'); }
+    if (s === 0) k.note(t, sd * 6, p.ch.r + 12, 0.24, 'bass');
+    if (s === 8 && cf.tex !== 'glass') k.note(t, sd * 4, p.ch.r + 19, 0.16, 'bass');
+    const sing = mulberry(cf.seed + p.bar * 131)() < cf.sing;
+    if (sing) {
+      const mo = motifFor(L, cf.motifs, p.bar, cf.seed);
+      playMotif(k, mo.m, s, t, sd, anchor(p.ch, cf.leadLow), mo.rng, p.barInPhrase === 3, (midi, len, tt) => {
+        k.note(tt, len * 1.2 + 0.3, midi, cf.leadG, cf.lead);
+        if (m.eliteOn) { k.out = L.elite; k.note(tt, len + 0.1, midi + 12, 0.07, 'brass'); k.out = L.main; }
+      });
+    }
+    const r = mulberry(cf.seed * 7 + step * 13);
+    if (cf.tex === 'hand') { if (s % 4 === 2) k.shaker(t, 0.03); if (s === 0 && p.bar % 2 === 0) k.hand(t, 0.12, 150); }
+    else if (cf.tex === 'glass') { if (s % 2 === 0 && r() < 0.22) k.note(t, 1.3, p.ch.r + 36 + tn[Math.floor(r() * tn.length)], 0.06, 'glass'); }
+    else if (s === 12 && p.bar % 2 === 1) { k.note(t, 1.4, p.ch.r + 36 + tn[1 % tn.length], 0.05, 'metal'); }
+    if (p.barInPhrase === 0 && s === 0 && p.phrase % 2 === 0) k.note(t, 1.8, deg(anchor(p.ch, 86)), 0.07, cf.colour);
+    // ---- combat
+    if (m.overlayOn) {
+      k.out = L.over;
+      if (on(cf.K, s)) k.kick(t, 0.46 * acc(cf.K, s), true);
+      if (on(cf.S, s)) k.snare(t, 0.3 * acc(cf.S, s));
+      if (on(cf.H, s)) k.hat(t, s % 4 === 2 ? 0.09 : 0.05);
+      if (on(cf.B, s)) k.note(t, sd * 1.6, p.ch.r + 12 + ((s === 6 || s === 14) ? 12 : 0), 0.28, 'bass');
+      if (s % 2 === 0) { const i = cf.ost[(s >> 1) % cf.ost.length]; k.note(t, sd * 1.5, p.ch.r + cf.ostOct + tn[i % tn.length] + (i >= tn.length ? 12 : 0), 0.075, cf.ostInst); }
+      if (cf.tex === 'metal' && (s === 4 || s === 12)) k.ring(t, 0.35, mtof(p.ch.r + 48 + 7), 0.04, RING_ANVIL);
+      if (p.barInPhrase === 3 && s >= 12) k.taiko(t, 0.12 + (s - 12) * 0.05, 96);
+    }
+    // ---- elite
+    if (m.eliteOn) {
+      k.out = L.elite;
+      if (s === 0 || s === 8) k.taiko(t, s === 0 ? 0.55 : 0.38, s === 0 ? 62 : 80);
+      if (s === 14 && p.bar % 2 === 1) k.taiko(t, 0.3, 90);
+      const ST = 'X.....x...x.....';
+      if (on(ST, s)) for (let i = 0; i < 3; i++) k.note(t, sd * (s === 0 ? 3 : 1.6), p.ch.r + 24 + tn[i % tn.length], 0.1 * acc(ST, s), 'brass');
+      if (s === 0 && p.barInPhrase === 0) k.cym(t, 1.3, 0.08);
+    }
+    k.out = L.main;
+  };
+}
+const RING_ANVIL = [[1, 1, 1], [2.76, 0.6, 0.7], [5.4, 0.35, 0.45]];
+const BANDS_CF: BandCfg[] = [
+  // 1 Crate Fields: bright and wooden, the motif as it is
+  { seed: 201, motifs: pool(shiftT(0), sparse), lead: 'mallet', colour: 'bell', leadLow: 71, leadG: 0.26, K: 'X.......X.x.....', S: '....X.......X...', H: 'x.x.x.x.x.x.x.x.', B: 'x...x.x.x...x.x.', ost: [0, 1, 2, 1], ostInst: 'pluck', ostOct: 24, tex: 'hand', sing: 0.7 },
+  // 2 Pallet Docks: lower, the motif pushed off the beat, a working rhythm
+  { seed: 211, motifs: pool(shiftT(2), up(-1)), lead: 'pluck', colour: 'mallet', leadLow: 66, leadG: 0.24, K: 'X..x....X..x....', S: '....X.......X..o', H: 'x.xx.xx.x.xx.xx.', B: 'x.x..xx.x.x..xx.', ost: [0, 2, 1, 2], ostInst: 'mallet', ostOct: 24, tex: 'hand', sing: 0.6 },
+  // 3 Plumb Heights: airy, the motif slowed and lifted, glass above
+  { seed: 223, motifs: pool(sparse, up(2)), lead: 'glass', colour: 'bell', leadLow: 76, leadG: 0.2, K: 'X.......X.......', S: '....X.......X...', H: '..x...x...x...x.', B: 'x.....x.x.......', ost: [0, 1, 2, 3, 2, 1], ostInst: 'glass', ostOct: 36, tex: 'glass', sing: 0.75 },
+  // 4 The Slagworks: heavy, the motif upside down, anvils on the backbeat
+  { seed: 233, motifs: pool(invert, clip), lead: 'brass', colour: 'metal', leadLow: 62, leadG: 0.16, K: 'X..x..x.X..x..x.', S: '....X.......X...', H: 'x...x...x...x...', B: 'xx..x.x.xx..x.x.', ost: [0, 0, 2, 1], ostInst: 'sq', ostOct: 24, tex: 'metal', sing: 0.55 },
+  // 5 Rivet Row: driving, the motif chopped into rivet-gun staccato
+  { seed: 241, motifs: pool(clip, shiftT(4)), lead: 'mallet', colour: 'metal', leadLow: 69, leadG: 0.24, K: 'X.x...x.X.x...x.', S: '....X..x....X..x', H: 'xxxxxxxxxxxxxxxx', B: 'x.xxx.xxx.xxx.xx', ost: [0, 2, 0, 1, 0, 2, 1, 2], ostInst: 'sq', ostOct: 24, tex: 'metal', sing: 0.6 },
+  // 6 Arc Field: tense and electric, inverted and displaced, glass like static
+  { seed: 251, motifs: pool(invert, shiftT(2), clip), lead: 'sq', colour: 'glass', leadLow: 71, leadG: 0.14, K: 'X..x..X.X..x..x.', S: '....X.......X.xX', H: 'x.xxx.xxx.xxx.xx', B: 'x.x.x.xxx.x.x.xx', ost: [0, 1, 2, 1, 3, 2, 1, 2], ostInst: 'glass', ostOct: 36, tex: 'glass', sing: 0.65 },
+];
 
 const DEFS: Record<Exclude<MusicState, 'none'>, Def> = {
   // ---- title: slow, wide, wondrous
@@ -291,6 +392,12 @@ const DEFS: Record<Exclude<MusicState, 'none'>, Def> = {
       overlay(m, L, s, t, sd, p.ch, true);
     },
   },
+  band1: { bpm: 96, swing: 0.1, rev: 0.35, gain: 1, barsPerChord: 1, prog: [c(D, 'add9'), c(G, 'maj'), c(A, 'sus'), c(D, 'maj'), c(B - 12, 'min7'), c(G, 'maj7'), c(E, 'min7'), c(A, 'maj')], gen: bandGen(BANDS_CF[0]) },
+  band2: { bpm: 100, swing: 0.06, rev: 0.35, gain: 1, barsPerChord: 1, prog: [c(B - 12, 'min'), c(G, 'maj'), c(D, 'maj'), c(A, 'maj'), c(B - 12, 'min7'), c(G, 'maj'), c(E, 'min'), c(Fs - 12, 'sus')], gen: bandGen(BANDS_CF[1]) },
+  band3: { bpm: 88, rev: 0.55, gain: 1, barsPerChord: 2, prog: [c(G, 'maj7'), c(A, 'sus'), c(B - 12, 'min7'), c(D, 'add9')], gen: bandGen(BANDS_CF[2]) },
+  band4: { bpm: 104, rev: 0.4, gain: 1, barsPerChord: 1, prog: [c(B - 12, 'min'), c(B - 12, 'min'), c(C, 'maj'), c(B - 12, 'min'), c(G - 12, 'maj'), c(A - 12, 'maj'), c(C, 'maj'), c(Fs - 12, 'sus')], gen: bandGen(BANDS_CF[3]) },
+  band5: { bpm: 112, rev: 0.3, gain: 1, barsPerChord: 1, prog: [c(Fs - 12, 'min'), c(D, 'maj'), c(E, 'maj'), c(B - 12, 'min'), c(Fs - 12, 'min'), c(D, 'maj'), c(E, 'sus'), c(Fs - 12, 'maj')], gen: bandGen(BANDS_CF[4]) },
+  band6: { bpm: 120, rev: 0.4, gain: 1, barsPerChord: 1, prog: [c(B - 12, 'min'), c(G - 12, 'maj'), c(E - 12, 'min'), c(Fs - 12, 'maj'), c(B - 12, 'min'), c(C, 'maj'), c(E - 12, 'min'), c(Fs - 12, 'sus')], gen: bandGen(BANDS_CF[5]) },
   // ---- victory: one triumphant cadence (the engine then returns to town)
   victory: {
     bpm: 120, rev: 0.45, gain: 1, barsPerChord: 1, prog: [c(G, 'maj'), c(A, 'maj'), c(D, 'maj'), c(D, 'add9')],
@@ -345,6 +452,8 @@ export class Music {
   /** smoothed estimate of the overlay gain, to know when overlay events are audible */
   private intSm = 0;
   overlayOn = false;
+  /** the elite layer is audible (intensity above 1, or still fading) */
+  eliteOn = false;
   private layers: Layer[] = [];
   /** fired when the victory cadence completes */
   onVictoryEnd: (() => void) | null = null;
@@ -381,22 +490,34 @@ export class Music {
       return;
     }
     const ctx = this.ctx;
-    const main = ctx.createGain(), over = ctx.createGain(), send = ctx.createGain();
+    const main = ctx.createGain(), over = ctx.createGain(), elite = ctx.createGain(), send = ctx.createGain();
     main.gain.setValueAtTime(0, now);
     main.gain.linearRampToValueAtTime(target, now + Math.max(0.02, fade * (state === 'victory' ? 0.15 : 1)));
-    over.gain.value = this.intensity;
+    over.gain.value = Math.min(1, this.intensity); elite.gain.value = Math.max(0, this.intensity - 1);
     send.gain.value = def.rev;
-    over.connect(main); main.connect(this.dest); main.connect(send); send.connect(this.revIn);
-    L = { state, def, main, over, send, t: now + 0.06, step: 0, active: true, fadeEnd: Infinity, mem: {} };
+    over.connect(main); elite.connect(main); main.connect(this.dest); main.connect(send); send.connect(this.revIn);
+    L = { state, def, main, over, elite, send, intAt: this.intensity, t: now + 0.06, step: 0, active: true, fadeEnd: Infinity, mem: {} };
     this.layers.push(L);
   }
 
+  /** 0 explore, 1 combat, 2 elite (fractions blend). The layers change on the next beat, over one beat. */
   setIntensity(x: number) {
-    x = Math.max(0, Math.min(1, x));
+    x = Math.max(0, Math.min(2, x));
     if (Math.abs(x - this.intensity) < 0.005) return;
     this.intensity = x;
-    const now = this.ctx.currentTime;
-    for (const L of this.layers) if (L.active) L.over.gain.setTargetAtTime(x, now, 0.3);
+  }
+  /** schedule a layer's combat/elite gains toward the intensity, starting on its next beat */
+  private quantise(L: Layer, sd: number) {
+    if (Math.abs(L.intAt - this.intensity) < 0.005) return;
+    const x = this.intensity, beat = sd * 4;
+    const toBeat = ((4 - (L.step % 4)) % 4) * sd;
+    const at = Math.max(this.ctx.currentTime, L.t + toBeat);
+    // rising lands in one beat; falling lets the bar breathe out over two
+    const len = x > L.intAt ? beat : beat * 2;
+    for (const [g, v0, v1] of [[L.over.gain, Math.min(1, L.intAt), Math.min(1, x)], [L.elite.gain, Math.max(0, L.intAt - 1), Math.max(0, x - 1)]] as const) {
+      g.cancelScheduledValues(at); g.setValueAtTime(v0, at); g.linearRampToValueAtTime(v1, at + len);
+    }
+    L.intAt = x;
   }
 
   /** Schedule every event up to `until` (context time). */
@@ -404,8 +525,9 @@ export class Music {
     const now = this.ctx.currentTime;
     const dt = Math.max(0, until - this.lastAdvance);
     this.lastAdvance = until;
-    this.intSm += (this.intensity - this.intSm) * Math.min(1, dt / 0.9);
+    this.intSm += (this.intensity - this.intSm) * Math.min(1, dt / 1.2);
     this.overlayOn = this.intensity > 0.01 || this.intSm > 0.02;
+    this.eliteOn = this.intensity > 1.01 || this.intSm > 1.02;
     const k = this.kit;
     k.pm = 1; k.track = this.track;
     for (const L of this.layers) {
@@ -414,13 +536,15 @@ export class Music {
         L.active = false;
         // let already-scheduled tails ring out into silence, then drop the nodes
         const { main, over, send } = L;
-        const kill = () => { try { main.disconnect(); over.disconnect(); send.disconnect(); } catch { /* */ } };
+        const { elite } = L;
+        const kill = () => { try { main.disconnect(); over.disconnect(); elite.disconnect(); send.disconnect(); } catch { /* */ } };
         if (typeof setTimeout !== 'undefined') setTimeout(kill, 4000); else kill();
         continue;
       }
       const sd = 60 / L.def.bpm / 4, sw = L.def.swing ?? 0;
       // if we fell badly behind (tab was stalled), skip ahead on the bar grid instead of bursting
       if (L.t < now - 0.25) { const skip = Math.ceil((now - L.t) / sd); L.step += skip; L.t += skip * sd; }
+      this.quantise(L, sd);
       let guard = 0;
       while (L.t < until && guard++ < 4096) {
         k.out = L.main;

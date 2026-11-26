@@ -1,21 +1,32 @@
-import { Kit, RING_BAR, RING_BELL, RING_COIN, RING_PLATE } from './kit';
+import { Kit, R, RING_BAR, RING_BELL, RING_COIN, RING_PLATE } from './kit';
+import { HERO_SFX } from './sfx-hero';
+import { ROBOT_SFX } from './sfx-robots';
+import { WORLD_SFX } from './sfx-world';
 
-/** Loudness class: each sound is normalised to its class's target peak (see norm.ts). */
+/** Weight class: decides voice priority (a 'huge' sound may steal a 'soft' one's voice). */
 export type Cls = 'soft' | 'ui' | 'low' | 'mid' | 'loud' | 'impact' | 'huge';
 export const CLS_PEAK: Record<Cls, number> = { soft: 0.16, ui: 0.22, low: 0.3, mid: 0.44, loud: 0.6, impact: 0.74, huge: 0.82 };
+/**
+ * Mix category: sets the loudness target (norm.ts, tools/audio), the voice limit, the distance curve
+ * and how far the sound carries. See CAT in core/audio.ts.
+ */
+export type Cat = 'ui' | 'dialog' | 'reward' | 'hero' | 'foley' | 'impact' | 'enemy' | 'tell' | 'idle' | 'world' | 'big' | 'amb';
 
 export interface SfxDef {
   c: Cls;
+  /** mix category (default from the name, see catOf) */
+  cat?: Cat;
   /** reverb send 0..1 */
   rev?: number;
   /** minimum retrigger interval in seconds (default 0.03) */
   min?: number;
-  /** tonal jingle: no random pitch variation */
+  /** tonal jingle: no random pitch variation, one take */
   fixed?: boolean;
+  /** number of takes (default 4; 1 when fixed): each is a seeded run of the recipe */
+  vars?: number;
+  /** recipe: reads k.v (take) and k.len (timed recipes) */
   fn: (k: Kit, t: number) => void;
 }
-
-const R = (a: number, b: number) => a + (b - a) * Math.random();
 
 // midi helpers (D major / B minor home key)
 const D3 = 50, A3 = 57, B3 = 59, D4 = 62, E4 = 64, Fs4 = 66, G4 = 67, A4 = 69, B4 = 71, Cs5 = 73, D5 = 74, E5 = 76, Fs5 = 78, G5 = 79,
@@ -238,7 +249,7 @@ const TABLE = {
   enemy_alert: { c: 'mid', min: 0.15, fn: (k, t) => { k.fm(t, 0.075, [800, 1450], 0.6, { ratio: 2, idx: 1.2, type: 'square', lp: 3600 }); k.fm(t + 0.08, 0.07, [1450, 1100], 0.6, { ratio: 2, idx: 1.2, type: 'square', lp: 3600 }); k.tone(t + 0.16, 0.06, 1750, 0.35, { type: 'square', lp: 4000 }); } },
   enemy_attack_tell: { c: 'mid', min: 0.2, fn: (k, t) => { k.tone(t, 0.46, [300, 1550], 0.5, { type: 'sawtooth', lp: [900, 5200], a: 0.36, end: 0.5 }); k.tone(t, 0.46, [600, 3100], 0.2, { a: 0.38, end: 0.5 }); k.noise(t, 0.46, 0.12, { hp: 5000, a: 0.4, end: 0.6 }); } },
   mite_chitter: { c: 'low', min: 0.2, fn: (k, t) => { let tt = t; for (let i = 0; i < 6; i++) { k.noise(tt, 0.018, 0.6, { bp: R(3000, 4200), q: 3 }); if (i % 2 === 0) k.tone(tt, 0.02, R(1500, 2600), 0.35, { type: 'square', lp: 5000 }); tt += R(0.028, 0.045); } } },
-  pallet_rev: { c: 'mid', min: 0.3, fn: (k, t) => { k.tone(t, 0.52, [48, 98], 0.8, { type: 'sawtooth', lp: 650, trem: [23, 0.8], a: 0.04, end: 0.3 }); k.tone(t, 0.52, [96, 196], 0.25, { type: 'square', lp: 900, trem: [23, 0.8], a: 0.04, end: 0.3 }); k.noise(t, 0.5, 0.3, { lp: 320, a: 0.05, end: 0.3 }); } },
+  pallet_rev: { c: 'mid', min: 0.3, fn: (k, t) => { const d = R(0.44, 0.62), tr = R(18, 28), lp = R(520, 820), top = R(88, 112); k.tone(t, d, [48, top], 0.8, { type: 'sawtooth', lp, trem: [tr, 0.8], a: 0.04, end: 0.3 }); k.tone(t, d, [96, top * 2], 0.25, { type: 'square', lp: lp * 1.4, trem: [tr, 0.8], a: 0.04, end: 0.3 }); k.noise(t, d, 0.3, { lp: R(260, 420), a: 0.05, end: 0.3 }); if (k.v % 2) k.tone(t + d * 0.6, 0.08, R(700, 900), 0.12, { type: 'square', lp: 2000, a: 0.004 }); } },
   pallet_charge: { c: 'loud', min: 0.4, fn: (k, t) => { k.tone(t, 0.72, [70, 165], 0.8, { type: 'sawtooth', lp: [500, 1300], trem: [31, 0.7], a: 0.05, end: 0.4 }); k.noise(t + 0.03, 0.3, 0.3, { bp: [2600, 3100], q: 7, a: 0.02 }); k.noise(t, 0.7, 0.4, { lp: 260, color: 'b', a: 0.05, end: 0.4 }); } },
   drone_shot: { c: 'mid', min: 0.05, fn: (k, t) => { k.tone(t, 0.13, [1650, 390], 0.7, { type: 'square', lp: 5200, a: 0.001 }); k.tone(t, 0.09, [3300, 800], 0.25, { a: 0.001 }); click(k, t, 0.4, 4500); } },
   drone_dive: { c: 'mid', min: 0.3, fn: (k, t) => { k.tone(t, 0.52, [1450, 300], 0.6, { type: 'sawtooth', lp: 4200, trem: [36, 0.8], a: 0.04, end: 0.3 }); whoosh(k, t, 0.5, [3200, 800], 0.4, 1.0, 0.2); } },
@@ -369,7 +380,7 @@ const TABLE = {
   ball_roll_hit: { c: 'low', min: 0.08, fn: (k, t) => { k.tone(t, 0.11, [310, 225], 0.8, { type: 'triangle', a: 0.001 }); k.ring(t, 0.12, 640, 0.25, RING_BAR); k.noise(t, 0.025, 0.3, { bp: 1800, q: 1 }); } },
   seesaw_creak: { c: 'soft', min: 0.3, fn: (k, t) => { k.tone(t, 0.52, [128, 182, 118], 0.7, { type: 'sawtooth', bp: 720, q: 5, vib: [R(21, 30), 80], a: 0.08, end: 0.2 }); k.noise(t, 0.45, 0.15, { bp: 1900, q: 3, color: 'c', a: 0.05 }); } },
   lever: { c: 'mid', min: 0.15, fn: (k, t) => { k.ring(t, 0.06, 820, 0.5, RING_BAR); k.tone(t, 0.07, [300, 140], 0.7, { type: 'triangle', a: 0.001 }); k.noise(t + 0.06, 0.02, 0.4, { bp: 2400, q: 2 }); thump(k, t + 0.09, 0.08, 180, 80, 0.6); } },
-  lift_start: { c: 'mid', min: 0.4, fn: (k, t) => { thump(k, t, 0.1, 170, 70, 0.7); k.ring(t, 0.12, 460, 0.3, RING_BAR); k.tone(t + 0.05, 0.72, [58, 142], 0.6, { type: 'sawtooth', lp: [400, 950], a: 0.3, end: 0.4 }); k.noise(t + 0.05, 0.7, 0.12, { bp: [1200, 2600], q: 3, a: 0.4, end: 0.4 }); } },
+  lift_start: { c: 'mid', min: 0.4, fn: (k, t) => { const d = R(0.6, 0.85); thump(k, t, 0.1, R(150, 190), 70, 0.7); k.ring(t, 0.12, R(400, 540), 0.3, RING_BAR); k.tone(t + 0.05, d, [58, R(125, 160)], 0.6, { type: 'sawtooth', lp: [400, R(800, 1100)], a: 0.3, end: 0.4 }); k.noise(t + 0.05, d, 0.12, { bp: [R(1000, 1400), R(2200, 3000)], q: 3, a: 0.4, end: 0.4 }); } },
   horse_whinny: { c: 'mid', min: 0.8, rev: 0.15, fn: (k, t) => { const b = k.bus(1, 'bandpass', 1500, 1.6); k.tone(t, 0.92, [640, 1180, 900, 480], 1.0, { type: 'sawtooth', vib: [13, 190], trem: [13, 0.5], a: 0.06, r: 0.3, to: b }); k.tone(t, 0.9, [1280, 2360, 1800, 960], 0.3, { type: 'square', vib: [13, 190], a: 0.06, r: 0.3, to: b }); k.noise(t, 0.85, 0.15, { bp: 2200, q: 1, a: 0.08, r: 0.3 }); } },
   horse_snort: { c: 'low', min: 0.4, fn: (k, t) => { k.noise(t, 0.27, 0.9, { bp: [700, 520], q: 1.1, trem: [27, 0.9], a: 0.02, end: 0.03 }); k.noise(t, 0.2, 0.3, { hp: 2800, trem: [27, 0.9], a: 0.02 }); } },
   hoof: { c: 'low', min: 0.04, fn: (k, t) => { k.tone(t, 0.065, [R(150, 175), 80], 0.9, { a: 0.001 }); k.noise(t, 0.04, 0.5, { bp: R(900, 1150), q: 1.2 }); click(k, t, 0.2, 3000, 0.006); } },
@@ -414,7 +425,7 @@ const TABLE = {
   rain_gust: { c: 'low', min: 0.8, fn: (k, t) => { k.noise(t, 1.25, 0.7, { bp: [2600, 3600, 2400], q: 0.5, a: 0.5, end: 0.03 }); k.noise(t, 1.2, 0.35, { hp: 6000, a: 0.5, end: 0.03 }); k.noise(t, 1.2, 0.4, { bp: [400, 700, 350], q: 0.8, color: 'p', a: 0.5, end: 0.03 }); } },
   splash: { c: 'mid', min: 0.15, rev: 0.2, fn: (k, t) => { k.noise(t, 0.32, 0.8, { bp: [1900, 620], q: 0.7, a: 0.004 }); k.noise(t, 0.22, 0.4, { hp: 3500, a: 0.01 }); k.tone(t, 0.13, [300, 115], 0.5, { a: 0.002 }); for (let i = 0; i < 4; i++) k.tone(t + R(0.1, 0.4), 0.05, [R(1100, 2400), R(1400, 2900)], 0.15); } },
   bird: { c: 'soft', min: 0.3, rev: 0.3, fn: (k, t) => { const n = 2 + Math.floor(R(0, 2.5)); let tt = t; for (let i = 0; i < n; i++) { const f = R(2800, 3900); k.tone(tt, R(0.05, 0.09), i % 2 ? [f * 1.25, f] : [f, f * 1.35], 0.6, { a: 0.01, end: 0.05 }); tt += R(0.08, 0.14); } } },
-  cricket: { c: 'soft', min: 0.3, fn: (k, t) => { for (let i = 0; i < 3; i++) k.tone(t + i * 0.07, 0.05, R(4300, 4700), 0.6, { trem: [62, 1], a: 0.008, end: 0.1 }); } },
+  cricket: { c: 'soft', min: 0.3, fn: (k, t) => { const n = 2 + (k.v % 3), gap = R(0.055, 0.09), f = R(3900, 4900), tr = R(52, 70); for (let i = 0; i < n; i++) k.tone(t + i * gap, R(0.035, 0.06), f * R(0.98, 1.02), 0.6, { trem: [tr, 1], a: 0.008, end: 0.1 }); } },
 
   // ------------------------------------------------------------------ player state
   hurt: { c: 'loud', min: 0.15, fn: (k, t) => { thump(k, t, 0.17, 155, 52, 1.0); k.noise(t, 0.1, 0.5, { lp: 700 }); k.tone(t + 0.01, 0.17, [310, 175], 0.35, { type: 'sawtooth', lp: 950, a: 0.01 }); k.noise(t, 0.05, 0.3, { bp: 1800, q: 0.7 }); } },
@@ -462,6 +473,29 @@ const TABLE = {
   },
 } satisfies Record<string, SfxDef>;
 
-export type SfxName = keyof typeof TABLE;
-export const SFX: Record<SfxName, SfxDef> = TABLE;
+const ALL = { ...TABLE, ...HERO_SFX, ...ROBOT_SFX, ...WORLD_SFX };
+export type SfxName = keyof typeof ALL;
+export const SFX: Record<SfxName, SfxDef> = ALL;
 export const SFX_NAMES = Object.keys(SFX) as SfxName[];
+
+const CAT_PREFIX: [string, Cat][] = [
+  ['ui_', 'ui'], ['hud_', 'ui'], ['wheel_', 'ui'], ['card_', 'ui'], ['dialog_', 'dialog'], ['chat_', 'dialog'],
+  ['quest_', 'reward'], ['streak_', 'reward'], ['pickup_', 'reward'], ['level', 'reward'], ['perk_', 'reward'], ['bounty_', 'reward'], ['rare_', 'reward'],
+  ['camp_', 'reward'], ['count_', 'ui'],
+  ['step_', 'foley'], ['ladder_', 'foley'], ['hoof', 'foley'], ['rstep_', 'foley'], ['cloth_', 'foley'], ['aim_', 'foley'], ['reload_', 'foley'], ['dry_', 'foley'],
+  ['imp_', 'impact'], ['impH_', 'impact'], ['hit_', 'impact'], ['shot_', 'impact'], ['kill_', 'impact'], ['block', 'impact'],
+  ['tell_', 'tell'], ['rv_', 'enemy'], ['enemy_', 'enemy'], ['explosion', 'big'], ['titan_', 'big'], ['warden_', 'big'], ['boss_', 'big'],
+  ['thunder', 'big'], ['crate_land', 'big'], ['finisher_', 'big'], ['od_', 'hero'],
+  ['bird', 'amb'], ['cricket', 'amb'], ['owl', 'amb'], ['amb_', 'amb'], ['clock_', 'world'], ['rain_', 'amb'],
+];
+/** Mix category of a sound: its own, else from its name. */
+export function catOf(name: string): Cat {
+  const d = SFX[name as SfxName];
+  if (d?.cat) return d.cat;
+  for (const [p, c] of CAT_PREFIX) if (name.startsWith(p)) return c;
+  if (/_(idle|servo)$/.test(name) || name === 'mite_chitter' || name === 'servo') return 'idle';
+  if (/^(mite|pallet|drone|welder|rivet|sentry|elite)_/.test(name)) return 'enemy';
+  if (/^(swing|spear|bow|arrow|xbow|rifle|bolt|jump|land|roll|sprint|slide|hurt|heal|potion|grapple|zip|hover|rail|horse|death|respawn|energy)/.test(name)) return 'hero';
+  if (/^(victory|defeat|wave_|trophy|pb|lap_|checkpoint|ring_pass|collectible|secret|vista|chest_|coin|loot|salvage|contract|zone_|beacon)/.test(name)) return 'reward';
+  return 'world';
+}

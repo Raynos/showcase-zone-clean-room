@@ -3,6 +3,8 @@
  * AudioContext or an OfflineAudioContext, so every sound can be rendered and measured offline.
  */
 
+import { NODES } from './nodes';
+
 /** A frequency: constant, or N points swept exponentially and evenly across the duration. */
 export type F = number | number[];
 
@@ -39,6 +41,24 @@ export interface FO extends PO {
 export type Inst = 'pluck' | 'mallet' | 'bell' | 'glass' | 'brass' | 'pad' | 'bass' | 'sq' | 'metal' | 'sub';
 
 export const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
+
+/**
+ * The random source every recipe draws from. A voice seeds it from its name and variant, so each of a
+ * sound's variants is a fixed, measurable take (tools/audio) and the engine can deal them out without
+ * repeats; the live engine adds a small pitch jitter on top.
+ */
+export const RNG = { f: Math.random as () => number };
+export const R = (a: number, b: number) => a + (b - a) * RNG.f();
+export function seeded(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    let t = (s += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+export function hashStr(s: string): number { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return h >>> 0; }
 
 interface Buffers { w: AudioBuffer; p: AudioBuffer; b: AudioBuffer; c: AudioBuffer }
 const bufCache = new WeakMap<BaseAudioContext, Buffers>();
@@ -85,6 +105,12 @@ export class Kit {
   end = 0;
   /** called for each created source (voice bookkeeping); may be null */
   track: ((s: AudioScheduledSourceNode) => void) | null = null;
+  /** variant index of the voice being built (0..3) */
+  v = 0;
+  /** length parameter for timed recipes (a wind-up that must land on the strike), seconds */
+  len = 0.8;
+  /** nodes owned by sources during the current build (released as each source ends) */
+  acct = 0;
   private bufs: Buffers;
 
   constructor(ctx: BaseAudioContext, out: AudioNode) {
@@ -120,7 +146,7 @@ export class Kit {
   }
 
   /** Common tail: [filter] -> gain(env) -> destination. Returns the node the source should connect to. */
-  private tail(src: AudioScheduledSourceNode, first: AudioNode, t: number, d: number, g: number, o: PO | undefined, fmul: number, offset?: number) {
+  private tail(src: AudioScheduledSourceNode, first: AudioNode, t: number, d: number, g: number, o: PO | undefined, fmul: number, offset: number | undefined, m0: number) {
     const ctx = this.ctx;
     let node: AudioNode = first;
     const filt = o?.lp !== undefined ? 'lowpass' : o?.hp !== undefined ? 'highpass' : o?.bp !== undefined ? 'bandpass' : null;
@@ -129,9 +155,9 @@ export class Kit {
       f.type = filt as BiquadFilterType;
       f.Q.value = o?.q ?? (filt === 'bandpass' ? 1 : 0.7);
       this.sweep(f.frequency, (o!.lp ?? o!.hp ?? o!.bp) as F, t, d, fmul);
-      node.connect(f); node = f;
+      node.connect(f); node = f; NODES.made++;
     }
-    const gn = ctx.createGain();
+    const gn = ctx.createGain(); NODES.made++;
     this.env(gn.gain, t, d, g, o);
     node.connect(gn);
     let last: AudioNode = gn;
@@ -143,20 +169,23 @@ export class Kit {
       const lg = ctx.createGain(); lg.gain.value = o.trem[1] * 0.5;
       lfo.connect(lg); lg.connect(tg.gain);
       lfo.start(t); lfo.stop(t + d + 0.05);
-      gn.connect(tg); last = tg;
+      gn.connect(tg); last = tg; NODES.made += 3;
     }
     last.connect(o?.to ?? this.out);
     const stopAt = t + d + 0.03;
     if (offset !== undefined) (src as AudioBufferSourceNode).start(t, offset); else src.start(t);
     src.stop(stopAt);
-    src.onended = () => { try { last.disconnect(); } catch { /* already gone */ } };
+    const n = NODES.made - m0;
+    this.acct += n;
+    src.onended = () => { try { last.disconnect(); } catch { /* already gone */ } NODES.freed += n; };
     if (stopAt > this.end) this.end = stopAt;
     this.track?.(src);
   }
 
   /** Oscillator voice. */
   tone(t: number, d: number, f: F, g: number, o?: PO) {
-    const ctx = this.ctx, osc = ctx.createOscillator();
+    const m0 = NODES.made;
+    const ctx = this.ctx, osc = ctx.createOscillator(); NODES.made++;
     osc.type = o?.type ?? 'sine';
     this.sweep(osc.frequency, f, t, d, this.pm);
     if (o?.det) osc.detune.value = o.det;
@@ -164,24 +193,26 @@ export class Kit {
       const l = ctx.createOscillator(), lg = ctx.createGain();
       l.frequency.value = o.vib[0]; lg.gain.value = o.vib[1];
       l.connect(lg); lg.connect(osc.detune);
-      l.start(t); l.stop(t + d + 0.05);
+      l.start(t); l.stop(t + d + 0.05); NODES.made += 2;
     }
-    this.tail(osc, osc, t, d, g, o, Math.sqrt(this.pm));
+    this.tail(osc, osc, t, d, g, o, Math.sqrt(this.pm), undefined, m0);
   }
 
   /** Filtered noise burst. */
   noise(t: number, d: number, g: number, o?: NO) {
-    const ctx = this.ctx, src = ctx.createBufferSource();
+    const m0 = NODES.made;
+    const ctx = this.ctx, src = ctx.createBufferSource(); NODES.made++;
     const buf = this.bufs[o?.color ?? 'w'];
     src.buffer = buf; src.loop = true;
     src.playbackRate.value = o?.rate ?? 1;
     // random start offset so repeated plays decorrelate
-    this.tail(src, src, t, d, g, o, Math.sqrt(this.pm), Math.random() * (buf.duration - 0.1));
+    this.tail(src, src, t, d, g, o, Math.sqrt(this.pm), RNG.f() * (buf.duration - 0.1), m0);
   }
 
   /** Two-operator FM voice (bells, zaps, metallic tones). */
   fm(t: number, d: number, f: F, g: number, o?: FO) {
-    const ctx = this.ctx, car = ctx.createOscillator(), mod = ctx.createOscillator(), mg = ctx.createGain();
+    const m0 = NODES.made;
+    const ctx = this.ctx, car = ctx.createOscillator(), mod = ctx.createOscillator(), mg = ctx.createGain(); NODES.made += 3;
     car.type = o?.type ?? 'sine';
     const ratio = o?.ratio ?? 2;
     const f0 = (typeof f === 'number' ? f : f[0]) * this.pm;
@@ -196,10 +227,10 @@ export class Kit {
       const l = ctx.createOscillator(), lg = ctx.createGain();
       l.frequency.value = o.vib[0]; lg.gain.value = o.vib[1];
       l.connect(lg); lg.connect(car.detune);
-      l.start(t); l.stop(t + d + 0.05);
+      l.start(t); l.stop(t + d + 0.05); NODES.made += 2;
     }
     mod.start(t); mod.stop(t + d + 0.04);
-    this.tail(car, car, t, d, g, o, Math.sqrt(this.pm));
+    this.tail(car, car, t, d, g, o, Math.sqrt(this.pm), undefined, m0);
   }
 
   /** Inharmonic sine cluster: clangs, clinks, gongs. parts = [ratio, gain, decayMul][] */
@@ -207,9 +238,26 @@ export class Kit {
     for (const p of parts) this.tone(t, d * (p[2] ?? 1), f * p[0], g * p[1], { ...o, type: 'sine' });
   }
 
+  /**
+   * Source through parallel resonant band-passes (a vocal tract): robot barks, crowd murmur, horse.
+   * forms = [centreHz, q, gain][]; the source is a saw (or `type`) swept along `f`.
+   */
+  formant(t: number, d: number, f: F, g: number, forms: number[][], o?: PO) {
+    const ctx = this.ctx, fan = ctx.createGain(), sum = ctx.createGain();
+    fan.gain.value = 1; sum.gain.value = 1; NODES.made += 2 + forms.length * 2;
+    sum.connect(o?.to ?? this.out);
+    for (const [fc, q, fg] of forms) {
+      const bp = ctx.createBiquadFilter(), bg = ctx.createGain();
+      bp.type = 'bandpass'; bp.frequency.value = fc * Math.sqrt(this.pm); bp.Q.value = q; bg.gain.value = fg;
+      fan.connect(bp); bp.connect(bg); bg.connect(sum);
+    }
+    // one source feeds every formant; the chain is dropped with the voice's own gain
+    this.tone(t, d, f, g, { type: 'sawtooth', ...o, to: fan });
+  }
+
   /** tanh waveshaper stage feeding the current output; returns its input. */
   shaper(drive: number, gain = 1, to?: AudioNode): AudioNode {
-    const ctx = this.ctx, ws = ctx.createWaveShaper();
+    const ctx = this.ctx, ws = ctx.createWaveShaper(); NODES.made += 3;
     let curve = curveCache.get(drive);
     if (!curve) {
       curve = new Float32Array(1024);
@@ -227,7 +275,7 @@ export class Kit {
   /** Sub-bus with optional filter; returns its input. */
   bus(gain: number, type?: BiquadFilterType, freq?: number, q = 0.7, to?: AudioNode): AudioNode {
     const ctx = this.ctx, g = ctx.createGain();
-    g.gain.value = gain;
+    g.gain.value = gain; NODES.made += type && freq ? 2 : 1;
     if (type && freq) {
       const f = ctx.createBiquadFilter();
       f.type = type; f.frequency.value = freq; f.Q.value = q;
