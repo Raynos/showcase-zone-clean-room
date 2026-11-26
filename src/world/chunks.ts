@@ -82,9 +82,10 @@ function growU8(a: Uint8Array, len: number) { const n = new Uint8Array(len); n.s
 function growU32(a: Uint32Array, len: number) { const n = new Uint32Array(len); n.set(a); return n; }
 
 /**
- * Packed vertex storage for one render cell: 32 bytes a vertex (36 with sway) against the 56 of
- * the float layout. Position and UV stay float; normal + texture layer are four signed bytes;
- * colour + emission four unsigned bytes; baked occlusion two shorts.
+ * Packed vertex storage for one render cell: 26 bytes a vertex (32 unsnapped, 36 with sway) against
+ * the 56 of the float layout. UV stays float; normal + texture layer are four signed bytes; colour +
+ * emission four unsigned bytes; baked occlusion two shorts. Position is staged in float and goes to
+ * the GPU as three shorts on a grid (see `snap`).
  */
 class Store {
   nv = 0; ni = 0;
@@ -144,6 +145,39 @@ class Store {
     this.nv += s.nv; this.ni += s.ni;
   }
 }
+/** Dev: `?floatpos` keeps every position in float, to tell a fault of the grid from any other. */
+const FLOAT_POS = typeof location !== 'undefined' && /[?&]floatpos\b/.test(location.search);
+/**
+ * Positions as three shorts: steps of 1/1024 m (about a millimetre) from a centre that is itself on
+ * that grid, with the step and the centre in the mesh's matrix. The grid is the world's, not the
+ * buffer's, so a point shared by two cells lands on the same spot in both, and a lift of a millimetre
+ * or more between two surfaces is never rounded away. Shorts reach 32 m either side of the centre;
+ * a wider buffer stays in float, unless it is the far layer's (`coarse`: primitives of FAR_KEY and
+ * up, whose squares are wider than that), which takes steps of 1/512 m, or 1/256 m at need: still
+ * under the 4 mm that is the least any builder lifts one surface off another. Returns null if the
+ * buffer does not fit.
+ */
+function snap(P: Float32Array, nv: number, coarse: boolean): { q: Int16Array; grid: THREE.Matrix4 } | null {
+  if (FLOAT_POS || !nv) return null;
+  let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+  for (let i = 0, n = nv * 3; i < n; i += 3) {
+    const x = P[i], y = P[i + 1], z = P[i + 2];
+    if (x < x0) x0 = x; if (x > x1) x1 = x;
+    if (y < y0) y0 = y; if (y > y1) y1 = y;
+    if (z < z0) z0 = z; if (z > z1) z1 = z;
+  }
+  const span = Math.max(x1 - x0, y1 - y0, z1 - z0);
+  for (const inv of coarse ? [1024, 512, 256] : [1024]) {
+    if (span * inv > 65000) continue;
+    const cx = Math.round((x0 + x1) * 0.5 * inv), cy = Math.round((y0 + y1) * 0.5 * inv), cz = Math.round((z0 + z1) * 0.5 * inv);
+    const q = new Int16Array(nv * 3);
+    for (let i = 0, n = nv * 3; i < n; i += 3) {
+      q[i] = Math.round(P[i] * inv) - cx; q[i + 1] = Math.round(P[i + 1] * inv) - cy; q[i + 2] = Math.round(P[i + 2] * inv) - cz;
+    }
+    return { q, grid: new THREE.Matrix4().makeScale(1 / inv, 1 / inv, 1 / inv).setPosition(cx / inv, cy / inv, cz / inv) };
+  }
+  return null;
+}
 /** "nothing near": far enough above any support, and below any overhang, to take no occlusion */
 const AO_NONE = 32767;
 function packAO(metres: number) { return Math.max(-32767, Math.min(32767, Math.round(metres * 256))); }
@@ -191,6 +225,8 @@ interface Cell {
   /** the other way of drawing this square is in use (see FAR_AT) */
   off: boolean;
   name?: string;
+  /** which part of the world it is (near, far, long, named), and the bytes a vertex of its buffer takes: for `stats` */
+  cls: string; vbytes: number;
 }
 /** A far-layer square drawn either as its cells or as one mesh. */
 interface Block { whole: Cell; kids: Cell[] }
@@ -451,11 +487,11 @@ export class Chunks {
     const bakeMs = Math.round(performance.now() - t0);
     let tris = 0, meshes = 0;
     const solidMat = packedMaterial(false), leafMat = packedMaterial(true);
-    const emit = (st: Store, mat: THREE.Material, name?: string) => {
+    const emit = (st: Store, mat: THREE.Material, name?: string, cls = name ? 'named' : 'near') => {
       if (!st.ni) return;
       // an interior's lights are a second run of indices over its vertices, on the mirror's layer alone
-      const lights = name && st.glowP.length ? this.attributes(st) : undefined;
-      const c = this.makeCell(st, mat, name, undefined, lights);
+      const lights = name && st.glowP.length ? this.attributes(st, cls) : undefined;
+      const c = this.makeCell(st, mat, name, undefined, lights, cls);
       this.cells.push(c); this.pending.push(c);
       this.group.add(c.mesh);
       tris += st.ni / 3; meshes++;
@@ -493,9 +529,9 @@ export class Chunks {
           };
           if (sparse.length) take(sparse);
           for (const i of dense) take([i]);
-          const shared = this.attributes(block);
+          const shared = this.attributes(block, 'far');
           const add = (prims?: number[]) => {
-            const c = this.makeCell(block, mat, undefined, prims, shared);
+            const c = this.makeCell(block, mat, undefined, prims, shared, 'far');
             this.cells.push(c); this.pending.push(c); this.group.add(c.mesh); this.surface.push(c.mesh);
             return c;
           };
@@ -509,12 +545,12 @@ export class Chunks {
         if (sparse.length > 1) {
           const merged = new Store(!!(k & 1));
           for (const i of sparse) { merged.append(list[i]!); list[i] = undefined; }
-          emit(merged, mat);
+          emit(merged, mat, undefined, far ? 'far' : 'near');
         }
-        for (const i of kids) { const st = list[i]; if (st) { emit(st, mat); list[i] = undefined; } }
+        for (const i of kids) { const st = list[i]; if (st) { emit(st, mat, undefined, far ? 'far' : 'near'); list[i] = undefined; } }
       }
     }
-    for (let k = 0; k < 2; k++) for (const st of this.long[k]) if (st) emit(st, k ? leafMat : solidMat);
+    for (let k = 0; k < 2; k++) for (const st of this.long[k]) if (st) emit(st, k ? leafMat : solidMat, undefined, 'long');
     this.long = [[], []];
     for (const [name, st] of this.extraStore) emit(st, solidMat, name);
     this.extraStore.clear(); this.extra.clear();
@@ -686,11 +722,16 @@ export class Chunks {
   }
 
   /** The vertex attributes of a store, each letting go of its CPU copy once the GPU has it. */
-  private attributes(st: Store) {
+  private attributes(st: Store, cls: string) {
     const nv = st.nv;
     const drop = (a: THREE.BufferAttribute) => a.onUpload(function (this: THREE.BufferAttribute) { (this as { array: ArrayLike<number> }).array = new Uint8Array(0); });
+    // Leaves stay in float (the wind moves them in metres, in the vertex shader), and so do the interiors, whose
+    // meshes are handled by name.
+    const snapped = st.leaf || cls === 'named' ? null : snap(st.P, nv, cls === 'far');
     return {
-      position: drop(new THREE.BufferAttribute(st.P.subarray(0, nv * 3), 3)),
+      grid: snapped ? snapped.grid : null,
+      bytes: (snapped ? 6 : 12) + 20 + (st.SW ? 4 : 0),
+      position: drop(snapped ? new THREE.BufferAttribute(snapped.q, 3) : new THREE.BufferAttribute(st.P.subarray(0, nv * 3), 3)),
       uv: drop(new THREE.BufferAttribute(st.U.subarray(0, nv * 2), 2)),
       nl: drop(new THREE.BufferAttribute(st.NL.subarray(0, nv * 4), 4, true)),
       ce: drop(new THREE.BufferAttribute(st.CE.subarray(0, nv * 4), 4, true)),
@@ -700,7 +741,7 @@ export class Chunks {
   }
 
   /** One mesh over a store: all of it, or the given primitives of it over vertex attributes shared with its siblings. */
-  private makeCell(st: Store, mat: THREE.Material, name?: string, prims?: number[], shared?: ReturnType<Chunks['attributes']>): Cell {
+  private makeCell(st: Store, mat: THREE.Material, name?: string, prims?: number[], shared?: ReturnType<Chunks['attributes']>, cls = 'near'): Cell {
     const nv = st.nv;
     // largest first; equal keys keep build order so neighbouring primitives stay neighbours
     const pS = st.pS, pI = st.pI, pN = st.pN;
@@ -733,9 +774,10 @@ export class Chunks {
     const cell: Cell = {
       mesh: null!, box, flat, always, total: ni, sizes: new Float32Array(sizes), counts: new Uint32Array(counts),
       tSizes: new Float32Array(tSizes), tCounts: new Uint32Array(tCounts),
-      main: ni, start: 0, cast: 0, bias: 0, uploaded: false, force: false, off: false, name,
+      main: ni, start: 0, cast: 0, bias: 0, uploaded: false, force: false, off: false, name, cls, vbytes: 0,
     };
-    const a = shared ?? this.attributes(st);
+    const a = shared ?? this.attributes(st, cls);
+    cell.vbytes = a.bytes;
     geo.setAttribute('position', a.position);
     geo.setAttribute('uv', a.uv);
     geo.setAttribute('normal', a.nl);
@@ -752,6 +794,14 @@ export class Chunks {
     geo.boundingSphere = box.getBoundingSphere(new THREE.Sphere());
     const mesh = new THREE.Mesh(geo, mat);
     cell.mesh = mesh;
+    if (a.grid) {
+      // snapped positions: the mesh's matrix takes grid steps back to metres, and the geometry's own bounds
+      // are in steps (`box`, which every test here uses, stays in the world's metres)
+      mesh.matrix.copy(a.grid); mesh.matrixWorld.copy(a.grid);
+      const inv = 1 / a.grid.elements[0], o = new THREE.Vector3().setFromMatrixPosition(a.grid);
+      geo.boundingBox = new THREE.Box3(box.min.clone().sub(o).multiplyScalar(inv), box.max.clone().sub(o).multiplyScalar(inv));
+      geo.boundingSphere = geo.boundingBox.getBoundingSphere(new THREE.Sphere());
+    }
     mesh.castShadow = true; mesh.receiveShadow = true;
     // leaf cards throw the shadow of their leaves, not of a square
     if (st.leaf) mesh.customDepthMaterial = foliageDepthMaterial();
@@ -820,16 +870,23 @@ export class Chunks {
   /** Dev: what the static world costs right now. */
   stats() {
     let tris = 0, drawn = 0, verts = 0, bytes = 0, waiting = 0;
+    // by part of the world: vertices, megabytes, and megabytes if every position were in float
+    const by: Record<string, { verts: number; mb: number; float: number }> = {};
     const seen = new Set<THREE.BufferAttribute | THREE.InterleavedBufferAttribute>(), whole = new Set(this.blocks.map((b) => b.whole));
     for (const c of this.cells) {
       const g = c.mesh.geometry, nv = g.attributes.position.count;
       if (!whole.has(c)) tris += c.total / 3;
       if (!c.name && c.mesh.visible) drawn += (c.main - c.start) / 3;
       // a square's cells and its far mesh share one vertex buffer
-      if (!seen.has(g.attributes.position)) { seen.add(g.attributes.position); verts += nv; bytes += nv * (g.attributes.aSway ? 36 : 32); }
-      bytes += c.total * (nv > 65535 ? 4 : 2);
+      const b = (by[c.cls + (g.attributes.aSway ? ' leaf' : '')] ??= { verts: 0, mb: 0, float: 0 }), ib = c.total * (nv > 65535 ? 4 : 2);
+      if (!seen.has(g.attributes.position)) {
+        seen.add(g.attributes.position); verts += nv; bytes += nv * c.vbytes;
+        b.verts += nv; b.mb += nv * c.vbytes; b.float += nv * (g.attributes.aSway ? 36 : 32);
+      }
+      bytes += ib; b.mb += ib; b.float += ib;
       if (!c.uploaded) waiting++;
     }
-    return { meshes: this.cells.length, tris, lodTris: drawn, verts, gpuMB: +(bytes / 1048576).toFixed(1), waiting };
+    for (const b of Object.values(by)) { b.mb = +(b.mb / 1048576).toFixed(1); b.float = +(b.float / 1048576).toFixed(1); }
+    return { meshes: this.cells.length, tris, lodTris: drawn, verts, gpuMB: +(bytes / 1048576).toFixed(1), waiting, by };
   }
 }
