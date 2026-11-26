@@ -68,7 +68,8 @@ export class Crosshair {
   }
 
   update(dt: number, s: CrosshairState) {
-    const g = this.game, show = this.on && g.hud.visible && !g.player.dead && !g.cameraRig.cine;
+    // (not in a saddle, on a board or on a wire: nothing can be fired from there, so there is nothing to aim)
+    const g = this.game, md = g.player.mode, show = this.on && g.hud.visible && !g.player.dead && !g.cameraRig.cine && (!md || !!md.canAttack);
     this.root.classList.toggle('show', show);
     if (!show) return;
     if (this.hmT > 0 && (this.hmT -= dt) <= 0) this.hm.className = 'hm';

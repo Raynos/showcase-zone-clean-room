@@ -3,6 +3,7 @@ import type { FirstPersonFeed, View } from '../core/camera';
 import { clamp, clamp01 } from '../core/util';
 import { GU } from '../gfx/material';
 import { TRAIL_EYE } from '../gfx/vfx/ribbons';
+import { grassU } from '../world/grass';
 import { FpMotion } from './fpmotion';
 import { DOWN, type FpDraw, type HumanoidRig } from '../entities/humanoid/types';
 import type { Game } from '../game';
@@ -193,7 +194,7 @@ export class ViewSystem {
     cr.fpShake = reducedMotion?.matches ? 0.35 : 1;
     // what the effects kit, the blade's ribbon and the hurt pulse need to know: how much of the picture is the eyes'
     const eyeK = cr.eyeAmount, post = g.renderer?.post;
-    g.fx.eye = eyeK; TRAIL_EYE.k = eyeK;
+    g.fx.eye = eyeK; TRAIL_EYE.k = eyeK; grassU.uEyeK.value = eyeK;
     if (post) post.hurtEdge = eyeK;
     if (rig !== this.rig) { this.rig = rig; if (cr.view === 'first') this.hook(); }
     // aiming down sights from third person goes to the eyes too (core/camera.ts `adsEye`)

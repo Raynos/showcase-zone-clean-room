@@ -7,11 +7,20 @@ import type { Terrain } from './terrain';
 import { TCELL, TN } from './terrain';
 
 const MAXPUSH = 8;
+/** From the eyes (grassU.uEyeK): blades stand `low` of their height within `near` metres of the lens, full at `far`; tramplers reach `push` metres further. */
+const EYE = { low: 0.4, near: 2, far: 8, push: 1.4 };
 export const grassU = {
   uCam: { value: new THREE.Vector3() },
   uPush: { value: [0, 1, 2, 3, 4, 5, 6, 7].map(() => new THREE.Vector4()) }, // xyz pos, w radius
   /** how many of uPush are live this frame */
   uPushN: { value: 1 },
+  /**
+   * 0..1 while the picture is taken from the hero's own eyes (systems/view.ts sets it). The eyes are a man's
+   * height over the field and look along it, so tall grass between them and a small robot hid the robot whole:
+   * from the eyes the grass stands lower near the hero and rises to its full height over EYE_FAR metres, and what
+   * tramples it (the robots near the hero) tramples a wider ring.
+   */
+  uEyeK: { value: 0 },
   uSunDir: { value: new THREE.Vector3(0, 1, 0) },
   uSunCol: { value: new THREE.Color(1, 0.9, 0.7) },
 };
@@ -220,7 +229,7 @@ class Layer {
 
     const mat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide, alphaTest: 0.5, alphaToCoverage: true });
     mat.onBeforeCompile = (sh) => {
-      sh.uniforms.uCam = grassU.uCam; sh.uniforms.uPush = grassU.uPush; sh.uniforms.uPushN = grassU.uPushN;
+      sh.uniforms.uCam = grassU.uCam; sh.uniforms.uPush = grassU.uPush; sh.uniforms.uPushN = grassU.uPushN; sh.uniforms.uEyeK = grassU.uEyeK;
       sh.uniforms.uSunDir = grassU.uSunDir; sh.uniforms.uSunCol = grassU.uSunCol;
       sh.uniforms.uTime = GU.uTime; sh.uniforms.uWind = GU.uWind; sh.uniforms.uNoise = GU.uNoise;
       sh.uniforms.uColorMap = { value: terrain.colorMap }; sh.uniforms.uCellH = { value: cellHeights(terrain) };
@@ -229,7 +238,7 @@ class Layer {
         .replace('#include <common>', /* glsl */ `#include <common>
 attribute vec2 aOff; attribute vec4 aRnd;
 attribute vec4 aTile; attribute vec4 aTileRnd; // origin.xz, pattern shift.xz | random re-roll (sign of x: trampled)
-uniform vec3 uCam; uniform vec4 uPush[${MAXPUSH}]; uniform int uPushN; uniform float uTime; uniform vec4 uWind;
+uniform vec3 uCam; uniform vec4 uPush[${MAXPUSH}]; uniform int uPushN; uniform float uTime; uniform vec4 uWind; uniform float uEyeK;
 uniform sampler2D uColorMap; uniform sampler2D uCellH; uniform sampler2D uNoise;
 uniform highp sampler2DArray uYardLamp[1]; uniform vec4 uYard[6]; varying vec3 vLamp;
 varying vec3 vGCol; varying float vTip; varying float vWave; varying vec3 vGW; varying float vRnd; varying vec2 vTuft; varying float vFar;
@@ -256,6 +265,8 @@ float alive = smoothstep(rnd.x * 0.92, rnd.x * 0.92 + 0.08, cm.a) * fade * step(
 float clump = texture2D(uNoise, wxz * 0.045).g;
 float bh = ${bladeH.toFixed(3)} * (0.5 + 0.7 * rnd.y + 0.6 * clump) * alive * (0.7 + 0.5 * cm.a);
 bh *= smoothstep(0.9, 3.4, length(vec3(wxz.x, uCam.y - 1.0, wxz.y) - uCam));
+// from the eyes: lower round the hero, so what stands in the grass a few strides off can be seen over it
+bh *= mix(1.0, ${EYE.low.toFixed(2)} + ${(1 - EYE.low).toFixed(2)} * smoothstep(${EYE.near.toFixed(1)}, ${EYE.far.toFixed(1)}, dist), uEyeK);
 // thin cover is separate narrow tufts on bare ground, not a mown lawn with holes in it
 float bw = ${bladeW.toFixed(3)} * (0.75 + 0.5 * rnd.w) * step(1e-4, bh) * mix(0.42, 1.0, smoothstep(0.3, 0.85, cm.a));
 // which painted tuft: mostly plain and short, seed heads in drifts, flowers now and then
@@ -409,7 +420,7 @@ export class Grass {
   /** Extra tramplers (mounts, big enemies). */
   push(x: number, z: number, r: number) {
     if (this.pushIdx >= MAXPUSH || !(r > 0)) return;
-    grassU.uPush.value[this.pushIdx++].set(x, 0, z, r);
+    grassU.uPush.value[this.pushIdx++].set(x, 0, z, r + EYE.push * grassU.uEyeK.value);
     grassU.uPushN.value = this.pushIdx;
   }
   /**
