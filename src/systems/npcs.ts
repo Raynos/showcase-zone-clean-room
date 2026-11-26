@@ -153,6 +153,8 @@ export class Npcs implements System {
       g.interact.add({
         id: 'npc_' + id, pos: n.ipos, radius: key ? 3.3 : 2.8, icon: 'chat', priority: key ? 1 : 0,
         label: () => (key ? `Talk to ${n.name}` : n.name),
+        // a job to offer or to hand in: this prompt wins over anything else in reach
+        boost: () => { const m = g.quests?.marker(id); return m === 'y' || m === 't' ? 4 : 0; },
         enabled: () => !g.interior && !n.hidden && !!n.rig && !this.talking && !!g.panels,
         onUse: () => this.startTalk(n),
       });

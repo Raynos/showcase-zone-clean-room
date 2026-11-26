@@ -12,6 +12,9 @@ export interface Interactable {
   onUse: () => void;
   /** higher wins when several overlap */
   priority?: number;
+  /** added to the priority while it returns more than 0 (a quest giver with work for the player beats the
+   *  signal post and the bench beside them) */
+  boost?: () => number;
   /** used from the saddle: the rider stays on the horse (a riding course's start). Anything else is done on foot,
    *  so using it from horseback steps the rider down first. */
   saddle?: boolean;
@@ -37,7 +40,7 @@ export class Interact {
         const d = Math.hypot(dx, dz);
         if (d > i.radius) continue;
         if (i.enabled && !i.enabled()) continue;
-        const s = d / i.radius - (i.priority ?? 0);
+        const s = d / i.radius - (i.priority ?? 0) - (i.boost?.() ?? 0);
         if (s < bs) { bs = s; best = i; }
       }
     }
