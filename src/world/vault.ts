@@ -218,6 +218,8 @@ export class Vault implements System {
     if (shell) shell.castShadow = false;
     // floors for mobs / fx / loot
     g.floors.push((_x, z) => (g.interior === 'vault' ? (z < -42 ? Y + UP : Y) : null));
+    // the floors are polished plate: they show the rooms' lights and whoever stands on them (gfx/mirror.ts)
+    g.mirror.plane = () => (g.interior === 'vault' ? (g.player.pos.z < -42 ? Y + UP : Y) + 0.06 : null);
     // doors: 0 logic exit, 1 combat entry, 2 combat exit, 3 boss entry
     this.doors.push(this.door(30 - 0.8, 0, 2.5, 5, 0x3fe3ff), this.door(26 + 0.8, 0, 2.5, 5, 0xff8a2e), this.door(-8 - 0.8, 0, 2.5, 5, 0xff8a2e), this.door(-42 - 0.8, UP, 3, 5.5, 0xff3c1a));
     // arrival portal (the way back out)
@@ -505,6 +507,8 @@ export class Vault implements System {
     if (g.interior !== 'vault') { if (!g.travelling) this.shutdown(); return; }   // left by some other road (Return to Brasswick, dev teleport)
     this.t += rdt;
     const p = g.player.pos;
+    g.mirror.show(g.player.root);
+    for (const m of g.mobs.list) g.mirror.show(m.rig.root);
     for (const d of this.doors) {
       const target = d.want ? 1 : 0;
       if (d.open !== target) {

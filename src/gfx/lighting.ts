@@ -41,7 +41,7 @@ export function lampLayer(y: number) { return y < ARENA_TOP ? 2 : y < VAULT_TOP 
  *  [3] sun direction xyz (world), cloud shadow scale (1 / metres)
  *  [4] floor gloss 0..1 (night, rain, interiors), strength of the lamp streaks it shows,
  *      distance at which the baked far shade starts, its strength
- *  [5] spare
+ *  [5] the polished floor's mirror (gfx/mirror.ts): 1 / frame width, 1 / frame height in pixels, strength (0: none), the floor's height
  */
 export const YARD = new Float32Array(6 * 4);
 YARD.set([0, 0, 0.5, 0, 0.22, 0.04, -0.08, 0.5, 0, 0.6, 0.5, 1, 0, 1, 0, 0.0034]);
@@ -101,7 +101,9 @@ blank.wrapS = blank.wrapT = THREE.RepeatWrapping; blank.needsUpdate = true;
  * uploader only needs indices and a length.
  */
 const lampSlot: { [i: number]: THREE.Texture; length: number } = { 0: lampTex, length: 1 };
-const mapSlot: { [i: number]: THREE.Texture; length: number } = { 0: gaoTex, 1: blank, 2: streakTex, length: 3 };
+const mapSlot: { [i: number]: THREE.Texture; length: number } = { 0: gaoTex, 1: blank, 2: streakTex, 3: blank, length: 4 };
+/** What a polished floor shows this frame (gfx/mirror.ts); null for nothing. */
+export function setMirrorMap(t: THREE.Texture | null) { mapSlot[3] = t ?? blank; }
 /** The tiling noise the sky draws its clouds from; cloud shadows read the same texture. Call before the first frame. */
 export function setCloudNoise(t: THREE.Texture) { mapSlot[1] = t; }
 
@@ -116,7 +118,7 @@ uniform vec4 uYard[6];
 uniform vec4 uYardW[3];
 uniform vec4 uYardHero[4];
 uniform highp sampler2DArray uYardLamp[1];
-uniform sampler2D uYardMap[3];
+uniform sampler2D uYardMap[4];
 #ifdef YARD_VAO
   varying vec2 vYardAO;
 #endif
@@ -285,6 +287,14 @@ if ( uYard[4].x > 0.0 ) {
       // stone holds the water unevenly: the streak comes and goes slab by slab; standing water shows it whole
       float yBreak = mix( 0.25 + 1.25 * smoothstep( 0.3, 0.62, texture2D( uYardMap[1], gYardW.xz * 0.27 + 0.13 ).g ), 1.15, gYardPud );
       reflectedLight.directSpecular += yT * yT * ( ${STREAK_MAX.toFixed(1)} * uYard[4].y * yShine * yBreak );
+    }
+    // a polished floor: the room's lights and whoever stands on it, drawn from under it (gfx/mirror.ts),
+    // drawn out down the screen and shaken by the floor's own bumps
+    if ( uYard[5].z > 0.0 && abs( gYardW.y - uYard[5].w ) < 0.3 ) {
+      vec2 yMu = vec2( gl_FragCoord.x * uYard[5].x, 1.0 - gl_FragCoord.y * uYard[5].y ) + gYardN.xz * vec2( 0.012, 0.03 );
+      vec3 yMr = texture2D( uYardMap[3], yMu ).rgb * 0.46 + texture2D( uYardMap[3], yMu + vec2( 0.0, 0.014 ) ).rgb * 0.3 + texture2D( uYardMap[3], yMu - vec2( 0.0, 0.024 ) ).rgb * 0.24;
+      float yMf = 0.3 + 0.7 * pow( 1.0 - saturate( dot( geometryNormal, geometryViewDir ) ), 2.0 );
+      reflectedLight.indirectSpecular += yMr * ( uYard[5].z * yMf * mix( 0.6, 1.0, gYardPud ) );
     }
     #ifdef USE_FOG
       float yFres = pow( 1.0 - saturate( dot( geometryNormal, geometryViewDir ) ), 4.0 );

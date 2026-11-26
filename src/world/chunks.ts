@@ -4,6 +4,7 @@ import { foliageDepthMaterial } from '../gfx/foliage';
 import { Geo, type ColliderSpec } from '../gfx/geo';
 import { addLamp, bakeLamps, GroundOcc, lampLayer } from '../gfx/lighting';
 import { WorldMaterial } from '../gfx/material';
+import { MIRROR_LAYER } from '../gfx/mirror';
 import { HALF } from './layout';
 
 /** Builder handles: callers ask for "the builder near x,z" and get one of 8x8 staging Geos. */
@@ -83,6 +84,8 @@ class Store {
   I = new Uint32Array(768);
   /** primitive runs: first index, index count, size key */
   pI: number[] = []; pN: number[] = []; pS: number[] = [];
+  /** an interior's glowing primitives, as (first index, count) runs of I: what its polished floor mirrors */
+  glowP: number[] = [];
   constructor(readonly leaf: boolean) { this.SW = leaf ? new Uint8Array(4 * 192) : null; }
 
   reserve(verts: number, indices: number) {
@@ -240,12 +243,15 @@ export class Chunks {
   }
   /** Meshes for named groups, available after build(). */
   namedMeshes = new Map<string, THREE.Mesh>();
+  /** the lights of each named group, drawn only into a polished floor (gfx/mirror.ts) */
+  private glowMeshes = new Map<string, THREE.Mesh>();
   private surface: THREE.Mesh[] = [];
   /** Show the surface (null) or only the named groups whose name starts with the interior id. */
   show(interior: string | null) {
     this.interior = interior;
     for (const m of this.surface) m.visible = !interior;
     for (const [name, m] of this.namedMeshes) m.visible = !!interior && name.startsWith(interior);
+    for (const [name, m] of this.glowMeshes) m.visible = !!interior && name.startsWith(interior);
   }
 
   private store(x: number, z: number, leaf: boolean, far: boolean): Store {
@@ -325,6 +331,7 @@ export class Chunks {
       for (let i = i0; i < i1; i++) I[w++] = idx[i] + base;
       st.ni = w;
       st.prim(i1 - i0, key);
+      if (named && glow > 0.5) st.glowP.push(w - (i1 - i0), i1 - i0);
       this.pBox.push(x0, y0, z0, x1, y1, z1);
       this.pSt.push(st); this.pRef.push(base + v0, vc, w - (i1 - i0), i1 - i0);
       this.pFlag.push((leaf ? P_LEAF : 0) | (named ? P_NAMED : 0) | (key === KEY_FLAT ? P_FLAT : 0) | (glow >= LAMP_EMIT ? P_GLOW : 0));
@@ -426,11 +433,26 @@ export class Chunks {
     const solidMat = packedMaterial(false), leafMat = packedMaterial(true);
     const emit = (st: Store, mat: THREE.Material, name?: string) => {
       if (!st.ni) return;
-      const c = this.makeCell(st, mat, name);
+      // an interior's lights are a second run of indices over its vertices, on the mirror's layer alone
+      const lights = name && st.glowP.length ? this.attributes(st) : undefined;
+      const c = this.makeCell(st, mat, name, undefined, lights);
       this.cells.push(c); this.pending.push(c);
       this.group.add(c.mesh);
       tris += st.ni / 3; meshes++;
       if (name) { this.namedMeshes.set(name, c.mesh); c.mesh.visible = false; c.mesh.frustumCulled = false; } else this.surface.push(c.mesh);
+      if (name && lights) {
+        let n = 0;
+        for (let k = 1; k < st.glowP.length; k += 2) n += st.glowP[k];
+        const I = st.nv > 65535 ? new Uint32Array(n) : new Uint16Array(n);
+        for (let k = 0, o = 0; k < st.glowP.length; k += 2) for (let i = st.glowP[k], e = i + st.glowP[k + 1]; i < e; i++) I[o++] = st.I[i];
+        const geo = new THREE.BufferGeometry();
+        for (const [key, a] of Object.entries(c.mesh.geometry.attributes)) geo.setAttribute(key, a);
+        geo.setIndex(new THREE.BufferAttribute(I, 1));
+        const m = new THREE.Mesh(geo, mat);
+        m.matrixAutoUpdate = false; m.castShadow = false;
+        m.layers.set(MIRROR_LAYER); m.visible = false; m.frustumCulled = false;
+        this.glowMeshes.set(name, m); this.group.add(m);
+      }
     };
     for (let k = 0; k < 4; k++) {
       const far = k > 1, list = (far ? this.far : this.fine)[k & 1], mat = k & 1 ? leafMat : solidMat;
