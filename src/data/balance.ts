@@ -31,8 +31,12 @@ export const XP_PER_MIN = 10.7;
  * three bands at 44, 55 and 60 min with kills at 64%, 70% and 56%. Bounties stay 15-18% of band 6
  * because each pays a share of a level that is now long. The last level (19) takes band 6's rate.
  * Modelled from the runs, not yet re-run.
+ * QA round four (2026-11-26, b9f074a/86f64fb, bounties priced in kills, field quests played): 16-18
+ * took 62.5 of 63 (kills 63%), 19 took 28.2 of 24 (kills 68%), 13-15 took 37.3 of 54 (kills 69%),
+ * 10-12 took 33.8 of 45 (kills 68%): band 5 went from 36 to 52 and band 4 from 41 to 55, scaled
+ * from those runs, not re-run.
  */
-export const XP_PER_MIN_BAND = [15, 23, 22, 41, 36, 45, 45];
+export const XP_PER_MIN_BAND = [15, 23, 22, 55, 52, 45, 45];
 /** The rate for climbing out of `level` (its band: 1-3, 4-6, ... 19). */
 export const xpPerMin = (level: number) => XP_PER_MIN_BAND[Math.min(6, Math.floor((Math.max(1, level) - 1) / 3))];
 /** XP needed to go from level L to L+1: PACE_MIN minutes of play at its band's rate. */
