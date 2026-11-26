@@ -116,8 +116,11 @@
   B.huntElite = async (slot) => {
     const g = G(), d = slot.def;
     let m = slot.mob && slot.mob.alive ? slot.mob : null;
-    if (!m) {
-      const r = await B.goTo(d.x, d.z, { r: 26, partialOk: 30, roadOnly: true, until: () => slot.mob && slot.mob.alive });
+    // within 26 m of a gate elite can be the wrong side of its sealed gate (the Slagworks side of Plumb Line
+    // Prime, reached by the service gate): there it never comes into reach, so walk into its own band
+    const pp = g.player.pos, wrongSide = B.bandAt(pp.x, pp.z) !== B.bandAt(d.x, d.z);
+    if (!m || wrongSide) {
+      const r = await B.goTo(d.x, d.z, { r: wrongSide ? 8 : 26, partialOk: wrongSide ? 10 : 30, roadOnly: true, until: () => slot.mob && slot.mob.alive && B.bandAt(g.player.pos.x, g.player.pos.z) === B.bandAt(d.x, d.z) });
       if (r === 'combat') { await B.fight(); await B.afterFight(); return true; }
       if (r === 'nopath' || r === 'stuck') { B.note(`cannot reach ${d.name} at ${d.x},${d.z}: ${r}`); await B.sleep(3); return false; }
       m = await B.until(() => (slot.mob && slot.mob.alive ? slot.mob : null), 6);

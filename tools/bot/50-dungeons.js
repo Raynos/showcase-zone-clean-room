@@ -178,7 +178,13 @@
       case 'combat': {
         B.setGoal('Training Vault: combat chamber, wave ' + (v.wave + 1) + ' of 3');
         const r = await B.fight({ noFlee: true, range: 45, linger: 1.2, until: () => v.stage !== 'combat' });
-        if (r === 'clear' && v.stage === 'combat') await B.walk(VX, 9, { r: 3, timeout: 4, fight: true });
+        if (r === 'clear' && v.stage === 'combat') {
+          // a wave that has not come for us (a player well over the vault's level does not draw it): go to it.
+          // Standing at the door waiting stalled a level-16 run for 15 minutes on wave 1.
+          const idle = B.mobs(60, (m) => !m.aggro && m.targetable)[0];
+          if (idle) { B.note('vault wave not coming: walking up to it'); await B.walk(idle.pos.x, idle.pos.z, { r: 7, timeout: 8, until: () => idle.aggro || !idle.alive }); }
+          else await B.walk(VX, 9, { r: 3, timeout: 4, fight: true });
+        }
         if (v.stage !== 'combat') B.progress('vault combat');
         break;
       }
