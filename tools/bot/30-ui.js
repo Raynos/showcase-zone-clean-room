@@ -66,12 +66,30 @@
   B.goUse = async (id, opts = {}) => {
     const g = G(), it = g.interact.list.find((i) => i.id === id);
     if (!it) return false;
-    for (let n = 0; n < 4; n++) {
+    // fights on the way do not use up the tries (the Slagworks beacon stands between two welder camps)
+    for (let n = 0, fights = 0; n < 4 && fights < 8; n++) {
       const r = await B.goTo(it.pos.x, it.pos.z, { r: Math.max(1.2, it.radius - 1.2 - n * 0.5), partialOk: it.radius - 0.8, ...opts });
-      if (r === 'combat') { await B.fight(); continue; }
+      if (r === 'combat') { await B.fight(); n--; fights++; continue; }
       if (r !== 'arrived') return false;
-      if (await B.use(id, 2)) return true;
+      if (await B.use(id, 0.6)) return true;
+      // the 2 m nav grid can end the walk outside the prompt's reach when no grid cell lies between the
+      // prop's collider and its radius (the Slagworks beacon at (176, -62): nearest cells 1.4 m and 3.2 m
+      // out, the walk stopped at 4.1 m and the prompt reaches 3.6 m). Walk the last metres in by eye.
+      if (await B.approach(it, 4)) return true;
     }
+    return false;
+  };
+  /** Walk straight at a prompt until the game offers it, then press it. */
+  B.approach = async (it, sec = 4) => {
+    const g = G(), t0 = B.now();
+    while (B.now() - t0 < sec) {
+      const c = g.interact.current;
+      if (c === it) { B.stop(); B.tapBtn('interact', 0.1); await B.sleep(0.35); return true; }
+      if (B.threatened && B.threatened(6)) break;
+      B.moveTo(it.pos.x, it.pos.z, 0.5, false); B.look(it.pos.x, it.pos.z);
+      await B.tick();
+    }
+    B.stop();
     return false;
   };
 
