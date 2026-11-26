@@ -5,6 +5,7 @@ import type { Game, System } from '../game';
 import { el } from '../ui/hud';
 import { BEACONS } from '../world/east';
 import { BANDS, GAUNTLET, PADS, ROCK, TITAN_GATE, TOWN, VAULT, VAULT_PORTAL } from '../world/layout';
+import { Router } from './route';
 
 /** A waypoint; `r` marks an area rather than a point (the map can ring it). */
 export interface Target { x: number; z: number; y?: number; label: string; r?: number }
@@ -21,7 +22,9 @@ const _v = new THREE.Vector3();
 export class Guide implements System {
   private mark: HTMLElement; private arrow: HTMLElement; private dist: HTMLElement;
   private target: Target | null = null; private refreshT = 0;
-  private poi = { id: 'quest_target', x: 0, z: 0, icon: 'star', label: 'Objective', color: '#ffcf3a', big: true, show: () => !!this.target };
+  /** the objective itself; `target` is where to walk now (the near side of a gate when a wall or ridge is in the way) */
+  private goal: Target | null = null; private rest = 0; private router: Router;
+  private poi = { id: 'quest_target', x: 0, z: 0, icon: 'star', label: 'Objective', color: '#ffcf3a', big: true, show: () => !!this.goal };
   constructor(private game: Game) {
     const css = document.createElement('style');
     css.textContent = `
@@ -39,7 +42,19 @@ export class Guide implements System {
     this.arrow = this.mark.children[0] as HTMLElement; this.dist = this.mark.children[2] as HTMLElement;
     game.hud.hud.appendChild(this.mark);
     game.pois.push(this.poi);
+    this.router = new Router((k) => game.state.flag(k), () => game.state.d.level);
     game.addSystem(this);
+  }
+
+  /** Through the gates: the Blast Wall, the town walls and the band ridges are only crossed at their gates. */
+  private route(goal: Target | null): Target | null {
+    this.rest = 0;
+    const g = this.game, p = g.player.pos;
+    if (!goal || g.interior) return goal;
+    const hop = this.router.nextHop(p.x, p.z, goal.x, goal.z);
+    if (!hop.gate) return goal;
+    this.rest = Math.max(0, hop.left - Math.hypot(hop.x - p.x, hop.z - p.z));
+    return { x: hop.x, z: hop.z, label: hop.label };
   }
 
   private npcPos(id: string): Target | null {
@@ -121,9 +136,9 @@ export class Guide implements System {
   update(_dt: number, rdt: number) {
     const g = this.game;
     this.refreshT -= rdt;
-    if (this.refreshT <= 0) { this.refreshT = 0.5; this.target = this.pick(); if (this.target) { this.poi.x = this.target.x; this.poi.z = this.target.z; this.poi.label = this.target.label || 'Objective'; } g.hud.wayDock(true); }
+    if (this.refreshT <= 0) { this.refreshT = 0.5; this.goal = this.pick(); this.target = this.route(this.goal); if (this.goal) { this.poi.x = this.goal.x; this.poi.z = this.goal.z; this.poi.label = this.goal.label || 'Objective'; } g.hud.wayDock(true); }
     const t = this.target, p = g.player.pos;
-    const d = t ? Math.hypot(t.x - p.x, t.z - p.z) : 0;
+    const d = t ? Math.hypot(t.x - p.x, t.z - p.z) + this.rest : 0;
     if (!t || d < 7 || !g.started || g.cameraRig.cine || g.panels?.isOpen || g.player.dead) { this.mark.classList.remove('on'); g.hud.wayDocked(false); return; }
     const y = t.y ?? g.terrain.h(t.x, t.z) + 2.2;
     _v.set(t.x, y, t.z).applyMatrix4(g.camera.matrixWorldInverse);

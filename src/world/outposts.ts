@@ -285,7 +285,7 @@ const FIELD_FOLK: Record<string, FolkDef> = {
     'The Titan is down that road. Do not go yet. Go when you are bored of living.',
     'My hair stood up in the spring and never came down. Occupational.',
   ] },
-  vend_b6: { name: 'Rook', title: 'Supplies', look: LOOK({ skin: 0x7a4a30, hair: 0x25201e, hairStyle: 'braid', top: 0x2b7f8c, bottom: 0x23272e, accent: 0x5ef0ff, hat: 'hood', extra: ['backpack', 'pauldron'], height: 1.02, build: 1.05 }), lines: [
+  vend_b6: { name: 'Wick', title: 'Supplies', look: LOOK({ skin: 0x7a4a30, hair: 0x25201e, hairStyle: 'braid', top: 0x2b7f8c, bottom: 0x23272e, accent: 0x5ef0ff, hat: 'hood', extra: ['backpack', 'pauldron'], height: 1.02, build: 1.05 }), lines: [
     'Last stop before the Titan. Prices are final. So are some customers.',
     'Kits. Buy kits. I am not saying it twice. I am saying it once, loudly.',
   ] },

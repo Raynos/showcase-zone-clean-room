@@ -361,7 +361,7 @@ window.__run = (async () => {
           // five throws that never light all three: it overloads
           for (let n = 0; n < s.heat; n++) {
             const cur = lit(); const k = [0, 1, 2].find((b) => !xor(cur, R[b]).every(Boolean));
-            await use(`fq_${q.id}_brk${k}`, n > 0); await wait(0.15);
+            await use(`fq_${q.id}_brk${k}`); await wait(0.15);
           }
           failed((lastFail(q.id, ts)[0] ?? 'no fail heard'));
           const l = F.runner.live.get(key); for (const m of (l?.mobs ?? []).filter((m) => m.alive)) await kill(m);
@@ -437,9 +437,14 @@ window.__run = (async () => {
         const e = z.ev;
         if (!e) r = 'no drop';
         else {
-          // the guards walk in from the grass once someone is near the crate
+          // the guards walk in from the grass once someone is near the crate. The driver's own
+          // mobs.clear() earlier can leave a guard list that never comes back, so walk off past
+          // the drop's reach first (it stands its guards down) and come back
+          tp(e.x - 175, e.z); await wait(1.2);
           tp(e.x + 4, e.z + 4);
           for (let n = 0; n < 6 && e.phase !== 'clear'; n++) {
+            // guards only walk in while the player is not already in a fight
+            for (const m of g.mobs.list.filter((m) => m.alive && m.aggro && !e.guards.includes(m))) await kill(m);
             await until(() => e.guards.some((m) => m.alive), 6);
             for (const m of [...e.guards]) if (m.alive) await kill(m);
             await until(() => e.phase === 'clear', 2);

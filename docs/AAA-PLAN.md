@@ -727,6 +727,146 @@ https://claude.ai/artifact/RFxoYGFJqrCfXdwRG3ptq2. Progress (start, now,
 target): https://claude.ai/artifact/Pk5HQvGonCtTGq9VWkPJSq, republished
 after each batch by re-shooting with `tools/golden.sh all --out <scratch>`.
 
+### Field outposts and quests (2026-11-25)
+
+Committed in `6df1787` and later. Data: `src/data/outposts.ts` and
+`src/data/quests-field.ts`. Camps: `src/world/outposts.ts`. Travel:
+`src/systems/travel.ts`. Quest steps, boards and save: under
+`src/systems/objectives/`. Driver: `tools/field/` (`run.sh`, `drive.js`).
+
+**Camps.** There is one camp per band:
+
+| Band | Camp           | At         | Giver, vendor        | Static tris |
+|------|----------------|------------|----------------------|------------:|
+| 1    | Tallyline Post | 64, -14    | Tally Brock, Dobbs   |       5,925 |
+| 2    | Berth Nine     | 76, 101    | Marlo Venn, J. Pike  |       5,919 |
+| 3    | Benchmark Camp | 172, 132   | Ilse Marrow, Fennick |       5,859 |
+| 4    | Cinder Gate    | 198, -17   | Okoro Hale, C. Ember |       5,775 |
+| 5    | Lineman's Rest | 186, -166  | Pell Quarry, Tamsy   |       5,701 |
+| 6    | Last Light     | 22, -100   | Sorrel Vey, Wick     |       5,667 |
+
+Each camp has:
+- a 14 m lattice mast with a lamp head and upper frames in the band
+  colour, and a halo at night;
+- a fast-travel terminal, a giver's table, a supply stall (kits and
+  bolts), the band's daily board and a bench that rests the clock to
+  dusk;
+- sandbags, a floodlight and two lamps;
+- a map and minimap marker;
+- a safe ring 12 to 13 m across. Inside it combat is off, robots stand
+  down, and robots that walk in are pushed back out to the edge.
+
+Geometry and draw calls:
+- The static geometry goes into the world chunks. The camps and the quest
+  props together add 42,950 triangles.
+- The two people at each camp are ordinary town NPCs, distance-culled the
+  same way. Together they make at most 6 draw calls (main and shadow).
+- A/B against `?noposts` with the original dressing, portrait 402x874,
+  `?q=medium`, standing in each yard, worst of 12 yaws:
+  - with the camps: 200 to 222 calls;
+  - without: 189 to 198 calls.
+- At Benchmark Camp and Tallyline Post, a per-owner tally puts about 2.5
+  calls a frame on chunk shadow casts and up to 1.4 on chunk main draws,
+  beyond the people.
+- Making the camps' props shadowless did not change that, so the cause
+  is not yet found.
+- Landscape (874x402) with the camps: 230 to 253 calls.
+
+**Fast travel.**
+- A post unlocks when the player walks within 10 m of it.
+- The terminal lists every unlocked post plus the town post inside the
+  east gate.
+- Travel is refused:
+  - indoors;
+  - in combat;
+  - during a field run, escort or defence;
+  - for 8 s after the last jump;
+  - when the world's own return block applies.
+- A death respawns the player at the nearest unlocked post when it is
+  nearer than the default point.
+
+**Quests.** There are fifteen quests. None is a kill count. XP is minutes
+× killXp(level) × `XP_PER_MIN`.
+
+| Band | Quest           | Kind                         | Min |    XP |
+|------|-----------------|------------------------------|----:|------:|
+| 1    | Count the Holes | scope 3 nests (first person) | 1   |   130 |
+| 1    | Lid on It       | sabotage 3 burrows, elite    | 1.5 |   220 |
+| 2    | Dead Freight    | escort Hob, 2 ambushes       | 2.5 |   430 |
+| 2    | Forklift Union  | defend 3 waves, elite        | 2.5 |   510 |
+| 3    | True North      | lamp-order puzzle            | 1.5 |   420 |
+| 3    | Glass Thief     | sign trail, named rare       | 2   |   640 |
+| 3    | Level Ground    | weak points in order, elite  | 1.5 |   560 |
+| 4    | Hot Delivery    | timed foot run, 14 s         | 1   |   440 |
+| 4    | Cold Line       | breaker puzzle               | 1.5 |   770 |
+| 4    | End of Shift    | time clock, Shift Boss Slag  | 1   |   600 |
+| 5    | Calibration     | riveter weak points          | 1.5 | 1,060 |
+| 5    | Last Reel       | escort Dace, elite           | 2   | 1,650 |
+| 6    | Charge Run      | horse run, 4 gates, 30 s     | 1   | 1,120 |
+| 6    | Drop Zone       | cratefall: call, cells, open | 2   | 2,630 |
+| 6    | Pink Slip       | photo unseen, elite          | 1.5 | 2,310 |
+
+Every band's chain ends at its gate elite. Each failure puts back only the
+objective it belongs to, and the quest stays in hand:
+- spotted while scoping;
+- a death while sealing;
+- the escort down;
+- leaving the stack;
+- the clock running out;
+- the rare escaping, which sends the player back one sign;
+- touching the wrong stake;
+- an overload;
+- a weak point out of order;
+- a dismount;
+- the cells burning out;
+- being seen by the lens.
+
+**Field XP share of each band** (band XP from `xpToNext`):
+
+| Band | Band XP | Field XP | Share |
+|------|--------:|---------:|------:|
+| 1    |   1,350 |      350 | 25.9% |
+| 2    |   5,380 |      940 | 17.5% |
+| 3    |  11,780 |    1,620 | 13.8% |
+| 4    |  23,430 |    1,810 |  7.7% |
+| 5    |  45,140 |    2,710 |  6.0% |
+| 6    |  84,010 |    6,060 |  7.2% |
+
+Daily board jobs pay 0.4 to 0.6 minutes each, with two a band a day,
+counted as `contract`.
+
+**Tracking.**
+- Accepting a quest tracks it.
+- Every field objective gives the waypoint a point, an area (`r`) or a
+  moving target.
+- Inside the vault the waypoint points at the Warden's hall.
+- On Night Shift by day it points at the nearest bench.
+- The waypoint follows the walls (`src/systems/route.ts`). The town, the
+  open west and the six bands meet only at gates: the east gate, the
+  town's four other gates and the band gates. When the objective is in
+  another region, the diamond and the edge arrow point at the near side
+  of the next gate, then at its far side, then onward. The distance shown
+  is the whole way. Sealed band gates are used only when every way round
+  is sealed too. The map star stays on the objective.
+- Route checks, from a fresh save in portrait, following only the arrow:
+  - from Odell to the first mite camp it went plaza, east gate, camp in
+    about 12 s, without stalling;
+  - from Tallyline Post to Hob in band 2 it went through the band gate.
+
+**Verified.** `tools/field/run.sh` drove all fifteen quests:
+- first on a fresh save, then on a save rewritten as pre-field (no `field`
+  block, no tracked quest);
+- each quest was taken through the giver's conversation, failed once and
+  retried, finished, and turned in at the camp;
+- the XP and scrip paid matched each quest's definition in every run.
+
+The driver uses the game's own prompts, conversation taps, first-person
+view and stick. It takes these shortcuts:
+- it moves between places by teleport;
+- it defeats robots through `combat.strikeTarget`;
+- it hits weak points by name;
+- god mode is on except for the deaths under test.
+
 ## 7. Risks
 
 - **Phone reality.** Every performance number is from desktop Chrome. The
