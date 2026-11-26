@@ -183,7 +183,7 @@ export const ENEMIES: Record<RobotKind, EnemyDef> = {
 /** Named elites. Gate elites open their band gate when first beaten. */
 export interface EliteDef { id: string; name: string; kind: RobotKind; level: number; variant: RobotVariant; x: number; z: number; gate?: string; night?: boolean; title: string; respawn: number; hpMul?: number; scale?: number; mech?: MechDef }
 export const ELITES: EliteDef[] = [
-  { id: 'gatecrasher', name: 'Gatecrasher', kind: 'mite', level: 3, variant: 'elite', x: 65, z: 68, gate: 'g12', title: 'Bane of Boxes', respawn: 300, scale: 2.1, mech: 'brood', hpMul: 1.8 },
+  { id: 'gatecrasher', name: 'Gatecrasher', kind: 'mite', level: 3, variant: 'elite', x: 65, z: 74, gate: 'g12', title: 'Bane of Boxes', respawn: 300, scale: 2.1, mech: 'brood', hpMul: 1.8 },
   { id: 'big_pallet', name: 'Big Pallet', kind: 'pallet', level: 6, variant: 'elite', x: 108, z: 165, gate: 'g23', title: 'Forklift Certified', respawn: 300, mech: 'ram' },
   { id: 'plumb_prime', name: 'Plumb Line Prime', kind: 'drone', level: 9, variant: 'elite', x: 185, z: 93, gate: 'g34', title: 'Level Headed', respawn: 300, mech: 'plumb', hpMul: 2 },
   { id: 'slag_boss', name: 'Shift Boss Slag', kind: 'welder', level: 12, variant: 'elite', x: 185, z: -68, gate: 'g45', title: 'Union Buster', respawn: 300, mech: 'plate' },

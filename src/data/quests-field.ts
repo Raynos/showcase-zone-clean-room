@@ -6,14 +6,24 @@
  * objective when the attempt fails, so the quest stays in hand to retry on the spot.
  *
  * XP is the quest's own minutes (time spent on the job itself, not on the robots it puts in the way,
- * which pay their own kill XP) at the band's rate: killXp(level) * XP_PER_MIN a minute.
+ * which pay their own kill XP) at the band rate, killXp(level) * xpPerMin(level) a minute, scaled by band below.
  */
-import { XP_PER_MIN, killXp } from './balance';
+import { killXp, xpPerMin } from './balance';
 import type { QuestDef } from './quests';
 import type { RobotKind } from '../entities/robots/types';
 
 /** XP for `min` minutes of a job at `level` (the band's per-minute rate), to the nearest ten. */
-export const fieldXp = (level: number, min: number) => Math.round((killXp(level) * XP_PER_MIN * min) / 10) * 10;
+export const fieldXp = (level: number, min: number) => Math.round((killXp(level) * xpPerMin(level) * min) / 10) * 10;
+/**
+ * Field quests by band, as a multiple of their minutes' worth (QA pacing pass, 2026-11-25). Priced at
+ * full rate they were 26%, 17%, 14%, 8%, 6% and 7% of bands 1-6, on top of town quests, contracts and
+ * bounties that carried 42-57% of bands 2-3 (since trimmed to about 25%). Scaled so they bring about
+ * 5% of bands 1-3 (the town chain carries those) and 10% of bands 4-6 (where town quests thin out).
+ * A band's share does not depend on its rate: both are priced from xpPerMin. In bands 1-3 a job's
+ * minutes pay less than fighting, so a player who does them all takes about 2-3 minutes longer.
+ */
+export const FIELD_XP_SCALE = [0.19, 0.29, 0.36, 1.3, 1.65, 1.4];
+const fieldQuestXp = (band: number, level: number, min: number) => Math.round((fieldXp(level, min) * FIELD_XP_SCALE[band - 1]) / 10) * 10;
 
 type P = [number, number];
 export interface Wave { kind: RobotKind; n: number; level: number }
@@ -50,7 +60,7 @@ export type FieldStep =
 
 export interface FieldQuest extends QuestDef { band: number; steps: FieldStep[]; /** minutes the XP is priced at */ min: number }
 
-const F = (q: Omit<FieldQuest, 'tier' | 'xp'> & { xp?: number }): FieldQuest => ({ tier: q.band <= 2 ? 1 : q.band <= 4 ? 2 : 3, xp: fieldXp(q.level, q.min), ...q });
+const F = (q: Omit<FieldQuest, 'tier' | 'xp'> & { xp?: number }): FieldQuest => ({ tier: q.band <= 2 ? 1 : q.band <= 4 ? 2 : 3, xp: fieldQuestXp(q.band, q.level, q.min), ...q });
 const k = (id: string, i: number) => `flag:fq:${id}:${i}`;
 
 export const FIELD_QUESTS: FieldQuest[] = [

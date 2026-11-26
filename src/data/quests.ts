@@ -4,7 +4,10 @@
  *  collect:<itemId> (counted from the pack; consumed on turn-in when take=true)   flag:<key>   talk:<npcId>
  *
  * Quest XP is a share of the level the quest is offered at (questXp): milestones and direction, with
- * kills carrying the levelling (docs/AAA-PLAN.md, "Phase 9 pacing target").
+ * kills carrying the levelling (docs/AAA-PLAN.md, "Phase 9 pacing target"). The first level is the
+ * exception: "First Day on the Yard" pays most of it, so its five kills and hand-in reach level 2.
+ * From level 4 the shares were halved (QA, 2026-11-25): quests paid 17-22% of levels 4-9 to the bot,
+ * and with bounties and contracts that came to 42-57%, against the plan's 30%.
  */
 import { killXp, questXp } from './balance';
 import { ELITES } from './enemies';
@@ -24,7 +27,7 @@ const Q = (q: QuestDef) => q;
 /** quest1 = Yardmaster Odell (L1-6), quest2 = Chief Engineer Ines (L7-12), quest3 = Warden-Captain Brask (L13-20) */
 export const QUESTS: QuestDef[] = [
   // ---------------- tier 1: Yardmaster Odell ----------------
-  Q({ id: 'q_welcome', tier: 1, name: 'First Day on the Yard', giver: 'quest1', level: 1, xp: questXp(1, 0.25), scrip: 20, items: [['kit', 2]],
+  Q({ id: 'q_welcome', tier: 1, name: 'First Day on the Yard', giver: 'quest1', level: 1, xp: questXp(1, 0.85), scrip: 20, items: [['kit', 2]],
     intro: ['New hire! Good. Brasswick is the last quiet corner of the Proving Yard, and I mean to keep it that way.', 'The test robots east of the blast wall slipped their leash a season ago. Somebody has to put them back in their boxes. Today that is you.', 'Walk out the east gate and break five Crate Mites. They bite, so roll out of the way when they hop.'],
     mid: 'East gate, straight down the main street. Five Crate Mites. Roll when they hop.',
     outro: ['Five boxes, flat-packed. You will do.', 'Take these repair kits. Drink one when the health bar gets shy.'],
@@ -42,11 +45,11 @@ export const QUESTS: QuestDef[] = [
     intro: ['The south fence of the Crate Fields has a gate into the Pallet Docks. There is a problem sitting in front of it.', 'We call it the Gatecrasher. It is a Crate Mite the size of a wagon. Break it and the docks are open.'],
     mid: 'The Gatecrasher squats by the south gate of the Crate Fields. Watch its pounce.', outro: ['You flat-packed THAT? The docks are open, and so is my estimation of you.'],
     objectives: [{ on: 'kill:gatecrasher', n: 1, text: 'Gatecrasher destroyed' }] }),
-  Q({ id: 'q_docks', tier: 1, name: 'Dock Work', giver: 'quest1', level: 4, requires: ['q_gatecrasher'], xp: questXp(4, 0.25), scrip: 120,
+  Q({ id: 'q_docks', tier: 1, name: 'Dock Work', giver: 'quest1', level: 4, requires: ['q_gatecrasher'], xp: questXp(4, 0.13), scrip: 120,
     intro: ['Pallet Jacks. Forklifts with opinions. When one lowers its forks and the ground lights up, do not be standing on the lit bit.', 'Scrap eight of them.'],
     mid: 'Eight Pallet Jacks, in the docks south of the Crate Fields. Sidestep the charge.', outro: ['Eight fewer forklifts. The stable hand says the horses are sleeping better already.'],
     objectives: [{ on: 'kill:pallet', n: 8, text: 'Pallet Jacks scrapped' }] }),
-  Q({ id: 'q_bigpallet', tier: 1, name: 'Big Pallet', giver: 'quest1', level: 5, requires: ['q_docks'], xp: questXp(5, 0.35), scrip: 220, items: [['bolt_blast', 12]],
+  Q({ id: 'q_bigpallet', tier: 1, name: 'Big Pallet', giver: 'quest1', level: 5, requires: ['q_docks'], xp: questXp(5, 0.18), scrip: 220, items: [['bolt_blast', 12]],
     intro: ['The docks have a foreman of their own: Big Pallet. It guards the east gate to Plumb Heights.', 'Bring a friend. You have no friends here yet, so bring repair kits.'],
     mid: 'Big Pallet guards the gate at the east side of the Pallet Docks.', outro: ['Forklift certified! That is a real title now, check the contract board.', 'From here on you want Chief Engineer Ines. She handles the heights and the Slagworks. Tell her Odell sent you.'],
     objectives: [{ on: 'kill:big_pallet', n: 1, text: 'Big Pallet destroyed' }] }),
@@ -59,56 +62,56 @@ export const QUESTS: QuestDef[] = [
     mid: 'Mount Biscuit at the paddock gate, then follow the track round the lake.', outro: ['She likes you. Whistle for her anywhere west of the wall and she will come.'],
     objectives: [{ on: 'course:riding', n: 1, text: 'Finish a lap of the riding course' }], onDone: 'horse_whistle' }),
   // ---------------- tier 2: Chief Engineer Ines ----------------
-  Q({ id: 'q_heights', tier: 2, name: 'Look Up', giver: 'quest2', level: 7, requires: ['q_bigpallet'], xp: questXp(7, 0.2), scrip: 240,
+  Q({ id: 'q_heights', tier: 2, name: 'Look Up', giver: 'quest2', level: 7, requires: ['q_bigpallet'], xp: questXp(7, 0.1), scrip: 240,
     intro: ['Odell sent you? Then you can swing a blade. Can you hit something that hovers?', 'Plumb Drones keep their distance and drop on you when you look away. Ten of them. A bow or a crossbow will save your legs.'],
     mid: 'Ten Plumb Drones in Plumb Heights, east of the docks.', outro: ['Good. The survey line is clear.'],
     objectives: [{ on: 'kill:drone', n: 10, text: 'Plumb Drones downed' }] }),
-  Q({ id: 'q_lenses', tier: 2, name: 'Glass Eyes', giver: 'quest2', level: 7, requires: ['q_bigpallet'], xp: questXp(7, 0.12), scrip: 300,
+  Q({ id: 'q_lenses', tier: 2, name: 'Glass Eyes', giver: 'quest2', level: 7, requires: ['q_bigpallet'], xp: questXp(7, 0.06), scrip: 300,
     intro: ['I need drone optics for the beacon project. Five Focus Lenses, unscratched if you can manage it.'],
     mid: 'Five Focus Lenses from Plumb Drones.', outro: ['These will do nicely. Keep the change.'],
     objectives: [{ on: 'collect:lens', n: 5, text: 'Focus Lenses', take: true }] }),
-  Q({ id: 'q_prime', tier: 2, name: 'Plumb Line Prime', giver: 'quest2', level: 8, requires: ['q_heights'], xp: questXp(8, 0.3), scrip: 380,
+  Q({ id: 'q_prime', tier: 2, name: 'Plumb Line Prime', giver: 'quest2', level: 8, requires: ['q_heights'], xp: questXp(8, 0.15), scrip: 380,
     intro: ['The drones answer to one unit: Plumb Line Prime. It hangs over the north gate of the heights, the way into the Slagworks.', 'Ground it.'],
     mid: 'Plumb Line Prime hovers by the gate between Plumb Heights and the Slagworks.', outro: ['Level headed. Ha. The Slagworks are open, and hotter than you would like.'],
     objectives: [{ on: 'kill:plumb_prime', n: 1, text: 'Plumb Line Prime grounded' }] }),
-  Q({ id: 'q_slag', tier: 2, name: 'Hot Work', giver: 'quest2', level: 10, requires: ['q_prime'], xp: questXp(10, 0.25), scrip: 460,
+  Q({ id: 'q_slag', tier: 2, name: 'Hot Work', giver: 'quest2', level: 10, requires: ['q_prime'], xp: questXp(10, 0.13), scrip: 460,
     intro: ['Welder Units. Do not stand in the cone. I should not have to say that, and yet.', 'Twelve of them, and bring me four Power Cells from the wreckage.'],
     mid: 'Twelve Welder Units and four Power Cells from the Slagworks.', outro: ['You smell like a foundry. Well done.'],
     objectives: [{ on: 'kill:welder', n: 12, text: 'Welder Units quenched' }, { on: 'collect:cell', n: 4, text: 'Power Cells', take: true }] }),
-  Q({ id: 'q_vault', tier: 2, name: 'The Training Vault', giver: 'quest2', level: 10, requires: ['q_prime'], xp: questXp(10, 0.4), scrip: 900, items: [['core', 1]],
+  Q({ id: 'q_vault', tier: 2, name: 'The Training Vault', giver: 'quest2', level: 10, requires: ['q_prime'], xp: questXp(10, 0.2), scrip: 900, items: [['core', 1]],
     intro: ['Under the Slagworks is the Training Vault: where we used to certify new hires. A puzzle, a fight, a climb, an examiner.', 'The examiner is the Vault Warden, and it no longer accepts resignations. Here is a keycard for the portal. Go and get certified.'],
     mid: 'The vault portal stands in the Slagworks, east end of the main road. Defeat the Vault Warden.', outro: ['Certified. Officially. I will even sign it.', 'Warden-Captain Brask will want you for the far bands now.'],
     objectives: [{ on: 'kill:warden', n: 1, text: 'Vault Warden defeated' }], onAccept: 'vault_key' }),
-  Q({ id: 'q_nightshift', tier: 2, name: 'Night Shift', giver: 'quest2', level: 8, requires: ['q_heights'], xp: questXp(8, 0.15), scrip: 420,
+  Q({ id: 'q_nightshift', tier: 2, name: 'Night Shift', giver: 'quest2', level: 8, requires: ['q_heights'], xp: questXp(8, 0.08), scrip: 420,
     intro: ['After dark the yard runs a second shift. Tougher units, running hot. I want to know how tough.', 'Break eight night-shift robots. Any kind. If it is still day, sit on Old Bram\'s bench by the plaza well, or the bench at any field outpost, and wait for dusk.'],
     mid: 'Eight night-shift robots, any kind. They only clock on after dark.', outro: ['Thirty-five percent tougher. I had guessed thirty. Thank you for the data.'],
     objectives: [{ on: 'kill:any:night', n: 8, text: 'Night-shift robots broken' }] }),
-  Q({ id: 'q_storm', tier: 2, name: 'Storm Hour', giver: 'quest2', level: 9, requires: ['q_lenses'], xp: questXp(9, 0.2), scrip: 700, items: [['bolt_shock', 20]],
+  Q({ id: 'q_storm', tier: 2, name: 'Storm Hour', giver: 'quest2', level: 9, requires: ['q_lenses'], xp: questXp(9, 0.1), scrip: 700, items: [['bolt_shock', 20]],
     intro: ['The beacons are ready. Four of them, one on each side of the yard. When they are lit, the storm grid holds and the weather stays ours.', 'The moment I throw this switch the grid drops and the storm comes in. It will not lift until all four are burning. Ready?'],
     mid: 'Light the four storm beacons: north road, south road, the lake shore and the Slagworks ridge.', outro: ['Listen. No thunder. You did that.'],
     objectives: [{ on: 'use:beacon', n: 4, text: 'Storm beacons lit' }], onAccept: 'storm_start', onDone: 'storm_end' }),
   // ---------------- tier 3: Warden-Captain Brask ----------------
-  Q({ id: 'q_row', tier: 3, name: 'Rivet Row', giver: 'quest3', level: 13, requires: ['q_vault'], xp: questXp(13, 0.25), scrip: 700,
+  Q({ id: 'q_row', tier: 3, name: 'Rivet Row', giver: 'quest3', level: 13, requires: ['q_vault'], xp: questXp(13, 0.13), scrip: 700,
     intro: ['Ines says you are certified. We will see. Rivet Row is a firing line: Riveters walk their shots onto you. Keep moving.', 'Fourteen Riveters.'],
     mid: 'Fourteen Riveters in Rivet Row, north of the Slagworks.', outro: ['Still in one piece. Hm.'],
     objectives: [{ on: 'kill:riveter', n: 14, text: 'Riveters silenced' }] }),
-  Q({ id: 'q_reliable', tier: 3, name: 'Old Reliable', giver: 'quest3', level: 14, requires: ['q_row'], xp: questXp(14, 0.35), scrip: 900,
+  Q({ id: 'q_reliable', tier: 3, name: 'Old Reliable', giver: 'quest3', level: 14, requires: ['q_row'], xp: questXp(14, 0.18), scrip: 900,
     intro: ['Old Reliable has held the west gate of Rivet Row since before the breakout. It has never missed a shift.', 'Make it miss one.'],
     mid: 'Old Reliable guards the gate between Rivet Row and the Arc Field.', outro: ['Never thought I would see that gate open again.'],
     objectives: [{ on: 'kill:old_reliable', n: 1, text: 'Old Reliable retired' }] }),
-  Q({ id: 'q_arc', tier: 3, name: 'Grounded', giver: 'quest3', level: 16, requires: ['q_reliable'], xp: questXp(16, 0.25), scrip: 1100,
+  Q({ id: 'q_arc', tier: 3, name: 'Grounded', giver: 'quest3', level: 16, requires: ['q_reliable'], xp: questXp(16, 0.13), scrip: 1100,
     intro: ['Arc Sentries. When the ring comes, jump it. When the line lights, leave it.', 'Twelve.'],
     mid: 'Twelve Arc Sentries in the Arc Field.', outro: ['Good. Your hair will settle in a day or two.'],
     objectives: [{ on: 'kill:sentry', n: 12, text: 'Arc Sentries grounded' }] }),
-  Q({ id: 'q_gauntlet', tier: 3, name: 'The Gauntlet', giver: 'quest3', level: 16, requires: ['q_reliable'], xp: questXp(16, 0.3), scrip: 1500, items: [['core', 2]],
+  Q({ id: 'q_gauntlet', tier: 3, name: 'The Gauntlet', giver: 'quest3', level: 16, requires: ['q_reliable'], xp: questXp(16, 0.15), scrip: 1500, items: [['core', 2]],
     intro: ['In the far corner of the Arc Field are three sealed courts. We built them to test weapons. The robots use them to test us.', 'Five waves. Survive them and the old service road to the Titan\'s arena unlocks.'],
     mid: 'The gauntlet stands in the north-west of the Arc Field. Clear all five waves.', outro: ['Five waves. Then the Titan road is open, and may fortune help us all.'],
     objectives: [{ on: 'flag:gauntlet_clear', n: 1, text: 'Clear the gauntlet' }] }),
-  Q({ id: 'q_foreman', tier: 3, name: 'Middle Management', giver: 'quest3', level: 17, requires: ['q_arc'], xp: questXp(17, 0.3), scrip: 1600,
+  Q({ id: 'q_foreman', tier: 3, name: 'Middle Management', giver: 'quest3', level: 17, requires: ['q_arc'], xp: questXp(17, 0.15), scrip: 1600,
     intro: ['Foreman Unit 7 runs the whole east half from a yard near the Titan gate. Hard hat. Big wrench. Bigger opinion of itself.', 'Fire it.'],
     mid: 'Foreman Unit 7 patrols near the Titan gate in the south of the Arc Field.', outro: ['Unit 7, terminated with cause. The shortcut gate back to the Crate Fields is yours.'],
     objectives: [{ on: 'kill:foreman', n: 1, text: 'Foreman Unit 7 dismissed' }] }),
-  Q({ id: 'q_titan', tier: 3, name: 'Cratefall', giver: 'quest3', level: 18, requires: ['q_gauntlet'], xp: questXp(18, 0.25), scrip: 5000, items: [['heartcrate', 1]],
+  Q({ id: 'q_titan', tier: 3, name: 'Cratefall', giver: 'quest3', level: 18, requires: ['q_gauntlet'], xp: questXp(18, 0.13), scrip: 5000, items: [['heartcrate', 1]],
     intro: ['It started with one crate that would not stay stacked. Now it is fifteen metres tall and it has an arena.', 'The Crate Titan. Behind the boss portal at the end of the Titan road. There is nothing left to teach you. Go and end this.'],
     mid: 'The boss portal is at the end of the Titan road, south-west Arc Field. Defeat the Crate Titan.', outro: ['It is down. It is actually down.', 'Brasswick owes you everything. The yard is yours, champion.'],
     objectives: [{ on: 'kill:titan', n: 1, text: 'Crate Titan destroyed' }] }),
@@ -141,8 +144,9 @@ export const CONTRACTS: ContractDef[] = [
 ];
 /**
  * Contract XP follows the pacing curve rather than the numbers above: a hunt pays 30% on top of the
- * kills it counted (a rare counts as the 3.6 commons it is worth), a WANTED poster a tenth of a level
- * at its target's level. Contracts are mostly about scrip, trophies and titles.
+ * kills it counted (a rare counts as the 3.6 commons it is worth), a WANTED poster a twentieth of a
+ * level at its target's level (a tenth gave 2,460 XP for an over-level Shift Boss Slag at level 9).
+ * Contracts are mostly about scrip, trophies and titles.
  */
 {
   const HUNT_LEVEL: Record<string, number> = { mite: 2, pallet: 5, drone: 8, welder: 11, riveter: 14, sentry: 17, 'any:rare': 10, 'any:night': 10 };
@@ -150,7 +154,7 @@ export const CONTRACTS: ContractDef[] = [
   for (const c of CONTRACTS) {
     const hunt = HUNT_LEVEL[c.target];
     if (hunt) c.xp = c.tiers.map((n) => Math.round((n * killXp(hunt) * (c.target === 'any:rare' ? 3.6 : 1) * 0.3) / 10) * 10);
-    else if (WANTED_LEVEL[c.target]) c.xp = [questXp(WANTED_LEVEL[c.target], 0.1)];
+    else if (WANTED_LEVEL[c.target]) c.xp = [questXp(WANTED_LEVEL[c.target], 0.05)];
   }
 }
 export const NPC_NAMES: Record<string, { name: string; title: string }> = {

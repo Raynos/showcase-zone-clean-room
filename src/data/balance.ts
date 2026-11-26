@@ -10,12 +10,27 @@ export const PACE_MIN = [0, 2, 3, 5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 1
  * What a minute of that play is worth, in kills of one common robot at the player's own level
  * (killXp). Kills (with streaks, camp clears and champions) are meant to bring in about 70% of it,
  * quests, bounties, contracts, events and finds the rest. Calibrated against the bot.
+ * XP_PER_MIN is the Crate Fields rate; past it the bot earns far more a minute (streaks held at
+ * x1.6, camp clears, bounties, ten kills a minute), so each band has its own measured rate.
  */
 export const XP_PER_MIN = 10.7;
-/** XP needed to go from level L to L+1: PACE_MIN minutes of play at XP_PER_MIN. */
+/**
+ * The rate by band, measured with tools/bot without boost (2026-11-25, QA). At 10.7: levels 1-3
+ * took 8.2 bot minutes of 10, levels 4-6 11.7 of 26, levels 7-9 19.9 of 36. At 30 and 27.5: levels
+ * 4-6 took 24.9 of 26 and levels 7-9 39.5 of 36 (33.5 without two bot stalls in town), but kills
+ * brought only 57% and 42% of the XP. Quest shares from level 4, WANTED posters and bounties were
+ * then halved and these rates set so kills carry about 70% at the measured kill rate (6.3 a minute
+ * in the Heights, 12 in the Docks). That last step is worked out from the runs, not re-run. Band 1
+ * went from 10.7 to 11.5 when "First Day on the Yard" was lifted to most of level 1. Bands 10-20 are
+ * not measured and take the band-3 rate.
+ */
+export const XP_PER_MIN_BAND = [11.5, 23, 18, 18, 18, 18, 18];
+/** The rate for climbing out of `level` (its band: 1-3, 4-6, ... 19). */
+export const xpPerMin = (level: number) => XP_PER_MIN_BAND[Math.min(6, Math.floor((Math.max(1, level) - 1) / 3))];
+/** XP needed to go from level L to L+1: PACE_MIN minutes of play at its band's rate. */
 export function xpToNext(level: number): number {
   if (level >= MAX_LEVEL) return Infinity;
-  return Math.round((killXp(level) * PACE_MIN[level] * XP_PER_MIN) / 10) * 10;
+  return Math.round((killXp(level) * PACE_MIN[level] * xpPerMin(level)) / 10) * 10;
 }
 /** A quest's XP: a share of the level it is offered at. Quests are milestones, not the supply. */
 export const questXp = (level: number, share: number) => Math.round((xpToNext(level) * share) / 10) * 10;
