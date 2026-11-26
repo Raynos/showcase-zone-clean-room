@@ -33,6 +33,21 @@
       return 'sizing';
     },
     /**
+     * Is this control the thing under its own centre? An invisible layer over it (a closed sheet whose
+     * body still takes input, a veil that never left) passes every other check and eats every tap. The
+     * answer is what `document.elementFromPoint` says, which is what a finger or a mouse gets. Returns
+     * the name of what is in the way, or '' when the control is on top (or under `menu`, an open menu
+     * that is allowed to lie over it).
+     */
+    under(e, menu) {
+      const r = e.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+      if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return '';
+      const hit = document.elementFromPoint(x, y);
+      if (hit && (hit === e || e.contains(hit) || (menu && hit.closest(menu)))) return '';
+      if (!hit) return 'nothing';
+      return (hit.id ? '#' + hit.id : '') + (typeof hit.className === 'string' && hit.className ? '.' + hit.className.trim().split(/\s+/).slice(0, 2).join('.') : '') || hit.tagName.toLowerCase();
+    },
+    /**
      * Every visible HUD box: each slot's content, each action button, the stick's rest ring, the
      * frame-rate digits. Then: pairs that overlap, boxes off screen, boxes in the unsafe bands
      * (notch, home indicator), boxes in the clear centre of a landscape or desktop screen (30 to
@@ -115,6 +130,25 @@
         const lane = { x: mid.x, y: Hh * 0.28, w: mid.w, h: Hh * 0.47 };
         for (const u of units) { const m = u.name === 'banner' ? lane : mid; if (!ok.has(u.name) && ov(u, m) > 6) issues.push({ kind: 'middle', what: u.name, px: Math.round(ov(u, m)) }); }
       }
+      // Every control is the element under its own centre. A control here is anything the HUD grants input to:
+      // an element with pointer-events on under a parent that has them off (the HUD's layers pass touches through).
+      // While something modal is up (the quick wheel, the open tuning choice, a panel) only what is in it counts.
+      const ui = document.getElementById('ui');
+      const one = (q) => document.querySelector(q);
+      const modal = one('.pn-modal.on') || one('.qw.on') || one('.gr-tune.open') || one('.pn-title:not(.out)') || one('.pn.on');
+      let controls = 0;
+      for (const e of (modal || ui).querySelectorAll('*')) {
+        // (a scrim is there to be tapped around the sheet, not at its own centre)
+        if (e.closest('#dev, .perf') || e.matches('.pn-scrim') || (!modal && e.closest('.pn'))) continue;
+        const cs = getComputedStyle(e);
+        if (cs.pointerEvents === 'none' || !e.parentElement || getComputedStyle(e.parentElement).pointerEvents !== 'none') continue;
+        const r = e.getBoundingClientRect();
+        if (r.width < 8 || r.height < 8 || !vis(e)) continue;
+        controls++;
+        // (the open tray is a menu the player asked for: what it lies over for that moment is behind it, not lost)
+        const by = HM.under(e, '.tray.on');
+        if (by) issues.push({ kind: 'covered', what: (e.dataset.act || String(e.className).split(' ').slice(0, 2).join('.')) + ' is under ' + by, at: [r.left, r.top, r.width, r.height].map(Math.round) });
+      }
       // one system for transient feedback: nothing may draw its own toast, card or meter (docs/HUD.md, "Overlays")
       for (const e of document.querySelectorAll('.toast, .toasts > *, .banner.on, .coach.on, .gr-streak.on')) if (vis(e)) issues.push({ kind: 'stray', what: e.className });
       // a fight's budget for the text column: two feed lines
@@ -142,11 +176,12 @@
         const cap = hud.stance === 'shooter' ? 9 : 7;
         if (cluster > cap) issues.push({ kind: 'budget', what: cluster + ' buttons in the cluster, the cap is ' + cap });
       }
-      return JSON.stringify({ layout: hud.layout.id, w: W, h: Hh, safe: S, ms: +hud.lastLayoutMs.toFixed(2), boxes: units.length, cluster, chips, touch, ctx: hud.ctx, issues });
+      return JSON.stringify({ layout: hud.layout.id, w: W, h: Hh, safe: S, ms: +hud.lastLayoutMs.toFixed(2), boxes: units.length, cluster, chips, touch, controls, ctx: hud.ctx, issues });
     },
     /**
      * A panel, a conversation, a modal, the open tuning choice or the title: every visible box inside
-     * the open surface (docs/HUD.md, "Panels"). Issues: a surface or a control off the screen (clipped),
+     * the open surface (docs/HUD.md, "Panels"). Issues: a control that is not the element under its own
+     * centre (covered: see `under`), a surface or a control off the screen (clipped),
      * content wider than its scroller (overflow), text cut short (cut), type under 11 px (tiny), touch
      * targets under 44 pt, or 24 px with a mouse (small), a control or text under the notch or the home
      * indicator (unsafe), and more than one primary action in view (primary).
@@ -174,6 +209,7 @@
       const name = (e) => (e.dataset.a ? e.dataset.a + (e.dataset.v ? ':' + e.dataset.v : '') : e.dataset.t || e.dataset.m || e.dataset.s || String(e.className).split(' ').slice(0, 2).join('.')) || e.tagName;
       const roots = [...document.querySelectorAll('.pn.on .pn-sheet, .pn-modal.on .pn-mcard, .pn-title, .gr-tune.open .bev, .death.on, .note.head.level.on')].filter((e) => vis(e) && e.getBoundingClientRect().top < Hh - 4);
       let targets = 0, prim = 0, boxes = 0;
+      const modalUp = !!document.querySelector('.pn-modal.on');
       for (const root of roots) {
         const rr = root.getBoundingClientRect();
         if (rr.left < -1 || rr.top < -1 || rr.right > W + 1 || rr.bottom > Hh + 1) push('clipped', 'surface ' + name(root), rr);
@@ -203,6 +239,8 @@
           }
           if (hit) {
             targets++;
+            // it is the element under its own centre (a confirmation over the sheet covers the sheet on purpose)
+            if (!modalUp || e.closest('.pn-modal')) { const by = HM.under(e); if (by) push('covered', name(e) + ' is under ' + by, r); }
             const m = Math.min(r.width, r.height), need = touch ? 44 : 24;
             if (m < need - 0.5) push('small', name(e), r, m);
             if (e.matches('.pn-btn.pri, .tt-btn.pri') && !e.classList.contains('off')) prim++;
