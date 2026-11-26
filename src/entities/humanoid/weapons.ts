@@ -47,6 +47,50 @@ const SHAPE: Record<WeaponId, { tip: V3; base: V3; bow?: { y: number; z: number 
 /** Draw length from brace to full draw (m). */
 const DRAW_LEN = 0.44;
 
+/** The bone tag a weapon has inside the adventurers' model (art/people/adv.py `bone_tag`): shop_blade -> WshopBlade. */
+export function weaponTag(id: WeaponId): string {
+  const p = id.split('_');
+  return 'W' + p[0] + p.slice(1).map((x) => x.charAt(0).toUpperCase() + x.slice(1)).join('');
+}
+
+/**
+ * A weapon that is part of its bearer's own model (the adventurers: one draw for body, kit and weapon).
+ * The same nodes as a weapon of its own, with nothing to draw: the rig carries the model's weapon bone
+ * to wherever `object` is held. `bones` are the bearer's, for a bow's string and arrow.
+ */
+export function makeWeaponNodes(id: WeaponId, bones: Record<string, THREE.Bone>): WeaponModel {
+  const kind = KIND[id] as Exclude<WeaponKind, 'none'>, shape = SHAPE[id];
+  const object = new THREE.Group();
+  object.name = `weapon:${id}`;
+  const tip = new THREE.Object3D(), base = new THREE.Object3D();
+  tip.position.set(...shape.tip); base.position.set(...shape.base);
+  object.add(tip, base);
+  const model: WeaponModel = { id, kind, object, tip, base };
+  for (const name of ['muzzle', 'sight', 'foregrip'] as const) {
+    const at = shape[name];
+    if (!at) continue;
+    const node = new THREE.Object3D();
+    node.name = name; node.position.set(...at);
+    object.add(node); model[name] = node;
+  }
+  const own = 'opt_' + weaponTag(id), nock = bones[own + '__nock'], arrow = bones[own + '__arrow'];
+  if (shape.bow && nock && arrow) {
+    const bw = shape.bow;
+    let last = -1;
+    model.setDraw = (draw: number) => {
+      const d = Math.max(0, Math.min(1, draw));
+      if (Math.abs(d - last) < 1e-4) return;
+      last = d;
+      const zn = bw.z - d * DRAW_LEN;
+      nock.position.z = zn;
+      arrow.scale.setScalar(d > 0.04 ? 1 : 1e-4);
+      tip.position.set(0, 0, zn);
+    };
+    model.setDraw(0);
+  }
+  return model;
+}
+
 export function makeWeaponModel(id: WeaponId): WeaponModel & { stats: { meshes: number; tris: number } } {
   const kind = KIND[id] as Exclude<WeaponKind, 'none'>, shape = SHAPE[id];
   const own = 'opt_' + id;

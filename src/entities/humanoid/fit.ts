@@ -11,8 +11,10 @@
 import * as THREE from 'three';
 import type { ModelInstance, Palette } from '../../gfx/models';
 import { SK } from './anim';
+import { COVERS_CROWN, COVERS_HEAD, KITS, tierOf } from './kits';
 import type { RibbonSpec } from './ribbon';
 import type { Face, FaceShape, HumanLook } from './types';
+import { weaponTag } from './weapons';
 
 const _c = new THREE.Color();
 export function shade(c: number, k: number, add = 0): number {
@@ -25,8 +27,12 @@ const CYAN = 0x3fe3ff, STEEL = 0xaab2bb, DARK = 0x2a2e35, LEATHER = 0x6b4a32, CR
 const EYES = [0x5a3a22, 0x6b4a2a, 0x3f6a4a, 0x3a5f86, 0x4a3324, 0x6f7a3a, 0x5a6e7a, 0x2f2018];
 
 export interface Fit {
-  model: 'rook' | 'folk';
+  model: 'rook' | 'folk' | 'adv';
   palette: Palette;
+  /** adventurers: the bone their built-in weapon rides, and the chains of bones their capes swing on */
+  weaponBone?: string; sway?: string[][];
+  /** beyond this many metres the model drops to its far level (default: by its size, gfx/models.ts) */
+  lodDist?: number;
   /** true for a bone whose geometry this look does not wear */
   hide(bone: string): boolean;
   /** frame multipliers */
@@ -110,6 +116,7 @@ export function fitLook(look: HumanLook): Fit {
       face: { jawW: 1.05, jawL: 1, chin: 1.03, cheek: 1, nose: 0.95, noseL: 1, ear: 1, earOut: 0, eye: 1.04, eyeTilt: 0.05, lidDrop: 0, browTilt: 0.04, browThick: 1.05, browY: 0, mouthW: 1, smile: 0.55, ...look.face },
     };
   }
+  if (look.kind === 'adventurer') return fitAdventurer(look, { skin, hair, top, bottom, accent, boots, b, bz, face, age, seed });
   const wears = new Set<string>();
   const hat = look.hat ?? 'none', style = look.hairStyle ?? 'short', covered = COVERS.has(hat);
   if (style !== 'bald') {
@@ -138,6 +145,47 @@ export function fitLook(look: HumanLook): Fit {
     backDepth: (ex.has('backpack') ? 0.3 : 0.165) * bz, headY: 0.15,
     ribbons: [],
     face,
+  };
+}
+
+/** Adventurers: a kit of shared parts over their own model, a weapon that is part of it, and trim by level. */
+function fitAdventurer(look: HumanLook, o: { skin: number; hair: number; top: number; bottom: number; accent: number; boots: number; b: number; bz: number; face: Face; age: string; seed: number }): Fit {
+  const kit = KITS[look.kit ?? 'recruit'];
+  const wears = new Set<string>(kit.wears);
+  for (const p of look.pieces ?? []) { if (p.startsWith('-')) wears.delete(p.slice(1)); else wears.add(p); }
+  for (const e of look.extra ?? []) wears.add(e);
+  const crown = [...wears].some((w) => COVERS_CROWN.has(w)), helm = [...wears].some((w) => COVERS_HEAD.has(w));
+  const style = look.hairStyle ?? 'short';
+  if (style !== 'bald' && !helm) {
+    if (style !== 'mohawk') wears.add('hairBase');
+    if (!crown || style === 'long' || style === 'ponytail' || style === 'braid') wears.add('hair' + cap(style === 'bun' || style === 'curly' ? 'short' : style));
+    if (!crown && style !== 'mohawk' && style !== 'swept') wears.add('hairTop');
+  }
+  if (o.age === 'elder') wears.add('lines');
+  if (look.weaponId) wears.add(weaponTag(look.weaponId));
+  // level: iron edging on a novice, brass from 8, gold from 14, when the inlays light as well
+  const tier = tierOf(look.level ?? 1);
+  const plate = look.plate ?? 0x8a939e, glow = look.glow ?? CYAN;
+  const pack = wears.has('bedroll') || wears.has('techpack');
+  const sway: string[][] = [];
+  if (wears.has('cape')) sway.push(['opt_cape_1', 'opt_cape_2', 'opt_cape_3']);
+  if (wears.has('cloak')) sway.push(['opt_cloak_1', 'opt_cloak_2']);
+  return {
+    model: 'adv',
+    palette: {
+      skin: o.skin, hair: o.hair, top: o.top, top2: look.top2 ?? shade(o.top, 0.72), bottom: o.bottom, cloth2: look.cloth2 ?? shade(o.accent, 0.55), accent: o.accent, boots: o.boots,
+      glove: shade(LEATHER, 0.62), iris: look.eyes ?? EYES[o.seed % EYES.length], leather: LEATHER, steel: STEEL, dark: DARK,
+      body: plate, body2: look.plate2 ?? shade(plate, 0.7),
+      trim: tier === 1 ? shade(plate, 0.6) : tier === 2 ? 0xc79a45 : 0xf6d268,
+      glow: tier === 3 ? glow : tier === 2 ? shade(glow, 0.16) : 0x14171b, glow2: tier === 1 ? 0xc77a2a : 0xffa53a,
+    },
+    hide: (bone) => bone.startsWith('opt_') && !wears.has(bone.split('_')[1]),
+    bw: o.b, bz: o.bz, limb: 1 + (o.b - 1) * 0.6, headScale: look.head ?? 1,
+    shoulderX: SK.shX * (1 + (o.b - 1) * 0.8), hipX: SK.hipX * (1 + (o.b - 1) * 0.5),
+    backDepth: (pack ? 0.31 : sway.length ? 0.25 : wears.has('quiver') ? 0.27 : 0.2) * o.bz, headY: 0.15,
+    ribbons: kit.scarf ? [{ n: 7, segLen: 0.1, w0: 0.04, w1: 0.07, color: o.accent, stripe: CREAM, anchor: [-0.06, 0.25, -0.13], stiff: 0.22, phase: (o.seed % 97) / 10 }] : [],
+    face: o.face,
+    weaponBone: 'wpn', sway, lodDist: 15,
   };
 }
 

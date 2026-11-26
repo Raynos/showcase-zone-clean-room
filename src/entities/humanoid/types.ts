@@ -146,9 +146,19 @@ export interface Face {
   mouthW: number; smile: number;
 }
 
+/** An adventurer's kit: armour, headgear, pack and cloth built from shared parts (kits.ts, art/people/adv.py). */
+export type KitId = 'recruit' | 'scout' | 'duelist' | 'tinker' | 'warden' | 'marksman' | 'lancer' | 'bulwark' | 'champion' | 'nightblade';
+
 export interface HumanLook {
-  /** preset body: the hero or a townsperson archetype */
-  kind: 'hero' | 'townsfolk';
+  /** preset body: the hero, a townsperson archetype, or another adventurer (a kit over the adventurers' model) */
+  kind: 'hero' | 'townsfolk' | 'adventurer';
+  /**
+   * Adventurers only. The kit worn; the weapon carried (it is part of the model, so the rig makes it: see
+   * HumanoidRig.weapon); the level, which sets how rich the trim is and whether the inlays are lit; the
+   * armour's plate colour and its second layer; the colour of the lit inlays; and pieces to add or (with a
+   * leading '-') leave off the kit.
+   */
+  kit?: KitId; weaponId?: WeaponId; level?: number; plate?: number; plate2?: number; glow?: number; pieces?: string[];
   skin?: number; hair?: number; hairStyle?: 'short' | 'swept' | 'bun' | 'mohawk' | 'bald' | 'long' | 'ponytail' | 'braid' | 'curly' | 'bob';
   top?: number; bottom?: number; accent?: number; boots?: number;
   /** iris colour; second shirt colour (yoke, collar); second trouser-family colour (vest, bib). Defaults derive from the others. */
@@ -178,6 +188,10 @@ export interface HumanoidRig {
   materials: WorldMaterial[];
   /** Parent a weapon model into the right place for its kind (in hand when pose.drawn, on the back otherwise). */
   setWeapon(model: WeaponModel | null): void;
+  /** The weapon that is part of this body's own model, already set (adventurers), or null. */
+  weapon?: WeaponModel | null;
+  /** Whether the body throws a sun shadow (default on). A crowd lets only its nearest. */
+  setShadow?(on: boolean): void;
   update(dt: number, pose: HumanPose): void;
   dispose(): void;
   /** Midpoint of the eyes in world space, as last posed (first person). */

@@ -22,6 +22,7 @@ import { applyFit, fitLook } from './fit';
 import { FpArms, fpHold, fpMove, fpPresent, fpShoulders, fpSteady } from './fpview';
 import { GunNodes, readNodes, shootPose } from './shootpose';
 import { basisYZ, solve2 as solve } from './ik';
+import { makeWeaponNodes } from './weapons';
 import { Ribbon } from './ribbon';
 import type { FpDraw, HumanLook, HumanPose, HumanoidRig, WeaponKind, WeaponModel } from './types';
 
@@ -105,7 +106,7 @@ export type HumanoidDevRig = HumanoidRig & {
 export function makeHumanoid(look: HumanLook): HumanoidDevRig {
   const fit = fitLook(look);
   // townsfolk throw their shadow from the far body; the hero's geometry is re-indexed for first person below, so it keeps one level
-  const inst = instantiate(fit.model, fit.palette, fit.hide, 2.4, { shadowDist: Infinity, shadowLow: look.kind !== 'hero' });
+  const inst = instantiate(fit.model, fit.palette, fit.hide, 2.4, { shadowDist: Infinity, shadowLow: look.kind !== 'hero', lodDist: fit.lodDist });
   applyFit(inst, fit);
   const mat = inst.material;
   mat.rim.value.w = 0.65;
@@ -234,6 +235,20 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
     return { y: _a.y, z: _a.z };
   })();
 
+  // ---- adventurers: the weapon is part of the model, on a bone that goes where a weapon of its own would be
+  // held (so one draw is body, kit and weapon); capes hang on chains of bones that trail and settle
+  const wpnBone = fit.weaponBone ? B[fit.weaponBone] ?? null : null;
+  if (wpnBone) wpnBone.matrixAutoUpdate = false;
+  const sway = (fit.sway ?? []).map((names) => names.map((n) => B[n]).filter(Boolean)).filter((c) => c.length > 0);
+  let swayA = 0, swayV = 0, swayZ = 0;
+
+  let shadowOn = true;
+  {
+    // gfx/models.ts decides the shadow by distance as the main pass draws the mesh; a rig told to throw none overrides it
+    const before = inst.mesh.onBeforeRender;
+    inst.mesh.onBeforeRender = function (r, sc, cam, geo, mt, grp) { before.call(this, r, sc, cam, geo, mt, grp); if (!shadowOn) inst.mesh.castShadow = false; };
+  }
+
   let fpLift = 0;
   const arms = new FpArms();
   const st = new AnimState();
@@ -256,6 +271,8 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
     root,
     sockets: { handR: grip[R], handL: grip[L], back, head: headSock, chest, hips },
     materials: clothMat ? [mat, clothMat] : [mat],
+    weapon: null,
+    setShadow(on) { shadowOn = on; if (!on) inst.mesh.castShadow = false; },
     stats: { meshes, tris },
     anim: st,
     eyeRest,
@@ -342,6 +359,29 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
         // a thrown spear leaves the hand at the release (combat fires the javelin at 0.42) and is back for the recovery
         const thrown = pose.action === 'spearThrow' && pose.actionT > 0.42 && pose.actionT < 0.9;
         if (weapon.object.visible === thrown) weapon.object.visible = !thrown;
+        if (wpnBone?.parent) {
+          weapon.object.updateWorldMatrix(true, false);
+          wpnBone.matrix.copy(_inv.copy(wpnBone.parent.matrixWorld).invert()).multiply(weapon.object.matrixWorld);
+          wpnBone.matrixWorldNeedsUpdate = true;
+        }
+      }
+      // capes: the hem trails with speed, lifts on a fall, and settles with a little life of its own
+      if (sway.length) {
+        const loco = pose.locomotion;
+        const fwd = loco === 'ride' || loco === 'board' ? 0.3 + pose.speed * 0.04 : loco === 'sit' ? 0.3 : pose.speed * 0.075 * Math.max(-0.2, pose.moveZ);
+        const want = THREE.MathUtils.clamp(fwd - pose.vy * 0.03 + (pose.action && EFFORT.test(pose.action) ? 0.12 : 0), -0.04, 0.85);
+        // a soft spring, so a stop swings the hem forward and back once
+        swayV += ((want - swayA) * 38 - swayV * 7.5) * Math.min(dt, 0.05);
+        swayA = THREE.MathUtils.clamp(swayA + swayV * Math.min(dt, 0.05), -0.12, 0.95);
+        swayZ += (-pose.lean * 0.22 - swayZ) * Math.min(1, dt * 4);
+        const flut = 0.014 + Math.min(0.05, pose.speed * 0.006);
+        for (let c = 0; c < sway.length; c++) {
+          const chain = sway[c];
+          for (let i = 0; i < chain.length; i++) {
+            const w = i === 0 ? 0.42 : 0.34;
+            chain[i].rotation.set(swayA * w + flut * (i + 1) * Math.sin(time * (2.1 + i * 0.7) + phase + i * 1.3 + c), 0, swayZ * 0.5 + flut * 0.6 * Math.sin(time * 1.3 + phase * 2 + i));
+          }
+        }
       }
 
       // ---- hands: closed around whatever they hold, loose otherwise
@@ -467,5 +507,6 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
       root.removeFromParent();
     },
   };
+  if (wpnBone && look.weaponId) { rig.weapon = makeWeaponNodes(look.weaponId, B); rig.setWeapon(rig.weapon); }
   return rig;
 }

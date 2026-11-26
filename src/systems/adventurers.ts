@@ -3,7 +3,7 @@ import { RAY_WORLD } from '../core/physics';
 import { TAU, angleDiff, clamp, damp, dampAngle, pick, rand } from '../core/util';
 import { CAMPS, ENEMIES, type CampDef } from '../data/enemies';
 import { WEAPONS } from '../data/weapons';
-import type { HorseRig, HumanAction, HumanPose, HumanoidRig, WeaponKind, WeaponModel } from '../entities/humanoid/types';
+import type { HorseRig, HoverboardRig, HumanAction, HumanPose, HumanoidRig, WeaponKind, WeaponModel } from '../entities/humanoid/types';
 import type { RobotKind, RobotPose, RobotRig } from '../entities/robots/types';
 import type { Game, System } from '../game';
 import { BANDS, BAND_GATES, GAUNTLET, ROADS, TITAN_GATE, bandAt, inTown, type Band } from '../world/layout';
@@ -19,8 +19,12 @@ import type { ZoneEvents } from './events';
  * leave the opening to them.
  *
  * Off screen each one is a point moving along a route with a timer. Near the player the nearest
- * few get a model: up to two full rigs, the rest a baked stand-in (one draw each), never more than
- * MODEL_MAX in all. Their robots are drawn only for the two nearest fights.
+ * few get a model: up to two full rigs, the rest a baked stand-in, never more than MODEL_MAX in
+ * all. Body, kit and weapon are one mesh (art/people/adv.py), so each is one draw either way; only
+ * the nearest throws a shadow. Their robots are drawn only for the two nearest fights.
+ *
+ * For other systems: `addSpot` gives them a place in the field to sit or stand at (an outpost's
+ * bench, its fire), and `stationAt` sends one there now.
  */
 
 type Act = 'move' | 'hunt' | 'idle' | 'sit' | 'talk' | 'shop' | 'crate' | 'cheer';
@@ -36,14 +40,14 @@ export interface Adv {
   rig: (HumanoidRig & { anim?: { phase: number }; bake?: () => THREE.BufferGeometry }) | null; weapon: WeaponModel | null; kind: WeaponKind;
   pose: HumanPose; proxy: THREE.Mesh | null;
   frames: { idle: THREE.BufferGeometry; walk: THREE.BufferGeometry[]; run: THREE.BufferGeometry[]; fight: THREE.BufferGeometry[]; sit: THREE.BufferGeometry } | null;
-  lod: -1 | 0 | 2; gait: number; dist: number; horse: HorseRig | null; hPose: { time: number; speed: number; vy: number; grounded: boolean; turn: number; rear: number };
+  lod: -1 | 0 | 2; gait: number; dist: number; horse: HorseRig | null; board: HoverboardRig | null; hPose: { time: number; speed: number; vy: number; grounded: boolean; turn: number; rear: number };
   // life
   act2: HumanAction; act2T: number; act2Dur: number; waveCd: number; greeted: boolean; rayT: number; groundY: number;
   /** what they are up to, for chat and the inspect card */
   doing: string; band: number; lastSaid: number; partner: Adv | null;
 }
 
-const MODEL_MAX = 6, FULL_MAX = 1, FULL_IN = 17, FULL_OUT = 21, SHOW = 92, FOE_MAX = 2, FOE_SHOW = 58, PLATE = 26;
+const MODEL_MAX = 8, FULL_MAX = 2, FULL_IN = 15, FULL_OUT = 18, SHOW = 92, FOE_MAX = 2, FOE_SHOW = 58, PLATE = 36, TITLE = 14;
 const WALK = 1.7, RUN = 6.0, RIDE = 10.5;
 const WALK_F = 6, RUN_F = 6, FIGHT_F = 4;
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), DOWN = new THREE.Vector3(0, -1, 0), UP = new THREE.Vector3(0, 1, 0);
@@ -138,7 +142,7 @@ export class Adventurers implements System {
       const a: Adv = {
         def, n, x: 0, y: 0, z: 0, yaw: rand(0, TAU), speed: 0, act: 'idle', goal: null, route: [], ri: 0, t: 0, mounted: false,
         foe: null, swingT: rand(0, 1), combo: 0, target: null,
-        rig: null, weapon: null, kind: WEAPONS[def.weapon].kind, pose: makePose(), proxy: null, frames: null, lod: -1, gait: rand(0, 1), dist: 999, horse: null,
+        rig: null, weapon: null, kind: WEAPONS[def.weapon].kind, pose: makePose(), proxy: null, frames: null, lod: -1, gait: rand(0, 1), dist: 999, horse: null, board: null,
         hPose: { time: 0, speed: 0, vy: 0, grounded: true, turn: 0, rear: 0 },
         act2: null, act2T: 0, act2Dur: 0, waveCd: rand(5, 30), greeted: false, rayT: rand(0, 1), groundY: 0,
         doing: '', band: 0, lastSaid: -999, partner: null,
@@ -155,6 +159,19 @@ export class Adventurers implements System {
       this.events.on.on('expire', () => this.crateDone(false));
     }
     g.plateFns.push(() => this.plates());
+    // a contact shadow under everybody drawn. gfx/contact.ts gathers the hero, robots and townsfolk once a
+    // frame; ours go on the end of the same batch (one draw for all), so nobody floats where the sun throws nothing
+    const contact = g.contact as { gather(w: unknown): void; add(src: { x: number; z: number; floor: number; radius: number; lift: number }, cam: THREE.Vector3): void; end(): void } | undefined;
+    if (contact?.gather && contact.add && contact.end) {
+      const gather = contact.gather.bind(contact);
+      contact.gather = (w: unknown) => {
+        gather(w);
+        if (g.interior || this.hidden) return;
+        const cam = g.camera.position;
+        for (const a of this.list) if (a.lod >= 0) contact.add({ x: a.x, z: a.z, floor: a.y, radius: a.mounted && !a.board ? 0.9 : 0.42, lift: a.board ? 0.34 : 0 }, cam);
+        contact.end();
+      };
+    }
     g.addSystem(this);
   }
 
@@ -219,6 +236,28 @@ export class Adventurers implements System {
     }
     return [c.x + c.r + 16, c.z];
   }
+  /** Places in the field (an outpost's benches, its fire) where adventurers sit or stand a while. */
+  private fieldSpots: Spot[] = [];
+  /**
+   * Offer a place to rest in the field. `act` 'sit' needs a seat about 0.45 m above the ground at the
+   * point (they face `yaw`); 'idle' stands. Adventurers hunting in that band drop by between hunts.
+   */
+  addSpot(s: { x: number; z: number; yaw: number; act: 'sit' | 'idle'; label: string }) { this.fieldSpots.push({ ...s }); }
+  /**
+   * Send somebody to sit or stand at a point now: the nearest who is free, or the one named by id.
+   * They walk (or ride) there, stay `dur` seconds, then go back to their day. Returns who went.
+   */
+  stationAt(x: number, z: number, yaw: number, act: 'sit' | 'idle', label: string, dur = 120, id?: string): Adv | null {
+    const free = this.list.filter((a) => (id ? a.def.id === id : a.goal?.act !== 'crate' && !this.crateTake.has(a)));
+    const a = free.sort((p, q) => Math.hypot(p.x - x, p.z - z) - Math.hypot(q.x - x, q.z - z))[0];
+    if (!a) return null;
+    if (a.foe) { a.foe.st = 'gone'; this.releaseFoe(a.foe); a.foe = null; }
+    a.goal = { act, x, z, yaw, dur, label };
+    a.route = this.path(a.x, a.z, x, z); a.ri = 0; a.act = 'move'; a.t = 0; a.partner = null; a.target = null;
+    a.mounted = !!a.def.rides && !inTown(a.x, a.z, 4) && this.routeLen(a) > 150;
+    a.doing = 'on the way, ' + label; a.band = bandAt(x, z)?.id ?? 0;
+    return a;
+  }
   private freeSpot(spots: Spot[], a: Adv): Spot | null {
     const free = spots.filter((s) => !this.list.some((o) => o !== a && o.goal && Math.hypot(o.goal.x - s.x, o.goal.z - s.z) < 0.8));
     return free.length ? pick(free) : null;
@@ -249,6 +288,12 @@ export class Adventurers implements System {
         // errands: a vendor, the board, a sit down
         const s = this.freeSpot(TOWN_SPOTS.filter((s) => s.act === 'shop' || (s.act === 'sit' && Math.random() < 0.4)), a);
         if (s) goal = { act: s.act, x: s.x, z: s.z, yaw: s.yaw, dur: rand(20, 45), label: s.label };
+      }
+      // a rest at an outpost in the band they are hunting in
+      if (!goal && !boot && this.fieldSpots.length && Math.random() < 0.22) {
+        const here = bandAt(a.x, a.z)?.id ?? -1;
+        const s = this.freeSpot(this.fieldSpots.filter((s) => (bandAt(s.x, s.z)?.id ?? -2) === here), a);
+        if (s) goal = { act: s.act === 'sit' ? 'sit' : 'idle', x: s.x, z: s.z, yaw: s.yaw, dur: rand(40, 90), label: s.label };
       }
       if (!goal) {
         const cs = this.campsFor(a, night);
@@ -401,10 +446,11 @@ export class Adventurers implements System {
     if (!g.human?.makeHumanoid) return;
     const rig = g.human.makeHumanoid(a.def.look) as Adv['rig'] & HumanoidRig;
     a.rig = rig;
-    a.weapon = g.human.makeWeaponModel(a.def.weapon) as WeaponModel;
-    rig.setWeapon(a.weapon);
-    // the body throws the shadow; the weapon's is not worth its draw calls
+    // an adventurer's weapon is part of the model and comes with the rig; anybody else's is a model of its own
+    a.weapon = rig.weapon ?? (g.human.makeWeaponModel(a.def.weapon) as WeaponModel);
+    if (!rig.weapon) rig.setWeapon(a.weapon);
     a.weapon.object.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = false; });
+    rig.setShadow?.(false);
     rig.root.visible = false;
     this.group.add(rig.root);
     // the far stand-in: a handful of baked poses
@@ -460,7 +506,25 @@ export class Adventurers implements System {
     if (a.rig) { h.saddle.add(a.rig.root); a.rig.root.position.set(0, 0, 0); a.rig.root.rotation.set(0, 0, 0); }
     return true;
   }
+  private caster: Adv | null = null;
+  private boards: HoverboardRig[] = [];
+  private takeBoard(a: Adv): boolean {
+    const g = this.game;
+    if (!a.board) {
+      if (!g.human?.makeHoverboard) return false;
+      if (this.list.filter((o) => o.board).length >= 2) return false;
+      let b = this.boards.pop();
+      if (!b) { try { b = g.human.makeHoverboard() as HoverboardRig; } catch { return false; } }
+      b.root.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = false; });
+      b.root.visible = true;
+      a.board = b;
+    }
+    // the board goes under the rider's feet once there is a body to stand on it
+    if (a.rig && a.board.root.parent !== a.rig.root) { a.rig.root.add(a.board.root); a.board.root.position.set(0, 0, 0); a.board.root.rotation.set(0, 0, 0); }
+    return true;
+  }
   private dropHorse(a: Adv) {
+    if (a.board) { a.board.root.removeFromParent(); this.boards.push(a.board); a.board = null; }
     const h = a.horse;
     if (!h) return;
     if (a.rig && a.rig.root.parent === h.saddle) { this.group.add(a.rig.root); }
@@ -491,11 +555,15 @@ export class Adventurers implements System {
       if (!a.rig) { if (!this.buildQ.includes(a)) this.buildQ.push(a); continue; }
       // riders are drawn whole or not at all; a stand-in cannot sit a horse
       const close = a.dist < (a.lod === 0 ? FULL_OUT : FULL_IN);
-      if (a.mounted) { if ((close || a.dist < 60) && full < FULL_MAX + 1 && this.takeHorse(a)) { want.set(a, 0); full++; models++; } continue; }
+      if (a.mounted) { if ((close || a.dist < 60) && full < FULL_MAX + 1 && (a.def.rides === 'board' ? this.takeBoard(a) : this.takeHorse(a))) { want.set(a, 0); full++; models++; } continue; }
       if (close && full < FULL_MAX) { want.set(a, 0); full++; } else want.set(a, 2);
       models++;
     }
     for (const a of this.list) this.show(a, want.get(a) ?? -1);
+    // only the nearest whole body throws a sun shadow; the others stand on their contact shadows
+    let caster: Adv | null = null;
+    for (const a of order) if (want.get(a) === 0) { caster = a; break; }
+    if (caster !== this.caster) { this.caster?.rig?.setShadow?.(false); caster?.rig?.setShadow?.(true); this.caster = caster; }
     // ---- the fights worth drawing
     const fights = this.list.filter((a) => a.foe && a.lod >= 0 && a.dist < FOE_SHOW && a.act === 'hunt').sort((p, q) => p.dist - q.dist);
     for (const a of this.list) if (a.foe?.rig && !fights.slice(0, FOE_MAX).includes(a)) this.releaseFoe(a.foe);
@@ -524,7 +592,7 @@ export class Adventurers implements System {
     if (a.rig) a.rig.root.visible = lod === 0;
     if (a.proxy) a.proxy.visible = lod === 2;
     if (lod === 0 && a.rig) {
-      if (a.mounted) this.takeHorse(a);
+      if (a.mounted) { if (a.def.rides === 'board') this.takeBoard(a); else this.takeHorse(a); }
       // settle into the current pose before the first frame it is seen
       if (a.rig.anim && a.act === 'move') a.rig.anim.phase = a.gait;
       this.animate(a, 0.05); this.animate(a, 0.05);
@@ -567,6 +635,11 @@ export class Adventurers implements System {
     const pl = g.player.pos, pd = Math.hypot(pl.x - a.x, pl.z - a.z);
     if (pd < 5.5 && a.act !== 'hunt' && !a.greeted && a.waveCd <= 0 && !a.act2) { this.wave(a, rand(0.1, 0.5)); a.greeted = true; }
     if (pd > 14) a.greeted = false;
+    // standing about, they do what players do: stretch a point at something, take a swig, cheer a kill
+    if ((a.act === 'idle' || a.act === 'shop') && !a.act2 && a.dist < 60 && Math.random() < dt * 0.045) {
+      const e = pick(['point', 'drink', 'cheer', 'wave'] as const);
+      a.act2 = e; a.act2T = 0; a.act2Dur = e === 'drink' ? 1.8 : e === 'point' ? 1.5 : 1.4;
+    }
     // a rain shower turns to a storm: the ones in the open head in
     if ((a.act === 'hunt' || a.act === 'idle') && g.env.weather === 'storm' && !a.def.night && a.t > 8 && Math.random() < dt * 0.05) { this.onSay?.('storm_in', a); this.decide(a); return; }
     if (a.t >= goal.dur) {
@@ -578,7 +651,7 @@ export class Adventurers implements System {
   }
   private arrive(a: Adv) {
     const goal = a.goal!;
-    if (a.mounted) { a.mounted = false; a.hPose.rear = 0.4; if (a.lod === 0) this.dropHorse(a); }
+    if (a.mounted) { a.mounted = false; a.hPose.rear = a.board ? 0 : 0.4; if (a.lod === 0) this.dropHorse(a); }
     a.act = goal.act; a.t = 0; a.speed = 0;
     a.doing = goal.label;
     if (goal.act === 'hunt') this.newFoe(a);
@@ -605,6 +678,7 @@ export class Adventurers implements System {
     if (f.st === 'spawn') { if (f.t > 0.9) { f.st = 'fight'; f.t = 0; } }
     else if (f.st === 'dead') {
       if (f.t > 1.4 && f.rig) { this.releaseFoe(f); }
+      if (f.t > 0.5 && f.t - dt <= 0.5 && Math.random() < 0.3) { a.act2 = 'cheer'; a.act2T = 0; a.act2Dur = 1.3; }
       if (f.t > rand(4, 7)) { if (f.rig) this.releaseFoe(f); a.foe = null; this.newFoe(a); if (Math.random() < 0.06) this.onSay?.('hunt', a); }
       return;
     }
@@ -675,7 +749,7 @@ export class Adventurers implements System {
     p.weapon = a.kind;
     const fighting = (a.act === 'hunt' && a.foe && a.foe.st === 'fight') || (a.act === 'crate' && !!a.target);
     p.drawn = fighting;
-    p.locomotion = a.mounted ? 'ride' : a.act === 'sit' ? 'sit' : 'ground';
+    p.locomotion = a.mounted ? (a.board ? 'board' : 'ride') : a.act === 'sit' ? 'sit' : 'ground';
     p.speed = a.act === 'move' || a.speed > 0.4 ? a.speed : 0; p.moveZ = p.speed > 0.2 ? 1 : 0; p.moveX = 0;
     p.action = null; p.actionT = 0; p.lookYaw = 0; p.lookPitch = 0;
     if (a.act2 && a.act2T >= 0) { p.action = a.act2; p.actionT = clamp(a.act2T, 0, 1); }
@@ -696,7 +770,13 @@ export class Adventurers implements System {
       hp.time += dt; hp.speed = a.speed; hp.grounded = true; hp.vy = 0; hp.turn = 0; hp.rear = Math.max(0, hp.rear - dt);
       h.root.position.set(a.x, a.y, a.z); h.root.rotation.y = a.yaw;
       h.update(dt, hp);
-    } else { rig.root.position.set(a.x, a.y, a.z); rig.root.rotation.y = a.yaw; }
+    } else {
+      // a board rides a hand above the ground and banks into its turns
+      const lift = a.board ? 0.34 + 0.04 * Math.sin(p.time * 2.3 + a.n) : 0;
+      rig.root.position.set(a.x, a.y + lift, a.z); rig.root.rotation.y = a.yaw;
+      if (a.board) { a.board.update(dt, clamp(a.speed / RIDE, 0, 1)); p.lean = clamp(angleDiff(a.yaw, a.route[a.ri] ? Math.atan2(a.route[a.ri][0] - a.x, a.route[a.ri][1] - a.z) : a.yaw) * 1.5, -1, 1); }
+      else p.lean = 0;
+    }
     rig.update(dt, p);
     if (a.rig?.anim && a.act === 'move') a.gait = a.rig.anim.phase;
   }
@@ -732,11 +812,12 @@ export class Adventurers implements System {
     if (g.interior || this.hidden) return;
     for (const a of this.list) {
       if (a.lod < 0 || a.dist > PLATE) continue;
-      const top = a.mounted ? 2.75 : a.act === 'sit' ? 1.55 : 2.02 * (a.def.look.height ?? 1);
+      const top = a.mounted ? (a.board ? 2.45 : 2.75) : a.act === 'sit' ? 1.55 : 2.08 * (a.def.look.height ?? 1);
       _v.set(a.x, a.y + top, a.z);
-      hud.plate('adv' + a.n, _v, { name: a.def.name, level: a.def.level, title: a.dist < 12 ? (a.def.guild ? `&lt;${a.def.guild}&gt;` : a.def.title) : undefined, cls: 'npc lz-adv', scale: 0.92 });
+      // name and level as far as they can be told apart; the title (or the guild) once they are close
+      hud.plate('adv' + a.n, _v, { name: a.def.name, level: a.def.level, title: a.dist < TITLE ? (a.def.guild ? `&lt;${a.def.guild}&gt;` : a.def.title) : undefined, cls: 'npc lz-adv', scale: a.dist < TITLE ? 0.92 : 0.8 });
       const f = a.foe;
-      if (f?.rig && f.st !== 'gone' && a.dist < PLATE) {
+      if (f?.rig && f.st !== 'gone' && a.dist < 26) {
         _v.set(f.x, f.y + f.rig.height + 0.35, f.z);
         if (f.st !== 'dead') hud.plate('advf' + a.n, _v, { name: f.name, level: f.level, hp: Math.max(0, f.hp), title: a.dist < 16 ? `${a.def.name.split(' ')[0]}'s fight` : undefined, cls: 'lz-tag', scale: 0.85 });
       }
