@@ -204,6 +204,10 @@ bounty.
    (`src/world/west/range.ts`) and combat targeting. Fix: the meter
    dummy is never auto-targeted while a knockable dummy is in reach; drop
    the RARE tag.
+   **Fixed:** `afdf0fe`. Targets carry `practice`; auto-target, the
+   frame's cycle and a stick-led attack all pass over the meter while
+   anything that counts is in reach; its plate reads "Practice · reads
+   damage". No other course target is a trap.
 5. **Every run died in its first fight.** 120 HP against mites that hit
    7 to 9, an aggressive camp and the level 3 Gatecrasher close enough to
    drift into from the first camp. Evidence: `l-10`, event log. Owner: QA
@@ -217,6 +221,12 @@ bounty.
    grind and zone events (`src/systems/grind.ts`, `events.ts`). Fix: no
    bounties until the first hand-in; never roll a weapon-class bounty for
    a weapon the player lacks; hide both lines in interiors.
+   **Fixed:** `55216b2` (`src/systems/intro.ts`). Bounties open at the
+   first hand-in with a one-time tip; no ranged bounty without a ranged
+   weapon; the cratefall waits for level 2 and a trip out of town, and
+   the first one has its own banner line and tip; nothing zone-wide in
+   the vault, arena, gauntlet or a boss fight, or over a conversation,
+   menu or cutscene.
 7. **Kit tip at full health** with no kit button on screen: a tip queued
    in a fight showed after respawn. Evidence: `x-04-night-rain.png`.
    Owner: coach. **Fixed here.**
@@ -230,9 +240,17 @@ bounty.
    fight (`x-18`). Owner: camera rig (`src/core/camera.ts`) and world art.
    Fix: fade foliage and roofs between camera and hero; keep adventurers
    out of the player's last two metres.
+   **Fixed:** `fd4b8a6`. The lens sweeps the drawn static world (roofs,
+   eaves, stalls, arches, tree limbs; `src/core/camocc.ts`) as well as
+   colliders; NPCs, adventurers and robots between lens and hero fade
+   (`src/systems/camfade.ts`). Open: a canopy beyond the hero (`x-02`)
+   is the leaf shader's rule in `gfx/material.ts` (graphics).
 10. **"TAP TO SKIP" on desktop** during the opening shot (`d-03`). Owner:
     world art (`src/world/vista/cinematics.ts`). Fix: "Click or press any
     key to skip" when `!hud.touchUi`.
+    **Fixed:** `9bc171a`. Desktop now reads "CLICK OR SPACE TO SKIP",
+    chosen by `hud.touchUi`; the words are one hook, `skipWords()`, for
+    the HUD to own.
 11. **First level on desktop is slow.** Five kills plus the quest give
     152 of 210 XP; a player who follows the quest exactly does not level
     in the first four minutes, and the perk, the bow and the second quest
@@ -245,6 +263,11 @@ bounty.
     desktop, about 6 s in portrait, not seen in landscape. Not
     root-caused. Owner: world art (cinematics). Fix: investigate the
     `cine_open` pending shot; it is dropped if anything ends `calm` first.
+    **Fixed:** `9bc171a`. The shot ran on simulation time (capped at 50 ms
+    a frame), so a slow desktop stretched it, and it waited in a queue
+    that could drop it. It now starts as START hands over and runs on the
+    wall clock: 6.9 s to control in portrait, landscape and desktop,
+    skippable after 1 s, never on Continue; the first tip follows it.
 13. **Slagworks at night is a black void** (`x-18`). Owner: world art and
     environment. Fix: raise the night ambient and lava bounce there.
 14. **Docked waypoint clips the quest name in landscape**: "FIRST DAY ON
@@ -257,7 +280,8 @@ bounty.
 
 Smaller: ADS stays on when switching to first person; a `quest_accept`
 sting plays on START before any quest; the find-work tip could show after
-a job was taken (fixed here).
+a job was taken (fixed here). The barrels north of the East Gate held the
+hero against the gate tower (**Fixed:** `c2dd045`, moved 1.6 m west).
 
 ## Genuinely good: do not touch
 
