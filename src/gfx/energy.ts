@@ -26,16 +26,21 @@ export function barrierMat(color: number, size: [number, number]): THREE.ShaderM
       varying vec2 vUv; varying float vDist;
       void main() {
         vec2 p = vUv * uSize;
-        // chevrons marching upward
-        float ch = abs(fract((p.y - abs(p.x - uSize.x * 0.5) * 0.7) * 0.45 - uTime * 0.5) - 0.5) * 2.0;
-        // (chevron lines, not bands: a gate is twenty metres of this, and a fill of it is a red fog over the scene behind)
-        float stripes = smoothstep(0.74, 0.86, ch);
-        // hex-ish cell shimmer
+        // A lattice of thin bright lines and nothing between them: chevrons marching upward, a fainter set
+        // standing against them. This is additive over twenty metres of gate, and any fill at all, however
+        // faint, is a red fog on whatever stands behind it; so are bands and whole-row scan lines.
+        float side = abs(p.x - uSize.x * 0.5) * 0.7;
+        float ch = abs(fract((p.y - side) * 0.45 - uTime * 0.5) - 0.5) * 2.0;
+        float ch2 = abs(fract((p.y + side) * 0.45) - 0.5) * 2.0;
+        // (lines keep a pixel or so of width however far off they are, or they crawl)
+        float w = clamp(vDist * 0.0016, 0.03, 0.2);
+        float line = smoothstep(1.0 - w * 1.6, 1.0 - w * 0.5, ch), line2 = smoothstep(1.0 - w * 1.1, 1.0 - w * 0.35, ch2);
         float n = texture2D(uNoise, p * 0.06 + vec2(0.0, uTime * 0.03)).g;
-        float scan = smoothstep(0.92, 1.0, sin(p.y * 9.0 - uTime * 3.0) * 0.5 + 0.5);
+        // a pulse that runs up the lines
+        float scan = smoothstep(0.8, 1.0, sin(p.y * 1.4 - uTime * 2.2) * 0.5 + 0.5);
         vec2 e = min(vUv, 1.0 - vUv) * uSize;
-        float edge = smoothstep(0.35, 0.0, min(e.x, e.y));
-        float a = 0.022 + stripes * (0.16 + 0.1 * n) + scan * 0.1 + edge * 0.9 + n * 0.03 + uHit * 0.6;
+        float edge = smoothstep(0.22, 0.0, min(e.x, e.y));
+        float a = line * (0.5 + 0.3 * n + 0.5 * scan) + line2 * (0.14 + 0.1 * n) + edge * 0.9 + uHit * (0.1 + 0.6 * max(line, line2));
         // dissolve from the bottom up
         float d = texture2D(uNoise, p * 0.11).r * 0.35 + vUv.y * 0.65;
         float cut = smoothstep(uOpen * 1.25 - 0.15, uOpen * 1.25, d);

@@ -54,13 +54,19 @@ export function buildEast(game: Game) {
       pylon(g, -(half + 1.1), H); pylon(g, half + 1.1, H);
       // lintel truss
       g.box(half * 2 + 4.6, 0.9, 1.4, { at: [0, H + 0.2, 0], color: PAL.slateDark, layer: T.METAL, bevel: 0.08 });
-      g.box(half * 2 + 2, 1.9, 0.5, { at: [0, H + 1.6, 0], color: PAL.slateDeep, layer: T.PANEL, bevel: 0.06 });
-      for (let i = -2; i <= 2; i++) g.box(0.25, 1.0, 1.0, { at: [i * half * 0.45, H - 0.6, 0], color: PAL.orange, layer: T.METAL });
-      // signs: destination on the approach side, origin on the far side
-      g.push().translate(0, H + 1.5, -0.3).rotateY(Math.PI); pixelText(g, to.name, 0.2, { color: PAL.amber, emit: 1.8 }); g.pop();
-      g.push().translate(0, H + 0.3, -0.75).rotateY(Math.PI); pixelText(g, `LEVELS ${to.lo}-${to.hi}`, 0.11, { color: PAL.cyan, emit: 1.5 }); g.pop();
-      g.push().translate(0, H + 1.5, 0.3); pixelText(g, from.name, 0.2, { color: PAL.amber, emit: 1.8 }); g.pop();
-      g.push().translate(0, H + 0.3, 0.75); pixelText(g, `LEVELS ${from.lo}-${from.hi}`, 0.11, { color: PAL.cyan, emit: 1.5 }); g.pop();
+      g.box(half * 2 + 2, 0.6, 0.5, { at: [0, H + 0.95, 0], color: PAL.slateDeep, layer: T.PANEL, bevel: 0.06 });
+      g.box(half * 2 + 2.04, 0.16, 0.54, { at: [0, H + 1.3, 0], color: PAL.orange, layer: T.STRIPE, uv: 'world', uvScale: 0.5, col: 'none' });
+      for (const i of [-2, 2]) g.box(0.25, 1.0, 1.0, { at: [i * half * 0.45, H - 0.6, 0], color: PAL.orange, layer: T.METAL });
+      // The board hangs under the lintel, not on top of it: destination on the approach side, origin on
+      // the far side. Up on the lintel its words sat behind the target's name and bar for anyone fighting
+      // the gate's elite; down here they are under them, over the elite's head.
+      g.box(10.4, 1.9, 0.3, { at: [0, H - 1.7, 0], color: PAL.slateDeep, layer: T.PANEL, bevel: 0.06, col: 'none' });
+      g.box(10.5, 0.1, 0.36, { at: [0, H - 2.66, 0], color: PAL.orange, layer: T.METAL, col: 'none' });
+      for (const sx of [-4.4, 4.4]) g.box(0.16, 0.5, 0.16, { at: [sx, H - 0.5, 0], color: PAL.slateDark, layer: T.METAL, col: 'none' });
+      g.push().translate(0, H - 1.42, -0.17).rotateY(Math.PI); pixelText(g, to.name, 0.12, { color: PAL.amber, emit: 1.8 }); g.pop();
+      g.push().translate(0, H - 2.24, -0.17).rotateY(Math.PI); pixelText(g, `LEVELS ${to.lo}-${to.hi}`, 0.07, { color: PAL.cyan, emit: 1.5 }); g.pop();
+      g.push().translate(0, H - 1.42, 0.17); pixelText(g, from.name, 0.12, { color: PAL.amber, emit: 1.8 }); g.pop();
+      g.push().translate(0, H - 2.24, 0.17); pixelText(g, `LEVELS ${from.lo}-${from.hi}`, 0.07, { color: PAL.cyan, emit: 1.5 }); g.pop();
       // threshold plate
       g.box(half * 2 + 1, 0.25, 3.2, { at: [0, 0.2, 0], color: PAL.slate, layer: T.PLATE, uvScale: 0.4 });
       g.box(half * 2 + 1, 0.27, 0.5, { at: [0, 0.2, 1.35], color: PAL.orange, layer: T.STRIPE, uv: 'fit' });
