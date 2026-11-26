@@ -1,6 +1,6 @@
 import { CONTRACTS, type ContractDef } from '../../data/quests';
 import { icon } from '../icons';
-import { btn, glyph, pips, scripHtml, type PanelSpec } from './common';
+import { art, btn, glyph, pips, scripHtml, type PanelSpec } from './common';
 
 const isWanted = (c: ContractDef) => c.tiers.length === 1;
 
@@ -75,22 +75,33 @@ export const trophiesPanel: PanelSpec = {
   make(host) {
     const st = host.game.state;
     let sig = '';
+    const signature = () => String(st.d.trophies.length) + st.d.title + JSON.stringify(st.d.kills);
+    // a plaque not yet earned: who to hunt, where they are, and how far along you are
+    const locked = (c: ContractDef) => {
+      const [a, b] = c.desc.split(', '), wanted = isWanted(c);
+      const who = wanted ? c.name.replace('WANTED: ', '') : a;
+      const where = wanted ? `${a} · ${b ?? 'the yard'}` : b ?? (c.target === 'any:night' ? 'Anywhere, after dark' : 'Anywhere past the wall');
+      const need = c.tiers[c.tiers.length - 1], k = Math.min(need, st.d.kills[c.target] ?? 0);
+      const how = wanted ? (k ? 'Broken: claim it at the board' : 'Not yet broken') : `${k} / ${need} broken`;
+      return `<div class="un${wanted ? ' wanted' : ''}"><span>${wanted ? icon('skull', 32, 1.7) : art('trophy', 34)}<u class="lk">${icon('lock', 11, 2.6)}</u></span><b>${who}</b><small>${where}</small>`
+        + `<div class="pn-bar"><i style="transform:scaleX(${k / need})"></i></div><em>${how}</em></div>`;
+    };
     const render = () => {
-      sig = String(st.d.trophies.length) + st.d.title;
+      sig = signature();
       const n = st.d.trophies.length;
       let h = `<div class="pn-cap"><span>${icon('trophy', 14)} ${n} / ${CONTRACTS.length} trophies</span><div class="pn-bar gold"><i style="transform:scaleX(${n / CONTRACTS.length})"></i></div></div><div class="pn-wall">`;
       for (const c of CONTRACTS) {
         const got = st.d.trophies.includes(c.id);
         h += got
           ? `<div class="got${st.d.title === c.title ? ' worn' : ''}" data-a="wear" data-v="${c.title}"><span>${isWanted(c) ? icon('skull', 34, 1.7) : glyph('crate', 34, '#ffcf5a')}</span><b>${c.trophy}</b><small>"${c.title}"</small></div>`
-          : `<div class="un"><span>${isWanted(c) ? icon('skull', 34, 1.7) : glyph('crate', 34, '#59606b')}</span><b>???</b><small>${c.desc}</small></div>`;
+          : locked(c);
       }
-      h += '</div><div class="pn-note c">Tap an earned trophy to wear its title.</div>';
+      h += `</div><div class="pn-note c">${n ? 'Tap an earned trophy to wear its title.' : 'Each plaque is a hunt. Break what it names, then claim the trophy at the Contract Board.'}</div>`;
       host.body.innerHTML = h;
     };
     return {
       render,
-      update() { if (String(st.d.trophies.length) + st.d.title !== sig) render(); },
+      update() { if (signature() !== sig) render(); },
       act(a, v) { if (a === 'wear') { st.d.title = st.d.title === v ? null : v; st.touch(); host.game.sfx('ui_equip'); render(); } },
     };
   },
