@@ -273,6 +273,67 @@ const HM_STATES = [
       await G.secs(0.6);
     },
   },
+  {
+    n: 20, name: 'elite-shield', what: 'A gate elite in its shell: the state chip and the answer under the target frame, its introduction in the lane', hour: 12.5,
+    async setup(G, g) {
+      await hmFields(G, g, 3);
+      const d = g.mobs.elites.find((e) => e.def.id === 'gatecrasher').def;
+      const m = G.spawn(d.kind, 44.5, 6, { level: d.level, variant: d.variant, elite: d, name: d.name, scale: d.scale, hpMul: d.hpMul, aggro: true });
+      for (const [x, z] of [[42.6, 3.6], [46.2, 3.4], [45.4, 8.6]]) { const l = G.spawn('mite', x, z, { level: 2, aggro: true }); l.summoner = m; }
+      await G.settleMobs();
+      g.combat.target = m; g.player.invuln = 60;
+      await G.secs(1.0);
+      window.HM_AFTER = () => { hmLane(g); g.hud.toast(m.name, 'warn', m.mech.hint); };
+      window.HM_AFTER();
+      await G.secs(0.5);
+    },
+  },
+  {
+    n: 21, name: 'boss-clock', what: 'A boss on a clock: the phase in its line, the deadline chip with its bar and the answer under the boss bar', hour: 15,
+    async setup(G, g) {
+      await hmFields(G, g, 18);
+      const d = g.mobs.elites.find((e) => e.def.id === 'foreman').def;
+      const b = G.spawn(d.kind, 47, 8, { level: d.level, variant: d.variant, elite: d, name: d.name, hpMul: d.hpMul, aggro: true });
+      const a = G.spawn('mite', 43.6, 5.2, { level: 17, aggro: true });
+      await G.settleMobs();
+      g.combat.target = a; g.player.invuln = 60;
+      await G.secs(1.0); G.quiet();
+      const t = b.mech && b.mech.trick('deadline');
+      if (t) t.clock = 0.62;
+      await G.secs(0.4);
+    },
+  },
+  {
+    n: 22, name: 'wave-timer-tip', what: 'The Long Shift: its wave timer in the timer slot, a full column, and a tip in the lane clear of both', hour: 11,
+    async setup(G, g) {
+      await hmFields(G, g, 20);
+      g.state.d.quests.q_welcome = { state: 'done', prog: [5] };
+      g.quests.accept('q_salvage');
+      g.grind.ensureBounties();
+      await G.secs(1.0); G.quiet();
+      hmCrate();
+      clearInterval(window.HM_TIMER);
+      window.HM_TIMER = setInterval(() => g.hud.setTimer('The Long Shift', 'WAVE 3', '4 left · best 11'), 60);
+      g.hud.setTimer('The Long Shift', 'WAVE 3', '4 left · best 11');
+      window.HM_AFTER = () => { hmLane(g); g.hud.setTimer('The Long Shift', 'WAVE 3', '4 left · best 11'); g.hud.tip({ title: 'Skills', text: 'Cyan buttons are skills. They cost energy.', secs: 999 }); };
+      window.HM_AFTER();
+      await G.secs(0.6);
+    },
+  },
+  {
+    n: 23, name: 'set-moment', what: 'A set completed: the moment in the lane with what it paid and its one tap; perk points as a count on the menu glyph', hour: 11,
+    async setup(G, g) {
+      clearInterval(window.HM_TIMER);
+      await hmFields(G, g, 6);
+      await G.secs(1.0); G.quiet();
+      window.HM_AFTER = () => {
+        hmLane(g);
+        g.hud.moment({ title: 'SET COMPLETE', sub: 'Every cog in the yard', chips: '<span class="ttl">Title: Cogwright</span><span class="pk">Perk point</span><span class="pn-scrip">1,500</span>', tapWord: 'Open the book', tap: () => g.panels.open('tally', { tab: 'sets' }) });
+      };
+      window.HM_AFTER();
+      await G.secs(0.6);
+    },
+  },
 ];
 // the crate drop's line as systems/events.ts draws it (the event itself is the zone's to schedule)
 function hmCrate() {

@@ -151,6 +151,11 @@
         const r = e.getBoundingClientRect();
         if (r.width < 8 || r.height < 8 || !vis(e)) continue;
         controls++;
+        // a control is wholly on the screen and inside the safe area: one cut by an edge is half a control
+        // (the menu tray once hung off the left edge of an upright phone with its first entry cut to "ACK")
+        const cn = e.dataset.act || String(e.className).split(' ').slice(0, 2).join('.');
+        if (r.left < -1 || r.top < -1 || r.right > W + 1 || r.bottom > Hh + 1) issues.push({ kind: 'clipped', what: cn + ' is partly off the screen', at: [r.left, r.top, r.width, r.height].map(Math.round) });
+        else if (r.left < S.l - 1 || r.top < S.t - 1 || r.right > W - S.r + 1 || r.bottom > Hh - S.b + 1) issues.push({ kind: 'unsafe', what: cn + ' is partly outside the safe area', at: [r.left, r.top, r.width, r.height].map(Math.round) });
         // (the open tray is a menu the player asked for: what it lies over for that moment is behind it, not lost)
         const by = HM.under(e, '.tray.on');
         if (by) issues.push({ kind: 'covered', what: (e.dataset.act || String(e.className).split(' ').slice(0, 2).join('.')) + ' is under ' + by, at: [r.left, r.top, r.width, r.height].map(Math.round) });
@@ -235,7 +240,9 @@
           // the conversation's whole-screen tap surface (.sc: a tap anywhere finishes the line) is not a button with edges
           const hit = e.matches('[data-a], [data-m], [data-t], .pn-slider, button, a[href], input') && !e.matches('.sc') && cs.pointerEvents !== 'none';
           if (own) {
-            const fs = parseFloat(cs.fontSize);
+            // (type inside a drawing is sized in the drawing's units: measure it as it is drawn)
+            const svg = e.closest('svg'), vb = svg && svg.viewBox && svg.viewBox.baseVal, k = vb && vb.width ? svg.getBoundingClientRect().width / vb.width : 1;
+            const fs = parseFloat(cs.fontSize) * k;
             if (fs < 10.95) push('tiny', name(e) + ' "' + e.textContent.trim().slice(0, 24) + '"', r, fs);
             if (e.scrollWidth > e.clientWidth + 1 && cs.overflowX !== 'visible') push('cut', name(e) + ' "' + e.textContent.trim().slice(0, 28) + '"', r, e.scrollWidth - e.clientWidth);
           }

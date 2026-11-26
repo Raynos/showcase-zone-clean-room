@@ -20,6 +20,31 @@ const pnBase = async (G, g, o = {}) => {
   await G.secs(0.8); G.quiet();
 };
 const pnOpen = async (g, id, arg) => { g.panels.open(id, arg); await pnWait(450); };
+// A Tally Book part way through: finds in most kinds, sets paid, the Titan down, records set, cogs to spend.
+const pnTally = (g) => {
+  const d = g.state.d, T = g.tally;
+  let i = 0;
+  for (const e of T.entries) {
+    i++;
+    const s = e.src, take = e.cat === 'cog' ? (e.area <= 1 || i % 3 === 0) : e.cat === 'vista' ? i % 2 === 0 : e.cat === 'post' ? true : e.cat === 'cache' ? i % 4 === 0 : false;
+    if (!take) continue;
+    if (s.k === 'found') d.found[s.id] = 1;
+    else if (s.k === 'flag') d.flags[s.id] = 1;
+    else if (s.k === 'post') { d.field = d.field || {}; d.field.posts = d.field.posts || []; if (!d.field.posts.includes(s.id)) d.field.posts.push(s.id); }
+  }
+  for (const e of T.entries) if (e.cat === 'wanted' && e.src.k === 'kill' && (i++ % 2)) d.kills[e.src.id] = e.src.n || 1;
+  d.flags.titan_dead = 1;
+  d.pbs.riding = 33; d.pbs.grapple = 48; d.pbs.climb = 70;
+  const have = g.state.count('cog');
+  if (have < 9) g.state.addItem('cog', 9 - have, true);
+  const o = (d.overtime = d.overtime || {});
+  const wk = Math.floor((Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 86400000) + 3) / 7);
+  o.runs = { vault: { best: 432, medal: 2, clears: 3, fails: 1, week: wk, weekDone: 1, firsts: 3 }, titan: { best: 0, medal: 0, clears: 0, fails: 2, week: 0, weekDone: 0, firsts: 0 } };
+  o.shift = { best: 11, runs: 4, firsts: 3, week: wk, weekBest: 7, weekPaid: 0 };
+  g.state.touch();
+  T.update(0, 1); T.update(0, 1);
+  g.hud.notices.clear();
+};
 // Walk up to an NPC and start the real conversation (the NPC system puts the camera on them), then
 // finish the line: a conversation is judged with its words on screen, not mid-reveal. `acts` are
 // taps on the scene: ['offer'] opens the first job offered; 'end' taps through to the last beat.
@@ -104,5 +129,19 @@ const PN_STATES = [
     async setup(G, g) { await pnBase(G, g); (g.state.d.field ??= {}).posts = ['b1', 'b2', 'b4']; g.player.teleport(40, g.terrain.h(40, 6), 6, 1.6); await pnWait(300); await pnOpen(g, 'map', { travel: true }); await pnWait(400); window.HM_AFTER = () => g.panels.view && g.panels.view.update(0); } },
   { n: 31, name: 'shop-outpost', what: "An outpost's stall: supplies and selling, under its own name", hour: 11,
     async setup(G, g) { await pnBase(G, g); await pnOpen(g, 'shop', { tab: 'supplies', from: 'vend_b1' }); } },
+  { n: 32, name: 'tally-finds', what: 'Tally Book: the ring, the twelve kinds, entries struck and open with their hints', hour: 11,
+    async setup(G, g) { await pnBase(G, g); pnTally(g); await pnOpen(g, 'tally', { tab: 'finds', cat: 'vista' }); } },
+  { n: 33, name: 'tally-sets', what: 'Tally Book: sets with what they pay, the nearest to done first', hour: 11,
+    async setup(G, g) { await pnBase(G, g); pnTally(g); await pnOpen(g, 'tally', { tab: 'sets' }); } },
+  { n: 34, name: 'tally-after', what: 'Tally Book: backhaul orders, the freight track, the records with their medal rows', hour: 11,
+    async setup(G, g) { await pnBase(G, g); pnTally(g); await pnOpen(g, 'tally', { tab: 'after' }); const b = document.querySelector('.pn-body'); b.scrollTop = 560; await pnWait(200); } },
+  { n: 35, name: 'tally-trade', what: "Tally Book: Old Bram's cog exchange, a shop priced in cogs", hour: 11,
+    async setup(G, g) { await pnBase(G, g); pnTally(g); await pnOpen(g, 'tally', { tab: 'trade' }); } },
+  { n: 36, name: 'tally-fresh', what: 'Tally Book on a new save: after hours still shut (the empty state)', hour: 11,
+    async setup(G, g) { await pnBase(G, g); g.state.d.flags.titan_dead = 0; await pnOpen(g, 'tally', { tab: 'after' }); } },
+  { n: 37, name: 'choice-overtime', what: 'The Overtime choice at a portal: the rule chip, the medal row, one accent', hour: 11,
+    async setup(G, g) { await pnBase(G, g); pnTally(g); void g.overtime.heroic.choose('vault'); await pnWait(400); } },
+  { n: 38, name: 'choice-longshift', what: 'The Long Shift choice at the gauntlet: medals by waves', hour: 11,
+    async setup(G, g) { await pnBase(G, g); pnTally(g); void g.overtime.shift.choose(); await pnWait(400); } },
 ];
 if (window.GOLDEN) window.GOLDEN.scenes = PN_STATES;

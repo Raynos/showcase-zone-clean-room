@@ -97,11 +97,25 @@ Desktop: a chat window, bottom left, with tabs.
 
 **View toggle.** In the wheel and in Settings. Desktop: micro menu.
 
-**The five menus.** One menu glyph, top corner on the thumb side. It opens
-a tray: Pack, Quests, Map, Character, Settings, with the clock, scrip,
-zone and experience written under them. The minimap still opens the map
-and the quest line the journal. Desktop: a micro menu row, bottom right,
-with a key on each.
+**The six menus.** One menu glyph, top corner on the thumb side. It opens
+a tray: Pack, Quests, Map, Character, Tally, Settings, with the clock,
+scrip, place and experience written under them. The minimap still opens
+the map and the quest line the journal. Desktop: a micro menu row, bottom
+right, with a key on each (the Tally Book is `K`).
+
+The tray is a grid (`hud.trayCols`). A phone on its side has room for one
+row. An upright phone gets one row up to five entries and two rows past
+that: six is three and three, seven or eight is four across. That is the
+references' answer too: a grid of glyphs with a word each, never a row
+that scrolls. The tray hangs from the glyph and is held inside the safe
+area whatever its width (`hud.trayFit`); its first entry was once cut to
+"ACK" by the left edge.
+
+**Counts on the menu.** `hud.menuBadge(id, n)` puts a count on a menu
+entry and the sum on the menu glyph: perk points to spend, on Character.
+It is a quiet number, not a pulse and not a headline: a level's headline
+says what the level opened and nothing about points. A pip without a
+number (`alert`) still means "look here" (a quest to hand in).
 
 **Frame rate.** Always there, as the references show ping: two digits in
 9.5 pt on the top edge beside the minimap, no box. Tap for the detail.
@@ -181,6 +195,35 @@ Who a plate belongs to is its colour, before any word is read:
 Another player's plate (`cls: 'npc lz-adv'`, `ui/living.css`) carries
 the level as a chip before the name. A friend's health bar is green (an
 escort, a stack being defended: any `npc` plate given `hp`).
+
+A name in the world never runs through the HUD's own words. A plate
+whose box would cross the quest column's lines, a chat line, the notice
+lane, the timer, the target frame or the boss bar is left out for the
+frame (`hud.keepOut`, measured four times a second).
+
+### Elites and bosses on the frame
+
+Every elite-class robot has a signature mechanic (docs/COMBAT.md,
+"Elites and bosses"). `ui/mechRead.ts` reads what it is doing, and
+`hud.drawMech` shows it as one row: on the target frame in the line
+"Elite" had, so the frame grows no taller; on the boss bar under its
+sub line. The row is a chip, then the answer in a few words.
+
+| State  | Chip                         | Examples             |
+| ------ | ---------------------------- | -------------------- |
+| weak   | struck solid, gold, pulsing  | Venting, Open        |
+| rage   | red outline                  | Overtime, Grudge     |
+| shield | pale outline, shield glyph   | Shelled, Plated      |
+| timer  | amber outline with a bar     | Deadline, Fuse, Heat |
+| note   | no chip: the answer only     | Dodge the dive       |
+
+A state is a glyph and a word, never colour alone. A clock is a bar on
+the chip, a grudge is three pips. The long introduction ("Shelled while
+its larvae live: sweep them up") is the lane's call-out when the fight
+starts; the frame keeps the short answer ("Sweep the larvae") for as
+long as the robot is the target. A boss with phases says which it is in
+("Phase 2 of 3") unless its own script names them, and the bar's ticks
+mark where the phases turn. The Warden's question is a clock on its bar.
 
 ## Overlays
 
@@ -444,6 +487,39 @@ action. Three shapes, chosen by the screen alone:
 - **An outpost's stall** is the shop under its own name (`Tallyline
   Supplies`), with Supplies and Sell and no weapons rack
   (`open('shop', { from: 'vend_b1' })`).
+- **The Tally Book** (`panels/tally.ts`, `panels/tally.css`) is the
+  sixth menu screen. Its language:
+  - *How full*: a ring with the percentage, the count beside it, and one
+    line naming the set nearest to done.
+  - *Kinds of find*: twelve tiles, four across on a phone and six in a
+    window, each a glyph, one word and a count, with a line on its foot
+    for progress and a tick in the corner when the kind is complete.
+    The twelfth tile counts by place.
+  - *Entries*: struck (a solid disc with a tick, the name in bold) or
+    open (an empty dashed ring, the hint in lighter type). The two read
+    apart by shape and weight, not by colour. A hint never names a
+    coordinate.
+  - *Sets*: nearest to done first, paid ones last. Each shows what it
+    pays as chips (scrip, an item with its art, a title, a perk point, a
+    tuning) and is one tap from its entries.
+  - *Shifts* (after hours): orders with their pay as chips, the freight
+    track as pegs on one bar, and a record card for each run: best, a
+    medal row with the par figures, the day's rule as a named chip with
+    its one line, and the week's bonus. Course medals are a table.
+  - *Trade*: Old Bram's exchange is a shop row for row, priced in cogs.
+    Away from his bench the prices are dimmed and one line says why.
+- **Medals** (`common.ts`, `medal`, `medalRow`) are a ribbon and a disc
+  with the podium place in it: 1 gold, 2 silver, 3 bronze. Earned is
+  struck solid; not yet earned is an empty dashed outline. Under 24 px
+  the figure is left out and the medal's name stands beside it.
+- **A choice** (`panels.choose`) is a heading, one line, and a stacked
+  button for each answer. One answer may be the accent; what it means
+  sits above the buttons (a rule chip with its one line, a medal row,
+  the best so far). Putting it off is a bare word, never a slab. The
+  portal's Overtime card is one of these.
+- **A sheet that commits to nothing** (a notice, a board to read) has no
+  accent: `confirm(text, yes, no, 'quiet')` draws a plain hairline and a
+  quiet button. `notice()` is always quiet.
 - **The fall** is not a panel (`hud.downed`, raised by the `DOWN`
   banner): the word, a bar that runs out at the respawn, a line saying
   nothing is lost; the controls dim, menus close, tips wait.
@@ -574,6 +650,7 @@ chip; none of those is drawn now.
 | Reload              | Cluster, magazine not full     | Hotbar R      |
 | Pack, Quests, Map   | Menu tray                      | Micro menu    |
 | Character, Settings | Menu tray                      | Micro menu    |
+| Tally Book          | Menu tray                      | Micro menu, K |
 | View toggle         | Wheel, Settings                | Micro menu    |
 | Portrait disc       | Removed (Character: the tray)  | Removed       |
 | Name                | Character panel                | Unit frame    |
@@ -637,22 +714,44 @@ every frame (mounts use it).
 `hud.openWheel()` opens it at the chip. Chat registers its items through
 `hud.chatApi = { open, emotes }`.
 
-**Testing.** `tools/hud-matrix.sh` stages nineteen states at five sizes
+**The quest column changes once.** `hud.setTracker(html)` takes the
+column's lines from the quest system. A count on a line that stays
+changes at once. A line that becomes about something else cross-fades
+once, the old words fading out in place under the new, and then holds:
+nothing replaces it for 2.5 s, so a line that flips is read rather than
+flickered. Which bounty shows, and for how long, is the grind system's
+rule; this is only how a change looks.
+
+**Moments.** `hud.moment({ title, sub, chips, tapWord, tap })` is a
+headline that shows what was won and takes one tap: a set completed
+shows its pay as chips and opens the book at its sets. It waits for calm
+like any headline. A brass cog entered in the book is the toast kind
+`find`: gold, with the cog turning once.
+
+**Timers.** A wave or course timer is `hud.setTimer`, in the timer
+slot, and the notice lane keeps clear of it wherever the column pushes
+the lane.
+
+**Testing.** `tools/hud-matrix.sh` stages twenty-three states at five sizes
 and checks overlaps, clipping, safe areas, the clear centre (the notice
 lane may reach 28% of the height under a target frame), touch sizes
 (44 pt; 40 for chips and glyphs), 8 pt between buttons, the budget, a
 fight's two feed lines, and that no system draws a toast, card or meter
 of its own.
+A control cut by a screen edge or lying partly outside the safe area
+fails as well (`clipped`, `unsafe`): covered is not the only way to lose
+a button.
 Both sets also check that every control is the element under its own
 centre (`HM.under`, which asks `document.elementFromPoint`, as a finger
 does). In the HUD a control is anything granted input; in a panel, every
 target of the open surface. An invisible layer over a button passes
 every geometric check and eats every tap: the title's START was dead on
 a landscape phone under a closed sheet's body, past 87 clean screens.
-`tools/hud-matrix.sh --set panels` stages thirty-one screens
+`tools/hud-matrix.sh --set panels` stages thirty-eight screens
 (`tools/hud-matrix/panels.js`) at 402x874, 874x402 and 1920x1080 and
 checks each (`HM.checkPanel`): the surface on screen, no control
-covered, no sideways overflow, no cut text, no type under 11 px, no
+covered, no sideways overflow, no cut text, no type under 11 px (type
+inside a drawing is measured as drawn), no
 target under 44 pt (24 px with a mouse), nothing in a notch or the home
 indicator band, and at most one orange button in view. Text drawn on the
 map's canvas is outside its reach.
