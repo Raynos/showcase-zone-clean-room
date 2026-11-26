@@ -49,50 +49,15 @@ export const mapPanel: PanelSpec = {
           ? `<div class="tv${d.here ? ' here' : why ? ' no' : ''}" data-a="go" data-v="${d.id}" style="--tc:${d.css}"><i>${icon('bolt', 15, 2.4)}</i><div class="grow"><b>${d.name}</b><small>${whereOf(d)}</small></div><em>${d.here ? 'Here' : 'Travel'}</em></div>`
           : `<div class="tv dark" data-a="go" data-v="${d.id}"><i>?</i><div class="grow"><b>Unknown post</b><small>${bandOf(d)?.name ?? 'The yard'} · not reached</small></div><em>${icon('lock', 13, 2.4)}</em></div>`)).join('');
     };
-    /** a post's marker: lit, a disc in its colour with a collar that says it can be tapped; dark, a question mark */
-    const postMarker = (d: TravelDest) => {
-      const x = sx(d.x), y = sz(d.z);
-      if (x < -30 || y < -30 || x > w + 30 || y > h + 30) return;
-      ctx.beginPath(); ctx.arc(x, y, d.unlocked ? 12 : 10, 0, TAU);
-      ctx.fillStyle = 'rgba(20,23,28,0.92)'; ctx.fill();
-      if (!d.unlocked) {
-        ctx.setLineDash([3, 3]); ctx.lineWidth = 1.5; ctx.strokeStyle = '#8a929c'; ctx.stroke(); ctx.setLineDash([]);
-        ctx.font = `800 13px ${MAP_FONT}`; (ctx as any).letterSpacing = '0px'; ctx.fillStyle = '#aab1ba'; ctx.fillText('?', x, y + 0.5);
-        taken.push(x, y, 22, 22);
-        return;
-      }
-      ctx.lineWidth = 2; ctx.strokeStyle = d.css; ctx.stroke();
-      const beat = (t * 0.55 + d.band * 0.17) % 1;
-      ctx.beginPath(); ctx.arc(x, y, 14 + beat * 7, 0, TAU); ctx.globalAlpha = (1 - beat) * 0.7; ctx.lineWidth = 1.5; ctx.stroke(); ctx.globalAlpha = 1;
-      ctx.save();
-      const s = 12 * 1.2 / 24;
-      ctx.translate(x - 12 * s, y - 12 * s); ctx.scale(s, s);
-      ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = d.css;
-      ctx.stroke(iconPath('bolt'));
-      ctx.restore();
-      taken.push(x, y, 26, 26);
-    };
     const isPost = (poi: MapPoi) => hasNet && poi.id.startsWith('post_');
-    /** an area objective's ground: a wash and a turning dashed ring */
-    const ring = (poi: MapPoi) => {
-      if (!poi.r) return;
-      const x = sx(poi.x), y = sz(poi.z), r = poi.r * zoom, col = poi.color ?? '#ffcf3a';
-      if (x + r < 0 || y + r < 0 || x - r > w || y - r > h) return;
-      ctx.beginPath(); ctx.arc(x, y, r, 0, TAU);
-      ctx.globalAlpha = 0.16; ctx.fillStyle = col; ctx.fill();
-      ctx.globalAlpha = 0.95; ctx.setLineDash([7, 5]); ctx.lineDashOffset = -t * 8; ctx.lineWidth = 2; ctx.strokeStyle = col; ctx.stroke();
-      ctx.setLineDash([]); ctx.lineDashOffset = 0; ctx.globalAlpha = 1;
-    };
-    /** something that walks (an escort): a beat around its marker, which eases after it between the guide's looks */
+    /** something that walks (an escort) eases after its marker between the guide's looks */
     const live = new Map<string, { x: number; z: number }>();
-    const walker = (poi: MapPoi): MapPoi => {
+    const eased = (poi: MapPoi): { x: number; z: number } => {
       if (!poi.moving) { live.delete(poi.id); return poi; }
       let at = live.get(poi.id);
       if (!at || Math.hypot(at.x - poi.x, at.z - poi.z) > 12) { at = { x: poi.x, z: poi.z }; live.set(poi.id, at); }
       at.x += (poi.x - at.x) * 0.12; at.z += (poi.z - at.z) * 0.12;
-      const x = sx(at.x), y = sz(at.z), beat = (t * 1.1) % 1;
-      ctx.beginPath(); ctx.arc(x, y, 14 + beat * 12, 0, TAU); ctx.globalAlpha = (1 - beat) * 0.8; ctx.lineWidth = 2; ctx.strokeStyle = poi.color ?? '#ffcf3a'; ctx.stroke(); ctx.globalAlpha = 1;
-      return { ...poi, x: at.x, z: at.z };
+      return at;
     };
     const sx = (x: number) => (x - cx) * zoom + w / 2, sz = (z: number) => (z - cz) * zoom + h / 2;
     const limit = () => {
@@ -113,45 +78,140 @@ export const mapPanel: PanelSpec = {
       const nw = Math.max(50, Math.round(r.width)), nh = Math.max(50, Math.round(r.height)), nd = Math.min(3, window.devicePixelRatio || 1);
       if (nw === w && nh === h && nd === dpr) return;
       const first = w === 0;
-      w = nw; h = nh; dpr = nd;
+      w = nw; h = nh; dpr = nd; fixedAt = -1;
       cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
       minZoom = Math.min(w, h) / (HALF * 2) * 0.96;
       if (first) zoom = Math.max(minZoom, Math.min(w, h) / 230);
       limit();
     };
-    // every name drawn this frame keeps its box: a later, lesser name that would cross one is left out, so
-    // the chart never prints one word over another (zoom in and the rest appear)
+    // ---------------------------------------------------------------- the chart's layout, one pass a frame
+    // Markers that would sit on one another at this zoom gather into one: it wears its foremost member's face and
+    // a count, and a tap or a closer zoom opens it. Names are placed in order of weight, each trying a few places
+    // and giving way (it is left out until the zoom makes room) when none is clear of the fixed chips and buttons,
+    // of the markers, and of the names already down. A band's name goes where its band shows and fewest markers
+    // are, and is drawn over them in a halo.
+    interface Spot { x: number; y: number; r: number; col: string; icon: string; label: string; kind: 'poi' | 'post' | 'dark' | 'folk'; id: string; n: number; names: string[]; lvl: 0 | 1 | 2; moving: boolean; beat: number }
+    interface Tag { s: string; x: number; y: number; size: number; col: string; weight: number; spacing: number; halo: boolean }
+    const spots: Spot[] = [], tags: Tag[] = [], heads: Tag[] = [];
+    /** centre x, centre y, width, height of everything a name may not cross */
     const taken: number[] = [];
-    const text = (s: string, x: number, y: number, size: number, col: string, weight = 800, spacing = 0.08, must = true): boolean => {
+    /** the chips and buttons that lie over the chart, measured a few times a second (and at once when one opens) */
+    const fixed: number[] = [];
+    let fixedAt = -1;
+    const fixedUi = () => {
+      if (fixedAt >= 0 && t - fixedAt < 0.3) return;
+      fixedAt = t; fixed.length = 0;
+      const o = cv.getBoundingClientRect();
+      for (const e of host.body.querySelectorAll<HTMLElement>('.pn-maploc, .pn-mapq, .pn-mapbtns, .pn-mapleg, .pn-travel.on, .pn-legend.on')) {
+        const r = e.getBoundingClientRect();
+        if (r.width > 2 && r.height > 2) fixed.push(r.left - o.left + r.width / 2, r.top - o.top + r.height / 2, r.width + 14, r.height + 12);
+      }
+      fixed.push(w - 26, 28, 46, 46);   // the compass
+    };
+    const hits = (x: number, y: number, tw: number, th: number, from: number[]) => {
+      for (let i = 0; i < from.length; i += 4) if (Math.abs(from[i] - x) < (from[i + 2] + tw) / 2 && Math.abs(from[i + 1] - y) < (from[i + 3] + th) / 2) return true;
+      return false;
+    };
+    const clear = (x: number, y: number, tw: number, th: number) => x - tw / 2 >= 3 && x + tw / 2 <= w - 3 && y - th / 2 >= 3 && y + th / 2 <= h - 3 && !hits(x, y, tw, th, taken);
+    const measure = (str: string, size: number, weight: number, spacing: number) => {
       ctx.font = `${weight} ${size}px ${MAP_FONT}`;
       (ctx as any).letterSpacing = `${(size * spacing).toFixed(1)}px`;
-      const tw = ctx.measureText(s).width + 8, th = size * 1.15;
-      if (!must) for (let i = 0; i < taken.length; i += 4) if (Math.abs(taken[i] - x) < (taken[i + 2] + tw) / 2 && Math.abs(taken[i + 1] - y) < (taken[i + 3] + th) / 2) return false;
-      taken.push(x, y, tw, th);
-      ctx.lineWidth = Math.max(2.5, size * 0.28); ctx.strokeStyle = 'rgba(16,18,22,0.85)'; ctx.lineJoin = 'round';
-      ctx.strokeText(s, x, y); ctx.fillStyle = col; ctx.fillText(s, x, y);
-      return true;
+      return ctx.measureText(str).width + 8;
     };
-    const marker = (poi: MapPoi, big: boolean) => {
-      const x = sx(poi.x), y = sz(poi.z);
-      if (x < -30 || y < -30 || x > w + 30 || y > h + 30) return;
-      const col = poi.color ?? '#ffd9a8', r = poi.minor ? 8 : big ? 13 : 11;
+    /** Put a name at the first of these places that is clear; false when none is. `at` is given the name's width. */
+    const place = (str: string, at: (tw: number) => Array<[number, number]>, size: number, col: string, weight = 800, spacing = 0.06, halo = false): boolean => {
+      const tw = measure(str, size, weight, spacing), th = size * 1.2;
+      for (const [x, y] of at(tw)) if (clear(x, y, tw, th)) { taken.push(x, y, tw, th); (halo ? heads : tags).push({ s: str, x, y, size, col, weight, spacing, halo }); return true; }
+      return false;
+    };
+    /** Lines that go down together or not at all (a course's name on two lines). */
+    const stack = (lines: string[], centres: Array<[number, number]>, size: number, col: string, weight = 800, spacing = 0.06) => {
+      const lh = size * 1.1, ws = lines.map((l) => measure(l, size, weight, spacing));
+      for (const [x, y] of centres) {
+        const ys = lines.map((_, i) => y + (i - (lines.length - 1) / 2) * lh);
+        if (!lines.every((_, i) => clear(x, ys[i], ws[i], size * 1.2))) continue;
+        lines.forEach((l, i) => { taken.push(x, ys[i], ws[i], size * 1.2); tags.push({ s: l, x, y: ys[i], size, col, weight, spacing, halo: false }); });
+        return true;
+      }
+      return false;
+    };
+    const ink = (g2: Tag) => {
+      ctx.font = `${g2.weight} ${g2.size}px ${MAP_FONT}`;
+      (ctx as any).letterSpacing = `${(g2.size * g2.spacing).toFixed(1)}px`;
+      ctx.lineJoin = 'round';
+      if (g2.halo) {
+        // a soft dark ground under the letters, so a band's name reads over roads, washes and markers alike
+        ctx.save(); ctx.shadowColor = 'rgba(8,10,14,0.95)'; ctx.shadowBlur = 9; ctx.lineWidth = Math.max(5, g2.size * 0.5); ctx.strokeStyle = 'rgba(12,14,18,0.6)';
+        ctx.strokeText(g2.s, g2.x, g2.y); ctx.restore();
+      }
+      ctx.lineWidth = Math.max(2.5, g2.size * 0.28); ctx.strokeStyle = 'rgba(16,18,22,0.88)';
+      ctx.strokeText(g2.s, g2.x, g2.y); ctx.fillStyle = g2.col; ctx.fillText(g2.s, g2.x, g2.y);
+    };
+    /** Every marker in view, foremost first; one that would sit on a marker already down joins it. */
+    const gather = () => {
+      spots.length = 0;
+      const add = (sp: Spot) => {
+        if (sp.x < -30 || sp.y < -30 || sp.x > w + 30 || sp.y > h + 30) return;
+        for (const o of spots) {
+          const reach = (o.r + sp.r) * 1.1;
+          if ((o.x - sp.x) ** 2 + (o.y - sp.y) ** 2 >= reach * reach) continue;
+          // a passer-by behind a place is only hidden: it will have walked on by the next look
+          if (sp.kind === 'folk' && o.kind !== 'folk') return;
+          o.n += sp.n; if (sp.label) o.names.push(sp.label);
+          return;
+        }
+        spots.push(sp);
+      };
+      const all = [...zm.pois()].filter((poi) => !isPost(poi));
+      const poiSpot = (poi: MapPoi, lvl: 0 | 1 | 2): Spot => {
+        const at = eased(poi), folk = poi.id.startsWith('adv_');
+        // (another player wears the colour their nameplate does)
+        return { x: sx(at.x), y: sz(at.z), r: lvl === 0 ? 8 : lvl === 2 ? 13 : 11, col: folk ? '#a9bcff' : poi.color ?? '#ffd9a8', icon: poi.icon, label: poi.label, kind: folk ? 'folk' : 'poi', id: poi.id, n: 1, names: [poi.label], lvl, moving: !!poi.moving, beat: 0 };
+      };
+      for (const poi of all) if (poi.id === 'quest_target') add(poiSpot(poi, 2));
+      for (const d of dests()) add({ x: sx(d.x), y: sz(d.z), r: d.unlocked ? 12 : 10, col: d.unlocked ? d.css : '#8a929c', icon: 'bolt', label: d.unlocked ? d.name : '', kind: d.unlocked ? 'post' : 'dark', id: d.id, n: 1, names: [d.unlocked ? d.name : 'Unknown signal post'], lvl: 1, moving: false, beat: d.band * 0.17 });
+      for (const poi of all) if (poi.id !== 'quest_target' && !poi.minor && poi.big) add(poiSpot(poi, 2));
+      for (const poi of all) if (!poi.minor && !poi.big) add(poiSpot(poi, 1));
+      for (const poi of all) if (poi.minor && !poi.id.startsWith('adv_')) add(poiSpot(poi, 0));
+      for (const poi of all) if (poi.minor && poi.id.startsWith('adv_')) add(poiSpot(poi, 0));
+      return all;
+    };
+    const drawSpot = (sp: Spot) => {
+      const { x, y, r } = sp;
+      if (sp.moving) {
+        const beat = (t * 1.1) % 1;
+        ctx.beginPath(); ctx.arc(x, y, r + 1 + beat * 12, 0, TAU); ctx.globalAlpha = (1 - beat) * 0.8; ctx.lineWidth = 2; ctx.strokeStyle = sp.col; ctx.stroke(); ctx.globalAlpha = 1;
+      }
       ctx.beginPath(); ctx.arc(x, y, r, 0, TAU);
       ctx.fillStyle = 'rgba(20,23,28,0.92)'; ctx.fill();
-      ctx.lineWidth = poi.minor ? 1.5 : 2; ctx.strokeStyle = col; ctx.stroke();
-      ctx.save();
-      const s = r * 1.2 / 24;
-      ctx.translate(x - 12 * s, y - 12 * s); ctx.scale(s, s);
-      ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = col;
-      ctx.stroke(iconPath(poi.icon));
-      ctx.restore();
-      taken.push(x, y, r * 2 + 2, r * 2 + 2);
+      if (sp.kind === 'dark') {
+        ctx.setLineDash([3, 3]); ctx.lineWidth = 1.5; ctx.strokeStyle = sp.col; ctx.stroke(); ctx.setLineDash([]);
+        ctx.font = `800 13px ${MAP_FONT}`; (ctx as any).letterSpacing = '0px'; ctx.fillStyle = '#aab1ba'; ctx.fillText('?', x, y + 0.5);
+      } else {
+        ctx.lineWidth = sp.lvl === 0 ? 1.5 : 2; ctx.strokeStyle = sp.col; ctx.stroke();
+        if (sp.kind === 'post') {
+          // a lit post's collar says it can be tapped
+          const beat = (t * 0.55 + sp.beat) % 1;
+          ctx.beginPath(); ctx.arc(x, y, r + 2 + beat * 7, 0, TAU); ctx.globalAlpha = (1 - beat) * 0.7; ctx.lineWidth = 1.5; ctx.stroke(); ctx.globalAlpha = 1;
+        }
+        ctx.save();
+        const k = r * 1.2 / 24;
+        ctx.translate(x - 12 * k, y - 12 * k); ctx.scale(k, k);
+        ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = sp.col;
+        ctx.stroke(iconPath(sp.icon));
+        ctx.restore();
+      }
+      if (sp.n > 1) {
+        // how many are gathered here: a tap or a closer zoom opens them out
+        const bx = x + r * 0.78, by = y - r * 0.78;
+        ctx.beginPath(); ctx.arc(bx, by, 8, 0, TAU); ctx.fillStyle = '#f2e9d8'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#14171c'; ctx.stroke();
+        ctx.font = `800 11px ${MAP_FONT}`; (ctx as any).letterSpacing = '0px'; ctx.fillStyle = '#14171c'; ctx.fillText(sp.n > 9 ? '9+' : String(sp.n), bx, by + 0.5);
+      }
     };
-    const markerName = (poi: MapPoi, big: boolean) => {
-      if (!poi.label || zoom <= (poi.minor ? 2.2 : big ? 1.05 : 1.3)) return;
-      const x = sx(poi.x), y = sz(poi.z), r = poi.minor ? 8 : big ? 13 : 11;
-      if (x < -30 || y < -30 || x > w + 30 || y > h + 30) return;
-      text(poi.label.toUpperCase(), x, y + r + 11, poi.minor ? 11 : 11.5, poi.minor ? '#e9dfcf' : poi.color ?? '#ffd9a8', 800, 0.06, false);
+    /** Around a marker: under it, over it, to its right, to its left. */
+    const around = (sp: Spot, size: number) => (tw: number): Array<[number, number]> => {
+      const out = sp.r + (sp.n > 1 ? 5 : 0);
+      return [[sp.x, sp.y + sp.r + size * 0.6 + 4], [sp.x, sp.y - out - size * 0.6 - 3], [sp.x + out + tw / 2 + 3, sp.y], [sp.x - sp.r - tw / 2 - 3, sp.y]];
     };
     const draw = () => {
       if (!w) return;
@@ -160,48 +220,81 @@ export const mapPanel: PanelSpec = {
       ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(zm.canvas, sx(-HALF), sz(-HALF), HALF * 2 * zoom, HALF * 2 * zoom);
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      taken.length = 0;
-      // the bands, each in its colour: a wash, an outline, then its name and levels
+      // the bands, each in its colour: a wash and an outline
       for (const b of BANDS) {
         const x0 = sx(b.x0), y0 = sz(b.z0), bw = (b.x1 - b.x0) * zoom, bh = (b.z1 - b.z0) * zoom;
         ctx.globalAlpha = 0.13; ctx.fillStyle = BAND_TINT[b.id]; ctx.fillRect(x0, y0, bw, bh);
         ctx.globalAlpha = 0.6; ctx.lineWidth = 1.5; ctx.strokeStyle = BAND_TINT[b.id]; ctx.strokeRect(x0 + 1.5, y0 + 1.5, bw - 3, bh - 3);
         ctx.globalAlpha = 1;
       }
+      // ---- lay it out
+      fixedUi();
+      tags.length = 0; heads.length = 0; taken.length = 0;
+      for (const v of fixed) taken.push(v);
+      const all = gather();
+      const you = g.interior ? null : { x: sx(p.x), y: sz(p.z) };
+      // the bands' names: in the part of the band that shows, clear of the chips, over the fewest markers
+      const fs = clamp(6 + zoom * 4.6, 12, 20), fs2 = Math.max(11, fs * 0.74);
       for (const b of BANDS) {
-        const x = sx((b.x0 + b.x1) / 2), y = sz((b.z0 + b.z1) / 2);
-        const fs = clamp(6 + zoom * 4.6, 12, 20);
-        text(b.name.toUpperCase(), x, y - fs * 0.55, fs, '#fff4e2', 800, zoom < 1.2 ? 0.03 : 0.1);
-        text(`LV ${b.lo}-${b.hi}`, x, y + fs * 0.6, Math.max(11, fs * 0.74), BAND_TINT[b.id], 800, 0.12);
+        const vx0 = Math.max(4, sx(b.x0)), vx1 = Math.min(w - 4, sx(b.x1)), vy0 = Math.max(4, sz(b.z0)), vy1 = Math.min(h - 4, sz(b.z1));
+        const name = b.name.toUpperCase(), lv = `LV ${b.lo}-${b.hi}`, sp1 = zoom < 1.2 ? 0.03 : 0.1;
+        const tw = Math.max(measure(name, fs, 800, sp1), measure(lv, fs2, 800, 0.12)), th = fs * 1.2 + fs2 * 1.2;
+        if (vx1 - vx0 < tw + 4 || vy1 - vy0 < th + 4) continue;
+        const mx = (vx0 + vx1) / 2, my = (vy0 + vy1) / 2;
+        let bestX = 0, bestY = 0, bestScore = 1e9;
+        for (const fy of [0, -1, 1, -2, 2, -3, 3]) for (const fx of [0, -1, 1]) {
+          const x = clamp(mx + fx * tw * 0.45, vx0 + tw / 2 + 2, vx1 - tw / 2 - 2), y = clamp(my + fy * th * 0.85, vy0 + th / 2 + 2, vy1 - th / 2 - 2);
+          if (hits(x, y, tw, th, taken)) continue;
+          // (two bands' names side by side read as one: each keeps a clear space to its sides)
+          let score = Math.abs(fy) * 0.35 + Math.abs(fx) * 0.6;
+          for (const sp of spots) if (Math.abs(sp.x - x) < tw / 2 + sp.r && Math.abs(sp.y - y) < th / 2 + sp.r) score += sp.kind === 'folk' ? 0.6 : 2;
+          if (you && Math.abs(you.x - x) < tw / 2 + 14 && Math.abs(you.y - y) < th / 2 + 14) score += 4;
+          if (score < bestScore) { bestScore = score; bestX = x; bestY = y; }
+        }
+        if (bestScore > 1e8) continue;
+        const y1 = bestY - th / 2 + fs * 0.6, y2 = bestY + th / 2 - fs2 * 0.6;
+        taken.push(bestX, bestY, tw + 44, th + 6);
+        heads.push({ s: name, x: bestX, y: y1, size: fs, col: '#fff4e2', weight: 800, spacing: sp1, halo: true }, { s: lv, x: bestX, y: y2, size: fs2, col: BAND_TINT[b.id], weight: 800, spacing: 0.12, halo: true });
       }
-      const ts = clamp(9 + zoom * 3, 12, 18);
-      text('BRASSWICK', sx((TOWN.x0 + TOWN.x1) / 2 - 22), sz(TOWN.z0 + 12), ts, '#ffcf5a', 800, 0.14);
-      // markers first (their discs keep names off them), then names in order of weight
-      const ds = dests();
-      const all = [...zm.pois()].filter((poi) => !isPost(poi));
-      for (const poi of all) ring(poi);
-      for (const poi of all) if (poi.minor) marker(poi, false);
-      for (const d of ds) postMarker(d);
-      const main = all.filter((poi) => !poi.minor).map(walker);
-      for (const poi of main) marker(poi, !!poi.big);
-      for (const poi of main) if (poi.big) markerName(poi, true);
-      for (const d of ds) if (d.unlocked && zoom > 1.05) text(d.name.toUpperCase(), sx(d.x), sz(d.z) + 12 + 11, 11.5, d.css, 800, 0.06, false);
-      for (const poi of main) if (!poi.big) markerName(poi, false);
+      // the town's name: along its north wall, or outside it
+      const ts = clamp(9 + zoom * 3, 12, 18), tcx = sx((TOWN.x0 + TOWN.x1) / 2);
+      place('BRASSWICK', () => [[sx((TOWN.x0 + TOWN.x1) / 2 - 22), sz(TOWN.z0 + 12)], [tcx, sz(TOWN.z0) - ts], [tcx, sz(TOWN.z1) + ts], [tcx, sz(TOWN.z0 + 12)]], ts, '#ffcf5a', 800, 0.14, true);
+      // the markers keep names off them
+      for (const sp of spots) { const d = sp.r * 2 + (sp.n > 1 ? 8 : 2); taken.push(sp.x, sp.y, d, d); }
+      if (you) taken.push(you.x, you.y, 26, 26);
+      // names in order of weight: the objective and the lit posts, the great places, the rest
+      const nameOf = (sp: Spot) => (sp.n > 1 && sp.lvl < 2 && sp.kind !== 'post' ? '' : sp.label.toUpperCase());
+      for (const sp of spots) if (sp.id === 'quest_target' && sp.label) place(sp.label.toUpperCase(), around(sp, 11.5), 11.5, sp.col, 800, 0.06);
+      if (zoom > 1.05) for (const sp of spots) if (sp.kind === 'post') place(sp.label.toUpperCase(), around(sp, 11.5), 11.5, sp.col, 800, 0.06);
+      if (zoom > 1.05) for (const sp of spots) if (sp.kind === 'poi' && sp.lvl === 2 && sp.id !== 'quest_target' && sp.label) place(nameOf(sp), around(sp, 11.5), 11.5, sp.col, 800, 0.06);
+      if (zoom > 1.3) for (const sp of spots) if (sp.kind === 'poi' && sp.lvl === 1 && nameOf(sp)) place(nameOf(sp), around(sp, 11.5), 11.5, sp.col, 800, 0.06);
       const ps = clamp(7.5 + zoom * 1.6, 11, 13);
       const named = new Set<string>();
-      for (const poi of zm.pois()) named.add(poi.label.toLowerCase());
+      for (const poi of all) named.add(poi.label.toLowerCase());
+      for (const d of dests()) named.add(d.name.toLowerCase());
       for (const k in PADS) {
         if (k === 'paddock' && zoom < 2) continue;
         if (named.has(PADS[k].name.toLowerCase())) continue; // a live marker already carries this name
-        const r = PADS[k], x = sx((r.x0 + r.x1) / 2), y = sz((r.z0 + r.z1) / 2);
+        const r = PADS[k], x = sx((r.x0 + r.x1) / 2), y = sz((r.z0 + r.z1) / 2), half = (r.z1 - r.z0) * zoom / 2;
         const words = (r.x1 - r.x0) * zoom < r.name.length * ps * 0.5 ? r.name.toUpperCase().split(' ') : [r.name.toUpperCase()];
         if (words.length > 1 && zoom < 1.5) continue;
-        words.forEach((wd, i) => text(wd, x, y + (i - (words.length - 1) / 2) * ps * 1.1, ps, '#ffe6c2', 800, 0.06, false));
+        const dy = Math.min(half * 0.6, ps * 1.6 * words.length);
+        stack(words, [[x, y], [x, y - dy], [x, y + dy]], ps, '#ffe6c2', 800, 0.06);
       }
-      text('THE ROCK', sx(ROCK.x), sz(ROCK.z), ps + 1, '#e3e8ee', 800, 0.1, false);
-      text('MIRROR LAKE', sx(LAKE.x), sz(LAKE.z), ps, '#d8fbff', 700, 0.14, false);
-      if (zoom > 1.2) { text('SAFE', sx(-125), sz(-232), ps, 'rgba(184,255,214,0.85)', 800, 0.3, false); text('HOSTILE', sx(130), sz(-232), ps, 'rgba(255,150,120,0.9)', 800, 0.3, false); }
-      for (const poi of zm.pois()) if (poi.minor) markerName(poi, false);
+      place('THE ROCK', () => [[sx(ROCK.x), sz(ROCK.z)], [sx(ROCK.x), sz(ROCK.z) - 18], [sx(ROCK.x), sz(ROCK.z) + 18]], ps + 1, '#e3e8ee', 800, 0.1);
+      place('MIRROR LAKE', () => [[sx(LAKE.x), sz(LAKE.z)], [sx(LAKE.x), sz(LAKE.z) - 16], [sx(LAKE.x), sz(LAKE.z) + 16]], ps, '#d8fbff', 700, 0.14);
+      if (zoom > 1.2) { place('SAFE', () => [[sx(-125), sz(-232)]], ps, 'rgba(184,255,214,0.85)', 800, 0.3); place('HOSTILE', () => [[sx(130), sz(-232)]], ps, 'rgba(255,150,120,0.9)', 800, 0.3); }
+      if (zoom > 2.2) for (const sp of spots) if (sp.lvl === 0 && sp.n === 1 && sp.label) place(sp.label.toUpperCase(), around(sp, 11), 11, sp.kind === 'folk' ? '#d5dcff' : '#e9dfcf', 800, 0.06);
+      // ---- draw it: the ground's marks, the markers from the least up, the names, you, the bands' names
+      for (const poi of all) {
+        if (!poi.r) continue;
+        const at = eased(poi), x = sx(at.x), y = sz(at.z), r = poi.r * zoom, col = poi.color ?? '#ffcf3a';
+        if (x + r < 0 || y + r < 0 || x - r > w || y - r > h) continue;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, TAU);
+        ctx.globalAlpha = 0.16; ctx.fillStyle = col; ctx.fill();
+        ctx.globalAlpha = 0.95; ctx.setLineDash([7, 5]); ctx.lineDashOffset = -t * 8; ctx.lineWidth = 2; ctx.strokeStyle = col; ctx.stroke();
+        ctx.setLineDash([]); ctx.lineDashOffset = 0; ctx.globalAlpha = 1;
+      }
       for (const m of g.mobs.list) {
         if (!m.alive || !m.rig.root.visible) continue;
         const x = sx(m.pos.x), y = sz(m.pos.z), big = m.cls === 'elite' || m.cls === 'boss';
@@ -209,18 +302,33 @@ export const mapPanel: PanelSpec = {
         ctx.fillStyle = m.aggro ? '#ff4a2a' : 'rgba(255,110,80,0.6)'; ctx.fill();
         if (big) { ctx.lineWidth = 1.6; ctx.strokeStyle = '#ffcf5a'; ctx.stroke(); }
       }
+      for (let i = spots.length - 1; i >= 0; i--) drawSpot(spots[i]);
+      for (const tg of tags) ink(tg);
       // you
-      if (!g.interior) {
-        const x = sx(p.x), y = sz(p.z), pr = 14 + (t * 0.9 % 1) * 18;
-        ctx.beginPath(); ctx.arc(x, y, pr, 0, TAU); ctx.lineWidth = 2; ctx.strokeStyle = `rgba(94,240,255,${(1 - (t * 0.9 % 1)) * 0.7})`; ctx.stroke();
-        ZoneMap.arrow(ctx, x, y, g.player.yaw, 11);
+      if (you) {
+        const pr = 14 + (t * 0.9 % 1) * 18;
+        ctx.beginPath(); ctx.arc(you.x, you.y, pr, 0, TAU); ctx.lineWidth = 2; ctx.strokeStyle = `rgba(94,240,255,${(1 - (t * 0.9 % 1)) * 0.7})`; ctx.stroke();
+        ZoneMap.arrow(ctx, you.x, you.y, g.player.yaw, 11);
       }
+      for (const tg of heads) ink(tg);
       // compass
       ctx.save(); ctx.translate(w - 26, 28);
       ctx.beginPath(); ctx.arc(0, 0, 16, 0, TAU); ctx.fillStyle = 'rgba(20,23,28,0.82)'; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.stroke();
       ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(4, -2); ctx.lineTo(-4, -2); ctx.closePath(); ctx.fillStyle = '#5ef0ff'; ctx.fill();
       ctx.font = `800 11px ${MAP_FONT}`; (ctx as any).letterSpacing = '0px'; ctx.fillStyle = '#fff'; ctx.fillText('N', 0, 6.5);
       ctx.restore();
+    };
+    /** A tap on a marker: a post is chosen; markers gathered into one open out (a closer zoom, or their names). */
+    const tapSpot = (px: number, py: number) => {
+      let best: Spot | null = null, bd = 1e9;
+      for (const sp of spots) { const dd = Math.hypot(sp.x - px, sp.y - py); if (dd < Math.max(sp.r + 10, 24) && dd < bd) { bd = dd; best = sp; } }
+      if (!best) return;
+      g.sfx('ui_click');
+      if (best.kind === 'post' || best.kind === 'dark') pick(best.id);
+      else if (best.n > 1) {
+        if (zoom < 6.4) zoomAt(1.9, best.x, best.y);
+        else void host.notice(`${best.n} here`, best.names.join(' · '));
+      }
     };
     const where = () => {
       if (g.interior) return g.hud.placeName;
@@ -247,7 +355,7 @@ export const mapPanel: PanelSpec = {
         <div class="pn-travel bev${travel ? ' on' : ''}">${hasNet ? travelHtml() : ''}</div>
         ${questChip()}
         <div class="pn-legend bev${legend ? ' on' : ''}" data-a="legend"><h4>Legend</h4><div class="lg">
-          <div><i class="you"></i>You</div><div><i class="obj">${icon('star', 12, 2.4)}</i>Quest objective</div><div><i class="dot q"></i>Place of interest</div><div><i class="post">${icon('bolt', 11, 2.6)}</i>Signal post: tap to travel</div><div><i class="area"></i>Objective area</div><div><i class="dot r"></i>Robot</div><div><i class="dot e"></i>Elite or boss</div>
+          <div><i class="you"></i>You</div><div><i class="obj">${icon('star', 12, 2.4)}</i>Quest objective</div><div><i class="dot q"></i>Place of interest</div><div><i class="post">${icon('bolt', 11, 2.6)}</i>Signal post: tap to travel</div><div><i class="area"></i>Objective area</div><div><i class="many"><b>3</b></i>Several: tap to open</div><div><i class="dot a"></i>Adventurer</div><div><i class="dot r"></i>Robot</div><div><i class="dot e"></i>Elite or boss</div>
           <div><i class="ln road"></i>Road</div><div><i class="ln trail"></i>Trail</div><div><i class="ln track"></i>Riding track</div><div><i class="bx"></i>Test course</div><div><i class="wall"></i>Blast wall</div></div>
           <div class="lb">${BANDS.map((b) => `<div><i style="background:${BAND_TINT[b.id]}"></i><span>${b.name}</span><em>Lv ${b.lo}-${b.hi}</em></div>`).join('')}</div></div>`;
       cv = host.body.querySelector('canvas')!; ctx = cv.getContext('2d')!;
@@ -273,14 +381,12 @@ export const mapPanel: PanelSpec = {
       });
       const up = (e: PointerEvent) => { pts.delete(e.pointerId); pinch = 0; };
       cv.addEventListener('pointerup', (e) => {
-        // a tap (not a drag) on or beside a post's marker picks it: a finger's reach, the nearest wins
+        // a tap (not a drag) on or beside a marker: a finger's reach, the nearest wins
         const tap = tapAt; tapAt = null;
         up(e);
         if (!tap || tap.far || performance.now() - tap.t > 600) return;
         const r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
-        let best: TravelDest | null = null, bd = 26;
-        for (const d of dests()) { const dd = Math.hypot(sx(d.x) - px, sz(d.z) - py); if (dd < bd) { bd = dd; best = d; } }
-        if (best) { g.sfx('ui_click'); pick(best.id); }
+        tapSpot(px, py);
       });
       cv.addEventListener('pointercancel', (e) => { tapAt = null; up(e); });
       cv.addEventListener('wheel', (e) => { e.preventDefault(); const r = cv.getBoundingClientRect(); zoomAt(Math.exp(-e.deltaY * 0.0016), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
@@ -323,6 +429,7 @@ export const mapPanel: PanelSpec = {
           tv?.classList.toggle('on', travel);
           host.body.querySelector('[data-a=travel]')?.classList.toggle('on', travel);
           host.body.querySelector('.pn-legend')?.classList.toggle('on', legend);
+          fixedAt = -1;   // the names step out from under the card at once
           g.sfx('ui_click');
         }
         else if (a === 'go') pick(v);

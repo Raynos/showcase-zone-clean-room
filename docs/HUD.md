@@ -379,13 +379,31 @@ action. Three shapes, chosen by the screen alone:
 
 - **Map.** Each band is washed and outlined in its colour and named with
   its levels; the legend lists the bands with the same swatches, and
-  the markers. The player is a white arrow in a cyan ring. Names never
-  cross: the bands and the town are always printed, then quest and place
-  markers, then courses and landmarks, each only where it is clear, so
-  zooming in brings the rest. Drag pans and a pinch or the wheel zooms;
-  the buttons zoom and centre. The tracked quest is a chip that opens the
-  log. An area objective (a guide `Target` with `r`) is a washed, dashed
-  ring on the map and the minimap, and standing inside it the ring is
+  the markers. The player is a white arrow in a cyan ring. Drag pans and
+  a pinch or the wheel zooms; the buttons zoom and centre. The tracked
+  quest is a chip that opens the log.
+- **The map's layout** is one pass a frame (`mapPanel.ts`, `gather`,
+  `place`), so nothing is drawn over anything else:
+  1. Markers that would touch at this zoom gather into one, foremost
+     first (objective, posts, great places, places, gates, adventurers).
+     It wears its foremost member's face and a count; a tap zooms in on
+     it, a closer zoom opens it, and at the closest zoom a tap names
+     what is there. A post is never opened by a tap: a tap travels. An
+     adventurer behind a place is hidden, not counted.
+  2. Names go down in order of weight, each trying a few places (under
+     its marker, over it, beside it) and left out when none is clear of
+     the fixed chips and buttons, the markers, the player, and the
+     names already down. Zooming in brings the rest.
+  3. A band's name is placed first, in the part of the band that
+     shows, clear of the chips and of the next band's name, where it
+     covers the fewest markers; it is drawn last, over the markers, in
+     a dark halo. The town's name runs along its north wall.
+  4. Nothing is named under the place chip, the quest chip, the
+     buttons, the compass, or an open legend or travel list (measured
+     from the DOM; an open card also puts the two chips away).
+  Robots are dots under the markers. An adventurer's dot is the blue of
+  their nameplate. An area objective (a guide `Target` with `r`) is a
+  washed, dashed ring on the map and the minimap; standing inside it is
   the marker; an objective that walks (an escort) is a dot with a beat
   that eases after it.
 - **Fast travel** lives on the map. Every signal post is a marker: a lit
