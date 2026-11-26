@@ -126,8 +126,21 @@ export class Quests {
     g.hud.log(`Quest accepted: ${q.name}`, 'quest');
     g.sfx('quest_accept');
     if (q.onAccept) this.effect(q.onAccept, q);
+    // the job just taken is the one the player chose: the tracker and the waypoint follow it
+    g.state.d.track = id;
     g.state.events.emit('questUpdate', { id });
     return true;
+  }
+  /**
+   * A field job's attempt failed (systems/objectives): put one objective back to `to`. The quest
+   * stays in hand, so the player retries on the spot instead of going back to the giver.
+   */
+  resetObjective(id: string, i: number, to = 0) {
+    const s = this.game.state.d.quests[id];
+    if (!s || s.state === 'done' || (s.prog[i] ?? 0) <= to) return;
+    s.prog[i] = to;
+    this.game.state.touch();
+    this.game.state.events.emit('questUpdate', { id });
   }
   turnIn(id: string) {
     const q = QUEST_BY_ID[id];

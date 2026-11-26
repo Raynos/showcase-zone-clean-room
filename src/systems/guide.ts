@@ -4,9 +4,14 @@ import { QUESTS, type QuestDef } from '../data/quests';
 import type { Game, System } from '../game';
 import { el } from '../ui/hud';
 import { BEACONS } from '../world/east';
-import { BANDS, GAUNTLET, PADS, ROCK, TITAN_GATE, TOWN, VAULT_PORTAL } from '../world/layout';
+import { BANDS, GAUNTLET, PADS, ROCK, TITAN_GATE, TOWN, VAULT, VAULT_PORTAL } from '../world/layout';
 
-interface Target { x: number; z: number; y?: number; label: string }
+/** A waypoint; `r` marks an area rather than a point (the map can ring it). */
+export interface Target { x: number; z: number; y?: number; label: string; r?: number }
+/** Other systems' answers for objective keys this file does not know (the field runner's `flag:fq:` keys). */
+export const GUIDE_TARGETS: Array<(key: string) => Target | null> = [];
+/** People the waypoint points at when nothing is tracked and they have work (field outposts add theirs). */
+export const GUIDE_GIVERS: string[] = ['quest1', 'quest2', 'quest3', 'stable'];
 const _v = new THREE.Vector3();
 
 /**
@@ -53,6 +58,7 @@ export class Guide implements System {
     return best;
   }
   private forObjective(key: string): Target | null {
+    for (const f of GUIDE_TARGETS) { const t = f(key); if (t) return t; }
     const [type, a] = key.split(':');
     const g = this.game;
     if (type === 'kill') {
@@ -84,6 +90,11 @@ export class Guide implements System {
     if (type === 'flag' && a === 'gauntlet_clear') return { x: GAUNTLET.courts[0].x, z: GAUNTLET.courts[0].z + GAUNTLET.size / 2 + 4, label: 'The Gauntlet' };
     return null;
   }
+  /** Inside the vault the only objective is its Warden: a direction to the boss hall, one floor up at the far end. */
+  private inVault(): Target | null {
+    const wanted = this.game.quests.active().some((q) => { const p = this.game.quests.progress(q); return q.objectives.some((o, i) => o.on === 'kill:warden' && p[i] < o.n); });
+    return wanted ? { x: VAULT.x, z: VAULT.z - 74, y: VAULT.y + 16 + 2.4, label: 'Vault Warden' } : null;
+  }
   private pad(k: string): Target | null { const p = PADS[k]; return p ? { x: (p.x0 + p.x1) / 2, z: (p.z0 + p.z1) / 2, label: p.name ?? '' } : null; }
   private forQuest(q: QuestDef): Target | null {
     const qs = this.game.quests, prog = qs.progress(q);
@@ -93,11 +104,11 @@ export class Guide implements System {
   }
   private pick(): Target | null {
     const g = this.game, qs = g.quests;
-    if (g.interior) return null;
+    if (g.interior) return g.interior === 'vault' ? this.inVault() : null;
     for (const q of qs.active()) { const t = this.forQuest(q); if (t) return t; }
     // nothing tracked: point at the nearest person with work on offer
     const p = g.player.pos; let best: Target | null = null, bd = 1e9;
-    for (const id of ['quest1', 'quest2', 'quest3', 'stable']) {
+    for (const id of GUIDE_GIVERS) {
       const m = qs.marker(id);
       if (m !== 'y' && m !== 't') continue;
       const t = this.npcPos(id); if (!t) continue;

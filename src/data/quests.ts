@@ -8,6 +8,7 @@
  */
 import { killXp, questXp } from './balance';
 import { ELITES } from './enemies';
+import { FIELD_NAMES, FIELD_QUESTS } from './quests-field';
 export interface Objective { on: string; n: number; text: string; take?: boolean }
 export interface QuestDef {
   id: string; name: string; giver: string; turnIn?: string; level: number;
@@ -79,7 +80,7 @@ export const QUESTS: QuestDef[] = [
     mid: 'The vault portal stands in the Slagworks, east end of the main road. Defeat the Vault Warden.', outro: ['Certified. Officially. I will even sign it.', 'Warden-Captain Brask will want you for the far bands now.'],
     objectives: [{ on: 'kill:warden', n: 1, text: 'Vault Warden defeated' }], onAccept: 'vault_key' }),
   Q({ id: 'q_nightshift', tier: 2, name: 'Night Shift', giver: 'quest2', level: 8, requires: ['q_heights'], xp: questXp(8, 0.15), scrip: 420,
-    intro: ['After dark the yard runs a second shift. Tougher units, running hot. I want to know how tough.', 'Break eight night-shift robots. Any kind. The bench at the plaza will let you wait for dusk.'],
+    intro: ['After dark the yard runs a second shift. Tougher units, running hot. I want to know how tough.', 'Break eight night-shift robots. Any kind. If it is still day, sit on Old Bram\'s bench by the plaza well, or the bench at any field outpost, and wait for dusk.'],
     mid: 'Eight night-shift robots, any kind. They only clock on after dark.', outro: ['Thirty-five percent tougher. I had guessed thirty. Thank you for the data.'],
     objectives: [{ on: 'kill:any:night', n: 8, text: 'Night-shift robots broken' }] }),
   Q({ id: 'q_storm', tier: 2, name: 'Storm Hour', giver: 'quest2', level: 9, requires: ['q_lenses'], xp: questXp(9, 0.2), scrip: 700, items: [['bolt_shock', 20]],
@@ -111,6 +112,7 @@ export const QUESTS: QuestDef[] = [
     intro: ['It started with one crate that would not stay stacked. Now it is fifteen metres tall and it has an arena.', 'The Crate Titan. Behind the boss portal at the end of the Titan road. There is nothing left to teach you. Go and end this.'],
     mid: 'The boss portal is at the end of the Titan road, south-west Arc Field. Defeat the Crate Titan.', outro: ['It is down. It is actually down.', 'Brasswick owes you everything. The yard is yours, champion.'],
     objectives: [{ on: 'kill:titan', n: 1, text: 'Crate Titan destroyed' }] }),
+  ...FIELD_QUESTS,
 ];
 export const QUEST_BY_ID: Record<string, QuestDef> = Object.fromEntries(QUESTS.map((q) => [q.id, q]));
 
@@ -158,4 +160,5 @@ export const NPC_NAMES: Record<string, { name: string; title: string }> = {
   tinker: { name: 'Pim the Tinker', title: 'Upgrades' },
   weapons: { name: 'Armourer Voss', title: 'Weapons' },
   stable: { name: 'Stable Hand Wren', title: 'Stable' },
+  ...FIELD_NAMES,
 };

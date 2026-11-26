@@ -1,4 +1,5 @@
 import type { Game } from '../game';
+import { OUTPOST_KEEPOUT } from '../data/outposts';
 import { startAmbient } from './dressing/ambient';
 import { buildBands } from './dressing/bands';
 import { planFinds, startFinds, type FindPlan } from './dressing/finds';
@@ -18,6 +19,7 @@ let plan: FindPlan | null = null;
 
 export function build(game: Game) {
   const c = new Ctx(game);
+  for (const [x, z, r] of OUTPOST_KEEPOUT) c.reserve(x, z, r);
   const bands = buildBands(c);
   const west = buildWest(c);
   plan = planFinds(c);

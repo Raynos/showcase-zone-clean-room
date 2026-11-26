@@ -13,7 +13,8 @@ import { PAL } from '../world/layout';
 import type { NpcSpot, TownInfo } from '../world/town';
 import { EXTRA_WALKERS, FOLK, type FolkDef } from './npcs/cast';
 
-const KEY_IDS = ['quest1', 'quest2', 'quest3', 'tinker', 'weapons', 'stable'];
+/** People with a plate and a quest mark; field outposts add their givers (world/outposts.ts) before the cast is built. */
+export const KEY_IDS = ['quest1', 'quest2', 'quest3', 'tinker', 'weapons', 'stable'];
 const SHOW_DIST = 70, NEAR_DIST = 14, PROXY_OUT = 21, PROXY_IN = 18, SHADOW_OUT = 10, SHADOW_IN = 8, FAR_SHADOW = 46;
 /** Lets a baked figure cast the shadow for a live rig without drawing anything itself. */
 const SHADOW_ONLY = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
@@ -288,7 +289,7 @@ export class Npcs implements System {
     if (!panels || this.talking) return;
     this.talking = n; this.talkOpen = false;
     n.partner = null; n.mode = 'dialog'; n.modeT = 0;
-    if (n.key) panels.talk(n.id);
+    if (n.key) panels.open('talk', { npc: n.id, line: n.folk ? n.folk.lines[n.lineN++ % n.folk.lines.length] : undefined });
     else {
       const lines = n.folk?.lines ?? ['Lovely day for it.'];
       panels.open('talk', { npc: n.id, name: n.name, title: n.title, line: lines[n.lineN % lines.length] });
@@ -348,7 +349,7 @@ export class Npcs implements System {
     this.pollT -= rdt;
     if (this.pollT <= 0) {
       this.pollT = 0.4;
-      for (const id of ['quest1', 'quest2', 'quest3', 'stable']) this.marks.set(id, g.quests.marker(id));
+      for (const id of KEY_IDS) this.marks.set(id, g.quests.marker(id));
       this.claimable = g.quests.anyClaimable();
       this.night = g.env.isNight();
       // folk with day jobs drift home over the first minute of night, and back out again at dawn
