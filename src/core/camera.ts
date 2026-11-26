@@ -64,6 +64,8 @@ export interface CineShot {
   pos: (t: number) => THREE.Vector3;
   look: (t: number) => THREE.Vector3;
   fov?: number;
+  /** false: no cinematic bars (trailer mode, systems/trailer.ts) */
+  letterbox?: boolean;
 }
 
 /**
@@ -226,7 +228,8 @@ export class CameraRig {
     if (instant) this.fpK = v === 'first' ? 1 : 0;
   }
 
-  startCine(shot: CineShot) { this.cine = shot; this.cineT = 0; }
+  /** `cut`: take the picture at once instead of blending from the current camera */
+  startCine(shot: CineShot, cut = false) { this.cine = shot; this.cineT = 0; if (cut) this.cineBlend = 1; }
   endCine() { this.cine = null; }
 
   /** forward vector on the ground plane for camera-relative movement */

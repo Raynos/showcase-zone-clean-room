@@ -520,7 +520,7 @@ export class Game {
     const flashCap = this.state.d.settings.flash ?? 1;
     if (flashCap < 1) post.flash.w = Math.min(post.flash.w, 0.35 * flashCap);
     post.speed = damp(post.speed, this.speedFx, 5, rdt);
-    post.letterbox = damp(post.letterbox, this.cameraRig.cine && this.started ? 1 : 0, 4, rdt);
+    post.letterbox = damp(post.letterbox, this.cameraRig.cine && this.cameraRig.cine.letterbox !== false && this.started ? 1 : 0, 4, rdt);
 
     // hud
     {
@@ -560,6 +560,8 @@ export class Game {
   /** Title screen over a slow aerial drift across Brasswick; resolves when the player starts. */
   async intro() {
     if (this.dev) void import('./ui/dev').then((m) => m.installDev(this));
+    // trailer mode: the recording camera (systems/trailer.ts), never loaded for a player
+    { const tr = new URLSearchParams(location.search).has('trailer'); if (this.dev || tr) void import('./systems/trailer').then((m) => m.installTrailer(this, tr)); }
     // the frame-rate readout is always installed (Settings can hide it); ?perf makes it the full strip
     void import('./ui/perf').then((m) => m.installPerf(this, new URLSearchParams(location.search).has('perf')));
     if (this.dev || !this.panels?.title) { this.started = true; return; }
