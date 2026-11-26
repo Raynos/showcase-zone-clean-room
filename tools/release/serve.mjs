@@ -28,11 +28,11 @@ createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   let p = decodeURIComponent(url.pathname);
   if (p === base.slice(0, -1)) { res.writeHead(301, { Location: base }); return res.end(); }
-  if (!p.startsWith(base)) { res.writeHead(404); return res.end('outside base ' + base); }
+  if (!p.startsWith(base)) { console.log('404 ' + url.pathname + ' (outside the base path)'); res.writeHead(404); return res.end('outside base ' + base); }
   p = normalize(p.slice(base.length)).replace(/^(\.\.[/\\])+/, '');
   let file = join(dir, p);
   if (existsSync(file) && statSync(file).isDirectory()) file = join(file, 'index.html');
-  if (!existsSync(file)) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('not found'); }
+  if (!existsSync(file)) { console.log('404 ' + url.pathname); res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('not found'); }
   const ext = extname(file).toLowerCase();
   const headers = { 'Content-Type': TYPES[ext] ?? 'application/octet-stream', 'Cache-Control': 'max-age=600', 'Access-Control-Allow-Origin': '*' };
   const gz = GZIP.has(ext) && /\bgzip\b/.test(req.headers['accept-encoding'] ?? '');
