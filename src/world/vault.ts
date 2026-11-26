@@ -14,6 +14,7 @@ import { PAL, VAULT, VAULT_PORTAL } from './layout';
 import { piece } from './pieces';
 import { crate, pixelText } from './props';
 import { addEmitter } from '../systems/emitters';
+import { WardenExam } from '../systems/mechanics/exam';
 
 /**
  * The Training Vault: four chambers strung north along x = VAULT.x, 70 m under the Slagworks.
@@ -207,10 +208,13 @@ export class Vault implements System {
   private warden: Mob | null = null; private chest!: THREE.Group; private chestLid!: THREE.Mesh; private chestOpen = 0; private looted = false;
   private exitPortal!: THREE.ShaderMaterial; private exitShaft!: THREE.Mesh;
   private group = new THREE.Group();
+  /** the Warden's final: the lamp question on the pillars and the marking lines (systems/mechanics/exam.ts) */
+  readonly exam: WardenExam;
 
   constructor(private game: Game) {
     const g = game;
     g.scene.add(this.group); this.group.visible = false;
+    this.exam = new WardenExam(g, this.group, X, Y + UP, -65);
     const roof = g.chunks.namedMeshes.get('vault_roof');
     if (roof) roof.castShadow = false;
     // the shell is lit evenly from above; only characters and platforms cast shadows down here
@@ -324,7 +328,7 @@ export class Vault implements System {
   private shutdown() {
     const g = this.game;
     if (this.stage === 'intro') { if (g.cameraRig.cine) g.cameraRig.endCine(); g.player.controllable = true; }
-    this.group.visible = false; this.stage = 'idle';
+    this.group.visible = false; this.stage = 'idle'; this.exam.stop();
     g.combat.checkpoint = null; g.mobs.bounds = null; g.musicOverride = null;
     for (let i = 0; i < 4; i++) this.setDoor(i, true, true);
   }
@@ -344,7 +348,7 @@ export class Vault implements System {
   private onRespawn() {
     const g = this.game;
     g.mobs.clear(); g.combat.clearShots();
-    this.waveMobs.length = 0; this.warden = null;
+    this.waveMobs.length = 0; this.warden = null; this.exam.stop();
     if (this.stage === 'combat' || this.stage === 'combatWait') { this.stage = 'combatWait'; this.wave = -1; this.setDoor(1, true); this.setDoor(2, false); }
     if (this.stage === 'boss' || this.stage === 'intro' || this.stage === 'bossWait') { this.stage = 'bossWait'; this.setDoor(3, true); g.musicOverride = 'dungeon'; }
   }
@@ -467,17 +471,20 @@ export class Vault implements System {
       if (this.warden?.alive) { this.warden.aggro = true; this.stage = 'boss'; }
     });
     m.onPhase = (ph) => {
-      g.hud.banner(ph === 2 ? 'EXAM: PRACTICAL' : 'EXAM: FINAL', ph === 2 ? 'The Warden calls its drones' : 'Its shield is gone: the core is open', 'danger');
+      g.hud.banner(ph === 2 ? 'EXAM: PRACTICAL' : 'EXAM: FINAL', ph === 2 ? 'The Warden calls its drones' : 'Answer the lamps to break it', 'danger');
       g.sfx('elite_roar', { pos: m.pos }); g.cameraRig.shake(0.5); g.fx.play('boss.phase', m.pos, undefined, 0x7ff0ff, m.radius, ph);
       if (ph === 3) {
         // the final: the shield plates blow off and the core runs hot. It hits harder and faster
-        // (sweeping beam, triple rings, a slam that chases), and takes more damage for it.
+        // (sweeping beam that the pillars stop, triple rings, a slam that chases, lines across the
+        // hall) and only a right answer on the lamps puts it down for a real beating.
         const c = m.center(new THREE.Vector3());
         g.fx.chunks(c, 22, [0x5b6470, 0x383e47, 0xf28a2e], 12, 0.4); g.fx.explosion(c, 1.4, 0x7ff0ff);
-        m.dmgTakenMul = 1.15;
+        m.dmgTakenMul = 0.85;
+        this.exam.start(m);
       }
     };
     m.onDeath = () => {
+      this.exam.stop();
       this.stage = 'done'; this.setDoor(3, true);
       g.mobs.clear((x) => x !== m);
       g.musicOverride = 'victory';
@@ -530,6 +537,12 @@ export class Vault implements System {
         g.hud.toast('Express lift online', 'good', 'A way back up if you fall'); g.sfx('lift_start');
       }
       if (p.z < -45.5 && p.y > Y + UP - 1 && !g.player.dead) this.startBoss();
+    }
+    if (this.stage === 'boss') {
+      this.exam.update(dt);
+      // broken under a quarter of its health, however it got there: the finisher ends the exam
+      const w = this.warden;
+      if (w?.alive && w.state === 'broken' && w.hpFrac <= 0.25) w.freeFinish = Math.max(w.freeFinish, 0.3);
     }
     if (this.stage === 'done') {
       const u = this.exitPortal.uniforms.uOn; u.value = Math.min(1, u.value + rdt * 0.8);
