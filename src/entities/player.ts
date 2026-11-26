@@ -485,7 +485,9 @@ export class Player {
     // vault still entered and its robots out of reach (QA 2026-11-26), so go back to its checkpoint.
     if (this.pos.y < -260) {
       const cp = g.interior ? g.combat.checkpoint : null;
-      if (cp) this.teleport(cp.x, cp.y + 0.15, cp.z, cp.yaw);
+      // and the interior resets as it does for a death: the vault's checkpoint stands behind the
+      // combat chamber's closed door, so without the reset the hero waited there for a wave that could not reach them
+      if (cp) { this.teleport(cp.x, cp.y + 0.15, cp.z, cp.yaw); cp.onRespawn?.(); }
       else { const y = g.terrain.h(this.pos.x, this.pos.z) + 2; this.teleport(this.pos.x, y, this.pos.z); }
     }
     void lerp;

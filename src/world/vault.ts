@@ -130,6 +130,13 @@ export function build(game: Game) {
     g.push().translate(0, 7.6, 30.9); pixelText(g, 'CHAMBER 2  COMBAT', 0.12, { color: PAL.amber, emit: 2 }); g.pop();
     // -------- chamber 2: combat --------
     room(g, roof, -14, 14, -8, 26, 0, 10, [{ side: 's', w: 5, h: 5 }, { side: 'n', w: 5, h: 5 }], { trim: PAL.amber });
+    // thresholds: two rooms' end walls stand 0.8 m apart, and the floor slabs stop at the walls, so
+    // each doorway had a 5 x 0.8 m slot the hero's capsule (0.72 m across) could drop through
+    // (QA 2026-11-26: walking south at x 199.9, the hero sank at z 28.2 and fell to y -260)
+    for (const tz of [28, -10]) {
+      g.box(6.2, 1.2, 4.2, { at: [0, -0.6, tz], color: PAL.slateDeep, layer: T.CONCRETE, col: true, uvScale: 0.25 });
+      g.box(5, 0.05, 0.8, { at: [0, 0.025, tz], color: PAL.slate, layer: T.PLATE, uvScale: 0.3 });
+    }
     for (const [px, pz] of [[-7.5, 16], [7.5, 16], [-7.5, 2], [7.5, 2]] as const) {
       g.box(2.2, 10, 2.2, { at: [px, 5, pz], color: PAL.slate, layer: T.PANEL, col: true, bevel: 0.14, grad: 0.55 });
       g.box(2.5, 0.7, 2.5, { at: [px, 1.6, pz], color: PAL.orange, layer: T.STRIPE, uv: 'world', uvScale: 0.5 });
