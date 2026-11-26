@@ -70,9 +70,33 @@
     }
     return null;
   };
+  /** Map > Return to Brasswick, through its confirm: the way out of anywhere a player is stuck. */
+  B.returnHome = async () => {
+    const g = G(), mini = document.querySelector('.mini');
+    if (!mini || (g.returnBlocked && g.returnBlocked())) return false;
+    B.stop(); B.tapEl(mini);
+    if (!(await B.rawUntil(() => g.panels.current, 3))) return false;
+    let ok = false;
+    try {
+      if (!(await B.act('town', undefined, 2))) return false;
+      const yes = await B.rawUntil(() => { const e = document.querySelector('.pn-modal.on [data-m="1"]'); return e && e.getClientRects().length ? e : null; }, 2.5);
+      if (!yes) return false;
+      B.tapEl(yes);
+      ok = !!(await B.rawUntil(() => !g.interior && g.player.pos.x < 10, 8));
+    } finally { await B.closeUi(); await B.rawUntil(() => !g.input.uiCapture && g.player.controllable, 5); }
+    return ok;
+  };
+  const VAULT_Y = -70;
   const step0 = B.step;
   B.step = async () => {
     const g = G();
+    // the vault is built 70 m under the Slagworks: a hero standing on the surface with the vault still
+    // "entered" cannot reach its rooms or its robots (qa2 twice, qa3 once; cause not found yet, see rep.lifts)
+    if (g.interior === 'vault' && g.player.pos.y > VAULT_Y + 30 && !g.travelling) {
+      const p = g.player.pos;
+      B.note(`lifted out of the vault: standing on the surface at (${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}) with the vault entered; returning to Brasswick`);
+      if (await B.returnHome()) { B.tool('return home'); return; }
+    }
     if (!g.interior && !B.threatened(13) && !(g.east.gState && g.east.gState !== 'idle')) {
       const j = B.postJob();
       if (j) { B.goalKey = j.goalKey; B.setGoal(j.label); await j.run(); return; }

@@ -47,7 +47,20 @@
       const t = g.time, last = hits.filter((h) => t - h.t < 8);
       (B.rep.deathLog = B.rep.deathLog || []).push({ ...B.stamp(), level: g.state.d.level, pos: B.pos(), goal: B.goal, hits: last });
     });
-    g.addSystem && g.addSystem({ update: track });
+    // any vertical jump of more than 8 m (a teleport, or a frame that moved the hero that far): who did it
+    const pl = g.player, tp0 = pl.teleport.bind(pl);
+    const lift = (o) => { if (B.rep) { (B.rep.lifts = B.rep.lifts || []).push({ ...B.stamp(), interior: g.interior, goal: B.goal, ...o }); if (B.rep.lifts.length > 30) B.rep.lifts.shift(); } };
+    pl.teleport = (x, y, z, yaw) => {
+      if (Math.abs(y - pl.pos.y) > 8 && !g.travelling) lift({ from: [pl.pos.x, pl.pos.y, pl.pos.z].map((v) => +v.toFixed(1)), to: [x, y, z].map((v) => +(+v).toFixed(1)), stack: new Error().stack.split('\n').slice(2, 8).map((s) => s.trim()).join(' | ') });
+      return tp0(x, y, z, yaw);
+    };
+    let lastY = pl.pos.y, lastI = g.interior;
+    const watchY = () => {
+      const y = pl.pos.y;
+      if (Math.abs(y - lastY) > 8 && !g.travelling && g.interior === lastI) lift({ jump: [+lastY.toFixed(1), +y.toFixed(1)], at: [+pl.pos.x.toFixed(1), +pl.pos.z.toFixed(1)], mode: pl.mode ? pl.mode.name : null });
+      lastY = y; lastI = g.interior;
+    };
+    g.addSystem && g.addSystem({ update: () => { track(); watchY(); } });
   };
   B.hook = () => { hook0(); try { B.installForensics(); } catch (e) { console.log('[bot] forensics: ' + e); } };
 })();

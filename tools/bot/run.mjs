@@ -154,6 +154,7 @@ function summary(r) {
       for (const h of d.hits) L.push(`    -${h.dmg} (${h.hp}/${h.max}) ${h.by}${h.atk ? ' [' + h.atk + ']' : ''} at ${h.dist} m, ${h.seen ? 'on screen' : 'OFF SCREEN'}, tell ${h.tell ?? 'none'}, age ${h.age ?? '?'}, aggro ${h.aggro}`);
     }
   }
+  if (r.lifts && r.lifts.length) { L.push('', 'vertical jumps over 8 m outside a fade (teleports and moves):'); for (const x of r.lifts) L.push(`  ${t(x.game)} ${x.interior || 'surface'} ${x.from ? 'teleport ' + x.from.join(',') + ' -> ' + x.to.join(',') + ' by ' + x.stack : 'moved ' + x.jump.join(' -> ') + ' at ' + x.at.join(',') + (x.mode ? ' in ' + x.mode : '')} while: ${x.goal}`); }
   if (r.travel) L.push('', `fast travel: ${r.travel.jumps} jumps, ${r.travel.saved} m of walking saved`);
   if (r.stalls.length) { L.push('', 'stalls (3 in-game minutes without quest, level or kill progress):'); for (const s of r.stalls) L.push(`  ${t(s.game)} L${s.level} ${s.where} (${s.pos.x}, ${s.pos.y}, ${s.pos.z}) while: ${s.goal}\n      screenshot: ${s.shot || 'none'}`); }
   const notes = r.notes.filter((n) => /cannot|could not|blocked|no path|leashed|wrong plate|error|not strong|died \d|no cover|did nothing|thrown|no lap|not in the saddle|did not come|no waypoint passed|did not happen|could not light the post|fast travel:/.test(n.text));
