@@ -140,7 +140,7 @@ export const GUNS: Record<'bow' | 'crossbow' | 'rifle', GunDef> = {
   },
   // the scoped precision weapon: hitscan through up to three robots; steady after RIFLE_STEADY s aimed
   rifle: {
-    mag: 5, reload: 2.3, rof: 0.85, auto: false, dmg: 1.55, weak: 1.6, poise: 1.4, weakPoise: 3,
+    mag: 5, reload: 2.3, rof: 0.85, auto: false, dmg: 1.3, weak: 1.25, poise: 1.4, weakPoise: 3,
     speed: 0, grav: 0, zero: 0,
     hip: 0.04, adsMul: 0.06, move: 0.009, air: 0.06, bloom: 0.025, bloomMax: 0.03, bloomDecay: 0.05,
     kick: 0.065, side: 0.012, recover: 4, adsSlow: 0.45, fireSlow: 0.85, adsFov: 22, adsZoom: 0.36, adsTime: 0.26,
