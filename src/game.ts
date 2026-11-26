@@ -491,6 +491,8 @@ export class Game {
     this.cameraRig.shoulder = damp(this.cameraRig.shoulder, this.combat.aiming ? 0.7 : 0, 8, rdt);
     // comfort (Settings): reduced motion stills the shake
     this.cameraRig.shakeScale = comfort.still ? 0 : this.state.d.settings.shake ?? 1;
+    // ...and the effects' held tells stop turning (calm) and beating (strobe, the Flashes slider): vfx/tells.ts
+    this.fx.calm = comfort.still; this.fx.strobe = this.state.d.settings.flash ?? 1;
 
     // world + fx
     this.env.update(rdt, this.camera, pl.pos, this.renderer);

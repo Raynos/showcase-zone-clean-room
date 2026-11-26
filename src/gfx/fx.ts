@@ -7,6 +7,7 @@ import { GroundMarks, TELE_VIEW, type Telegraph } from './vfx/ground';
 import { Glints } from './vfx/glints';
 import { Ribbons, TRAIL_LOOKS, Trail, type FollowLook, type TrailLook } from './vfx/ribbons';
 import { RECIPES, SHOT_LOOKS, type Ctx, type Surf } from './vfx/recipes';
+import { laserBeam } from './vfx/tells';
 
 export { RB, SP, TELE_VIEW, TRAIL_LOOKS, Trail };
 export type { Telegraph, TrailLook, Surf };
@@ -75,12 +76,21 @@ export interface EmitOpts {
 }
 
 /** sprites that end by dissolving rather than fading */
-const ERODE = new Float32Array(32);
+const ERODE = new Float32Array(SP_COLS * SP_ROWS);
 for (const s of [SP.SMOKE, SP.PUFF, SP.FLASH, SP.RING, SP.RING2, SP.SLASH, SP.SCUFF, SP.ARC, SP.FLAME, SP.CRACK, SP.SCORCH, SP.BOLT, SP.CONE, SP.HEX]) ERODE[s] = 1;
 
 const MAXP = 3072;
+/** sprites that are drawn for one frame and never simulated (held tells: vfx/tells.ts), 13 numbers each */
+const MAXIM = 384, IMW = 13;
 class Pool {
   n = 0;
+  private im = new Float32Array(MAXIM * IMW); private imN = 0;
+  /** One sprite for this frame only: it is drawn after the live particles and forgotten. mode: 0 faces the lens, 1 lies flat. */
+  spot(x: number, y: number, z: number, size: number, r: number, g: number, b: number, a: number, rot: number, sprite: number, mode: number, aspect: number, core: number) {
+    if (this.imN >= MAXIM) return;
+    const o = this.imN++ * IMW, m = this.im;
+    m[o] = x; m[o + 1] = y; m[o + 2] = z; m[o + 3] = size; m[o + 4] = r; m[o + 5] = g; m[o + 6] = b; m[o + 7] = a; m[o + 8] = rot; m[o + 9] = sprite; m[o + 10] = mode; m[o + 11] = aspect; m[o + 12] = core;
+  }
   px = new Float32Array(MAXP); py = new Float32Array(MAXP); pz = new Float32Array(MAXP);
   vx = new Float32Array(MAXP); vy = new Float32Array(MAXP); vz = new Float32Array(MAXP);
   life = new Float32Array(MAXP); max = new Float32Array(MAXP);
@@ -115,7 +125,10 @@ class Pool {
           float size = iPos.w, rot = iMisc.x, sprite = iMisc.y, stretch = iVel.w, mode = iMisc.z, aspect = iMisc.w;
           vec2 q = vec2(position.x, position.y * aspect);
           vec4 mv = viewMatrix * vec4(iPos.xyz, 1.0);
-          vec3 off;
+${additive ? '' : `          // a chip or a clipping flying at the lens does not grow into a slab across the view: inside a couple of
+          // metres it keeps the size on screen it had there, and inside the near plane it is not drawn at all
+          if (mode < 0.5 || mode > 1.5) size *= clamp(-mv.z / mix(1.1, 2.4, uEye), 0.0, 1.0) * step(0.3, -mv.z);
+`}          vec3 off;
           if (mode > 0.5 && mode < 1.5) {
             // flat on the ground, and a little toward the camera in depth so grass does not swallow it
             float c = cos(rot), s = sin(rot);
@@ -212,6 +225,17 @@ ${additive ? `          // from the eyes, a flame or a burst the hero stands in 
       M[o] = this.rot[i]; M[o + 1] = this.sprite[i]; M[o + 2] = this.mode[i]; M[o + 3] = this.aspect[i];
       F[o] = er * t2; F[o + 1] = this.core[i]; F[o + 2] = this.soft[i];
     }
+    // this frame's held sprites ride after the live ones
+    const S = this.im;
+    for (let j = 0; j < this.imN && n < MAXP; j++, n++) {
+      const q = j * IMW, o = n * 4;
+      P[o] = S[q]; P[o + 1] = S[q + 1]; P[o + 2] = S[q + 2]; P[o + 3] = S[q + 3];
+      C[o] = S[q + 4]; C[o + 1] = S[q + 5]; C[o + 2] = S[q + 6]; C[o + 3] = S[q + 7];
+      V[o] = 0; V[o + 1] = 0; V[o + 2] = 0; V[o + 3] = 0;
+      M[o] = S[q + 8]; M[o + 1] = S[q + 9]; M[o + 2] = S[q + 10]; M[o + 3] = S[q + 11];
+      F[o] = 0; F[o + 1] = S[q + 12]; F[o + 2] = -1e6;
+    }
+    this.imN = 0;
     const g = this.geo;
     g.instanceCount = n;
     this.mesh.visible = n > 0;
@@ -261,8 +285,26 @@ export class FX {
   wet = 0;
   /** the device asks for less motion: fewer particles, weaker flashes */
   calm = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /** 1, or 0 when Settings turns flashes off: a held tell then stops blinking and holds its shape (vfx/tells.ts) */
+  strobe = 1;
   time = 0;
   private camPos = new THREE.Vector3();
+  /** the lens: where it is, and its right and up (for shapes that face it) */
+  get cam() { return this.camPos; }
+  readonly camR = new THREE.Vector3(1, 0, 0); readonly camU = new THREE.Vector3(0, 1, 0);
+  /** metres at one metre from the lens that one CSS pixel covers */
+  private pxWorld = 0.002;
+  /** How big something at `p` must be to cover `px` pixels: a tell is never thinner than a few of them, however far off. */
+  thick(p: { x: number; y: number; z: number }, px: number) { const c = this.camPos; return px * this.pxWorld * Math.max(0.5, Math.hypot(p.x - c.x, p.y - c.y, p.z - c.z)); }
+  /**
+   * One sprite for this frame (call every frame it should show): a mark held on a robot, a spot a beam makes.
+   * It takes no part in the simulation, so it sits exactly where it is put.
+   */
+  spot(pos: { x: number; y: number; z: number }, o: { size: number; color?: number; glow?: number; sprite?: number; rot?: number; core?: number; additive?: boolean; flat?: boolean; alpha?: number; aspect?: number }) {
+    const add = o.additive !== false, pool = add ? this.add : this.alpha, g = o.glow ?? 1;
+    _c1.setHex(o.color ?? 0xffffff);
+    pool.spot(pos.x, pos.y, pos.z, o.size, _c1.r * g, _c1.g * g, _c1.b * g, o.alpha ?? 1, o.rot ?? 0, o.sprite ?? SP.DOT, o.flat ? 1 : 0, o.aspect ?? 1, o.core ?? (add ? 0.5 : 0));
+  }
   /** metres from the lens inside which an effect is born 'in the sights': it is sized to its distance and leaves no smoke (longer through a scope) */
   private reach = 2.6;
   /** weak points as light (vfx/glints.ts), and where and when one was last struck */
@@ -307,6 +349,11 @@ export class FX {
     // would be from the shoulder, and no smoke left hanging in the sight picture
     const cp = this.camPos, nd = Math.hypot(pos.x - cp.x, pos.y - cp.y, pos.z - cp.z), near = nd < this.reach ? Math.max(0.25, nd / this.reach) : 1;
     if (near < 0.8 && pool === this.alpha && (o.sprite === SP.PUFF || o.sprite === SP.SMOKE)) return;
+    // nothing is born inside the near plane
+    if (nd < 0.3) return;
+    // from the eyes, no one sprite is wider than a third of its distance from the lens: a burst on the robot
+    // being hit marks the blow and leaves the robot in view (flat marks on the ground are left alone)
+    const capS = this.eye > 0.5 && !o.flat ? Math.max(0.12, nd * 0.34) : 1e9;
     let count = o.count ?? 1;
     if (this.calm && count > 2) count = Math.ceil(count * 0.6);
     const sp = o.speed ?? [1, 2], life = o.life ?? [0.4, 0.8], size = o.size ?? [0.1, 0.2];
@@ -341,8 +388,8 @@ export class FX {
       pool.px[i] = pos.x + ox + (rr ? (Math.random() - 0.5) * 2 * rr : 0); pool.py[i] = pos.y + (rr ? (Math.random() - 0.5) * rr : 0); pool.pz[i] = pos.z + oz + (rr ? (Math.random() - 0.5) * 2 * rr : 0);
       pool.vx[i] = dx * v; pool.vy[i] = dy * v + (o.up ?? 0); pool.vz[i] = dz * v;
       pool.life[i] = pool.max[i] = rand(life[0], life[1]);
-      const s0 = rand(size[0], size[1]) * near;
-      pool.s0[i] = s0; pool.s1[i] = s0 * grow;
+      const s0 = Math.min(capS, rand(size[0], size[1]) * near);
+      pool.s0[i] = s0; pool.s1[i] = Math.min(capS * 1.25, s0 * grow);
       if (cols && cols.length) { _c2.setHex(cols[(Math.random() * cols.length) | 0]); pool.r[i] = _c2.r * glow; pool.g[i] = _c2.g * glow; pool.b[i] = _c2.b * glow; }
       else {
         const ct = o.color2 !== undefined ? Math.random() : 0;
@@ -500,25 +547,7 @@ export class FX {
    * running down it, a lens star at the emitter and a hot spot where it lands. `stopped`: it has met
    * something solid short of its mark, and spits there.
    */
-  laser(a: THREE.Vector3, b: THREE.Vector3, color: number, width: number, stopped = false) {
-    const c = this.camPos, rb = this.ribbons;
-    _bd.subVectors(b, a); const len = _bd.length();
-    if (len < 0.2) return;
-    _ba.set((a.x + b.x) / 2 - c.x, (a.y + b.y) / 2 - c.y, (a.z + b.z) / 2 - c.z);
-    _bb.crossVectors(_bd, _ba);
-    if (_bb.lengthSq() < 1e-8) _bb.set(0, 1, 0);
-    _bb.normalize();
-    _c1.setHex(color);
-    const flick = 0.9 + 0.1 * Math.sin(this.time * 47), u0 = -this.time * 3.2, u1 = u0 + len / Math.max(width * 9, 0.6);
-    // the glow, then the hair of white inside it
-    for (let pass = 0; pass < 2; pass++) {
-      const w = pass ? width * 0.3 : width * 1.5 * flick, g = pass ? 1.5 : 1.25, r = pass ? 1 : _c1.r, gg = pass ? 1 : _c1.g, bl = pass ? 1 : _c1.b;
-      rb.imBegin();
-      rb.imPoint(a.x - _bb.x * w, a.y - _bb.y * w, a.z - _bb.z * w, a.x + _bb.x * w, a.y + _bb.y * w, a.z + _bb.z * w, u0, r * g, gg * g, bl * g, 1, RB.BEAM, 0, pass ? 1 : 0.35, 1);
-      rb.imPoint(b.x - _bb.x * w, b.y - _bb.y * w, b.z - _bb.z * w, b.x + _bb.x * w, b.y + _bb.y * w, b.z + _bb.z * w, u1, r * g, gg * g, bl * g, 1, RB.BEAM, 0, pass ? 1 : 0.35, 1);
-    }
-    this.play('laser.ends', a, b, color, width, stopped ? 1 : 0);
-  }
+  laser(a: THREE.Vector3, b: THREE.Vector3, color: number, width: number, stopped = false) { laserBeam(this, a, b, color, width, stopped); }
   /** A weapon trail to feed with the blade's base and tip each frame. */
   trail(): Trail { return this.ribbons.trail(); }
   /** A tail behind a moving thing; call every frame with the same key. */
@@ -568,6 +597,8 @@ export class FX {
     this.camPos.copy(camera.position);
     this.add.uniforms.uEye.value = this.alpha.uniforms.uEye.value = this.eye;
     this.reach = 2.6 * Math.max(1, camera.projectionMatrix.elements[5] / 1.6);
+    this.camR.setFromMatrixColumn(camera.matrixWorld, 0); this.camU.setFromMatrixColumn(camera.matrixWorld, 1);
+    this.pxWorld = 2 / (camera.projectionMatrix.elements[5] * Math.max(240, typeof innerHeight === 'number' ? innerHeight : 800));
     // timeline: beats that were set to follow
     for (let i = 0; i < this.cueN; i++) {
       const c = this.cues[i];
@@ -612,7 +643,9 @@ export class FX {
           if (Math.random() < dt * 16) this.emit(d, { additive: false, count: 1, speed: [0, 0.3], life: [0.3, 0.5], size: [d.sx * 0.7, d.sx * 1.0], grow: 1.7, color: 0x8f8a84, alpha: 0.4, sprite: SP.PUFF, spin: 2 });
         }
       }
-      const k = Math.min(1, d.life / 0.45);
+      let k = Math.min(1, d.life / 0.45);
+      // from the eyes a piece flying at the lens shrinks as it comes and is gone before it gets there
+      if (this.eye > 0) { const nd = Math.hypot(d.x - this.camPos.x, d.y - this.camPos.y, d.z - this.camPos.z); k *= 1 - this.eye * (1 - Math.min(1, Math.max(0, (nd - 0.45) / 2.0))); }
       _m.compose(_v.set(d.x, d.y, d.z), _q.setFromEuler(_e.set(d.rx, d.ry, d.rz)), _s.set(d.sx * k, d.sy * k, d.sz * k));
       this.debrisMesh.setMatrixAt(w, _m);
       this.debrisMesh.setColorAt(w, _c1.setHex(d.color));

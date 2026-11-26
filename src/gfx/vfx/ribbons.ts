@@ -7,10 +7,11 @@ import { RB, RB_ROWS, buildRibbonAtlas } from './atlas';
  * All of them are strips of point pairs in one dynamic buffer, textured from a row of the ribbon
  * atlas and blended premultiplied, so a ribbon can be light (additive) or paint (smoke) per vertex.
  */
-const MAXPT = 2304;
+const MAXPT = 4096;
 const SUB = 3;                 // spline steps between two blade samples
 const TN = 22;                 // blade samples kept
 const LN = 18;                 // points in a line
+const IMN = 1600;              // points of one-frame shapes (held tells are drawn this way: vfx/tells.ts)
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _t = new THREE.Vector3(), _c = new THREE.Vector3();
 /** the blade point's path this frame: x, y, z, u, and the way out from the hilt */
 const TP = new Float32Array(((TN - 1) * SUB + 2) * 7);
@@ -88,7 +89,7 @@ export class Ribbons {
   private lines: Line[] = [];
   private byKey = new Map<object, Line>();
   /** shapes drawn for this frame only: 15 numbers a point, a NaN first number starts a new ribbon */
-  private im = new Float32Array(640 * 15); private imN = 0;
+  private im = new Float32Array(IMN * 15); private imN = 0;
   private time = 0;
   uniforms = { uTex: { value: null as THREE.Texture | null }, uFogD: { value: 0.002 }, uFogC: { value: new THREE.Color() } };
 
@@ -196,10 +197,10 @@ export class Ribbons {
   }
 
   // ---- shapes for one frame
-  imBegin() { if (this.imN < 640) this.im[this.imN++ * 15] = NaN; }
+  imBegin() { if (this.imN < IMN) this.im[this.imN++ * 15] = NaN; }
   /** One pair of points of a strip: inner edge, outer edge, u along the ribbon, colour (already multiplied by glow), alpha, row, erosion, core, additive. */
   imPoint(ax: number, ay: number, az: number, bx: number, by: number, bz: number, u: number, r: number, g: number, b: number, a: number, row: number, er: number, core: number, add: number) {
-    if (this.imN >= 640) return;
+    if (this.imN >= IMN) return;
     const o = this.imN++ * 15, m = this.im;
     m[o] = ax; m[o + 1] = ay; m[o + 2] = az; m[o + 3] = bx; m[o + 4] = by; m[o + 5] = bz; m[o + 6] = u;
     m[o + 7] = r; m[o + 8] = g; m[o + 9] = b; m[o + 10] = a; m[o + 11] = row; m[o + 12] = er; m[o + 13] = core; m[o + 14] = add;

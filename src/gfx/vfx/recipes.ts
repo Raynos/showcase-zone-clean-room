@@ -665,6 +665,43 @@ export const RECIPES: Record<string, Recipe> = {
     fx.emit({ x: p.x, y: gy + 0.3, z: p.z }, { count: 8, ringR: s * 0.3, speed: [4, 10], up: 4, life: [0.2, 0.45], size: [0.05, 0.1], color: c.tint, color2: WHITE, glow: 4, gravity: 18, sprite: SP.STREAK, stretch: 0.07 });
     fx.flash({ x: p.x, y: gy + 1, z: p.z }, c.tint, 40, 12, 0.2);
   },
+
+  // ================================================================== tells: the moments a robot's state changes
+  // (what a tell looks like while it holds is drawn every frame by vfx/tells.ts; these are the beats between)
+  /** a robot knocked open (p: over its head, s: radius): the beat that starts the gold arc */
+  'tell.open': (fx, c) => {
+    const p = c.p, s = Math.max(0.6, c.s);
+    fx.emit(p, { count: 1, speed: [0, 0], life: [0.26, 0.3], size: [0.5 + s * 0.3, 0.5 + s * 0.3], grow: 4, color: c.tint, glow: 2.2, sprite: SP.RING2, erode: 0.9, core: 0.8 });
+    fx.emit(p, { count: 5, speed: [2, 4.5], up: 3.5, life: [0.45, 0.7], size: [0.26 + s * 0.08, 0.38 + s * 0.1], grow: 0.5, color: c.tint, color2: WHITE, glow: 3, gravity: 9, drag: 1.2, spin: 9, sprite: SP.DAZE, core: 0.8 });
+    fx.emit(p, { count: 1, speed: [0, 0], life: [0.1, 0.12], size: [1 + s * 0.5, 1.2 + s * 0.5], grow: 1.5, color: c.tint, color2: WHITE, glow: 2.2, sprite: SP.FLASH, core: 0.9 });
+  },
+  /** a dive or a leap coming down (p: where, s: radius) */
+  'tell.land': (fx, c) => {
+    const p = c.p, gy = fx.groundY(p.x, p.z, p.y + 0.5), s = Math.max(0.7, c.s);
+    dustRing(fx, p, gy, 0.5 * s, 10, 1.1, 4.5);
+    ringOut(fx, { x: p.x, y: gy, z: p.z }, s * 2.4 + 1.6, 0xfff2d0, 0.34, 1.6);
+    scuff(fx, p.x, gy, p.z, s * 2.6, 1.1);
+    fx.emit({ x: p.x, y: gy + 0.3, z: p.z }, { count: 8, ringR: s * 0.5, speed: [3, 8], up: 3.5, life: [0.2, 0.42], size: [0.05, 0.09], color: 0xffe2a0, glow: 3.5, gravity: 18, sprite: SP.STREAK, stretch: 0.07 });
+  },
+  /** a robot calling others in, a few times a second through its wind-up (p: over its head, s: radius, tint) */
+  'tell.call': (fx, c) => {
+    fx.emit(c.p, { count: 1, speed: [0, 0], up: 5.5, drag: 1.6, life: [0.55, 0.6], size: [0.5 + c.s * 0.5, 0.5 + c.s * 0.5], grow: 2.6, color: c.tint, glow: 2, sprite: SP.RING2, flat: true, erode: 0.9, core: 0.8 });
+    fx.emit(c.p, { count: 2, speed: [0.5, 1.5], up: 6, life: [0.3, 0.5], size: [0.06, 0.1], color: c.tint, color2: WHITE, glow: 4, sprite: SP.STREAK, stretch: 0.1, radius: c.s * 0.5 });
+  },
+  /** a called robot arriving (p: its feet, s: radius, k: height, tint): a column of light comes down on the spot */
+  'tell.arrive': (fx, c) => {
+    const p = c.p, gy = fx.groundY(p.x, p.z, p.y + 0.5), h = Math.max(2.5, c.k * 2.2);
+    _a.set(p.x, gy + h, p.z); _b.set(p.x, gy + 0.05, p.z);
+    fx.beam(_a, _b, c.tint, 0.5 + c.s * 0.4, 0.5, 0, 3.2);
+    fx.beam(_a, _b, WHITE, 0.16 + c.s * 0.1, 0.36, 0, 4);
+    ringOut(fx, { x: p.x, y: gy, z: p.z }, c.s * 2 + 1.4, c.tint, 0.4, 2);
+    fx.emit({ x: p.x, y: gy + 0.08, z: p.z }, { count: 1, speed: [0, 0], life: [0.5, 0.55], size: [c.s * 2.4 + 1, c.s * 2.4 + 1], grow: 0.6, color: c.tint, glow: 1.6, sprite: SP.RETICLE, flat: true, turn: 3, core: 0.7 });
+    fx.emit({ x: p.x, y: gy + 0.3, z: p.z }, { count: 8, ringR: c.s * 0.6, speed: [1, 3], up: 5, life: [0.3, 0.55], size: [0.05, 0.09], color: c.tint, color2: WHITE, glow: 4, sprite: SP.STREAK, stretch: 0.09 });
+  },
+  /** a robot mending (p: its centre, s: radius): a cross rising, the mark of repair whatever the colour */
+  'tell.mend': (fx, c) => {
+    fx.emit(c.p, { count: 1, speed: [0, 0.2], up: 1.5, life: [0.7, 0.95], size: [0.26, 0.36], grow: 0.7, color: c.tint, color2: WHITE, glow: 2.6, sprite: SP.PLUS, rot: 0, radius: c.s * 0.8, core: 0.8 });
+  },
 };
 
 // ---- projectiles in flight -----------------------------------------------------------------------------
@@ -692,14 +729,15 @@ export const SHOT_LOOKS: Record<string, { tail?: FollowLook; fly?: (fx: FX, c: C
   wave: {
     fly: (fx, c, s) => {
       // a banked crescent: the leading edge high, the trailing edge low and inside it, so it is a shape from behind as well as from the side
-      const d = c.d, R = 2.6, th = 1.0, N = 14, tilt = 0.3;
+      // (from the eyes it flies straight down the view and across what it hits: a slimmer, dimmer crescent that leaves the robot in sight)
+      const eye = fx.eye > 0.5, d = c.d, R = eye ? 1.5 : 2.6, th = 1.0, N = 14, tilt = 0.3;
       right(d); const rx = _r.x * Math.cos(tilt), ry = Math.sin(tilt), rz = _r.z * Math.cos(tilt);
       const cx = c.p.x - d.x * R * 0.82, cy = c.p.y - d.y * R * 0.82, cz = c.p.z - d.z * R * 0.82;
       _col.setHex(c.tint);
-      const g = 1.5, er = s.life < 0.16 ? (1 - s.life / 0.16) * 1.1 : 0, rb = fx.ribbons;
+      const g = eye ? 0.9 : 1.5, er = s.life < 0.16 ? (1 - s.life / 0.16) * 1.1 : 0, rb = fx.ribbons;
       rb.imBegin();
       for (let i = 0; i <= N; i++) {
-        const a = (i / N * 2 - 1) * th, ca = Math.cos(a), sa = Math.sin(a), w = Math.pow(Math.max(0, Math.cos(a * 1.5)), 0.8) + 0.02;
+        const a = (i / N * 2 - 1) * th, ca = Math.cos(a), sa = Math.sin(a), w = (Math.pow(Math.max(0, Math.cos(a * 1.5)), 0.8) + 0.02) * (eye ? 0.5 : 1);
         const ox = d.x * ca + rx * sa, oy = d.y * ca + ry * sa, oz = d.z * ca + rz * sa, ri = R - w * 0.55;
         rb.imPoint(cx + ox * ri, cy + oy * ri - w * 0.35, cz + oz * ri, cx + ox * R, cy + oy * R + w * 0.95, cz + oz * R, i / N * 0.9 + fx.time * 1.6, _col.r * g, _col.g * g, _col.b * g, 1, RB.WAVE, er, 0.6, 1);
       }

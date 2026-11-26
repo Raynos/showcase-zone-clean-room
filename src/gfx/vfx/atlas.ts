@@ -10,18 +10,19 @@ import * as THREE from 'three';
  * crisp and hand-cut instead of a soft sprite going transparent.
  */
 
-/** Sprite cells in the particle atlas (8 across, 4 down). */
+/** Sprite cells in the particle atlas (8 across, 5 down). The last row is the tells' own: marks that mean one thing each (vfx/tells.ts). */
 export const SP = {
   DOT: 0, STREAK: 1, RING: 2, SMOKE: 3, STAR: 4, SHARD: 5, DISC: 6, EMBER: 7,
   FLASH: 8, SLASH: 9, BOLT: 10, FLAME: 11, RING2: 12, DIAMOND: 13, CHIP: 14, SCUFF: 15,
   CRACK: 16, CONE: 17, SHELL: 18, HEX: 19, PLUS: 20, PUFF: 21, SCORCH: 22, CHEVRON: 23,
   HALO: 24, SPARKLE: 25, ARC: 26, GEAR: 27, NUT: 28, SCREW: 29, BLADE: 30, LINE: 31,
+  RETICLE: 32, GLOW: 33, DAZE: 34,
 } as const;
-export const SP_COLS = 8, SP_ROWS = 4;
+export const SP_COLS = 8, SP_ROWS = 5;
 
 /** Rows of the ribbon texture: u runs along the ribbon (head to tail), v across it (inner edge to outer). */
-export const RB = { SWORD: 0, SPEAR: 1, HEAVY: 2, BEAM: 3, TRACER: 4, SMOKE: 5, WAVE: 6, ARC: 7 } as const;
-export const RB_ROWS = 8;
+export const RB = { SWORD: 0, SPEAR: 1, HEAVY: 2, BEAM: 3, TRACER: 4, SMOKE: 5, WAVE: 6, ARC: 7, GAUGE: 8 } as const;
+export const RB_ROWS = 9;
 
 // ---- a small deterministic noise (Math.random is seeded by the capture tools; leave it alone)
 let seed = 0x9e3779b9;
@@ -149,6 +150,16 @@ function cells(): Cell[] {
   c[SP.SCREW] = { draw: (g) => { g.fillRect(-0.8, -0.3, 0.3, 0.6); g.fillRect(-0.5, -0.12, 1.25, 0.24); }, r: () => 1, g: (u, v) => (v > 0 ? 1 : 0.58) };
   c[SP.BLADE] = { draw: (g) => { g.beginPath(); g.moveTo(-0.9, 0.3); g.quadraticCurveTo(0, -0.55, 0.92, 0.1); g.quadraticCurveTo(0, -0.2, -0.9, 0.3); g.fill(); }, r: () => 1, g: (u) => 0.65 + 0.35 * sat(u * 0.5 + 0.5) };
   c[SP.LINE] = { pix: (u, v) => { O.a = ss(0.07, 0.025, Math.abs(v)) * ss(0.98, 0.5, Math.abs(u)); O.r = O.g = sat(1 - Math.abs(u)); } };
+  // ---- the tells' marks: hard shapes that read at twenty pixels
+  // four corner brackets: an aim taken on something
+  c[SP.RETICLE] = { glow: 5, draw: (g) => {
+    g.strokeStyle = '#fff'; g.lineWidth = 0.15; g.lineJoin = 'miter'; g.lineCap = 'butt';
+    for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { g.beginPath(); g.moveTo(sx * 0.82, sy * 0.36); g.lineTo(sx * 0.82, sy * 0.82); g.lineTo(sx * 0.36, sy * 0.82); g.stroke(); }
+  }, r: () => 1, g: () => 1 };
+  // a soft round light with no hard centre: the bloom behind a mark
+  c[SP.GLOW] = { pix: (u, v) => { const d = Math.hypot(u, v); O.a = Math.exp(-(d / 0.44) * (d / 0.44)) * ss(1, 0.78, d); O.r = O.g = O.a; } };
+  // a fat five-pointed star: the stars round a dazed head
+  c[SP.DAZE] = { glow: 5, draw: (g) => { const pts: number[] = []; for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2 - Math.PI / 2, r = i % 2 ? 0.44 : 0.92; pts.push(Math.cos(a) * r, Math.sin(a) * r); } poly(g, pts); }, r: () => 1, g: (u, v) => sat(1.15 - Math.hypot(u, v)) };
   return c;
 }
 
@@ -241,6 +252,11 @@ export function buildRibbonAtlas(): THREE.DataTexture {
     // lightning: a hard thin core that gutters along its length
     const st = streaks(u, 0.5, 2.6, 1, 47), d = Math.abs(v - 0.5), core = ss(0.1, 0.04, d), glow = gauss(d, 0.2);
     O.a = sat(core * (0.65 + 0.35 * st) + glow * 0.42); O.r = sat(0.2 + st * 0.8) * sat(glow + core); O.g = core;
+  };
+  rows[RB.GAUGE] = (u, v) => {
+    // a meter: a solid bar cut into segments, so what is left of it can be counted
+    const d = Math.abs(v - 0.5), body = ss(0.47, 0.38, d), gap = ss(0.0, 0.045, Math.min(u, 1 - u));
+    O.a = body * (0.22 + 0.78 * gap); O.r = 1; O.g = 0.5 + 0.5 * ss(0.36, 0.12, d);
   };
   for (let r = 0; r < RB_ROWS; r++) for (let y = 0; y < RH; y++) for (let x = 0; x < W; x++) {
     rows[r]((x + 0.5) / W, (y + 0.5) / RH);
