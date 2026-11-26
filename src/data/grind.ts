@@ -76,6 +76,8 @@ export const BOUNTY = {
    * paid 18-20% of levels 4-9 by bounties alone (QA, 2026-11-25); kills are meant to carry 70%. At
    * 0.025 bounties still paid 10-13% of levels 10-15 (QA, 2026-11-26): a share of the level grows
    * with every level's length, so raising the band rate alone would push kills under 60%.
+   * `kills` caps it at that many same-level common kills (killXp): from level 10 on the cap is what
+   * pays, so a bounty is worth the same few kills in every band (QA round four, 2026-11-26).
    */
-  xp: 0.01, scrip: 12, field: 15,
+  xp: 0.01, kills: 3.5, scrip: 12, field: 15,
 };

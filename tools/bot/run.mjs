@@ -18,7 +18,7 @@ if (flag('help') || flag('h')) {
   --from <name>       fresh (default): wipe the save and play from level 1
                       resume: keep the save that is in the browser session and carry on
                       a checkpoint: l4-docks, l7-heights, l10-slag, vault, l12-slagboss, l13-rivet,
-                      l16-arc, gauntlet, titan (set up with dev cheats, then played without)
+                      l16-arc, gauntlet, l19-titan, titan (set up with dev cheats, then played without)
   --max-minutes N     stop after N minutes of real time (default 180)
   --out <dir>         where the report and stall screenshots go (default shots/playthrough/<run id>)
   --scale N           device pixel ratio for the 402x874 viewport (default 1; rendering load only)

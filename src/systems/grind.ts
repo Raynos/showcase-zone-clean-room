@@ -337,7 +337,9 @@ export class Grind {
     const salv = ENEMIES[kind].salvage;
     return {
       id: s.bountyId++, kind: o.kind, target: o.target, n: o.n, text: o.text, band: band.id, prog: 0,
-      xp: Math.round(questXp(lvl, BOUNTY.xp * big) / 5) * 5, scrip: Math.round(killScrip(lvl) * BOUNTY.scrip * big), item: [salv[Math.floor(Math.random() * salv.length)][0], 2 + (big > 1 ? 1 : 0)],
+      // the lesser of a share of the level and a fixed number of kills: a share alone grows with each
+      // level's length, so bounties paid 18% of band 6 against 1% of band 1 (QA, 2026-11-26)
+      xp: Math.round(Math.min(questXp(lvl, BOUNTY.xp * big), killXp(lvl) * BOUNTY.kills * big) / 5) * 5, scrip: Math.round(killScrip(lvl) * BOUNTY.scrip * big), item: [salv[Math.floor(Math.random() * salv.length)][0], 2 + (big > 1 ? 1 : 0)],
     };
   }
   /** Count something toward the bounties it fits. */

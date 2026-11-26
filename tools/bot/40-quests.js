@@ -361,7 +361,8 @@
     if (g.interior === 'vault') return B.runVault();
     if (g.interior === 'arena') return B.runArena();
     if (g.interior) { B.setGoal('inside ' + g.interior + ': finding the way out'); await B.sleep(2); return; }
-    if (qs.status('q_titan') === 'done') { B.finish('complete', 'Cratefall turned in: the Crate Titan is destroyed and the chain is finished'); return; }
+    // a band check (--until-level) goes on grinding past the Titan to its level
+    if (qs.status('q_titan') === 'done' && !(B.cfg.untilLevel && st.d.level < B.cfg.untilLevel)) { B.finish('complete', 'Cratefall turned in: the Crate Titan is destroyed and the chain is finished'); return; }
     if (B.threatened(13)) {
       // robots keep arriving in a busy camp: with business in town, fight for a while and then break away
       const urgent = B.townWork().urgent;

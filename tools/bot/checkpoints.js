@@ -23,6 +23,8 @@
     'l13-rivet': { level: 13, done: upto('q_row'), gates: ['g12', 'g23', 'g34', 'g45'], pos: [-30, 6], about: 'level 13 in town, vault cleared, Rivet Row open' },
     'l16-arc': { level: 16, done: upto('q_arc'), gates: ['g12', 'g23', 'g34', 'g45', 'g56'], pos: [-30, 6], about: 'level 16 in town, Old Reliable down, Arc Field open' },
     gauntlet: { level: 16, done: upto('q_gauntlet'), active: ['q_gauntlet'], gates: ['g12', 'g23', 'g34', 'g45', 'g56'], pos: [88, -184], about: 'level 16 outside the gauntlet with its quest accepted' },
+    // level 19 as the band plays: the field done, the gauntlet run and Foreman Unit 7 fired, Cratefall still to take
+    'l19-titan': { level: 19, done: upto('q_titan'), gates: ['g12', 'g23', 'g34', 'g45', 'g56', 'shortcut'], flags: ['gauntlet_clear'], pos: [-30, 6], about: 'level 19 in town, gauntlet cleared, Foreman down, Cratefall not yet taken' },
     titan: { level: 18, done: upto('q_titan'), active: ['q_titan'], gates: ['g12', 'g23', 'g34', 'g45', 'g56', 'shortcut'], flags: ['gauntlet_clear'], pos: [30, -121], about: 'level 18 at the Titan portal, gauntlet cleared, Cratefall accepted' },
   };
 
@@ -48,6 +50,8 @@
     const done = c.level > 1 && !c.done.includes('q_horse') ? [...c.done, 'q_horse'] : c.done;
     if (done.includes('q_horse')) d.flags.horse_whistle = 1;
     for (const id of done) { const q = QUEST_BY_ID[id]; d.quests[id] = { state: 'done', prog: q.objectives.map((o) => o.n) }; }
+    // the field quests of the bands already played through (bN_*, band N done when 3N < level): handed in
+    for (const q of Object.values(QUEST_BY_ID)) { const b = /^b(\d)_/.exec(q.id); if (b && 3 * Number(b[1]) < c.level) d.quests[q.id] = { state: 'done', prog: q.objectives.map((o) => o.n) }; }
     for (const id of c.active || []) { const q = QUEST_BY_ID[id]; d.quests[id] = { state: 'active', prog: q.objectives.map(() => 0) }; }
     for (const gt of c.gates) { d.flags['gate_' + gt] = 1; const e = GATE_ELITE[gt]; d.kills[e] = 1; d.contracts['c_' + e] = 1; }
     for (const f of c.flags || []) d.flags[f] = 1;
