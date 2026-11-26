@@ -666,8 +666,8 @@ async function loadCompressedArrays(base: TexArrays, size: number, progress?: (k
  * holding the paintings (and the code-generated layers that have none, scaled to match).
  * A tile that fails to load leaves its layer as it was. `progress` runs 0..1.
  */
-export async function loadPaintedArrays(base: TexArrays, size: number, swap: (t: TexArrays) => void, progress?: (k: number) => void): Promise<void> {
-  const packed = await loadCompressedArrays(base, size, progress);
+export async function loadPaintedArrays(base: TexArrays, size: number, swap: (t: TexArrays) => void, progress?: (k: number) => void, tryCompressed = true): Promise<void> {
+  const packed = tryCompressed ? await loadCompressedArrays(base, size, progress) : null;
   if (packed) {
     swap(packed);
     base.albedo.dispose(); base.normal.dispose();
@@ -703,6 +703,37 @@ export async function loadPaintedArrays(base: TexArrays, size: number, swap: (t:
   swap({ albedo: mk(A, base.albedo), normal: mk(N, base.normal), size });
   base.albedo.dispose(); base.normal.dispose();
   progress?.(1);
+}
+
+/**
+ * Staged surfaces. Before play: the compressed arrays at `first` texels a side (2.4 MB). After
+ * play starts, `upgrade()` fetches the `final` size (8.9 MB at 512) and swaps it in. Where KTX2
+ * cannot be used, the WebP tiles are painted in the page at `final` straight away (that download
+ * is the same whatever the size). `ready` settles once the world has painted surfaces.
+ */
+export function loadStagedArrays(base: TexArrays, first: number, final: number, swap: (t: TexArrays) => void, progress?: (k: number) => void) {
+  let cur: TexArrays | null = null;
+  const ready = (async () => {
+    const packed = await loadCompressedArrays(base, first, progress);
+    if (packed) {
+      cur = packed; swap(packed);
+      base.albedo.dispose(); base.normal.dispose();
+      progress?.(1);
+      return;
+    }
+    await loadPaintedArrays(base, final, swap, progress, false);
+  })();
+  let upgrading: Promise<void> | null = null;
+  const upgrade = () => upgrading ??= (async () => {
+    await ready;
+    const old = cur;
+    if (!old || final <= old.size) return;
+    const packed = await loadCompressedArrays(old, final);
+    if (!packed) return;
+    cur = packed; swap(packed);
+    old.albedo.dispose(); old.normal.dispose();
+  })();
+  return { ready, upgrade, get size() { return cur?.size ?? final; } };
 }
 
 /** Small tileable RGBA noise texture used by sky/clouds/water/wind. */

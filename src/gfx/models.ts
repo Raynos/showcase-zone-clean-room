@@ -29,13 +29,20 @@ const PAL_N = 24;
 /** The painter stores values scaled by this so highlights have headroom (art/lib/paint.py). */
 const HEADROOM = 0.8;
 
-/** Every model the game uses, one art/ script each (art/build.py). Loaded together at boot. */
+/** Every model the game uses, one art/ script each (art/build.py). */
 export const MODEL_NAMES = [
   'mite', 'pallet', 'drone', 'sentry', 'riveter', 'welder', 'foreman', 'warden', 'titan',
   'rook', 'folk',
   'swords', 'spears', 'bows', 'guns', 'board',
 ] as const;
 export type ModelName = (typeof MODEL_NAMES)[number];
+/**
+ * Staged download: the two bosses (a third of the model bytes) are met only inside the vault and
+ * the arena, which are entered through Game.travel. They load after the first frame, and travel
+ * waits for them, so the loading screen never waits on them.
+ */
+export const LATE_MODELS: readonly ModelName[] = ['titan', 'warden'];
+export const BOOT_MODELS: readonly ModelName[] = MODEL_NAMES.filter((n) => !LATE_MODELS.includes(n));
 
 interface Asset {
   name: string;
@@ -149,11 +156,19 @@ export async function loadModels(names: readonly string[] = MODEL_NAMES, maxAnis
   const need = names.filter((n) => !assets.has(n));
   let done = 0;
   await Promise.all(need.map(async (n) => {
-    // a model that is not built yet must not stop the game: whoever needs it checks hasModel
-    try { assets.set(n, await loadOne(n, maxAniso)); } catch (e) { console.warn(`model ${n} not loaded:`, (e as Error)?.message ?? e); }
+    // a second request for a model already on its way waits for the first instead of fetching again
+    let p = inflight.get(n);
+    if (!p) {
+      // a model that is not built yet must not stop the game: whoever needs it checks hasModel
+      p = loadOne(n, maxAniso).then((a) => { assets.set(n, a); }, (e) => { console.warn(`model ${n} not loaded:`, (e as Error)?.message ?? e); });
+      inflight.set(n, p);
+      void p.then(() => inflight.delete(n));
+    }
+    await p;
     progress?.(++done, need.length, n);
   }));
 }
+const inflight = new Map<string, Promise<void>>();
 export function hasModel(name: string): boolean { return assets.has(name); }
 
 export interface ModelInstance {

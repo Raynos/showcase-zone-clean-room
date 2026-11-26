@@ -7,6 +7,13 @@ const mods = import.meta.glob(['./world/town.ts', './world/roads.ts', './entitie
 /** West-side activity modules: each may export build(game) (static geometry) and start(game) (systems). */
 const west = import.meta.glob('./world/west/*.ts');
 const westMods: any[] = [];
+/**
+ * Start every world module downloading at once. buildWorld imports them one after another, which
+ * on a phone network costs a round trip each; called early in boot, they arrive while the models do.
+ */
+export function preload() {
+  for (const f of [...Object.values(mods), ...Object.values(west)]) void f().catch(() => { /* reported when imported for real */ });
+}
 async function opt<T = any>(path: string): Promise<T | null> {
   const f = mods[path];
   if (!f) return null;

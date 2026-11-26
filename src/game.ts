@@ -11,8 +11,8 @@ import { FX, SP } from './gfx/fx';
 import { ContactShadows } from './gfx/contact';
 import { GU, installFog } from './gfx/material';
 import { QUALITY, Renderer } from './gfx/renderer';
-import { buildNoiseTexture, buildTextureArrays, loadPaintedArrays } from './gfx/textures';
-import { MODEL_NAMES, loadModels } from './gfx/models';
+import { buildNoiseTexture, buildTextureArrays, loadStagedArrays } from './gfx/textures';
+import { BOOT_MODELS, LATE_MODELS, loadModels } from './gfx/models';
 import { Combat } from './systems/combat';
 import { Engagement } from './systems/engage';
 import { ViewSystem, setView } from './systems/view';
@@ -103,10 +103,17 @@ export class Game {
     const tex = buildTextureArrays(this.renderer.gl.capabilities.getMaxAnisotropy());
     GU.uTexA.value = tex.albedo; GU.uTexN.value = tex.normal; GU.uNoise.value = buildNoiseTexture();
     // painted surfaces download while the world is built; whatever is late swaps in during play
-    const painted = loadPaintedArrays(tex, this.renderer.quality.name === 'low' ? 256 : 512, (t) => { GU.uTexA.value = t.albedo; GU.uTexN.value = t.normal; });
+    // staged: the 256 arrays before play; high and ultra fetch the 512 arrays once the world is up.
+    // The phone tiers keep 256: at their render scale 512 measured about 7% more ground detail for
+    // 8.9 MB more download and about 10 MB more GPU memory (docs/AAA-PLAN.md, phase 11).
+    const q = this.renderer.quality.name;
+    const surfaces = loadStagedArrays(tex, 256, q === 'low' || q === 'medium' ? 256 : 512, (t) => { GU.uTexA.value = t.albedo; GU.uTexN.value = t.normal; });
+    this.surfaces = surfaces;
     // characters and robots are authored models: they download now and are awaited before anything spawns
     let modelsDone = 0, modelsTotal = 0;
-    const models = loadModels(MODEL_NAMES, this.renderer.gl.capabilities.getMaxAnisotropy(), (d, n) => { modelsDone = d; modelsTotal = n; });
+    const models = loadModels(BOOT_MODELS, this.renderer.gl.capabilities.getMaxAnisotropy(), (d, n) => { modelsDone = d; modelsTotal = n; });
+    // the world's code downloads alongside the models (content.ts preload)
+    void import('./content').then((c) => c.preload());
     progress(0.25, 'RAISING THE YARD');
     await tick();
     this.physics = await Physics.init();
@@ -141,8 +148,8 @@ export class Game {
     this.grind = new Grind(this);
     this.movers = new Movers(this.physics);
     this.triggers = new Triggers(this);
-    progress(0.46, `UNCRATING THE CAST ${modelsDone}/${modelsTotal || MODEL_NAMES.length}`);
-    await models;
+    // the static world needs no models: build it while they download, and wait for them only
+    // before anything that spawns characters
     progress(0.5, 'BUILDING BRASSWICK');
     await tick();
     const content = await import('./content');
@@ -158,9 +165,11 @@ export class Game {
     this.grass = new Grass(this.terrain, this.renderer.quality.grass);
     this.scene.add(this.grass.group);
     this.scene.add(this.contact.mesh);
+    if (modelsDone < BOOT_MODELS.length) progress(0.9, `UNCRATING THE CAST ${modelsDone}/${modelsTotal || BOOT_MODELS.length}`);
+    await models;
     await content.startSystems(this);
     progress(0.95, 'PAINTING SURFACES');
-    await Promise.race([painted, new Promise<void>((r) => setTimeout(r, 6000))]);
+    await Promise.race([surfaces.ready, new Promise<void>((r) => setTimeout(r, 6000))]);
     this.wire();
     // place the player
     const d = this.state.d;
@@ -195,6 +204,8 @@ export class Game {
     this.last = performance.now();
     this.started = true;
     requestAnimationFrame((t) => this.frame(t));
+    // the rest of the staged download: the bosses, then the full-size surfaces
+    setTimeout(() => { void this.lateAssets().then(() => surfaces.upgrade()); }, 1000);
   }
 
   private wire() {
@@ -551,6 +562,8 @@ export class Game {
   async travel(o: { x: number; y: number; z: number; yaw: number; interior: string | null; look?: import('./world/environment').InteriorLook | null; onArrive?: () => void; sound?: string }) {
     if (this.travelling) return;
     this.travelling = true;
+    // the vault and arena bosses are part of the late download: never enter without them
+    if (o.interior) await this.lateAssets();
     const pl = this.player;
     pl.controllable = false; this.combat.cancel(); this.fadeHold = true;
     this.sfx(o.sound ?? 'portal_enter');
@@ -571,6 +584,11 @@ export class Game {
     this.travelling = false;
   }
   travelling = false;
+  /** surface arrays (staged download, gfx/textures.ts) */
+  surfaces: { ready: Promise<void>; upgrade(): Promise<void>; readonly size: number } | null = null;
+  private lateP: Promise<void> | null = null;
+  /** models left out of the boot download (gfx/models.ts LATE_MODELS); resolves once they are in */
+  lateAssets(): Promise<void> { return this.lateP ??= loadModels(LATE_MODELS, this.renderer.gl.capabilities.getMaxAnisotropy()); }
   private zoneKeyReset() { this.zoneKey = '~'; this.zoneT = 0; }
   east: any = null;
   rain = new Rain();
