@@ -3,6 +3,7 @@
 // changed live for every other size, so the matrix also exercises the HUD's live re-layout.
 const HM_PI = Math.PI;
 const hmFields = async (G, g, level) => {
+  window.HM_AFTER = null;
   G.noCamps(); G.clearMobs(); G.level(level);
   g.quests.accept('q_welcome');
   G.place(40, 6, HM_PI / 2 + 0.3);
@@ -110,16 +111,17 @@ const HM_STATES = [
     },
   },
   {
-    n: 9, name: 'tip-card', what: 'A tip card showing, a target and a toast', hour: 12.5,
+    n: 9, name: 'tip-card', what: 'A tip in a fight: its sentence in the lane under the target, the dodge button pulsing, a toast sent to the feed', hour: 12.5,
     async setup(G, g) {
       await hmFields(G, g, 2);
       await hmFight(G, g);
       await G.secs(0.6); G.quiet();
-      for (const s of document.querySelectorAll('style')) if (s.textContent === '.coach{display:none!important}') s.remove();
-      const co = g.systems.find((s) => s && s.card && s.queue);
-      co.card.innerHTML = '<b>Read the floor</b><span>Red shapes on the ground are incoming attacks. Roll out with the dodge button: a late roll slows time.</span>';
-      co.card.classList.add('on'); co.showT = 999;
-      g.hud.toast('Scrap ×2', 'loot');
+      window.HM_AFTER = () => {
+        g.hud.notices.clear();
+        g.hud.tip({ title: 'Read the floor', text: 'Red shapes on the ground are incoming attacks. Roll out with the dodge button: a late roll slows time.', at: 'dodge', secs: 999 });
+        g.hud.toast('Scrap ×2', 'loot');
+      };
+      window.HM_AFTER();
       await G.secs(0.4);
     },
   },
@@ -202,6 +204,40 @@ const HM_STATES = [
       await G.secs(1.0); G.quiet();
       window.HM_AFTER = (o) => { if (!o.mouse) g.hud.openWheel(); };
       await G.secs(0.4);
+    },
+  },
+  {
+    n: 16, name: 'busy-fight', what: 'A fight with everything raised at once: toasts, a level, a zone, a streak, a tip; the lane shows one, the feed two', hour: 12.5,
+    async setup(G, g) {
+      await hmFields(G, g, 2);
+      await hmFight(G, g);
+      await G.secs(1.0); G.quiet();
+      g.grind.cheat('streak'); g.grind.cheat('streak');
+      window.HM_AFTER = () => {
+        const h = g.hud;
+        h.notices.clear();
+        h.toast('Brass Cog', 'loot', 'A collectible cog, off a robot', 'cog');
+        h.toast('Crate Mites broken: 4/5', 'quest');
+        h.toast('Bounty paid', 'quest', 'Break 5 guards · +10 XP, 60 scrip', 'check');
+        h.banner('LEVEL 3', 'Health and energy restored', 'level');
+        h.banner(g.zoneName, 'Levels 1-3', '');
+        h.log('+2 Copper Wire', 'loot'); h.log('+1 Scrap Plating', 'loot'); h.log('+1 Brass Cog', 'loot');
+        h.tip({ title: 'Read the floor', text: 'Red shapes on the ground are incoming attacks. Roll out with the dodge button: a late roll slows time.', at: 'dodge' });
+      };
+      window.HM_AFTER();
+      await G.secs(0.4);
+    },
+  },
+  {
+    n: 17, name: 'calm-news', what: 'Out of a fight: a headline in the lane, the streak cooling, the tuning offer as a chip', hour: 12.5,
+    async setup(G, g) {
+      await hmFields(G, g, 2);
+      await G.secs(3.0); G.quiet();
+      g.grind.cheat('streak');
+      g.grind.cheat('tune'); g.grind.cheat('tune');
+      window.HM_AFTER = () => { g.hud.notices.clear(); g.hud.toast('Vista found', 'secret', 'The Lookout'); g.hud.banner('LEVEL 3', 'Health and energy restored', 'level'); };
+      window.HM_AFTER();
+      await G.secs(0.5);
     },
   },
 ];

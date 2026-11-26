@@ -168,9 +168,9 @@
     /** drop transient text: zone banner, toasts, combat log, coach cards */
     quiet() {
       const g = G.game, hud = g.hud;
-      if (hud.bannerQueue) hud.bannerQueue.length = 0;
-      for (const sel of ['.banner', '.coach']) for (const e of document.querySelectorAll(sel)) e.classList.remove('on');
-      for (const sel of ['.toasts', '.log']) for (const e of document.querySelectorAll(sel)) e.innerHTML = '';
+      // toasts, headlines and tips all live in the HUD's notice lane (src/ui/notices.ts)
+      hud.notices?.clear();
+      for (const e of document.querySelectorAll('.log')) e.innerHTML = '';
     },
     hideDev() { const d = document.getElementById('dev'); if (d) d.style.display = 'none'; },
     note(s) { G.notes.push(s); },

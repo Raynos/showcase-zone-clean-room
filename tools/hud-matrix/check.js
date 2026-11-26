@@ -55,11 +55,18 @@
       };
       for (const [id, s] of Object.entries(hud.slots)) {
         // the open tray is a menu over the HUD for a moment, not part of its layout
-        for (const c of s.children) if (!c.classList.contains('tray')) add(id, c);
+        // (a slot that flows under another, the feed under the quest line, is measured as itself)
+        for (const c of s.children) if (!c.classList.contains('tray') && !c.classList.contains('slot')) add(id, c);
       }
       add('buffs', document.querySelector('.s-status .buffs'), 'status');
+      add('streak', document.querySelector('.s-status .streak.on'), 'status');
       add('clock', document.querySelector('.s-mini .clock'), 'mini');
-      for (const t of document.querySelectorAll('.toast')) add('toast', t, 'toasts');
+      // what other systems draw over the HUD: the tuning offer (a chip, or the open choice) and the waypoint
+      // (the crate's channel bar is mounted in the timer slot, so it is measured with the slots)
+      const offer = document.querySelector('.gr-tune.on');
+      add(offer && offer.classList.contains('open') ? 'offer-open' : 'offer', offer && offer.firstElementChild);
+      // (the waypoint on its target is in the world; only its edge arrow is the HUD's to place)
+      add('waypoint', document.querySelector('.gmark.on.edge i'));
       for (const b of document.querySelectorAll('.abtn')) {
         const id = b.dataset.act;
         add('btn:' + id, b, b.classList.contains('in-bar') ? 'bar' : 'btn:' + id);
@@ -97,9 +104,20 @@
         else if (!exempt.has(u.name) && (u.x < S.l - 1 || u.y < S.t - 1 || u.x + u.w > W - S.r + 1 || u.y + u.h > Hh - S.b + 1)) issues.push({ kind: 'unsafe', what: u.name, at: [u.x, u.y, u.w, u.h].map(Math.round) });
       }
       if (form !== 'portrait') {
-        // prompts, toasts, banners and tip cards are allowed there: they are the news, and they go
-        const mid = { x: W * 0.3, y: Hh * 0.22, w: W * 0.4, h: Hh * 0.53 }, ok = new Set(['prompt', 'toast', 'toasts', 'banner', 'tip']);
-        for (const u of units) if (!ok.has(u.name) && ov(u, mid) > 6) issues.push({ kind: 'middle', what: u.name, px: Math.round(ov(u, mid)) });
+        // only the interaction prompt and a choice the player opened are allowed there. The notice lane
+        // (toasts, headlines, tips) hangs from the top: under a target frame or a boss bar it may reach 28% of the height.
+        // (The waypoint is a world marker: on its target it is wherever the target is, and off screen its arrow keeps
+        // to hud.freeBand(), beside the HUD's columns. It is checked for overlaps, not for the middle.)
+        const mid = { x: W * 0.3, y: Hh * 0.22, w: W * 0.4, h: Hh * 0.53 }, ok = new Set(['prompt', 'offer-open', 'waypoint']);
+        const lane = { x: mid.x, y: Hh * 0.28, w: mid.w, h: Hh * 0.47 };
+        for (const u of units) { const m = u.name === 'banner' ? lane : mid; if (!ok.has(u.name) && ov(u, m) > 6) issues.push({ kind: 'middle', what: u.name, px: Math.round(ov(u, m)) }); }
+      }
+      // one system for transient feedback: nothing may draw its own toast, card or meter (docs/HUD.md, "Overlays")
+      for (const e of document.querySelectorAll('.toast, .toasts > *, .banner.on, .coach.on, .gr-streak.on')) if (vis(e)) issues.push({ kind: 'stray', what: e.className });
+      // a fight's budget for the text column: two feed lines
+      if (hud.ctx === 'fight' && form !== 'desktop') {
+        const n = [...document.querySelectorAll('.lz-fl')].filter(vis).length;
+        if (n > 2) issues.push({ kind: 'feed', what: n + ' feed lines in a fight, the cap is 2' });
       }
       let cluster = 0, chips = 0, touch = 0;
       if (hud.game.input.isTouch) {
