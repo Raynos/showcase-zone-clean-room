@@ -6,7 +6,7 @@ import type { HitInfo } from './combat';
 import type { Mob, MobOpts } from './mobs';
 import { CHAMPION } from '../data/grind';
 import { HINT, makeTricks } from './mechanics/roster';
-import type { Grudge, Overheat, Trick, TrickId } from './mechanics/tricks';
+import type { Grudge, Overheat, RivetRing, Trick, TrickId } from './mechanics/tricks';
 
 const _v = new THREE.Vector3(), _w = new THREE.Vector3();
 /** when each named robot last introduced itself (game time): once in ten minutes is enough */
@@ -53,13 +53,32 @@ export class Mech {
   /** a trick is doing something else: the robot picks none of its own attacks */
   get busy() { return this.tricks.some((t) => t.busy); }
   get speedMul() { let k = this.baseSpeed; for (const t of this.tricks) k *= t.speedMul; return k; }
-  get keep() { for (const t of this.tricks) if (t.keep) return t.keep; return null; }
+  get keep(): [number, number] | null {
+    for (const t of this.tricks) if (t.keep) return t.keep;
+    // a flying elite or rare against a melee weapon holds close enough to be reached (and to dive)
+    if (this.flyer && this.g.combat.stance !== 'shooter') return [4.5, 7];
+    return null;
+  }
+  /** a drone of elite class: it has to give a melee player a way in (playtest round two, finding 7) */
+  get flyer() { return this.m.kind === 'drone'; }
   /** brood: larvae still alive */
   private brood() { return this.m.mobs.countSummons(this.m); }
   get shielded() { return this.kind === 'brood' && this.brood() >= 2; }
   /** plate: up, unless cracked, or melted off while the robot vents (Hot Mess) */
   get plated() { return this.kind === 'plate' && this.crackT <= 0 && !this.trick<Overheat>('overheat')?.venting; }
-  onActive(a: AttackDef) { for (const t of this.tricks) t.onActive(a); }
+  onActive(a: AttackDef) {
+    for (const t of this.tricks) t.onActive(a);
+    // a flyer's dive ends on the ground beside the player: it stays down a moment, in reach of any weapon
+    if (this.flyer && a.type === 'leap' && a.id !== 'glassdive') {
+      const m = this.m;
+      this.g.mobs.after(a.active + 0.05, m, () => {
+        if (!m.alive || m.state !== 'recover') return;
+        m.interrupt(1.6); m.stunTaken = 1.25;
+        m.center(_v); this.g.hud.damage({ x: _v.x, y: _v.y + m.height * 0.5 + 0.6, z: _v.z }, 'GROUNDED', 'miss');
+        this.g.fx.dust(_w.set(m.pos.x, m.pos.y + 0.1, m.pos.z), 8, 1.2);
+      });
+    }
+  }
   strike(a: AttackDef) { for (const t of this.tricks) if (t.strike(a)) return true; return false; }
   onCrash(a: AttackDef) { for (const t of this.tricks) t.onCrash(a); }
   cheatDeath() { for (const t of this.tricks) if (t.cheatDeath()) return true; return false; }
@@ -68,6 +87,8 @@ export class Mech {
   dispose() { for (const t of this.tricks) t.dispose(); }
   /** Is the hit coming at the robot's front? (dirX/dirZ point from the attacker to the robot) */
   private frontal(h: HitInfo) {
+    // Riveting Rita drives her ring with both hands: while it closes her riveted front is open
+    if (this.trick<RivetRing>('rivetring')?.ringing) return false;
     const fx = Math.sin(this.m.yaw), fz = Math.cos(this.m.yaw);
     return -(h.dirX * fx + h.dirZ * fz) > Math.cos(1.2);
   }
@@ -199,7 +220,9 @@ export function makeMech(m: Mob, o: MobOpts): Mech | null {
   // champions (systems/grind.ts) are elite-variant robots named from the champion roll, with a rank after a nemesis win
   const champion = !e && m.variant === 'elite' && !m.isBoss && !!o.name && CHAMPION.names.some((n) => o.name === n || o.name!.startsWith(n + ' '));
   const tricks = makeTricks(m, { twist: e?.twist, name: o.name, champion });
-  if (!e?.mech && !tricks.length) return null;
+  // an elite-class drone with no trick of its own still needs a melee route (Mech.flyer)
+  const flyer = m.kind === 'drone' && (m.variant === 'elite' || m.variant === 'rare' || m.variant === 'nightElite') && !m.isBoss;
+  if (!e?.mech && !tricks.length) return flyer ? new Mech(m, null) : null;
   const lines = [e?.mech ? HINT[e.mech] : '', ...tricks.map((t) => HINT[t.id] ?? '')].filter(Boolean);
   // a night elite's twist comes after its band's mechanic; one line for both
   return new Mech(m, e?.mech ?? null, tricks, e?.hint ?? lines.join('. '));

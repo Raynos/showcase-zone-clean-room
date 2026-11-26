@@ -198,7 +198,7 @@ export const ELITES: EliteDef[] = [
   { id: 'foreman', name: 'Foreman Unit 7', kind: 'foreman', level: 18, variant: 'elite', x: 78, z: -118, gate: 'shortcut', title: 'Middle Management', respawn: 420, hpMul: 1, twist: 'deadline' },
   { id: 'sir_nibbles', name: 'Sir Nibbles', kind: 'mite', level: 5, variant: 'nightElite', x: 92, z: -38, night: true, title: 'Knight of the Nibble', respawn: 600, scale: 2.4, hpMul: 0.7, mech: 'brood', twist: 'joust', hint: 'Shelled while its larvae live, and it jousts: sweep the larvae, dodge the lance into a wall' },
   { id: 'hot_mess', name: 'Hot Mess', kind: 'welder', level: 12, variant: 'nightElite', x: 222, z: 52, night: true, title: 'Certified Hot Mess', respawn: 600, mech: 'plate', twist: 'overheat', hint: 'Plated, and it runs hot: when it vents the plate melts off. Back off, then strike' },
-  { id: 'riveting_rita', name: 'Riveting Rita', kind: 'riveter', level: 16, variant: 'nightElite', x: 214, z: -196, night: true, title: 'Rita\'s Favourite', respawn: 600, mech: 'bulwark', twist: 'rivetring', hint: 'Riveted front, and she rivets you in: stay inside the ring and get round her back' },
+  { id: 'riveting_rita', name: 'Riveting Rita', kind: 'riveter', level: 16, variant: 'nightElite', x: 214, z: -196, night: true, title: 'Rita\'s Favourite', respawn: 600, hpMul: 0.75, mech: 'bulwark', twist: 'rivetring', hint: 'Riveted front, and she rivets you in: stay inside the ring, where her front is open' },
 ];
 
 /**

@@ -138,6 +138,8 @@ export class Overheat extends Trick {
 export class RivetRing extends Trick {
   private t = 9; private ringT = -1; private tele: Telegraph | null = null; private tick = 0; private cx = 0; private cz = 0;
   private static R0 = 16; private static R1 = 9; private static DUR = 7;
+  /** the ring is closing (Rita's front is open meanwhile: mechanics.ts) */
+  get ringing() { return this.ringT >= 0; }
   update(dt: number) {
     const g = this.g, m = this.m;
     if (this.ringT >= 0) {
