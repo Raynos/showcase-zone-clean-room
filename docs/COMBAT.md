@@ -385,7 +385,7 @@ interface ActionSlot {
     | 'overdrive' | 'swap' | 'kit' | 'target' | 'mount'
     | 'fire' | 'fire2' | 'aim' | 'reload';     // shooter stance
   icon: string;          // icon id; weapon-specific for attack and skills
-  label: string;         // two words at most, shown until learned
+  label: string;         // the action's name: never printed on a button
   state: 'ready' | 'cooldown' | 'noenergy' | 'locked' | 'hidden' | 'active';
   cd?: number;           // 0..1 remaining, for the sweep
   charge?: number;       // 0..1, attack hold or Overdrive meter
@@ -397,8 +397,10 @@ interface ActionSlot {
 }
 ```
 
-A slot in state `locked` shows its unlock level; `hidden` takes no space.
-The HUD decides position, size, press feedback and when labels fade.
+Combat describes every action it has. The HUD decides position, size,
+press feedback and which of them the moment shows (`docs/HUD.md`): a
+`locked` or `hidden` slot is not drawn and takes no space, and on a phone
+some slots appear only in context.
 
 How the HUD (`src/ui/hud.ts`) reads a slot:
 
@@ -406,19 +408,29 @@ How the HUD (`src/ui/hud.ts`) reads a slot:
   redraws from it every frame, so calling only on change is enough.
 - With `cdSec` the HUD prints the seconds and runs the sweep down smoothly
   between calls. Without it the sweep moves only when `cd` is sent again.
-- `charge` draws a ring round the button: on `attack` while it is held, on
-  `overdrive` always (the meter). At 1 the ring flares.
+- `charge` on `attack` or `fire` draws a ring round the button while it is
+  held (a desktop shows it as the cast bar). `charge` on `overdrive` is the
+  meter: on a phone a gold arc round the primary button, with the Overdrive
+  button itself shown only at 1 or while `active`; on a desktop the fill of
+  its hotbar slot.
 - `noenergy` dims the button; skills also get a struck energy bolt. A
   `count` of 0 turns the count red and dims the icon.
-- A label fades for good after the action has been pressed four times. A
-  label on `attack` while its state is `active` is a live caption ("Counter",
-  "Full") and never fades.
+- `label` is shown as a caption over the health bar the first three times a
+  skill or Overdrive is pressed, and on a desktop on hover. "Counter" on
+  `attack` while its state is `active` is written over the primary.
+- On a phone `kit` shows only while health is under 60% and `count` is over
+  0 (it is always in the quick wheel), `mount` only out of a fight,
+  `reload` only while `count < mag` or `active`, and `fire2` only while
+  `aim` is `active`. `target` is never a button.
+- `swap` is the weapon chip: a tap presses `swap` on release, a hold opens
+  the quick wheel. Combat leaves `swap` out with one weapon; the chip then
+  opens the wheel.
 - `hud.setAct(id, { icon, off, hidden })` from older callers (mounts) is laid
   over the slots for as long as the caller keeps calling each frame.
 - Buttons press `attack`, `dodge`, `jump`, `skill1..3`, `overdrive`, `swap`,
-  `mount`, `target`, and `potion` for the kit, through `game.input`. A tap on
-  the target button presses `target`; holding it calls
-  `game.engage.clearTarget()`. A drag that starts on the held attack button
+  `mount`, and `potion` for the kit, through `game.input`. A tap on the
+  target frame (or the boss bar) presses `target`; holding it calls
+  `game.engage.clearTarget()`. A drag that starts on the held primary
   turns the camera after 8 px, like a look-drag.
 
 In the shooter stance combat sends `fire` (the trigger: label Fire, Draw,
@@ -427,8 +439,9 @@ magazine, state `cooldown` with `cd`/`cdSec` while reloading), `fire2` (the
 same, for the left thumb), `aim` (`active` while aimed, `charge` the blend)
 and `reload` (`cooldown` when the magazine is full). `attack` mirrors `fire`
 and `target` mirrors `aim` for layouts without shooter slots; the shooter
-layout hides them. `fire` and `fire2` press `attack`, `aim` presses `aim`,
-`reload` presses `reload`. There is no `target` slot in this stance:
+layout hides them. `fire` presses `attack`, `fire2` presses `fire2`, `aim`
+presses `aim`, `reload` presses `reload`. The magazine is printed on
+`reload` only. There is no `target` slot in this stance:
 nothing is targeted, and robots show no floating nameplates.
 
 The crosshair, hit markers, the magazine under the crosshair and the scope
