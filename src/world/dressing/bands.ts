@@ -726,7 +726,11 @@ function fill(c: Ctx, b: number) {
     let q = v.hx ? c.spotRect(wx, wz, v.hx, v.hz!, yaw, 8, 1.6) : (() => { const p = c.spot(wx, wz, v.r, 8, v.r > 5 ? 1.5 : 1.1); return p ? { x: p[0], z: p[1], yaw } : null; })();
     if (!q) { v = small; const p = c.spot(wx, wz, v.r, 10, 1.2); q = p ? { x: p[0], z: p[1], yaw } : null; }
     if (!q || ridgeAt(q.x, q.z) > 0.4 || q.x < B.x0 + 3) continue;
+    // (on ground kept for the works: built all the same, so the dice fall as they did, and thrown away)
+    const off = c.onKept(q.x, q.z, Math.min((v.hx ? Math.max(v.hx, v.hz!) : v.r) * 0.7, 3.2)), nl = c.info.lamps.length, nm = masts.length;
+    if (off) c.mute++;
     v.f(c, q.x, q.z, q.yaw, r, b); n++;
+    if (off) { c.mute--; c.info.lamps.length = nl; masts.length = nm; }
   }
   // loose litter so there is always something in the middle distance
   const want = b === 1 ? 26 : 20;

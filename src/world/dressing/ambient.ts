@@ -108,7 +108,7 @@ export function startAmbient(game: Game, info: DressInfo) {
   const birds = new THREE.Mesh(birdGeo, new THREE.MeshBasicMaterial({ color: 0x23272e, side: THREE.DoubleSide }));
   birds.frustumCulled = false; group.add(birds);
 
-  let t = 0, burnT = 0, emberT = 0, arcT = 2, flyT = 0, smokeT = 0, birdT = 6;
+  let t = 0, burnT = 0, emberT = 0, arcT = 2, flyT = 0, smokeT = 0, birdT = 6, weldT = 0, ventT = 0;
   game.addSystem({
     update: (dt: number, rdt: number) => {
       const inside = !!game.interior;
@@ -169,6 +169,23 @@ export function startAmbient(game: Game, info: DressInfo) {
         if (!hot && fall) { const dx = p.x - fall.x, dz = p.z - fall.z, c = Math.cos(fall.yaw), s = Math.sin(fall.yaw), lx = dx * c - dz * s, lz = dx * s + dz * c; hot = Math.abs(lx) < 1.7 && Math.abs(lz) < 0.6 && p.y < fall.y + 6; }
         if (hot) { burnT = 0.55; game.combat.hurtPlayer(Math.round(5 + game.state.d.level * 1.1), _a.set(p.x, p.y - 1, p.z), 0, null, true); game.fx.emit({ x: p.x, y: p.y + 0.3, z: p.z }, { count: 8, speed: [1, 4], up: 3, life: [0.3, 0.7], size: [0.06, 0.14], color: 0xff7a1a, glow: 5, gravity: 6, sprite: SP.EMBER }); }
         else burnT = 0.12;
+      }
+      // Rivet Row: torches at work throw sparks in bursts, floor vents breathe steam
+      if ((weldT -= rdt) <= 0) {
+        weldT = 0.07;
+        for (let i = 0; i < info.welders.length; i++) {
+          const w = info.welders[i];
+          if (Math.abs(w.x - p.x) > 75 || Math.abs(w.z - p.z) > 75) continue;
+          const ph = (t * 0.31 + i * 0.37) % 1;
+          if (ph > 0.42) continue;
+          game.fx.emit(w, { count: 2, speed: [1.5, 5], up: 1.2, life: [0.25, 0.7], size: [0.03, 0.07], color: 0xffd27a, color2: 0xffffff, glow: 6, gravity: 9, drag: 0.4, sprite: SP.STREAK, stretch: 2.4 });
+          if (Math.random() < 0.3) game.fx.flash(_a.set(w.x, w.y, w.z), 0xbfe4ff, 7, 7, 0.1);
+          if (Math.random() < 0.06) game.sfx('sparks', { vol: 0.22, pitch: rand(1.1, 1.6), pos: w });
+        }
+      }
+      if ((ventT -= rdt) <= 0) {
+        ventT = 0.22;
+        for (const v of info.vents) if (Math.abs(v.x - p.x) < 60 && Math.abs(v.z - p.z) < 60) game.fx.smoke(_a.set(v.x + rand(-0.3, 0.3), v.y, v.z + rand(-0.3, 0.3)), 1, 0.9, 0xd8dde2, 0.2);
       }
       // Arc Field: pylons throw arcs at each other and at the ground
       if ((band === 6 || band === 5) && (arcT -= rdt) <= 0) {

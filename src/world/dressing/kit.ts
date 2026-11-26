@@ -1,7 +1,7 @@
 import { Rng, TAU, clamp } from '../../core/util';
 import { CAMPS, ELITES } from '../../data/enemies';
 import type { Game } from '../../game';
-import type { Geo } from '../../gfx/geo';
+import { Geo } from '../../gfx/geo';
 import { T } from '../../gfx/textures';
 import { FLORA_KEEPOUT, freeGround } from '../flora';
 import { FLATS, HALF, LAKE, PAL, ROCK } from '../layout';
@@ -23,6 +23,9 @@ export interface DressInfo {
   /** named anchor points (set-piece tops etc.) that finds are placed on */
   anchors: Record<string, { x: number; y: number; z: number; yaw: number }>;
   windmill: { x: number; y: number; z: number; yaw: number } | null;
+  /** torches at work and steam vents (dressing/works.ts), for the sparks and steam the ambient system gives them */
+  welders: Array<{ x: number; y: number; z: number }>;
+  vents: Array<{ x: number; y: number; z: number }>;
   /** candidate find spots next to dressed clusters (band 0 = west) */
   nooks: Nook[];
   tris: number;
@@ -34,12 +37,36 @@ const MAP = 1024;
 /** Placement context: terrain queries, keep-outs, ground painting. */
 export class Ctx {
   rng = new Rng(90210);
-  info: DressInfo = { pylons: [], pools: [], stacks: [], lamps: [], anchors: {}, windmill: null, nooks: [], tris: 0 };
+  info: DressInfo = { pylons: [], pools: [], stacks: [], lamps: [], anchors: {}, windmill: null, welders: [], vents: [], nooks: [], tris: 0 };
   private reserved: Array<[number, number, number]> = [];
   private painted = false;
   /** where props were put (x, z), for the ground stories laid round them (dressing/ground.ts) */
   placed: Array<[number, number]> = [];
+  /**
+   * Ground kept for a set piece that is built last (dressing/works.ts), as yawed rectangles. What an
+   * earlier pass puts there is still built, into a builder that is thrown away: every dice roll and
+   * every other placement stays exactly what it was, and only what stood on that ground is gone.
+   */
+  private kept: Array<[number, number, number, number, number, number]> = [];
+  private scrap: Geo | null = null;
+  /** above zero while a whole cluster is being thrown away (bands.ts fill) */
+  mute = 0;
+  /** what was thrown away, for the build log; and the hiding places that went with it */
+  gone: Array<[number, number]> = [];
+  lost: Array<[number, number, number]> = [];
   constructor(public game: Game) {}
+  keep(x: number, z: number, hx: number, hz: number, yaw: number) { this.kept.push([x, z, hx, hz, Math.cos(yaw), Math.sin(yaw)]); }
+  /** True when (x, z) is on kept ground, or within `pad` of it. */
+  onKept(x: number, z: number, pad = 0): boolean {
+    for (const [cx, cz, hx, hz, c, s] of this.kept) {
+      const dx = x - cx, dz = z - cz, ox = Math.abs(dx * c - dz * s) - hx, oz = Math.abs(dx * s + dz * c) - hz;
+      if (ox < pad && oz < pad && (ox <= 0 || oz <= 0 || ox * ox + oz * oz < pad * pad)) return true;
+    }
+    return false;
+  }
+  /** The set pieces are about to be built on the kept ground: stop throwing things away. */
+  release() { this.kept.length = 0; this.scrap = null; }
+  private bin(): Geo { const g = (this.scrap ??= new Geo()); g.pos.length = g.nor.length = g.col.length = g.uv.length = g.lay.length = g.emi.length = g.swy.length = g.idx.length = g.colliders.length = 0; return g; }
   h(x: number, z: number) { return this.game.terrain.h(x, z); }
   /** Height range of the ground under a footprint. */
   span(x: number, z: number, hx: number, hz: number, yaw = 0): [number, number] {
@@ -70,6 +97,7 @@ export class Ctx {
   /** Register a find spot at a local offset of a set piece (y above ground unless absolute). */
   nook(band: number, x: number, z: number, yaw: number, lx: number, lz: number, o: { dy?: number; y?: number; high?: boolean } = {}) {
     const c = Math.cos(yaw), s = Math.sin(yaw), wx = x + lx * c + lz * s, wz = z - lx * s + lz * c;
+    if (this.mute || (this.kept.length && this.onKept(wx, wz, 1))) { this.lost.push([band, wx, wz]); return; }
     this.info.nooks.push({ band, x: wx, z: wz, y: o.y ?? this.h(wx, wz) + (o.dy ?? 0), yaw, high: o.high });
   }
   anchor(name: string, x: number, y: number, z: number, yaw = 0) { this.info.anchors[name] = { x, y, z, yaw }; }
@@ -134,6 +162,7 @@ export class Ctx {
   }
   /** Run f with the right chunk builder, origin on the ground at (x, z). */
   put(x: number, z: number, yaw: number, f: (g: Geo) => void, dy = 0, leaf = false) {
+    if (this.mute || (this.kept.length && this.onKept(x, z, 1))) { const b = this.bin(); b.at(x, this.h(x, z) + dy, z, yaw, () => f(b)); this.gone.push([x, z]); return; }
     const ch = this.game.chunks, g = leaf ? ch.leaf(x, z) : ch.solid(x, z);
     const v0 = g.idx.length;
     if (!leaf) { FLORA_KEEPOUT.push([x, z, 2.4]); this.placed.push([x, z]); }
@@ -142,6 +171,7 @@ export class Ctx {
   }
   /** Like put, but origin at an explicit height. */
   putY(x: number, y: number, z: number, yaw: number, f: (g: Geo) => void, leaf = false) {
+    if (this.mute || (this.kept.length && this.onKept(x, z, 1))) { const b = this.bin(); b.at(x, y, z, yaw, () => f(b)); this.gone.push([x, z]); return; }
     const ch = this.game.chunks, g = leaf ? ch.leaf(x, z) : ch.solid(x, z);
     const v0 = g.idx.length;
     if (!leaf) FLORA_KEEPOUT.push([x, z, 2.4]);
@@ -160,7 +190,7 @@ export class Ctx {
       g.box(w, depth, d, { at: [0, -depth / 2, 0], color: o.color ?? PAL.concrete, layer: o.layer ?? T.CONCRETE, uvScale: 0.22, grad: 0.7, col: o.col !== false });
       f(g, y);
     });
-    this.paint(x, z, Math.max(w, d) * 0.62, { grass: 0, color: 0x8f8a80, k: 0.6, gravel: 0.7 });
+    if (!this.mute && !(this.kept.length && this.onKept(x, z, 1))) this.paint(x, z, Math.max(w, d) * 0.62, { grass: 0, color: 0x8f8a80, k: 0.6, gravel: 0.7 });
     return y;
   }
   /** Tint the ground texture and thin the grass in a disc (soft edge). */
