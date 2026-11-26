@@ -480,8 +480,14 @@ export class Player {
       else if (this.faceYaw !== null) this.yaw = dampAngle(this.yaw, this.faceYaw, 22, dt);
       else if (this.moveHeading !== null && this.lungeT <= 0) this.yaw = dampAngle(this.yaw, this.moveHeading, this.grounded ? 14 : 8, dt);
     }
-    // safety net: never fall out of the world
-    if (this.pos.y < -260) { const y = g.terrain.h(this.pos.x, this.pos.z) + 2; this.teleport(this.pos.x, y, this.pos.z); }
+    // safety net: never fall out of the world. Inside an interior (the vault is 70 m under the
+    // Slagworks) the terrain is the wrong floor: a hero put there stood on the surface with the
+    // vault still entered and its robots out of reach (QA 2026-11-26), so go back to its checkpoint.
+    if (this.pos.y < -260) {
+      const cp = g.interior ? g.combat.checkpoint : null;
+      if (cp) this.teleport(cp.x, cp.y + 0.15, cp.z, cp.yaw);
+      else { const y = g.terrain.h(this.pos.x, this.pos.z) + 2; this.teleport(this.pos.x, y, this.pos.z); }
+    }
     void lerp;
   }
 }
