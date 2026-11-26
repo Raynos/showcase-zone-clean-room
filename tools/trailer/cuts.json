@@ -1,0 +1,101 @@
+{
+  "about": "The trailer edits as data. bpm is the soundtrack's tempo (the game's gauntlet score); every length is in beats (0.4 s, 12 frames at 30 fps). A shot takes `beats` beats of frames from recorded shot `shot` (tools/trailer/shots.js) starting at frame `in`, in the landscape or portrait take; `pin` overrides `in` for the portrait take. `music` lists score states by the beat they start on; `cues` are the game's own sound effects by beat. The card is the title (tools/trailer/card.html).",
+  "fps": 30,
+  "bpm": 150,
+  "edits": {
+    "30": {
+      "beats": 75,
+      "shots": [
+        { "shot": "town", "in": 0, "beats": 6 },
+        { "shot": "mites", "in": 6, "beats": 5 },
+        { "shot": "pallet", "in": 0, "beats": 4 },
+        { "shot": "horse", "in": 18, "beats": 5 },
+        { "shot": "laser", "in": 6, "beats": 4 },
+        { "shot": "gauntlet", "in": 24, "beats": 4 },
+        { "shot": "storm", "in": 0, "beats": 5 },
+        { "shot": "warden", "in": 30, "beats": 6 },
+        { "shot": "assemble", "in": 12, "beats": 6 },
+        { "shot": "titan2", "in": 18, "beats": 6 },
+        { "shot": "fist", "in": 24, "beats": 5 },
+        { "shot": "ult", "in": 18, "beats": 5 },
+        { "shot": "mites", "in": 66, "beats": 1 },
+        { "shot": "gauntlet", "in": 36, "beats": 1 },
+        { "shot": "warden", "in": 48, "beats": 1 },
+        { "shot": "titan2", "in": 84, "beats": 1 },
+        { "card": true, "beats": 10 }
+      ],
+      "music": [
+        { "at": 0, "state": "title" },
+        { "at": 6, "state": "gauntlet" },
+        { "at": 65, "state": "victory" }
+      ],
+      "cues": [
+        { "at": 0, "sfx": "vista", "gain": 0.8 },
+        { "at": 5.5, "sfx": "swing_heavy", "gain": 1 },
+        { "at": 6, "sfx": "hit_metal_heavy", "gain": 1 },
+        { "at": 7, "sfx": "swing_light" }, { "at": 8, "sfx": "hit_metal_light" }, { "at": 9, "sfx": "swing_heavy" },
+        { "at": 11, "sfx": "elite_roar", "gain": 0.9 },
+        { "at": 12.5, "sfx": "pallet_charge" },
+        { "at": 15, "sfx": "horse_whinny" },
+        { "at": 20, "sfx": "sentry_charge" },
+        { "at": 22, "sfx": "sentry_zap" },
+        { "at": 24, "sfx": "od_cast" },
+        { "at": 25, "sfx": "shockwave" },
+        { "at": 28.5, "sfx": "thunder", "gain": 0.9 },
+        { "at": 33, "sfx": "warden_slam" },
+        { "at": 35, "sfx": "explosion_big", "gain": 0.8 },
+        { "at": 39, "sfx": "titan_assemble" },
+        { "at": 45, "sfx": "titan_roar" },
+        { "at": 51, "sfx": "titan_slam" },
+        { "at": 53, "sfx": "hit_crit" },
+        { "at": 54, "sfx": "hit_metal_heavy" },
+        { "at": 56, "sfx": "od_cast" },
+        { "at": 58, "sfx": "finisher_hit" },
+        { "at": 61, "sfx": "hit_metal_heavy" }, { "at": 62, "sfx": "explosion" }, { "at": 63, "sfx": "hit_crit" }, { "at": 64, "sfx": "crate_break" },
+        { "at": 65, "sfx": "titan_slam", "gain": 1.1 },
+        { "at": 65, "sfx": "explosion_big", "gain": 0.9 },
+        { "at": 65.02, "sfx": "kill_big" }
+      ]
+    },
+    "15": {
+      "beats": 37.5,
+      "shots": [
+        { "shot": "town", "in": 12, "beats": 4 },
+        { "shot": "mites", "in": 18, "beats": 3 },
+        { "shot": "pallet", "in": 6, "beats": 3 },
+        { "shot": "horse", "in": 24, "beats": 3 },
+        { "shot": "laser", "in": 18, "beats": 3 },
+        { "shot": "warden", "in": 36, "beats": 4 },
+        { "shot": "assemble", "in": 30, "beats": 4 },
+        { "shot": "fist", "in": 30, "beats": 3 },
+        { "shot": "gauntlet", "in": 36, "beats": 1 },
+        { "shot": "titan2", "in": 84, "beats": 1 },
+        { "card": true, "beats": 8.5 }
+      ],
+      "music": [
+        { "at": 0, "state": "title" },
+        { "at": 4, "state": "gauntlet" },
+        { "at": 29, "state": "victory" }
+      ],
+      "cues": [
+        { "at": 0, "sfx": "vista", "gain": 0.8 },
+        { "at": 3.5, "sfx": "swing_heavy" },
+        { "at": 4, "sfx": "hit_metal_heavy" },
+        { "at": 5, "sfx": "hit_metal_light" },
+        { "at": 7, "sfx": "elite_roar", "gain": 0.9 },
+        { "at": 10, "sfx": "horse_whinny" },
+        { "at": 13, "sfx": "sentry_charge" },
+        { "at": 15, "sfx": "sentry_zap" },
+        { "at": 16, "sfx": "warden_slam" },
+        { "at": 18, "sfx": "explosion_big", "gain": 0.8 },
+        { "at": 20, "sfx": "titan_assemble" },
+        { "at": 24, "sfx": "titan_slam" },
+        { "at": 26, "sfx": "hit_crit" },
+        { "at": 27, "sfx": "explosion" }, { "at": 28, "sfx": "crate_break" },
+        { "at": 29, "sfx": "titan_slam", "gain": 1.1 },
+        { "at": 29, "sfx": "explosion_big", "gain": 0.9 },
+        { "at": 29.02, "sfx": "kill_big" }
+      ]
+    }
+  }
+}
