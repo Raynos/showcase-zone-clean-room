@@ -948,6 +948,103 @@ Shortcuts: teleports between places, robots and the Titan defeated with
 `combat.strikeTarget`, god mode except for the death. The overtime vault
 was never finished, and no par time has been timed by a person.
 
+### QA: playthrough, pacing and careless deaths (2026-11-26)
+
+Production builds in scratch worktrees, `tools/bot` through the touch
+UI, no `?dev` after the checkpoint.
+
+**Full run, boosted x10, fresh save, HEAD 4060d00: the Titan died.**
+Level by in-game minute: L4 1.8, L7 9.4, L10 20.3, L14 26.4, vault
+clear and L17 at about 35, L20 at 44, gauntlet 56, Titan 60.7, Cratefall
+turned in at 61.3. Stalls:
+- (39.5, 100) Docks: the grid's start cell sits in a container pocket,
+  so the bot stood still twice (13.8 and 16.8 min). Bot gap, fixed
+  (`B.unbox`).
+- Vault combat chamber, wave 1: the hero stood on the surface at
+  (199.9, -0.2, 10.3) with the vault entered. The robots wait at y -70
+  and never come. A second entry played clean. The cause is under "The
+  vault stall, found" below. The bot now logs every jump over 8 m and
+  returns home through the map.
+- The Storm Hour beacon 3 was a bot gap (`goUse` gave up after one
+  fight). Fixed, with `tools/bot/tests/beacons.js`.
+
+**Pacing, unboosted, from band-entry checkpoints, fast travel in use.**
+Field quests are not played by the bot. Their share is computed from
+the data: about 5% of each band after this pass, plus 2.5-5 minutes.
+
+| Levels | Target | Measured     | Build   | Kill | Quest | Bnty | Ctr |
+|--------|--------|--------------|---------|------|-------|------|-----|
+| 1-3    | 10     | 6.8 (68%)    | 15d045e | 49%  | 39%   | 1%   | 5%  |
+| 4-6    | 26     | 21.4 (82%)   | 15d045e | 82%  | 9%    | 4%   | 4%  |
+| 7-9    | 36     | 27.8 (77%)   | 15d045e | 64%  | 16%   | 3%   | 17% |
+| 10-12  | 45     | 17.7 (39%)   | 4060d00 | 63%  | 12%   | 11%  | 5%  |
+| 13-15  | 54     | 26.8 (50%)   | 4060d00 | 73%  | 9%    | 10%  | 8%  |
+| 16-18  | 63     | 22.9 (36%)   | 4060d00 | 59%  | 12%   | 18%  | 7%  |
+| 19     | 24     | not measured | -       | -    | -     | -    | -   |
+
+Levels 10-12 also took 9% from the vault's first clear.
+
+**Tuned** (balance.ts, grind.ts, quests-field.ts):
+- band rates went from 11.5/23/18/18/18/18/18 to
+  15/23/22/41/36/45/45;
+- `BOUNTY.xp` went from 0.025 to 0.01;
+- `FIELD_XP_SCALE` for bands 4-6 went from 1.3/1.65/1.4 to
+  0.65/0.83/0.7.
+
+Bands 4-6 are modelled, not re-run: 44, 55 and 60 min, with kills at
+64%, 70% and 56%.
+
+A bounty pays a share of the level, so its share of a band grows with
+the level's length. At band 6's length it stays at 15-18% whatever the
+rate. Pricing a bounty in kills (`killXp` times n) would fix that; the
+pricing logic lives in `systems/grind.ts`.
+
+**After hours** (15d045e, a level-20 checkpoint save, the bot's own
+fight code):
+- Overtime Titan with the 'foremen' rule: 5:30, silver, no deaths.
+  That was before the Titan's health went up by 23%.
+- Long Shift, twice: 5 waves cleared in about 110 s, and both shifts
+  ended in wave 6. The first ended in a death: eight open-world Arc
+  Sentries (L16-18) outside court A shot the hero from 9-17 m, off
+  screen, at (87.5, -189). The pars were left as they are.
+- Perk points: 19 from levels, 3 from Field Training and 3 from the
+  Tally Book make 25, against 22 ranks. The Tally Book's three points are
+  always spare.
+
+**Careless bot** (taps attack only, 6 min from each band's entry,
+15d045e). Deaths are judged from the forensics log of the hits that
+came before them.
+- Bands 1-3: no deaths.
+- Band 4: no data. The run spent its time in the vault stall below.
+- Band 5: 5 deaths in 3 min, all to Shift Boss Slag's torch at about
+  (186, -69). Every hit was on screen and telegraphed: fair, but the
+  hero walks straight back into the same fight.
+- Band 6: 4 deaths. Arc Sentry storm hits came from 9-10 m off screen,
+  and Old Reliable bursts at 4-5 m came from behind the camera: cheap.
+  One death had no hit logged in the 8 s before it.
+
+**The vault stall, found.** The hero fell through the combat chamber
+floor to y -260 at (200, 10.3), twice. The safety net in `player.ts`
+then put them at terrain height, on the surface above the vault.
+- Fixed (10ea457): inside an interior the safety net now returns the
+  hero to the interior's checkpoint. Checked on the test server.
+- Not found: why the hero falls. The floor holds at five points
+  there.
+
+**Elite and boss checks** (de4e747, competent bot, checkpoint gear,
+one weapon in hand, game seconds from first aggro to death):
+- Crate Titan at level 20: the Stormrod won in 220 s (lowest health
+  30%) and the Rail Rifle in 46 s. Health went from 78 to 96 (b9baaa1)
+  to put melee at about 4.5 min. The rifle is an outlier that the
+  Titan's health cannot fix.
+- Vault Warden at level 10 (logic and combat rooms skipped): Bandsaw
+  106 s, Tension Bow 254 s, Bolt Driver 306 s, Rivet Rifle 78 s. No
+  deaths. The crossbow takes 3.9 times as long as the rifle. A bigger
+  dial would speed up the rifle too, so the gap is in the bow's and the
+  crossbow's damage against a boss. Not tuned.
+- Shift Boss Slag at level 12 with the Rivet Rifle: 188 s, a win, so
+  not trivial. The bow's full draw was not tried.
+
 ## 7. Risks
 
 - **Phone reality.** Every performance number is from desktop Chrome. The
