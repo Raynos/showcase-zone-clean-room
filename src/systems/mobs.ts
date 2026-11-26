@@ -34,6 +34,8 @@ interface Wave { x: number; y: number; z: number; r: number; max: number; speed:
 interface Pending { t: number; fn: () => void; owner: Mob | null }
 
 let NEXT_ID = 1;
+/** when and where the word BROKEN was last put up: one sweep that breaks several robots says it once, not in a stack */
+const BROKEN_SAID = { t: -9, x: 0, z: 0 };
 /**
  * When a robot stops fighting (docs/COMBAT.md, "Leash and reset"). It is tied to its home, not to the
  * player: it chases while it is within its leash of home, which stretches by LEASH_HURT (times, plus
@@ -207,7 +209,10 @@ export class Mob implements Hittable {
     this.center(_v);
     fx.play('robot.break', _v, undefined, 0xffd27a, this.radius, this.height, this.def.colors);
     fx.ring(_v2.set(this.pos.x, this.pos.y + 0.1, this.pos.z), this.radius * 4 + 2, 0xffd27a, 0.45, 3);
-    g.hud.damage({ x: _v.x, y: _v.y + this.height * 0.45 + 0.6, z: _v.z }, 'BROKEN', 'crit');
+    if (g.time - BROKEN_SAID.t > 0.4 || g.time < BROKEN_SAID.t || Math.hypot(_v.x - BROKEN_SAID.x, _v.z - BROKEN_SAID.z) > 5) {
+      BROKEN_SAID.t = g.time; BROKEN_SAID.x = _v.x; BROKEN_SAID.z = _v.z;
+      g.hud.damage({ x: _v.x, y: _v.y + this.height * 0.45 + 0.6, z: _v.z }, 'BROKEN', 'crit');
+    }
     g.sfx(this.isBoss ? 'boss_slam' : 'enemy_crash', { pos: this.pos, vol: 1 });
     g.cameraRig.shake(this.isBoss ? 0.5 : this.cls === 'elite' ? 0.35 : 0.15);
     if (this.isBoss || this.cls === 'elite') { g.slowMo(0.3, 0.16); g.cameraRig.punch(-3); g.haptic?.(30); }
