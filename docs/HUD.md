@@ -72,13 +72,19 @@ go. Tab still cycles.
 other weapon. Tap swaps (on release). Hold for a third of a second opens
 the quick wheel under the thumb: Heal Kit, Mount, Emote, Chat, View. Point
 at one and let go, or let go and tap one; a tap elsewhere closes it. With
-one weapon the chip shows three dots and a tap opens the wheel.
+one weapon the chip shows three dots and a tap opens the wheel. The wheel
+holds only what the player has, and has no dead slots: no kit item with
+no kits, no mount before there is one to call. What a player does not
+have yet is the world's to offer (the stable's quest giver and her
+marker), not a greyed button's.
 
-**Heal kit.** In the wheel always. The kit button itself appears on the
+**Heal kit.** In the wheel while a kit is carried (dim when health is
+full or the kit is cooling). The kit button itself appears on the
 context seat beside the chip only while health is under 60% and a kit is
 left. Desktop: a hotbar slot, key H.
 
-**Mount.** In the wheel. The context seat shows it out of a fight when a
+**Mount.** In the wheel once there is a mount to call (the horse comes
+from Wren's job at the stable). The context seat shows it out of a fight when a
 mount can be called (the kit takes the seat when hurt), and as Dismount
 while riding. Desktop: hotbar, key X.
 
@@ -175,8 +181,15 @@ meter (`tools/hud-matrix` fails a stray one).
   side in portrait, over the unit frame on a desktop: never on the hero.
 - **Feed** (the `log` slot, under the quest line). Loot, quest and chat
   lines, one line each, cut with an ellipsis; the chat panel has the rest.
-- **Left column.** The quest line, with the cratefall line above it and
-  the feed under it. One column of bare text on the stick side.
+- **Left column.** The quest line first, then what the zone adds (the
+  crate drop's line, a bounty), then the feed. One column of bare text on
+  the stick side. Its budget on a phone is one quest and the drop's
+  line; until the first job is handed in every form shows one such line
+  at most, the drop (which is timed) over the bounty (`.early`).
+- **The column and the lane on an upright phone** share the top of the
+  screen. The quest line keeps its place: a lit notice hangs under the
+  column's last line (`laneStep`), and the feed, which only passes,
+  fades out while a notice is lit over it and comes back after.
 - **Health bar's end.** The kill streak (`hud.setStreak`).
 - **Edge chip.** An offer that needs a choice (the tuning offer): one
   44 pt chip under the menu glyph; a tap opens the choice in the middle.
@@ -222,6 +235,17 @@ become feed lines. Headlines wait for the fight to end.
 | Quest waypoint        | free band   | -   | 1   | hidden             |
 | Interaction prompt    | prompt      | -   | 1   | shows              |
 
+**The mouse.** A click on the game view takes the mouse (pointer lock)
+and does what the button does, in the same click: left attacks, fires or
+starts the draw; right aims with a ranged weapon and rolls with a blade
+once the mouse is held. `Esc` gives the mouse back, and a second `Esc`
+opens Settings. Until the browser grants the mouse, or where it will
+not, a left drag still turns the view. With a window open a click
+belongs to the window: inside it works the window, outside it closes
+it, and neither takes the mouse nor swings; opening a window gives the
+mouse back. Hints say "click", not "tap", on a desktop (the title,
+loading, "CLICK OR SPACE TO SKIP").
+
 **Tips** (`systems/coach.ts`) are worded for the controls on screen
 (`hud.touchUi`), not for the pointer last seen: touch wording with the
 control's own glyph on a phone layout, key caps on a desktop. A tip that
@@ -237,10 +261,14 @@ bar is at the bottom, under it where it is at the top.
 the HUD's columns, so an off-screen target's arrow never lands on the
 quest line or the cluster. On a wide screen the band's top is above the
 clear middle, and an arrow that would land on its bottom edge (over the
-hero) goes to the nearer side. A phone held sideways has no free edge
-(the band starts a third of the way in), so there an off-screen target's
-arrow and distance ride the end of the quest line's first row
-(`hud.wayDock`); a target in view keeps its marker in the world.
+hero) goes to the nearer side. On an upright phone the band also ends
+above the thumb cluster's highest seat. A phone held sideways has no free
+edge (the band starts a third of the way in), so there an off-screen
+target's arrow and distance follow the words of the tracked quest's first
+objective ("Crate Mites broken 0/5 > 62 m", `hud.wayDock`). That line
+keeps the room for them whether they are there or not, so the quest's
+name is never cut and nothing re-wraps. A target in view keeps its
+marker in the world.
 
 ## Panels
 
@@ -260,8 +288,9 @@ action. Three shapes, chosen by the screen alone:
 | Window        | 700 pt wide and up     | rail, 164 pt   | right, 340 pt |
 
 - The sheet is as tall as what it holds, from 52% to 84% of the height
-  (the map: 90%), and stops above the home indicator. Its foot does not
-  move when a section is shorter: the top edge does. The
+  (the map: 90%), and stops above the home indicator. While it stays
+  open it only grows: a shorter section, or the next menu screen from
+  the strip, leaves the top edge and the strip where they were. The
   windows sit inside both notches. A desktop window is 980 px wide and as
   tall as its content, from 500 to 760 px, then it scrolls.
 - **Close:** the X (44 pt), a tap outside, a drag down from the head on
@@ -497,7 +526,7 @@ the quest line). Who mounts what:
 
 | Slot      | Holds                                             |
 |-----------|---------------------------------------------------|
-| `tracker` | Quest line; the cratefall line above; the feed    |
+| `tracker` | Quest line; the cratefall line under it; the feed |
 | `timer`   | Course or wave timer; the crate's channel bar     |
 | `banner`  | The notice lane (`ui/notices.ts`)                 |
 | `scrip`   | Scrip on change; the XP-boost note under it       |
@@ -533,16 +562,22 @@ every frame (mounts use it).
 `hud.openWheel()` opens it at the chip. Chat registers its items through
 `hud.chatApi = { open, emotes }`.
 
-**Testing.** `tools/hud-matrix.sh` stages seventeen states at five sizes
+**Testing.** `tools/hud-matrix.sh` stages nineteen states at five sizes
 and checks overlaps, clipping, safe areas, the clear centre (the notice
 lane may reach 28% of the height under a target frame), touch sizes
 (44 pt; 40 for chips and glyphs), 8 pt between buttons, the budget, a
 fight's two feed lines, and that no system draws a toast, card or meter
 of its own.
+Both sets also check that every control is the element under its own
+centre (`HM.under`, which asks `document.elementFromPoint`, as a finger
+does). In the HUD a control is anything granted input; in a panel, every
+target of the open surface. An invisible layer over a button passes
+every geometric check and eats every tap: the title's START was dead on
+a landscape phone under a closed sheet's body, past 87 clean screens.
 `tools/hud-matrix.sh --set panels` stages twenty-nine screens
 (`tools/hud-matrix/panels.js`) at 402x874, 874x402 and 1920x1080 and
-checks each (`HM.checkPanel`): the surface on screen, no sideways
-overflow, no cut text, no type under 11 px, no target under 44 pt (24 px
+checks each (`HM.checkPanel`): the surface on screen, no control
+covered, no sideways overflow, no cut text, no type under 11 px, no target under 44 pt (24 px
 with a mouse), nothing in a notch or the home indicator band, and at most
 one orange button in view. Text drawn on the map's canvas is outside its
 reach.
