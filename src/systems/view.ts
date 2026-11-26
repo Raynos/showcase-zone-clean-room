@@ -16,6 +16,13 @@ const SPINS = /^(swordSkill|spearSpin|spearSkill|ult_)/;
 
 /** How much of the stride's head motion the eyes take by default (Settings `bob`): enough to feel the feet, little enough for a phone held close. */
 const FP_BOB = 0.6;
+/**
+ * How far the picture's edges close in (added to the post vignette, 0..1) at the height of a roll, a
+ * knockdown and a death in first person. The lens treats these moves with the camera alone (dip, tilt,
+ * a roll of the horizon within the comfort settings) and draws none of the body: Rook's arms curled at
+ * a lens's distance were two fists filling the picture.
+ */
+const FP_VIG = { roll: 0.22, down: 0.4, dead: 0.5 };
 const reducedMotion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
 const ease = (u: number) => { const x = clamp01(u); return x * x * (3 - 2 * x); };
 
@@ -138,7 +145,7 @@ export class ViewSystem {
     if (rig !== this.rig) { this.rig = rig; if (cr.view === 'first') this.hook(); }
     // aiming down sights from third person goes to the eyes too (core/camera.ts `adsEye`)
     if (cr.adsEye) this.hook();
-    if (cr.view !== 'first' && cr.eyeAmount <= 0 && !cr.fp && !cr.adsEye) return null;
+    if (cr.view !== 'first' && cr.eyeAmount <= 0 && !cr.fp && !cr.adsEye) { this.vignette(0, dt); return null; }
     if (!rig?.eyes || !rig.eyeRest) return null;
     this.inside(dt);
     const f = this.feedOut, p = pl.pose, loc = p.locomotion, act = pl.action ?? '';
@@ -156,6 +163,7 @@ export class ViewSystem {
     f.hRate = 7 + 7 * Math.min(1, bob * 2); f.vRate = 3.5 + 14.5 * Math.min(1, bob * 2);
     f.dip = 0; f.roll = 0; f.tilt = 0; f.heading = null;
     this.treat = 'body';
+    let vig = 0;
     this.deadT = pl.dead ? this.deadT + dt : 0;
     this.sinceRoll = p.locomotion === 'roll' ? 0 : this.sinceRoll + dt;
     const trick = loc === 'board' && (act.startsWith('boardTrick') || Math.abs(pl.root.rotation.x) > 0.25 || Math.abs(pl.root.rotation.z) > 0.35);
@@ -187,18 +195,21 @@ export class ViewSystem {
       if (loc === 'roll') {
         const s = Math.sin(Math.PI * clamp01(p.rollT));
         f.dip = 0.5 * s; f.tilt = 0.2 * s; f.roll = -0.12 * side * s;
-        if (p.rollT > 0.05) this.treat = 'arms';
+        if (p.rollT > 0.05) this.treat = 'none';
+        vig = FP_VIG.roll * s;
       } else if (this.sinceRoll < 0.16) {
         // the limbs are still uncurling out of the roll for a moment
-        this.treat = 'arms';
+        this.treat = 'none';
       } else if (loc === 'down') {
         const t = p.downT ?? 0, k = t < DOWN.fall ? ease(t / DOWN.fall) : t < DOWN.lie ? 1 : 1 - ease((t - DOWN.lie) / (DOWN.end - DOWN.lie));
         f.dip = 0.95 * k; f.tilt = -0.4 * k; f.roll = 0.22 * k;
-        this.treat = 'arms';
+        this.treat = 'none';
+        vig = FP_VIG.down * k;
       } else if (pl.dead) {
         const k = ease(this.deadT / 0.9);
         f.dip = 1.15 * k; f.tilt = -0.2 * k; f.roll = 0.42 * k;
-        this.treat = 'arms';
+        this.treat = 'none';
+        vig = FP_VIG.dead * k;
       }
     }
     // a blow lands: the head gives a little, the way the body does
@@ -213,8 +224,23 @@ export class ViewSystem {
     if (u < 1) f.dip += this.landDip * (u < 0.22 ? Math.sin((u / 0.22) * Math.PI / 2) : Math.cos(((u - 0.22) / 0.78) * Math.PI / 2) ** 2);
     // reduced motion: the horizon barely tips (a knockdown, a death, a roll, a blow)
     if (reducedMotion?.matches) { f.roll *= 0.25; f.tilt *= 0.5; }
+    this.vignette(vig * cr.eyeAmount, dt);
     return f;
   }
+  /**
+   * The edges of the picture close in through a roll, a knockdown and a death (FP_VIG), in place of the
+   * fists those moves would throw at the lens. Added to the post vignette as a change, so whatever else
+   * sets the vignette keeps its value.
+   */
+  private vignette(want: number, dt: number) {
+    const post = this.game.renderer?.post;
+    if (!post) return;
+    const k = this.vigAdd + (want - this.vigAdd) * Math.min(1, dt * (want > this.vigAdd ? 10 : 3));
+    post.vignette += k - this.vigAdd;
+    this.vigAdd = k < 0.001 ? 0 : k;
+    if (k < 0.001) post.vignette -= k;
+  }
+  private vigAdd = 0;
   /** +1 when moving to the view's right, -1 to its left. */
   private sideOf(vx: number, vz: number) {
     const y = this.game.cameraRig.yaw, rx = Math.cos(y), rz = -Math.sin(y), sp = Math.hypot(vx, vz);

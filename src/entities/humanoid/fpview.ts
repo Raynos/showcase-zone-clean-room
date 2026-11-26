@@ -81,6 +81,8 @@ const CARRY = {
  * brings the shoulder or the upper arm across the picture. `k` is how far they leave the body for a
  * melee weapon, `hold` for a ranged one (whose hands are further out, so the arm needs its reach).
  */
+/** The top of the lower third, as a share of the half-height under the middle: the weapon hand stays below it through a move. */
+const FP_LOW = 0.34;
 const FP_SHOULDER = { x: 0.24, y: -0.42, z: -0.06, k: 0.9, hold: 0.9 };
 
 /** The lens in root space (body units): origin and its right, up and forward axes. */
@@ -126,8 +128,10 @@ export function fpPresent(P: Pose, hp: HumanPose, k: number, eyeY: number, eyeZ:
 
   // the move: the weapon hand, root-aligned from the eye (+X is the hero's left, so the view's right is -X)
   _h.copy(P.handPos[R]).applyQuaternion(_tq).add(_tc); _h.x -= eyeX; _h.y -= eyeY; _h.z -= eyeZ;
-  // squeezed into the view's width, never above the middle of the picture (a hand there lifts the upper arm across the lens)
-  const az2 = (F.a0 - _h.x * F.ax) * wS, el2 = clamp(F.e0 + _h.y * F.ey, -Math.atan(ty * 0.92), 0.04), r2 = clamp(F.r0 + _h.z * F.rz, F.rMin, F.rMax);
+  // squeezed into the view's width, never above the lower third of the picture (a hand higher lifts the arm across the lens)
+  // ...and kept in the lower third, so what crosses the middle of the picture is the blade, not the hand
+  const az2 = clamp((F.a0 - _h.x * F.ax) * wS, -Math.atan(tx * 0.7), Math.atan(tx * 0.85));
+  const el2 = clamp(F.e0 + _h.y * F.ey, -Math.atan(ty * 0.9), -Math.atan(ty * FP_LOW)), r2 = clamp(F.r0 + _h.z * F.rz, F.rMin, F.rMax);
   // the weapon's long axis and the way the knuckles face
   _q.copy(_tq).multiply(P.handQ[R]);
   _b.set(0, 1, 0).applyQuaternion(_q); _z.set(0, 0, 1).applyQuaternion(_q);

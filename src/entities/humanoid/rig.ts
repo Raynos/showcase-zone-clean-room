@@ -38,6 +38,12 @@ const FP_HIDE = (bone: THREE.Bone, head: THREE.Bone) => { for (let b: THREE.Obje
  * arms' own tops above `arm` (the shoulder plates and the ball of the shoulder, a hand's breadth beside the lens).
  */
 const FP_NECKLINE = { y: 1.42, yIn: 1.32, x: 0.17, arm: 1.27 };
+/**
+ * What the eye camera alone sees of the arms: the forearm's girth and the glove's size, as shares of
+ * the built model. Rook's armoured forearms and gloves are made to read at five metres; at a forearm's
+ * length from a phone's lens they filled a third of the picture. A dedicated first-person arm is an art job.
+ */
+const FP_ARM = { fore: 0.62, hand: 0.7 };
 
 const damp1 = (a: number, b: number, k: number) => a + (b - a) * Math.min(1, k);
 
@@ -92,6 +98,8 @@ export type HumanoidDevRig = HumanoidRig & {
   anim: AnimState;
   /** The low-detail surface in its current pose as plain geometry in root space: what a far, unskinned stand-in is made of. */
   bake(): THREE.BufferGeometry;
+  /** first person, for measuring: give `mats` an array and it receives the eye camera's bone matrices; `armsN` is the arms' index count */
+  fpDev: { mats: Float32Array | null; armsN: number; arm: { fore: number; hand: number } };
 };
 
 export function makeHumanoid(look: HumanLook): HumanoidDevRig {
@@ -165,7 +173,7 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
     geo.setIndex(new THREE.BufferAttribute(n > 65535 ? new Uint32Array(all) : new Uint16Array(all), 1));
     geo.boundingSphere = src.boundingSphere ? src.boundingSphere.clone() : null;
     geo.boundingBox = src.boundingBox ? src.boundingBox.clone() : null;
-    fpGeo = geo; fpArmsN = limbs.length; fpBody = limbs.length + front.length;
+    fpGeo = geo; fpArmsN = limbs.length; fpBody = limbs.length + front.length; fpDev.armsN = fpArmsN;
   };
   const fpAsk = (cam: THREE.Camera): FpDraw => (fpFn ? fpFn(cam) : 'full');
   eyeCull(inst.mesh, (cam, geo) => {
@@ -182,6 +190,44 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
     eyeCull(m as THREE.Mesh, (cam) => { const d = fpAsk(cam); return d === 'none' || d === 'arms' || (d === 'body' && weapon?.object.parent === backMount) ? 0 : Infinity; }, (cam) => fpAsk(cam) !== 'full');
   });
   for (const r of ribbons) eyeCull(r.mesh, (cam) => (fpAsk(cam) === 'full' ? Infinity : 0));
+  // ---- first person: the eye camera sees slimmer forearms and smaller gloves (FP_ARM). Only its own draw
+  // gets the changed bone matrices: they are written after the shadow pass (which calls no hooks) and put
+  // back after the draw, so the shadow and any other view keep Rook's arms as built. The hand shrinks about
+  // the grip, so it stays closed round the weapon, and the forearm thins about its own axis, so the wrist
+  // and the elbow still meet.
+  let fpArmK = 0;
+  const skel = inst.mesh.skeleton, boneI = (b: THREE.Object3D) => skel.bones.indexOf(b as THREE.Bone);
+  const foreI = armF.map(boneI);
+  const handI = hand.map((h) => { const out: number[] = []; h.traverse((o) => { const i = boneI(o); if (i >= 0) out.push(i); }); return out; });
+  const fpDev = { mats: null as Float32Array | null, armsN: 0, arm: FP_ARM as { fore: number; hand: number } };
+  let fpSaved: Float32Array | null = null, fpTouched = false;
+  const _mA = new THREE.Matrix4(), _mB = new THREE.Matrix4(), _gp = new THREE.Vector3();
+  {
+    const before = inst.mesh.onBeforeRender, after = inst.mesh.onAfterRender;
+    inst.mesh.onBeforeRender = function (r, s, cam, geo, mat, grp) {
+      before.call(this, r, s, cam, geo, mat, grp);
+      const bm = skel.boneMatrices;
+      if (!bm || fpArmK < 0.01 || fpAsk(cam) === 'full') return;
+      if (!fpSaved || fpSaved.length !== bm.length) fpSaved = new Float32Array(bm.length);
+      fpSaved.set(bm); fpTouched = true;
+      const A = fpDev.arm, thin = 1 + (A.fore - 1) * fpArmK, small = 1 + (A.hand - 1) * fpArmK;
+      for (let s = 0; s < 2; s++) {
+        const i = foreI[s];
+        if (i >= 0) _mA.multiplyMatrices(skel.bones[i].matrixWorld, _mB.makeScale(thin, 1, thin)).multiply(skel.boneInverses[i]).toArray(bm, i * 16);
+        grip[s].getWorldPosition(_gp);
+        _mB.makeTranslation(-_gp.x, -_gp.y, -_gp.z).premultiply(_mA.makeScale(small, small, small)).premultiply(_mA.makeTranslation(_gp.x, _gp.y, _gp.z));
+        for (const j of handI[s]) _mA.multiplyMatrices(_mB, skel.bones[j].matrixWorld).multiply(skel.boneInverses[j]).toArray(bm, j * 16);
+      }
+      if (skel.boneTexture) skel.boneTexture.needsUpdate = true;
+      if (fpDev.mats) fpDev.mats.set(bm);
+    };
+    inst.mesh.onAfterRender = function (r, s, cam, geo, mat, grp) {
+      after.call(this, r, s, cam, geo, mat, grp);
+      if (!fpTouched || !fpSaved || !skel.boneMatrices) return;
+      skel.boneMatrices.set(fpSaved); fpTouched = false;
+      if (skel.boneTexture) skel.boneTexture.needsUpdate = true;
+    };
+  }
   const eyeRest = (() => {
     root.updateWorldMatrix(true, true);
     _a.setFromMatrixPosition(eye[0].matrixWorld).add(_b.setFromMatrixPosition(eye[1].matrixWorld)).multiplyScalar(0.5);
@@ -213,6 +259,7 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
     stats: { meshes, tris },
     anim: st,
     eyeRest,
+    fpDev,
     eyes(out) {
       eye[0].updateWorldMatrix(true, false); eye[1].updateWorldMatrix(false, false);
       return out.setFromMatrixPosition(eye[0].matrixWorld).add(_b.setFromMatrixPosition(eye[1].matrixWorld)).multiplyScalar(0.5);
@@ -243,6 +290,7 @@ export function makeHumanoid(look: HumanLook): HumanoidDevRig {
       st.ridePitch = pose.locomotion === 'ride' && ud && typeof ud.pitch === 'number' ? ud.pitch : 0;
       const P = evaluate(pose, st, dt);
       const fp = pose.fp ?? 0;
+      fpArmK = fp;
       // the shooter stance's named hold over the arms (shootpose.ts); the eyes have their own (fpHold)
       if (pose.shoot && fp < 1) shootPose(P, pose, nodes, pose.shootK ?? 1);
       // first person: a spin or the leap keeps the torso square to the lens
