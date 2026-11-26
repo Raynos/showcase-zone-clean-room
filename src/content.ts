@@ -1,6 +1,7 @@
 import type { Game } from './game';
 import { Coach } from './systems/coach';
 import { Guide } from './systems/guide';
+import { loadPieces } from './world/pieces';
 
 // Optional modules are discovered with glob imports so the game still boots while a module is absent.
 const mods = import.meta.glob(['./world/town.ts', './world/roads.ts', './entities/robots/index.ts', './entities/humanoid/index.ts', './core/audio.ts', './ui/panels.ts', './systems/npcs.ts', './world/east.ts', './world/vault.ts', './world/arena.ts', './world/dressing.ts', './world/vista.ts', './world/encounters.ts', './systems/living.ts']);
@@ -13,6 +14,8 @@ const westMods: any[] = [];
  */
 export function preload() {
   for (const f of [...Object.values(mods), ...Object.values(west)]) void f().catch(() => { /* reported when imported for real */ });
+  // the authored world pieces (crates, gates, the beacon towers) are stacked into the chunks as the world is built
+  void loadPieces();
 }
 async function opt<T = any>(path: string): Promise<T | null> {
   const f = mods[path];
@@ -22,6 +25,7 @@ async function opt<T = any>(path: string): Promise<T | null> {
 
 /** Static world construction: everything that adds geometry to the chunk builders. */
 export async function buildWorld(game: Game, _progress: (p: number, label: string) => void) {
+  await loadPieces();
   // each module's geometry is packed into the chunk stores as soon as the module is done with it,
   // so boot never holds more than one module's worth of loose vertex arrays
   const roads = await opt('./world/roads.ts');

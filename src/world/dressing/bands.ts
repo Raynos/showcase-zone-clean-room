@@ -5,7 +5,7 @@ import type { Geo } from '../../gfx/geo';
 import { T } from '../../gfx/textures';
 import { STORIES } from '../stories';
 import { BANDS, PAL, ROADS, ROAD_SAMPLES, bandAt, ridgeAt } from '../layout';
-import { anvil, cart, crate, crateStack, fence, flagPole, hayBale, lampPost, pixelText, sack, workbench } from '../props';
+import { anvil, cart, crate, crateBox, crateStack, crateTier, fence, flagPole, hayBale, lampPost, pixelText, sack, workbench } from '../props';
 import {
   Ctx, antennaMast, brokenCrate, burrow, capacitorBank, container, conveyor, crateSteps, dockBay, dockCrane, drum, flatcar, floodlight, gantry,
   hullFrame, ingots, ladleCar, openContainer, pallet, palletLean, palletStack, pipeRack, rails, rangePole, rivetPile, rivetWall, sandbags,
@@ -116,7 +116,13 @@ function greatStack(c: Ctx) {
     let y = 0;
     tiers.forEach(([s, h], i) => {
       const ox = Math.sin(i * 2.1) * 0.5, oz = Math.cos(i * 1.7) * 0.5, ry = i * 0.31;
-      g.box(s, h, s, { at: [ox, y + h / 2, oz], rot: [0, ry, 0], color: [PAL.crate, 0xb98548, 0xd6a66a][i % 3], layer: i % 2 ? T.CRATE2 : T.CRATE, uvScale: 0.32, col: i < 2, grad: 0.72, bevel: 0.12 });
+      // each tier is a course or two of crates the size of a shed; their boards are seen from across the field
+      const n = s > 5 ? 3 : s > 3.4 ? 2 : 1, rows = n > 1 ? 2 : 1;
+      g.push().translate(ox, y, oz).rotateY(ry);
+      const built = crateTier(g, s, h, n, rows, { color: [PAL.crate, 0xb98548, 0xd6a66a][i % 3], lod: 1.5 });
+      g.pop();
+      if (built) { if (i < 2) g.colBox(s, h, s, { at: [ox, y + h / 2, oz], rot: [0, ry, 0] }); }
+      else g.box(s, h, s, { at: [ox, y + h / 2, oz], rot: [0, ry, 0], color: [PAL.crate, 0xb98548, 0xd6a66a][i % 3], layer: i % 2 ? T.CRATE2 : T.CRATE, uvScale: 0.32, col: i < 2, grad: 0.72, bevel: 0.12 });
       g.box(s + 0.12, 0.5, s + 0.12, { at: [ox, y + h * 0.5, oz], rot: [0, ry, 0], color: i % 2 ? PAL.orange : PAL.cyanDeep, layer: T.STRIPE, uv: 'world', uvScale: 0.5, col: 'none' });
       y += h;
     });
@@ -125,7 +131,7 @@ function greatStack(c: Ctx) {
     g.box(7, 0.3, 0.3, { at: [2.4, y + 3.6, 0], color: PAL.orange, layer: T.METAL, col: 'none' });
     beam(g, [0, y + 4, 0], [5.6, y + 3.7, 0], 0.04, 0x1a1c20);
     g.box(0.05, 5, 0.05, { at: [5.4, y + 1.0, 0], color: 0x1a1c20, col: 'none' });
-    g.box(1.8, 1.8, 1.8, { at: [5.4, y - 2.3, 0], rot: [0, 0.5, 0], color: PAL.crate, layer: T.CRATE, uv: 'fit', col: 'none' });
+    if (!crateBox(g, 1.8, 1.8, 1.8, { at: [5.4, y - 3.2, 0], ry: 0.5, color: PAL.crate })) g.box(1.8, 1.8, 1.8, { at: [5.4, y - 2.3, 0], rot: [0, 0.5, 0], color: PAL.crate, layer: T.CRATE, uv: 'fit', col: 'none' });
     g.sphere(0.36, 8, 6, { at: [0, y + 4.3, 0], color: PAL.amber, emit: 2.8, col: 'none' });
     g.push().translate(0, y + 0.2, 0); flagPole(g, 3.6, PAL.orange); g.pop();
     // sign
@@ -165,8 +171,8 @@ const V2: Vig[] = [
       g.push().translate(-0.6, 2.6, -1.5).rotateY(Math.PI / 2 + r.range(-0.1, 0.1)); container(g, 6, r.pick(CONT)); g.pop();
       if (three) { g.push().translate(-1.6, 5.2, -1.3).rotateY(Math.PI / 2 + 0.2); container(g, 6, r.pick(CONT)); g.pop(); }
       g.push().translate(4.55, 0, 1.25).rotateY(Math.PI); crateSteps(g, r, 2.6); g.pop();
-      g.box(1.3, 1.3, 1.3, { at: [-2.4, 3.25, 0.5], color: PAL.crate, layer: T.CRATE, uv: 'fit', col: true });
-      if (three) g.box(1.3, 1.3, 1.3, { at: [1.6, 5.85, -1.5], color: 0xb98548, layer: T.CRATE2, uv: 'fit', col: true });
+      crate(g, 1.3, { x: -2.4, y: 2.6, z: 0.5, color: PAL.crate });
+      if (three) crate(g, 1.3, { x: 1.6, y: 5.2, z: -1.5, color: 0xb98548, alt: true });
       g.push().translate(-4.4, 0, 3.2); palletStack(g, r, 5); g.pop();
     });
     c.nook(b, x, z, yaw, -1.0, 1.25, { y: deck + 2.65, high: true });

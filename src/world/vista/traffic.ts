@@ -7,6 +7,7 @@ import { worldMat } from '../../gfx/material';
 import { T } from '../../gfx/textures';
 import { addEmitter } from '../../systems/emitters';
 import { HALF, PAL, bandAt, ridgeAt, roadDist } from '../layout';
+import { crateBox } from '../props';
 import { farMat } from './beyond';
 
 /**
@@ -51,6 +52,8 @@ export interface Cratefall {
    * zone event can pick where the drop that matters lands; null leaves the pass to chance
    */
   aim: (() => { x: number; z: number } | null) | null;
+  /** draw this drop as a gilded crate (a gold cratefall), in the air and on the ground */
+  gild(id: number): void;
   /** seconds a landed crate has left before it is taken away (from now) */
   setLife(id: number, left: number): void;
   /** put a crate on the ground at once (a drop restored from a save); returns its id, or -1 */
@@ -83,15 +86,18 @@ function droneGeo(): THREE.BufferGeometry {
   return g.build();
 }
 
-/** The crate that falls: iron-bound, an amber lamp on every top corner. Sits on y = 0. */
-function crateGeo(): THREE.BufferGeometry {
+/** The crate that falls: a haul crate (gilded for a gold drop), an amber lamp on every top corner. Sits on y = 0. */
+function crateGeo(gold = false): THREE.BufferGeometry {
   const g = new Geo(), s = 2.3;
-  g.box(s, s, s, { at: [0, s / 2, 0], color: PAL.crate, layer: T.CRATE, uv: 'fit', col: 'none', grad: 0.8, bevel: 0.08 });
-  for (const y of [0.34, s - 0.34]) g.box(s + 0.1, 0.24, s + 0.1, { at: [0, y, 0], color: 0x4b525c, layer: T.METAL, uvScale: 0.5, col: 'none' });
-  g.box(s + 0.12, 0.34, s + 0.12, { at: [0, s / 2, 0], color: PAL.orange, layer: T.STRIPE, uv: 'world', uvScale: 0.6, col: 'none' });
+  const built = crateBox(g, s, s, s, { color: PAL.crate, gold });
+  if (!built) {
+    g.box(s, s, s, { at: [0, s / 2, 0], color: gold ? PAL.leafGold : PAL.crate, layer: T.CRATE, uv: 'fit', col: 'none', grad: 0.8, bevel: 0.08 });
+    for (const y of [0.34, s - 0.34]) g.box(s + 0.1, 0.24, s + 0.1, { at: [0, y, 0], color: 0x4b525c, layer: T.METAL, uvScale: 0.5, col: 'none' });
+  }
+  if (!gold) g.box(s + 0.12, 0.3, s + 0.12, { at: [0, s * 0.3, 0], color: PAL.orange, layer: T.STRIPE, uv: 'world', uvScale: 0.6, col: 'none' });
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-    g.box(0.24, s + 0.06, 0.24, { at: [sx * s / 2, s / 2, sz * s / 2], color: 0x4b525c, layer: T.METAL, col: 'none' });
-    g.ico(0.2, 0, { at: [sx * (s / 2 - 0.1), s + 0.14, sz * (s / 2 - 0.1)], color: PAL.amber, emit: 2.8, flat: true, col: 'none' });
+    if (!built) g.box(0.24, s + 0.06, 0.24, { at: [sx * s / 2, s / 2, sz * s / 2], color: 0x4b525c, layer: T.METAL, col: 'none' });
+    g.ico(0.2, 0, { at: [sx * (s / 2 - 0.1), s + 0.14, sz * (s / 2 - 0.1)], color: gold ? 0xffe066 : PAL.amber, emit: 2.8, flat: true, col: 'none' });
   }
   // drogue ring on the lid
   g.torus(0.42, 0.07, 5, 10, { at: [0, s + 0.06, 0], rot: [Math.PI / 2, 0, 0], color: DARK, layer: T.METAL, col: 'none' });
@@ -275,6 +281,14 @@ export function startTraffic(game: Game): Cratefall {
   crates.frustumCulled = false; crates.castShadow = true; crates.count = 0; crates.visible = false; crates.name = 'traffic-crates';
   crates.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   scene.add(crates);
+  // a gold drop (systems/events.ts marks it with `gild`) is a gilded crate: its own mesh, drawn only while one is about
+  const gilded = new Set<number>();
+  const golds = new THREE.InstancedMesh(crateGeo(true), worldMat(), 4);
+  golds.frustumCulled = false; golds.castShadow = true; golds.count = 0; golds.visible = false; golds.name = 'traffic-crates-gold';
+  golds.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  scene.add(golds);
+  let nGold = 0;
+  const put = (id: number, n: number) => { if (gilded.has(id) && nGold < 4) { golds.setMatrixAt(nGold++, _m); return n; } crates.setMatrixAt(n, _m); return n + 1; };
   // one mesh of camera-facing cards: the streak behind each falling crate, the marker over each landed one
   const CARDS = MAX_FALL + MAX_GROUND;
   const cPos = new Float32Array(CARDS * 12), cCol = new Float32Array(CARDS * 12), cIdx: number[] = [];
@@ -335,7 +349,7 @@ export function startTraffic(game: Game): Cratefall {
 
   game.addSystem({
     update(dt: number) {
-      if (game.interior) { ship.visible = false; drones.visible = false; crates.visible = false; cards.visible = false; return; }
+      if (game.interior) { ship.visible = false; drones.visible = false; crates.visible = false; golds.visible = false; cards.visible = false; return; }
       const time = game.time;
       drones.visible = true;
       updateDrones(dt, time);
@@ -345,7 +359,7 @@ export function startTraffic(game: Game): Cratefall {
         if (wait <= 0) { const at = !plan.aimed && api.aim ? api.aim() : null; pass = at ? makePlan(at) : plan; plan = makePlan(); wait = api.period; }
       }
       let n = 0;
-      nCards = 0;
+      nCards = 0; nGold = 0;
       if (pass) {
         const p = pass;
         p.t += dt;
@@ -387,7 +401,7 @@ export function startTraffic(game: Game): Cratefall {
           }
           _e.set(d.ft * 2.1 * (1 - u), d.spin + d.ft * 1.3 * (1 - u), d.ft * 1.4 * (1 - u));
           _m.compose(_p.set(x, y, z), _q.setFromEuler(_e), _s.set(1, 1, 1));
-          crates.setMatrixAt(n++, _m);
+          n = put(d.id, n);
         }
         if (p.t >= p.dur) { pass = null; ship.visible = false; }
       } else ship.visible = false;
@@ -401,13 +415,15 @@ export function startTraffic(game: Game): Cratefall {
         const left = c.ttl - c.age, sink = left < 2.5 ? (1 - left / 2.5) : 0, pop = Math.min(1, c.age / 0.25);
         _e.set(c.tilt, c.yaw, c.tilt * 0.6);
         _m.compose(_p.set(c.x, c.y - 0.28 - sink * 2.4 + (1 - pop) * 0.3, c.z), _q.setFromEuler(_e), _s.set(1, 1, 1));
-        crates.setMatrixAt(n++, _m);
+        n = put(c.id, n);
         // a marker over it so the fall can be found from across the band; it thins as the crate's time runs out
         const k = (0.2 + 0.1 * Math.sin(time * 3 + c.id)) * Math.min(1, left / 12) * pop;
         card(c.x, c.y + 2.2, c.z, c.x, c.y + 44, c.z, 0.9, 2.6, 1.0 * k, 0.66 * k, 0.24 * k);
       }
       crates.count = n; crates.visible = n > 0;
       if (n) crates.instanceMatrix.needsUpdate = true;
+      golds.count = nGold; golds.visible = nGold > 0;
+      if (nGold) golds.instanceMatrix.needsUpdate = true;
       cards.visible = nCards > 0;
       if (nCards) { cg.setDrawRange(0, nCards * 6); cg.attributes.position.needsUpdate = true; cg.attributes.color.needsUpdate = true; }
     },
@@ -429,6 +445,7 @@ export function startTraffic(game: Game): Cratefall {
     onExpire: (fn) => ev.on('expire', fn),
     callPass: (at) => { if (at) plan = makePlan(at); wait = 0; },
     aim: null,
+    gild: (id) => { gilded.add(id); },
     setLife: (id, left) => { const c = ground.find((g) => g.id === id); if (c) c.ttl = c.age + Math.max(0, left); },
     placeLanded: (x, z, life) => {
       if (game.interior) return -1;

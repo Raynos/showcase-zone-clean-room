@@ -11,7 +11,7 @@ import { addGlow, type Glow } from '../gfx/lighting';
 import { T } from '../gfx/textures';
 import type { Mob } from '../systems/mobs';
 import { BANDS, BAND_GATES, GAUNTLET, PAL, TITAN_GATE, VAULT_PORTAL, type BandGate } from './layout';
-import { pixelIcon, pixelText } from './props';
+import { crate, pixelIcon, pixelText } from './props';
 import { addEmitter } from '../systems/emitters';
 
 const _v = new THREE.Vector3();
@@ -94,7 +94,7 @@ export function buildEast(game: Game) {
       for (const sx of [-1, 1]) g.box(1.3, 1.6, 1.6, { at: [sx * 3.6, 1.2, -s / 2 + 3.2], color: PAL.slateDark, layer: T.METAL, bevel: 0.1, col: true });
       // crates stacked in the corners, the Titan's leftovers
       for (const [cx, cz, n] of [[-5.5, 4.5, 3], [5.6, 3.6, 2], [-5.8, -1, 2], [5.5, -2.5, 3]] as const) for (let i = 0; i < n; i++)
-        g.box(1.5, 1.5, 1.5, { at: [cx + (i % 2) * 0.3, 0.95 + i * 1.5, cz], rot: [0, i * 0.5 + cx, 0], color: i % 2 ? PAL.crate : 0xb98548, layer: i % 2 ? T.CRATE : T.CRATE2, uv: 'fit', bevel: 0.05, col: i === 0 });
+        crate(g, 1.5, { x: cx + (i % 2) * 0.3, y: 0.2 + i * 1.5, z: cz, ry: i * 0.5 + cx, color: i % 2 ? PAL.crate : 0xb98548, alt: i % 2 === 0, col: i === 0 });
     });
   }
   // ---- vault portal plaza ----

@@ -150,8 +150,10 @@ interface Cell {
   total: number;
   /** remaining primitives, largest first: size in metres and the index count that includes it */
   sizes: Float32Array; counts: Uint32Array;
-  /** index count the colour pass draws this frame */
-  main: number;
+  /** trim at the very head of the buffer, smallest first: size, and the index count up to and including it */
+  tSizes: Float32Array; tCounts: Uint32Array;
+  /** index range the colour pass draws this frame: [start, main) */
+  main: number; start: number;
   uploaded: boolean; force: boolean;
   name?: string;
 }
@@ -162,6 +164,13 @@ function countFor(c: Cell, size: number): number {
   let lo = 0, hi = s.length;
   while (lo < hi) { const mid = (lo + hi) >> 1; if (s[mid] >= size) lo = mid + 1; else hi = mid; }
   return lo === 0 ? c.always : c.counts[lo - 1];
+}
+/** First index to draw so that trim under `size` metres is skipped. */
+function startFor(c: Cell, size: number): number {
+  const s = c.tSizes;
+  let lo = 0, hi = s.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (s[mid] < size) lo = mid + 1; else hi = mid; }
+  return lo === 0 ? 0 : c.tCounts[lo - 1];
 }
 
 /**
@@ -278,6 +287,10 @@ export class Chunks {
       if (leaf && key < KEY_ALWAYS && g.lay[v0] > 100.5) key *= 0.05;
       // decals (gfx/decals.ts) are marks on a surface, not things: no shadow
       if (!named && g.lay[v0] >= 64 && g.lay[v0] < 99) key = KEY_FLAT;
+      // trim with a level-of-detail bias (Geo.lodK) goes, or stays, as if it were that much smaller or larger
+      // (a negative key is trim, of that size: drawn by distance like the rest, never in the shadow pass)
+      const lk = g.primK?.get(p >> 2);
+      if (lk !== undefined && key < KEY_ALWAYS) key *= lk;
       const st = named ?? (Math.max(ex, ez) > LONG ? this.longStore((x0 + x1) / 2, (z0 + z1) / 2, leaf) : this.store((x0 + x1) / 2, (z0 + z1) / 2, leaf));
       st.reserve(vc, i1 - i0);
       const base = st.nv - v0;
@@ -374,7 +387,7 @@ export class Chunks {
   private clear(g: Geo) {
     g.pos.length = 0; g.nor.length = 0; g.col.length = 0; g.uv.length = 0;
     g.lay.length = 0; g.emi.length = 0; g.swy.length = 0; g.idx.length = 0;
-    g.prims!.length = 0;
+    g.prims!.length = 0; g.primK?.clear();
   }
 
   build(physics: Physics): { tris: number; meshes: number; colliders: number; bakeMs: number } {
@@ -557,10 +570,15 @@ export class Chunks {
     const order = new Uint32Array(np);
     for (let i = 0; i < np; i++) order[i] = i;
     const pS = st.pS, pI = st.pI, pN = st.pN;
-    const sorted = Array.from(order).sort((a, b) => pS[b] - pS[a] || a - b);
+    const all = Array.from(order);
+    // trim first, smallest first (the colour pass starts its range past what is too small to see, the shadow pass past all of it)
+    const trims = all.filter((p) => pS[p] < 0).sort((a, b) => pS[b] - pS[a] || a - b);
+    const sorted = all.filter((p) => pS[p] >= 0).sort((a, b) => pS[b] - pS[a] || a - b);
     const I = nv > 65535 ? new Uint32Array(st.ni) : new Uint16Array(st.ni);
-    const sizes: number[] = [], counts: number[] = [];
+    const sizes: number[] = [], counts: number[] = [], tSizes: number[] = [], tCounts: number[] = [];
     let w = 0, flat = 0, always = 0;
+    for (const p of trims) { I.set(st.I.subarray(pI[p], pI[p] + pN[p]), w); w += pN[p]; tSizes.push(-pS[p]); tCounts.push(w); }
+    flat = always = w;
     for (const p of sorted) {
       I.set(st.I.subarray(pI[p], pI[p] + pN[p]), w); w += pN[p];
       if (pS[p] >= KEY_GLOW) flat = w;
@@ -577,7 +595,8 @@ export class Chunks {
     const geo = new THREE.BufferGeometry();
     const cell: Cell = {
       mesh: null!, box, flat, always, total: st.ni, sizes: new Float32Array(sizes), counts: new Uint32Array(counts),
-      main: st.ni, uploaded: false, force: false, name,
+      tSizes: new Float32Array(tSizes), tCounts: new Uint32Array(tCounts),
+      main: st.ni, start: 0, uploaded: false, force: false, name,
     };
     // the CPU copy is only there to be uploaded: let go of it as soon as the GPU has it
     const drop = (a: THREE.BufferAttribute, last = false) => a.onUpload(function (this: THREE.BufferAttribute) {
@@ -609,7 +628,7 @@ export class Chunks {
       const n = name ? cell.total : countFor(cell, Math.max(texel * CASTER.texels, st.leaf ? LEAF_CAST : 0));
       geo.setDrawRange(cell.flat, n - cell.flat);
     };
-    mesh.onAfterShadow = () => { geo.setDrawRange(0, cell.main); };
+    mesh.onAfterShadow = () => { geo.setDrawRange(cell.start, cell.main - cell.start); };
     return cell;
   }
 
@@ -627,8 +646,9 @@ export class Chunks {
     const eye = camera.position;
     if (!this.interior) for (const c of this.cells) {
       if (c.name) continue;
-      const n = countFor(c, c.box.distanceToPoint(eye) * k);
-      if (n !== c.main) { c.main = n; c.mesh.geometry.setDrawRange(0, n); }
+      const size = c.box.distanceToPoint(eye) * k;
+      const n = countFor(c, size), s = startFor(c, size);
+      if (n !== c.main || s !== c.start) { c.main = n; c.start = s; c.mesh.geometry.setDrawRange(s, n - s); }
     }
     const pend = this.pending;
     for (let i = pend.length - 1; i >= 0; i--) {
@@ -650,7 +670,7 @@ export class Chunks {
     let tris = 0, drawn = 0, verts = 0, bytes = 0, waiting = 0;
     for (const c of this.cells) {
       const g = c.mesh.geometry;
-      tris += c.total / 3; if (!c.name) drawn += c.main / 3; verts += g.attributes.position.count;
+      tris += c.total / 3; if (!c.name) drawn += (c.main - c.start) / 3; verts += g.attributes.position.count;
       bytes += g.attributes.position.count * (g.attributes.aSway ? 36 : 32) + c.total * (g.attributes.position.count > 65535 ? 4 : 2);
       if (!c.uploaded) waiting++;
     }

@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { loadPieces } from '../world/pieces';
+import { crateGeometry } from '../world/props';
 import type { Btn } from '../core/input';
 import { RAY_SOLID } from '../core/physics';
 import { TAU, angleDiff, clamp, clamp01, damp, lerp, rand } from '../core/util';
@@ -110,6 +112,8 @@ export class Combat {
   private zones: Zone[] = [];
   private shotMesh: THREE.InstancedMesh;
   private crateMesh: THREE.InstancedMesh;
+  /** the plain box is tinted crate-brown; the authored crate carries its own colours */
+  private crateTint = 0xc9955a;
   // melee
   private swing: Swing | null = null; private swingT = 0; private swingHit = false; private combo = 0; private comboT = 0; private queued = false;
   /** charge level (0..2) the swing in flight was released at */
@@ -175,6 +179,8 @@ export class Combat {
     this.shotMesh = mk(new THREE.BoxGeometry(0.05, 0.05, 1), 2.2, T.FLAT);
     this.crateMesh = mk(new THREE.BoxGeometry(1, 1, 1), 0, T.CRATE);
     this.crateMesh.castShadow = true;
+    // what is thrown is a haul crate, once the world kit has landed (a plain box until then, and without it)
+    void loadPieces().then(() => { const geo = crateGeometry(); if (geo) { this.crateMesh.geometry.dispose(); this.crateMesh.geometry = geo; this.crateTint = 0xffffff; } });
     this.hurtArc = new HurtArc(game);
     this.weak = new WeakPoints(game);
     this.shooter = new Shooter(game, this);
@@ -1553,7 +1559,7 @@ export class Combat {
       } else if (s.kind === 'crate' && k > 0.45 && cw < MAXS) {
         const f = (k - 0.45) / 0.55;
         _m.compose(_v.set(s.pos.x, s.pos.y + (1 - f * f) * 46 + s.radius * 0.45, s.pos.z), _q.setFromAxisAngle(_up, s.t * 3), _s.setScalar(s.radius * 0.9));
-        this.crateMesh.setMatrixAt(cw, _m); this.crateMesh.setColorAt(cw, _col.setHex(0xc9955a)); cw++;
+        this.crateMesh.setMatrixAt(cw, _m); this.crateMesh.setColorAt(cw, _col.setHex(this.crateTint)); cw++;
       }
       if (s.t >= s.dur) {
         this.strikes.splice(i, 1);

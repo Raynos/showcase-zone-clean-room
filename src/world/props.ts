@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { Rng } from '../core/util';
-import type { Geo, PrimOpts } from '../gfx/geo';
+import { Geo, type PrimOpts } from '../gfx/geo';
 import { T } from '../gfx/textures';
 import { PAL } from './layout';
+import { piece } from './pieces';
 
 /**
  * Reusable prop builders. Every function draws at the origin of the Geo's current transform
@@ -193,9 +194,58 @@ export function pixelIcon(g: Geo, name: string, cell: number, o: { color: number
 // ---------------------------------------------------------------------------------------------
 // Containers
 // ---------------------------------------------------------------------------------------------
+/** Tones a crate's boards come in, and the paint on its tally plate. */
+const CRATE_WOOD = [PAL.crate, 0xb98548, 0xd6a66a, 0xc08a52], CRATE_PLATE = [PAL.orangeDeep, PAL.teal, 0xc9973a, PAL.rust, 0x5b6470];
+let crateN = 0;
+/**
+ * A haul crate filling the box w x h x d whose base centre is at `at`. Every copy differs a
+ * little: the boards take `color`, the frame and edging darker cuts of it, the tally plate one of
+ * a few paints; some have lost the plate, some the corner irons, each is weathered to its own tone
+ * and turned a different way round. `lod` scales how far off its trim is still drawn (a crate the
+ * size of a house wants its boards seen from across the field). Draws nothing and returns false
+ * when the world kit is not loaded.
+ */
+export function crateBox(g: Geo, w: number, h: number, d: number, o: { at?: [number, number, number]; ry?: number; color?: number; alt?: boolean; lod?: number; gold?: boolean } = {}): boolean {
+  // a fixed sequence, so the yard is the same yard on every load
+  const n = crateN++, r = (k: number) => { const v = Math.sin((n + 1) * 12.9898 + k * 78.233) * 43758.5453; return v - Math.floor(v); };
+  if (o.gold) return piece(g, 'crate-gold', { at: o.at, rot: [0, o.ry ?? 0, 0], scale: [w, h, d], lod: o.lod });
+  const wood = o.color ?? CRATE_WOOD[Math.floor(r(1) * CRATE_WOOD.length)];
+  const frame = _c.setHex(wood).multiplyScalar(o.alt ? 0.8 : 0.96).getHex(), edge = _c.setHex(wood).multiplyScalar(o.alt ? 0.55 : 0.68).getHex();
+  const bare = r(2) < 0.22, plain = r(3) < 0.18;
+  // the plate is on one side: a square crate may show any of its four
+  const turn = Math.abs(w - d) < 0.02 * (w + d) ? Math.floor(r(4) * 4) * (Math.PI / 2) : Math.floor(r(4) * 2) * Math.PI;
+  return piece(g, 'crate-haul', {
+    at: o.at, rot: [0, (o.ry ?? 0) + turn, 0], scale: [w, h, d], tone: 0.88 + r(5) * 0.24, lod: o.lod,
+    colors: { wood, frame, edge, label: CRATE_PLATE[Math.floor(r(6) * CRATE_PLATE.length)] },
+    skip: (name) => (bare && (name === 'label' || name === 'mark')) || (plain && name === 'bracket'),
+  });
+}
+/**
+ * A block of crates s x h x s (base centre at the origin of the current transform) laid as courses
+ * of `n` a side: only the outer ring is built, the middle is never seen. Returns false when the
+ * world kit is not loaded.
+ */
+export function crateTier(g: Geo, s: number, h: number, n: number, rows: number, o: { color?: number; lod?: number } = {}): boolean {
+  const cell = s / n, ch = h / rows;
+  for (let row = 0; row < rows; row++) for (let iz = 0; iz < n; iz++) for (let ix = 0; ix < n; ix++) {
+    if (ix > 0 && ix < n - 1 && iz > 0 && iz < n - 1) continue;
+    if (!crateBox(g, cell, ch, cell, { at: [-s / 2 + (ix + 0.5) * cell, row * ch, -s / 2 + (iz + 0.5) * cell], color: o.color, alt: (ix + iz + row) % 3 === 0, lod: o.lod })) return false;
+  }
+  return true;
+}
+/** A loose crate of side 1 centred on the origin, as its own geometry (things that fall, fly or are pushed), or null without the kit. */
+export function crateGeometry(o: { gold?: boolean; color?: number } = {}): THREE.BufferGeometry | null {
+  const g = new Geo();
+  return crateBox(g, 1, 1, 1, { at: [0, -0.5, 0], gold: o.gold, color: o.color ?? PAL.crate }) ? g.build() : null;
+}
 export function crate(g: Geo, s = 1, o: { color?: number; alt?: boolean; col?: boolean; y?: number; ry?: number; x?: number; z?: number } = {}) {
+  const x = o.x ?? 0, y = o.y ?? 0, z = o.z ?? 0, ry = o.ry ?? 0;
+  if (crateBox(g, s, s, s, { at: [x, y, z], ry, color: o.color, alt: o.alt })) {
+    if (o.col !== false) g.colBox(s, s, s, { at: [x, y + s / 2, z], rot: [0, ry, 0] });
+    return;
+  }
   bbox(g, s, s, s, {
-    at: [o.x ?? 0, (o.y ?? 0) + s / 2, o.z ?? 0], rot: [0, o.ry ?? 0, 0], layer: o.alt ? T.CRATE2 : T.CRATE, uv: 'fit', bevel: 0.035 * s,
+    at: [x, y + s / 2, z], rot: [0, ry, 0], layer: o.alt ? T.CRATE2 : T.CRATE, uv: 'fit', bevel: 0.035 * s,
     color: o.color ?? PAL.crate, col: o.col === false ? 'none' : true, grad: 0.82,
   });
 }

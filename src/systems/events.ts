@@ -217,6 +217,7 @@ export class ZoneEvents implements System {
     }
     this.count++;
     const gold = variant === 'gold';
+    if (gold) this.cf?.gild(drop.id);
     this.ev = {
       id: drop.id, x: drop.x, y: drop.y, z: drop.z, band, level: lvl, variant, phase: 'inbound', eta: drop.eta, left: gold ? GOLD_LIFE : LIFE,
       guards: [], guardN: first ? 3 : 3 + (gold ? 2 : Math.random() < 0.3 ? 1 : 0), killed: 0, spawned: false, chan: 0, trapArmed: variant === 'trapped', endT: 0, t0: g.time, first,
@@ -392,6 +393,7 @@ export class ZoneEvents implements System {
     if (!band) return;
     const id = this.cf.placeLanded(d.x, d.z, d.left + 5);
     if (id < 0) return;
+    if (d.variant === 'gold') this.cf.gild(id);
     const y = this.game.terrain.h(d.x, d.z);
     this.ev = { id, x: d.x, y, z: d.z, band, level: d.level, variant: d.variant, phase: d.killed >= d.guardN ? 'clear' : 'guarded', eta: 0, left: d.left, guards: [], guardN: d.guardN, killed: d.killed, spawned: false, chan: 0, trapArmed: d.trap, endT: 0, t0: this.game.time, first: false };
     this.poi.x = d.x; this.poi.z = d.z;

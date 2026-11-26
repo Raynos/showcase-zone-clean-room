@@ -121,6 +121,8 @@ function loader() {
   gltfLoader.setDRACOLoader(draco);
   return gltfLoader;
 }
+/** The game's one glTF + Draco loader, for other kinds of authored geometry (world/pieces.ts). */
+export function sharedLoader(): GLTFLoader { return loader(); }
 
 async function loadOne(name: string, maxAniso: number): Promise<Asset> {
   // the loading screen counts these: the mesh reports bytes as they stream, the texture when it lands

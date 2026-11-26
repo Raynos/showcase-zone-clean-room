@@ -63,6 +63,19 @@ export class Geo {
    */
   prims: number[] | null = null;
   /**
+   * Level-of-detail bias for what is added while it is set: the world's distance LOD (and its
+   * shadow-caster cut) judges those primitives as `lodK` times their size. Under 1 for trim that
+   * should go before its own size says so (the boards on a crate that is one of fifty in view).
+   */
+  lodK = 1;
+  /**
+   * What is added while this is set is trim: it throws no sun shadow of its own (the body it sits
+   * on does), and goes with distance like anything else. Boards, brackets and bolts on a crate.
+   */
+  trim = false;
+  /** primitive number -> bias (negative for trim), for the primitives recorded with one */
+  primK: Map<number, number> | null = null;
+  /**
    * Record everything `fn` adds as one primitive. For things made of many tiny parts that read
    * as a whole (lettering, icons): the world's distance LOD judges a primitive by its own size,
    * and a word is legible long after any one of its strokes is a pixel wide.
@@ -73,8 +86,9 @@ export class Geo {
     const v0 = this.pos.length / 3, i0 = this.idx.length;
     this.prims = null;
     try { fn(); } finally { this.prims = p; }
-    if (this.idx.length > i0) p.push(v0, this.pos.length / 3 - v0, i0, this.idx.length);
+    if (this.idx.length > i0) { p.push(v0, this.pos.length / 3 - v0, i0, this.idx.length); this.bias(p); }
   }
+  private bias(p: number[]) { if (this.lodK !== 1 || this.trim) (this.primK ??= new Map()).set(p.length / 4 - 1, this.trim ? -this.lodK : this.lodK); }
   private stack: THREE.Matrix4[] = [];
   private cur = new THREE.Matrix4();
   private cColor = 0xffffff; private cLayer: number = T.FLAT; private cEmit = 0; private cUvScale = 0.5; private cGrad = 1;
@@ -175,7 +189,7 @@ export class Geo {
         if (flip) this.idx.push(base + i, base + i + 2, base + i + 1); else this.idx.push(base + i, base + i + 1, base + i + 2);
       }
     }
-    if (this.prims) this.prims.push(base, P.count, idx0, this.idx.length);
+    if (this.prims) { this.prims.push(base, P.count, idx0, this.idx.length); this.bias(this.prims); }
     return mat;
   }
 

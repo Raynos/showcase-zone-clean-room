@@ -6,6 +6,7 @@ import { T } from '../../gfx/textures';
 import { FLORA_KEEPOUT, freeGround } from '../flora';
 import { FLATS, HALF, LAKE, PAL, ROCK } from '../layout';
 import { BEACONS } from '../east';
+import { crate, crateBox } from '../props';
 import { STORIES } from '../stories';
 
 /** Things the dynamic half (finds, ambience) needs to know about what the static half built. */
@@ -350,7 +351,7 @@ export function conveyor(g: Geo, r: Rng, len = 10, h = 1.0) {
   const k = Math.max(1, Math.round(len / 3.5));
   for (let i = 0; i < k; i++) {
     const s = r.range(0.5, 0.75);
-    g.box(s, s, s, { at: [-len / 2 + (i + 0.5) * (len / k) + r.range(-0.5, 0.5), h + 0.14 + s / 2, r.range(-0.1, 0.1)], rot: [0, r.range(-0.4, 0.4), 0], color: cols(r, [PAL.crate, 0xb98548, 0xd6a66a]), layer: r.chance(0.5) ? T.CRATE : T.CRATE2, uv: 'fit', col: 'none' });
+    crate(g, s, { x: -len / 2 + (i + 0.5) * (len / k) + r.range(-0.5, 0.5), y: h + 0.14, z: r.range(-0.1, 0.1), ry: r.range(-0.4, 0.4), color: cols(r, [PAL.crate, 0xb98548, 0xd6a66a]), alt: r.chance(0.5), col: false });
   }
   g.colBox(len, h + 0.2, 1.2, { at: [0, (h + 0.2) / 2, 0] });
 }
@@ -523,7 +524,7 @@ export function scaffold(g: Geo, r: Rng, w = 5, levels = 2, d = 1.6) {
     for (const sx of [-1, 1]) g.box(0.04, len, 0.04, { at: [sx * w / 4, y - lh / 2, d / 2], rot: [0, 0, sx * Math.atan2(w / 2, lh) * (l % 2 ? 1 : -1)], color: PAL.steel, col: 'none' });
   }
   // access: stepped crates on one end
-  for (let i = 0; i < levels * 2; i++) g.box(1.0, 1.1 * (i + 1) * 0.5 * 2, 1.0, { at: [w / 2 + 0.7 + (levels * 2 - 1 - i) * 1.05, 1.1 * (i + 1) / 2, 0], color: cols(r, [PAL.crate, 0xb98548]), layer: T.CRATE, uvScale: 0.9, col: true, grad: 0.8 });
+  for (let i = 0; i < levels * 2; i++) crateColumn(g, 1.0, 1.1 * (i + 1), 1.0, i + 1, { at: [w / 2 + 0.7 + (levels * 2 - 1 - i) * 1.05, 0, 0], color: cols(r, [PAL.crate, 0xb98548]) });
 }
 /** Smelter chimney: brick base with a furnace mouth, banded steel stack, glowing lip. Returns local top. */
 export function smelterStack(g: Geo, h = 26, rb = 3.2): [number, number, number] {
@@ -751,12 +752,20 @@ export function openContainer(g: Geo, len = 6, color: number = PAL.slate) {
   g.box(w, h, t, { at: [0, h / 2, -len / 2 + 0.05], color, layer: T.METAL, uvScale: 0.4, col: true });
   g.box(w + 0.1, 0.14, 0.14, { at: [0, h - 0.06, len / 2], color: DARK, layer: T.METAL, col: 'none' });
 }
+/** `n` crates stacked into a column w x h x d standing on `at`, with the one box collider the column always had. */
+function crateColumn(g: Geo, w: number, h: number, d: number, n: number, o: { at: [number, number, number]; ry?: number; color?: number; alt?: boolean }) {
+  const [x, y, z] = o.at, ry = o.ry ?? 0, ch = h / n;
+  let ok = true;
+  for (let k = 0; k < n && ok; k++) ok = crateBox(g, w, ch, d, { at: [x, y + k * ch, z], ry, color: o.color, alt: o.alt ? k % 2 === 0 : k % 2 === 1 });
+  if (ok) g.colBox(w, h, d, { at: [x, y + h / 2, z], rot: [0, ry, 0] });
+  else g.box(w, h, d, { at: [x, y + h / 2, z], rot: [0, ry, 0], color: o.color ?? PAL.crate, layer: o.alt ? T.CRATE2 : T.CRATE, uvScale: 0.9, col: true, grad: 0.8 });
+}
 /** Crate staircase rising along +X to topH (each step ~0.9 m). */
 export function crateSteps(g: Geo, r: Rng, topH: number, w = 1.2) {
   const n = Math.max(1, Math.round(topH / 0.9)), sh = topH / n;
   for (let i = 0; i < n; i++) {
     const hh = sh * (i + 1);
-    g.box(1.1, hh, w, { at: [i * 1.1, hh / 2, 0], rot: [0, r.range(-0.04, 0.04), 0], color: r.pick([PAL.crate, 0xb98548, 0xd6a66a]), layer: i % 2 ? T.CRATE : T.CRATE2, uvScale: 0.9, col: true, grad: 0.8 });
+    crateColumn(g, 1.1, hh, w, i + 1, { at: [i * 1.1, 0, 0], ry: r.range(-0.04, 0.04), color: r.pick([PAL.crate, 0xb98548, 0xd6a66a]), alt: i % 2 === 0 });
   }
 }
 

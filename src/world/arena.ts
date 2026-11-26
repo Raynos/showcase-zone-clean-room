@@ -14,7 +14,7 @@ import type { Mob } from '../systems/mobs';
 import { TITAN_YARD } from './east';
 import type { InteriorLook } from './environment';
 import { ARENA, PAL } from './layout';
-import { pixelText } from './props';
+import { crate, crateBox, pixelText } from './props';
 import { addEmitter } from '../systems/emitters';
 
 /**
@@ -114,7 +114,7 @@ export function build(game: Game) {
           g.torus(2.6, 0.42, 8, 26, { at: [0, 3.5, 16.5], color: PAL.slate, layer: T.METAL });
           g.torus(2.6, 0.17, 6, 26, { at: [0, 3.5, 16.25], color: 0xff7a1a, emit: 2 });
           for (const [cx, cz, n] of [[-4.4, 3, 2], [4.3, 6, 3], [-4.3, 11.5, 1], [4.4, 12.5, 2]] as const) for (let j = 0; j < n; j++)
-            g.box(1.4, 1.4, 1.4, { at: [cx, 0.7 + j * 1.4, cz], rot: [0, cx + j * 0.5, 0], color: j % 2 ? 0xb98548 : PAL.crate, layer: j % 2 ? T.CRATE2 : T.CRATE, uv: 'fit', bevel: 0.05, col: j === 0 });
+            crate(g, 1.4, { x: cx, y: j * 1.4, z: cz, ry: cx + j * 0.5, color: j % 2 ? 0xb98548 : PAL.crate, alt: j % 2 === 1, col: j === 0 });
           return;
         }
         g.box(W, H, 4, { at: [0, H / 2, 2], color: 0x8791a0, layer: T.TILE, col: true, grad: 0.75, uvScale: 0.12 });
@@ -182,7 +182,11 @@ export function build(game: Game) {
     const a = (i / 7) * TAU + 1.1, r = 49, hx = Math.sin(a) * r, hz = Math.cos(a) * r, top = 30 + (i % 3) * 3;
     roof.box(0.16, H - top, 0.16, { at: [hx, top + (H - top) / 2, hz], color: PAL.slateDeep, layer: T.METAL });
     roof.box(4.2, 0.3, 4.2, { at: [hx, top - 0.15, hz], rot: [0, a, 0], color: PAL.woodDark, layer: T.PLANKS });
-    for (let c = 0; c < 3; c++) roof.box(1.9, 1.9, 1.9, { at: [hx + (c - 1) * 1.0 * (c === 2 ? 0 : 1), top - 1.25 - (c === 2 ? 1.9 : 0), hz + (c === 1 ? 1.0 : -0.9) * (c === 2 ? 0 : 1)], rot: [0, a + c, 0], color: c % 2 ? 0xb98548 : PAL.crate, layer: c % 2 ? T.CRATE2 : T.CRATE, uv: 'fit', bevel: 0.07 });
+    for (let c = 0; c < 3; c++) {
+      const cx = hx + (c - 1) * 1.0 * (c === 2 ? 0 : 1), cy = top - 1.25 - (c === 2 ? 1.9 : 0), cz = hz + (c === 1 ? 1.0 : -0.9) * (c === 2 ? 0 : 1);
+      if (!crateBox(roof, 1.9, 1.9, 1.9, { at: [cx, cy - 0.95, cz], ry: a + c, color: c % 2 ? 0xb98548 : PAL.crate, alt: c % 2 === 1 }))
+        roof.box(1.9, 1.9, 1.9, { at: [cx, cy, cz], rot: [0, a + c, 0], color: c % 2 ? 0xb98548 : PAL.crate, layer: c % 2 ? T.CRATE2 : T.CRATE, uv: 'fit', bevel: 0.07 });
+    }
   }
   roof.pop();
 }
@@ -350,7 +354,7 @@ export class Arena implements System {
     // ---- hanging crates that come down in phase 2 ----
     for (const d of DROPS) {
       const cg = new Geo();
-      cg.box(4.4, 4.4, 4.4, { at: [0, 2.2, 0], color: PAL.crate, layer: T.CRATE, uv: 'fit', bevel: 0.14 });
+      if (!crateBox(cg, 4.4, 4.4, 4.4, { color: PAL.crate })) cg.box(4.4, 4.4, 4.4, { at: [0, 2.2, 0], color: PAL.crate, layer: T.CRATE, uv: 'fit', bevel: 0.14 });
       cg.box(4.6, 0.5, 0.5, { at: [0, 4.5, 0], color: PAL.slateDeep, layer: T.METAL }); cg.box(0.5, 0.5, 4.6, { at: [0, 4.5, 0], color: PAL.slateDeep, layer: T.METAL });
       const mesh = cg.mesh(worldMat()); mesh.frustumCulled = false; mesh.position.set(d.x, Y + CRATE_Y, d.z); mesh.rotation.y = d.x; this.group.add(mesh);
       const ch = new Geo(); ch.box(0.2, H - CRATE_Y - 4.6, 0.2, { at: [d.x, Y + CRATE_Y + 4.6 + (H - CRATE_Y - 4.6) / 2, d.z], color: PAL.slateDeep, layer: T.METAL });
