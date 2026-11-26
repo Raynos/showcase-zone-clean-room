@@ -711,6 +711,10 @@ export async function loadPaintedArrays(base: TexArrays, size: number, swap: (t:
  * cannot be used, the WebP tiles are painted in the page at `final` straight away (that download
  * is the same whatever the size). `ready` settles once the world has painted surfaces.
  */
+const GPU_FORMAT: Record<number, string> = {
+  [THREE.RGBA_ASTC_4x4_Format]: 'astc', [THREE.RGBA_BPTC_Format]: 'bc7', [THREE.RGBA_ETC2_EAC_Format]: 'etc2', [THREE.RGB_ETC2_Format]: 'etc2',
+  [THREE.RGBA_S3TC_DXT5_Format]: 'bc3', [THREE.RGB_S3TC_DXT1_Format]: 'bc1', [THREE.RGBAFormat]: 'rgba8 (uncompressed transcode)',
+};
 export function loadStagedArrays(base: TexArrays, first: number, final: number, swap: (t: TexArrays) => void, progress?: (k: number) => void) {
   let cur: TexArrays | null = null;
   const ready = (async () => {
@@ -733,7 +737,12 @@ export function loadStagedArrays(base: TexArrays, first: number, final: number, 
     cur = packed; swap(packed);
     old.albedo.dispose(); old.normal.dispose();
   })();
-  return { ready, upgrade, get size() { return cur?.size ?? final; } };
+  return {
+    ready, upgrade,
+    get size() { return cur?.size ?? final; },
+    /** what the GPU was given: the transcode target of the KTX2 arrays, or the arrays painted in the page */
+    get format() { return cur ? GPU_FORMAT[cur.albedo.format as number] ?? String(cur.albedo.format) : 'painted in the page (rgba8)'; },
+  };
 }
 
 /** Small tileable RGBA noise texture used by sky/clouds/water/wind. */
