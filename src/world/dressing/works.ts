@@ -5,15 +5,17 @@ import { freeGround } from '../flora';
 import { PAL } from '../layout';
 import { pixelText } from '../props';
 import { STORIES } from '../stories';
+import { fulgurite } from './bands';
 import { Ctx, container, drum, flatcar, floodlight, rails, rivetPile } from './kit';
 
 /**
- * The works of the two bands that had the least to say for themselves.
+ * The works of the bands that had the least to say for themselves.
  *
  * Rivet Row is where robots are built: an assembly line of frames on jigs under a hoist runway, a
  * frame shop with one the size of a house (its head still on the hook), plate walls, coil and plate
  * yards, a siding, steam vents. Pallet Docks is a working dock: container blocks under a yard crane
- * with a box on the hook, forklifts, strapped loads, bollards.
+ * with a box on the hook, forklifts, strapped loads, bollards. The Arc Field gets the feeders that
+ * leave its coil across the glass.
  *
  * All of it is built last, on ground nothing else claimed, so nothing that was placed before it
  * moves: camps, gates, finds and the things collectibles sit on are where they were.
@@ -556,6 +558,64 @@ function palletDocks(c: Ctx) {
   for (const [wx, wz, yaw] of [[52.4, 108, 1.57], [44, 196, 1.5], [92, 160, 0.9]] as Array<[number, number, number]>) put(wx, wz, 3.2, yaw, (g) => bollards(g, 5), 8);
 }
 
+// ---------------------------------------------------------------------------------------------
+// Arc Field
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The feeders: heavy cables that leave the Great Coil across the fused glass to switch cabinets out
+ * on the apron, which was a bare sheet from the band's south-east side. They lie on the ground and
+ * follow it, take a ramp where a road crosses them, and stop nothing: no colliders.
+ */
+function arcField(c: Ctx) {
+  const r = new Rng(606), L = c.info.anchors.L6, cx = L?.x ?? 56, cz = L?.z ?? -160;
+  for (const [ex, ez, bow] of [[92.5, -184.5, 0.1], [78, -186, -1.8], [38, -176, 2.4], [70, -140, 2]] as Array<[number, number, number]>) {
+    // (the cables may cross a camp, since they stop nothing; a cabinet may not stand in one, and there the feeder ends in a floor box)
+    const cab = c.free(ex, ez, 1.4), len = Math.hypot(ex - cx, ez - cz), ux = (ex - cx) / len, uz = (ez - cz) / len, yaw = Math.atan2(-uz, ux);
+    // the switch cabinet the feeder ends at, its back to the coil
+    if (cab) c.reserve(ex, ez, 1.6);
+    c.put(ex, ez, Math.atan2(ex - cx, ez - cz), (g) => {
+      if (!cab) {
+        g.box(1.6, 0.3, 1.2, { at: [0, 0.15, 0], color: 0x3b424c, layer: T.GRATE, uvScale: 0.8, col: 'none' });
+        g.box(1.7, 0.1, 1.3, { at: [0, 0.05, 0], color: PAL.yellow, layer: T.STRIPE, uv: 'world', uvScale: 0.8, col: 'none' });
+        g.box(0.3, 0.06, 0.3, { at: [0, 0.32, 0], color: PAL.cyan, emit: 1.6, col: 'none' });
+        return;
+      }
+      g.box(1.7, 0.2, 1.1, { at: [0, 0.1, 0], color: PAL.concrete, layer: T.CONCRETE, col: 'none' });
+      g.box(1.4, 1.7, 0.8, { at: [0, 1.05, 0], color: PAL.slate, layer: T.PANEL, uvScale: 0.6, col: true, grad: 0.75 });
+      g.box(1.5, 0.12, 0.9, { at: [0, 1.96, 0], color: DARK, layer: T.METAL, col: 'none' });
+      g.box(0.6, 0.24, 0.04, { at: [-0.25, 1.5, 0.41], color: PAL.cyan, emit: 1.6, col: 'none' });
+      g.box(1.0, 0.36, 0.04, { at: [0, 0.75, 0.41], color: PAL.yellow, layer: T.STRIPE, uv: 'fit', col: 'none' });
+      for (const sx of [-0.4, 0, 0.4]) g.cyl(0.09, 0.12, 0.5, 6, { at: [sx, 2.25, -0.1], color: 0xd8dde2, col: 'none' });
+      g.push().translate(1.7, 0, 0.5); fulgurite(g, r, r.int(3, 5), 0.9); g.pop();
+    });
+    // three cables side by side from the coil's plinth to the cabinet
+    const n = Math.ceil((len - 7.5) / 1.7), k = r.range(0, 6);
+    for (let a = 0; a < n; a += 7) {
+      const at = (i: number, off: number): V3 => {
+        const t = i / n, d = 6.2 + (len - 6.8) * t, lat = (Math.sin(t * Math.PI) * bow + Math.sin(t * 8 + k) * 0.3) * Math.sin(t * Math.PI) + off * (0.4 + 0.6 * Math.sin(t * Math.PI));
+        const x = cx + ux * d - uz * lat, z = cz + uz * d + ux * lat;
+        return [x, c.h(x, z) + 0.13, z];
+      };
+      const i1 = Math.min(n, a + 7), [x0, , z0] = at((a + i1) >> 1, 0);
+      c.putY(x0, 0, z0, 0, (g) => {
+        for (const off of [-0.42, 0, 0.42]) {
+          const run: V3[] = [];
+          for (let i = a; i <= i1; i++) { const p = at(i, off); run.push([p[0] - x0, p[1], p[2] - z0]); }
+          g.tube(run, 0.15, 6, { color: off ? 0x1d2026 : 0x2a3038, layer: T.RUBBER, col: 'none' });
+        }
+        for (let i = a; i < i1; i++) {
+          const [x, y, z] = at(i, 0);
+          if (!freeGround(x, z, 0.4)) g.box(1.8, 0.3, 2.2, { at: [x - x0, y - 0.02, z - z0], rot: [0, yaw, 0], color: PAL.yellow, layer: T.STRIPE, uv: 'world', uvScale: 0.7, col: 'none' });
+          else if (i % 4 === 2) { g.box(0.3, 0.36, 1.5, { at: [x - x0, y + 0.02, z - z0], rot: [0, yaw, 0], color: 0x3b424c, layer: T.METAL, col: 'none' }); g.box(0.14, 0.06, 0.14, { at: [x - x0, y + 0.22, z - z0], color: PAL.cyan, emit: 1.6, col: 'none' }); }
+        }
+      });
+    }
+    const m = c.spot(cx + ux * len * 0.55 - uz * (bow + 2.4), cz + uz * len * 0.55 + ux * (bow + 2.4), 1.2, 3, 1);
+    if (m) c.put(m[0], m[1], r.range(0, 6.28), (g) => fulgurite(g, r, r.int(3, 6), r.range(0.7, 1.1)));
+  }
+}
+
 const rect = (c: Ctx, x: number, z: number, yaw: number, w: number, d: number, pad = 0.6) => c.keep(x, z, w / 2 + pad, d / 2 + pad, yaw);
 /** Keep the ground the works will stand on. Call it before anything is placed. */
 export function claimWorks(c: Ctx) {
@@ -576,4 +636,5 @@ export function buildWorks(c: Ctx) {
   c.release();
   rivetRow(c);
   palletDocks(c);
+  arcField(c);
 }

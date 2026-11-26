@@ -617,7 +617,7 @@ function scorch(c: Ctx, x: number, z: number, r: number) {
   STORIES.stamp(x, z, r * 0.8, { scorch: 0.8 }, (x * 7) | 0);
   c.paint(x, z, r * 0.45, { color: 0x5fb8c9, k: 0.4 });
 }
-function fulgurite(g: Geo, r: Rng, n = 5, s = 1) {
+export function fulgurite(g: Geo, r: Rng, n = 5, s = 1) {
   for (let i = 0; i < n; i++) { const a = r.range(0, TAU), d = r.range(0, 0.8) * s, h = r.range(0.4, 1.3) * s; g.cone(0.14 * s, h, 4, { at: [Math.cos(a) * d, h / 2 - 0.05, Math.sin(a) * d], rot: [r.range(-0.4, 0.4), r.range(0, 3), r.range(-0.4, 0.4)], color: r.chance(0.5) ? 0x9ff3ff : PAL.cyan, emit: r.range(0.7, 1.5), col: 'none' }); }
 }
 function pylonAt(c: Ctx, x: number, z: number, h: number, s = 1) {
