@@ -282,6 +282,8 @@ export class Arena implements System {
   private tether!: THREE.Mesh; private tetherMat!: THREE.ShaderMaterial; private bolt!: THREE.Mesh; private boltM!: THREE.ShaderMaterial; private boltT = 0; private boltFrom = new THREE.Vector3();
   // phase 3: vents + core
   private frontFx = 0; private frontSeen = false;
+  /** phase 1: the fist left planted after a slam (seconds left, 0 when none), its cooldown, and the hittable */
+  private plantT = 0; private plantCd = 0; private plantSeen = false; private wasBroken = false; private fist!: Hittable;
   private vents: Vent[] = []; private ventT = 0; private ventK = 0; private p3T = 0; private coreOpen = false; private coreSeen = false;
   // hanging crates
   private drops: Drop[] = [];
@@ -489,6 +491,7 @@ export class Arena implements System {
     this.tether.visible = false; this.bolt.visible = false; this.boltT = 0;
     this.lit = -1; this.shieldOn = false; this.shieldK = 0; this.shield.visible = false; this.shieldMat.uniforms.uOpen.value = 1;
     this.openT = 0; this.poseOv = null; this.holdDead = false;
+    this.plantT = 0; this.plantCd = 0; this.wasBroken = false; if (this.fist) this.fist.targetable = false;
   }
   private spawnTitan() {
     const g = this.game;
@@ -517,6 +520,69 @@ export class Arena implements System {
       return hit(h);
     };
     rig.root.rotation.y = 0;
+  }
+
+  /**
+   * Phase 1, "Stacked": after a fist slam the Titan leaves the fist planted for 2.6 s, glowing amber.
+   * The fist is a target of its own: hits on it do 30% more and three times the stagger, so a phase
+   * that was only "dodge the fist, poke the shins" becomes "dodge the fist, punish the fist", and a
+   * full punish topples it (a break) before the crates start to fall. Bow and rifle can hit it too.
+   */
+  private makeFist(): Hittable {
+    const g = this.game;
+    const f: Hittable = {
+      pos: new THREE.Vector3(), radius: 2.2, height: 3, alive: true, targetable: false,
+      name: 'Planted Fist', level: LEVEL, hpFrac: 1, cls: 'boss',
+      center: (out) => out.set(f.pos.x, f.pos.y + 1.2, f.pos.z),
+      takeHit: (h: HitInfo) => {
+        const m = this.titan;
+        if (!m || !m.alive || this.plantT <= 0) return 0;
+        f.center(_v);
+        g.fx.emit(_v, { count: 6, speed: [3, 9], up: 3, life: [0.2, 0.45], size: [0.1, 0.25], color: 0xffc46a, color2: 0xffffff, glow: 4, sprite: SP.EMBER, gravity: 10, radius: 1 });
+        return m.takeHit({ ...h, dmg: h.dmg * 1.3, poise: (h.poise ?? 1) * 3 });
+      },
+    };
+    g.combat.extras.push(f);
+    return f;
+  }
+  private updatePlant(dt: number) {
+    const g = this.game, m = this.titan;
+    if (!this.fist) this.fist = this.makeFist();
+    const f = this.fist;
+    this.plantCd -= dt * (m?.run.trick ?? 1);
+    if (!m || !m.alive || m.phase > 1 || this.transT > 0) { if (this.plantT > 0) this.endPlant(); this.wasBroken = false; return; }
+    // a slam of the fist lands: plant it
+    if (this.plantT <= 0 && this.plantCd <= 0 && m.atk?.id === 'fist' && m.state === 'active') {
+      this.plantT = 2.6; this.plantCd = 8;
+      this.freeze(2.6);
+      this.poseOv = { action: 'attack', t: 0.82 };
+      f.targetable = true;
+      g.audio?.cue?.('tell_slam', { pos: m.pos, len: 0.5, vol: 0.7 });
+      if (!this.plantSeen) { this.plantSeen = true; g.hud.toast('Planted fist', 'good', 'Strike the glowing fist: it staggers the Titan three times as fast', 'target'); }
+    }
+    if (this.plantT > 0) {
+      this.plantT -= dt;
+      const s = m.rig.sockets.handR ?? m.rig.sockets.handL;
+      if (s) s.getWorldPosition(f.pos); else f.pos.copy(m.pos);
+      f.pos.y = Y;
+      if (Math.random() < dt * 14) g.fx.emit(_v.set(f.pos.x, Y + 0.6, f.pos.z), { count: 1, speed: [0.5, 2], up: 2, life: [0.4, 0.8], size: [0.12, 0.3], color: 0xffc46a, glow: 4, sprite: SP.EMBER, radius: 1.6 });
+      if (Math.random() < dt * 2.5) g.fx.ring(_v.set(f.pos.x, Y + 0.12, f.pos.z), 4.4, 0xffc46a, 0.5, 2);
+      if (this.plantT <= 0 || m.state === 'broken') this.endPlant();
+    }
+    // a break in phase 1: it topples
+    const broken = m.state === 'broken';
+    if (broken && !this.wasBroken) {
+      m.center(_v);
+      g.hud.damage({ x: _v.x, y: _v.y + 3, z: _v.z }, 'TOPPLED', 'crit');
+      g.cameraRig.shake(0.8); g.sfx('titan_step', { pos: m.pos, vol: 1.2 });
+      g.fx.dust(_v.set(m.pos.x, Y + 0.3, m.pos.z), 30, 7);
+    }
+    this.wasBroken = broken;
+  }
+  private endPlant() {
+    const m = this.titan;
+    this.plantT = 0; this.fist.targetable = false;
+    if (m && m.alive && this.poseOv?.action === 'attack') this.poseOv = null;
   }
 
   // ------------------------------------------------------------------ intro
@@ -994,6 +1060,7 @@ export class Arena implements System {
         }
         this.updateShield(dt);
         this.updateVents(dt);
+        this.updatePlant(dt);
         // footfalls
         if (m.alive && m.pose.action === 'move' && m.state === 'chase') {
           this.stepAcc += Math.min(3.2, 0.9 + m.pose.speed * 0.45) * dt;
