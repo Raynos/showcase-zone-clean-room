@@ -24,7 +24,7 @@ export const TRAIL_LOOKS: Record<string, TrailLook> = {
   spear: { row: RB.SPEAR, life: 0.15, glow: 1.2, core: 0.7, reach: 0.62, taper: 0.7, tile: 0.6, edge: 0.34 },
   spearHeavy: { row: RB.SPEAR, life: 0.24, glow: 1.5, core: 0.8, reach: 0.45, taper: 0.5, tile: 0.5, edge: 0.55 },
   skill: { row: RB.WAVE, life: 0.3, glow: 1.05, core: 0.45, reach: 0.15, taper: 0.45, tile: 1.1, edge: 0.8 },
-  whirl: { row: RB.SWORD, life: 0.3, glow: 0.8, core: 0.3, reach: 0.05, taper: 0.3, tile: 1.4, edge: 0.7 },
+  whirl: { row: RB.SWORD, life: 0.3, glow: 0.52, core: 0.16, reach: 0.05, taper: 0.3, tile: 1.4, edge: 0.7 },
   ult: { row: RB.WAVE, life: 0.4, glow: 1.2, core: 0.5, reach: 0.05, taper: 0.35, tile: 1.3, edge: 1.0 },
 };
 

@@ -251,9 +251,11 @@ vec4 gTA; vec4 gTN;`)
   // anything about to fill the lens (a prop the camera backed into, the hero's own head) dissolves
   // characters start earlier: a head at arm's length hides more of a portrait screen than a wall does
   float nl = length(vViewPosition)${rim ? ' * 0.625' : ''};
+  // (a clean hole round the lens with a narrow stippled lip, not a screen door over the whole body)
   if (nl < uNearFade.y) {
     float dn = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-    if (smoothstep(uNearFade.x, uNearFade.y, nl) < dn) discard;
+    float cut = mix(uNearFade.x, uNearFade.y, 0.6);
+    if (smoothstep(cut - 0.05, cut + 0.05, nl) < dn) discard;
   }
 }
 {

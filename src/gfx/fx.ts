@@ -149,7 +149,10 @@ class Pool {
           }
           // and anything within arm's reach of the lens (first person: the muzzle, the blade) thins away
           vCol.a *= 0.12 + 0.88 * smoothstep(0.3, 1.5, -mv.z);
-          // soft where it meets the ground: height of this corner over the floor, in units of the fade band
+${additive ? '' : `          // a cloud between the eyes and the fight (a slam three metres off, seen from the eyes) is a veil
+          // and not a wall: the nearer a puff, the thinner. Grit and clippings are left alone.
+          if (mode < 0.5 && stretch <= 0.0) vCol.a *= mix(1.0, 0.16 + 0.84 * smoothstep(1.5, 8.0, -mv.z), smoothstep(0.25, 0.7, size));
+`}          // soft where it meets the ground: height of this corner over the floor, in units of the fade band
           float wy = iPos.y + dot(viewMatrix[1].xyz, off);
           vFx = vec3(iFx.x, iFx.y, iFx.z > -1e5 ? (wy - iFx.z) / max(size * 0.3, 0.06) : 1.0);
           vFog = 1.0 - exp(-length(mv.xyz) * uFogD);
@@ -467,7 +470,16 @@ export class FX {
   /** Straight or jagged energy line between two points. `row` picks the ribbon's paint (RB.BEAM, RB.ARC, RB.TRACER, ...). */
   beam(a: THREE.Vector3, b: THREE.Vector3, color = 0x7ff0ff, width = 0.12, dur = 0.14, jag = 0, glow = 4, row?: number) {
     // a line that starts within reach of the lens (a tracer from the sights) starts where it is first a line and not a wall
-    const sa = this.clear(a, b, _ba), sb = this.clear(b, a, _bb);
+    const sa = this.clear(a, b, _ba); let sb = this.clear(b, a, _bb);
+    // the path of a dash seen from the eyes: the eyes ride to its far end, so the ribbon stops short
+    // of where they arrive and is a line and not a sheet across the view
+    if (sa !== a && (row === RB.WAVE || row === RB.SPEAR)) {
+      const len = sa.distanceTo(sb);
+      if (len < this.reach + 0.6) return;
+      if (sb === b) sb = _bb.copy(b);
+      sb.addScaledVector(_bd.subVectors(sa, sb).divideScalar(len), this.reach);
+      width *= 0.4; glow *= 0.6;
+    }
     if (sa.distanceToSquared(sb) < 0.25) return;
     this.ribbons.beam(sa, sb, color, width, dur, jag, glow * 0.55, row);
   }
@@ -520,9 +532,11 @@ export class FX {
     if (sl < this.reach || sl > 90) return;
     sx /= sl; sz /= sl;
     _c1.setHex(color);
-    const up = Math.min(1, Math.max(0, t) * 2), h = (1.7 + rank * 0.9) * up * (2 - up), w = (0.1 + rank * 0.035) * (0.9 + 0.1 * Math.sin(this.time * 3 + x)), u0 = -this.time * 0.9;
+    // (far off, a beam keeps the width on screen it has at fourteen metres, and stands a little taller: it is there to be found)
+    const far = Math.min(4, Math.max(1, sl / 14));
+    const up = Math.min(1, Math.max(0, t) * 2), h = (1.7 + rank * 0.9) * up * (2 - up) * (0.7 + 0.3 * far), w = (0.1 + rank * 0.035) * (0.9 + 0.1 * Math.sin(this.time * 3 + x)) * far, u0 = -this.time * 0.9;
     for (let pass = 0; pass < 2; pass++) {
-      const ww = pass ? w * 0.3 : w, g = pass ? 1.1 : 0.9 + rank * 0.1, r = pass ? 1 : _c1.r, gg = pass ? 1 : _c1.g, b = pass ? 1 : _c1.b, hh = pass ? h * 0.6 : h;
+      const ww = pass ? w * 0.3 : w, g = (pass ? 1.1 : 0.9 + rank * 0.1) * (0.75 + 0.25 * far), r = pass ? 1 : _c1.r, gg = pass ? 1 : _c1.g, b = pass ? 1 : _c1.b, hh = pass ? h * 0.6 : h;
       rb.imBegin();
       for (let i = 0; i < 4; i++) {
         const k = i / 3, a = Math.pow(1 - k, 1.3), yy = y + hh * k;

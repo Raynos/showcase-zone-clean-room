@@ -26,6 +26,8 @@ const GRIT: Record<Surf, number[]> = {
   metal: [0x6a7078, 0x4e545c, 0x8a9098], wood: [0xb07a45, 0x8a6a40, 0xc9955a],
 };
 const STRAW = [0xe0c060, 0xc9a84a, 0xf0d88a];
+/** what a foot kicks out of grass: cut stalks dark and pale and a clod of earth, so some of it shows on any meadow, green or straw */
+const KICKED = [0x3c4420, 0x5a4424, 0x4f5a26, 0xfff2c0, 0x2e3518];
 const UP = new THREE.Vector3(0, 1, 0);
 const _col = new THREE.Color();
 const _p = new THREE.Vector3(), _r = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _n = new THREE.Vector3();
@@ -95,12 +97,14 @@ export const RECIPES: Record<string, Recipe> = {
     if (surf === 'grass') {
       // thrown clear of the grass tops, or nobody sees them
       _a.y = gy + 0.3;
-      if (run || Math.random() < 0.5) fx.emit(_a, { additive: false, count: hoof ? 4 : run ? 3 : 1, speed: [0.6, 2], up: hoof ? 4 : run ? 3.3 : 2.2, life: [0.45, 0.75], size: [0.15, 0.25], grow: 1, colors: STRAW, gravity: 10, drag: 0.8, spin: 12, sprite: SP.BLADE, aspect: 0.5, radius: 0.12 });
-      if (run) fx.emit(_a, { additive: false, count: 1, speed: [0.3, 0.9], up: 0.4, life: [0.45, 0.75], size: [(hoof ? 0.3 : 0.22) * s, (hoof ? 0.45 : 0.32) * s], grow: 2, color: DUST.grass, alpha: hoof ? 0.32 : 0.24, drag: 2.3, sprite: SP.PUFF, spin: 2, ground: gy });
+      _a.y = gy + 0.42;
+      fx.emit(_a, { additive: false, count: hoof ? 5 : run ? 4 : 3, speed: [0.6, 2], up: hoof ? 4 : run ? 3.5 : 2.9, life: [0.45, 0.75], size: [0.2, 0.34], grow: 1, colors: KICKED, gravity: 10, drag: 0.8, spin: 12, sprite: SP.BLADE, aspect: 0.5, radius: 0.12 });
+      // and the pale dust of a dry meadow
+      fx.emit(_a, { additive: false, count: 1, speed: [0.3, 0.9], up: 0.5, life: [0.45, 0.75], size: [(hoof ? 0.38 : run ? 0.34 : 0.3) * s, (hoof ? 0.54 : run ? 0.46 : 0.42) * s], grow: 2, color: 0xefe4c2, alpha: hoof ? 0.55 : run ? 0.5 : 0.42, drag: 2.3, sprite: SP.PUFF, spin: 2, ground: gy });
       return;
     }
     if (surf === 'dirt') {
-      fx.emit(_a, { additive: false, count: 1, speed: [0.2, 0.7], up: 0.3, life: [0.4, 0.7], size: [(run ? 0.3 : 0.18) * s, (run ? 0.42 : 0.26) * s], grow: 2, color: DUST.dirt, alpha: run ? 0.42 : 0.26, drag: 2.3, sprite: SP.PUFF, spin: 2, ground: gy });
+      fx.emit(_a, { additive: false, count: 1, speed: [0.2, 0.7], up: 0.3, life: [0.4, 0.7], size: [(run ? 0.32 : 0.24) * s, (run ? 0.44 : 0.34) * s], grow: 2, color: 0xe6dcc0, alpha: run ? 0.46 : 0.36, drag: 2.3, sprite: SP.PUFF, spin: 2, ground: gy });
       if (run) fx.emit(_a, { additive: false, count: hoof ? 4 : 2, speed: [0.8, 2.6], up: hoof ? 2.6 : 1.8, life: [0.35, 0.6], size: [0.04, 0.08], grow: 1, color: 0x8a6f4e, color2: 0xb39a74, gravity: 13, sprite: SP.DOT, spread: 1.3 });
       return;
     }
@@ -378,15 +382,16 @@ export const RECIPES: Record<string, Recipe> = {
     fx.after(0.12, 'ring.out', { x: p.x, y: gy, z: p.z }, UP, WHITE, 1, r * 2.2);
     fx.after(0.26, 'ring.out', { x: p.x, y: gy, z: p.z }, UP, c.tint, 1, r * 4.4);
     fx.emit({ x: p.x, y: gy + 0.2, z: p.z }, { count: 14, ringR: r * 1.3, dir: UP, align: true, speed: [5, 12], life: [0.3, 0.55], size: [1.4, 2.6], aspect: 0.08, color: c.tint, color2: WHITE, glow: 2.2, sprite: SP.LINE, drag: 1.5 });
-    for (let i = 0; i < (last ? 7 : 4); i++) { _b.set(rnd(-1, 1), rnd(-0.1, 1), rnd(-1, 1)).normalize(); fx.emit(_a, { count: 1, dir: _b, align: true, speed: [0, 0], life: [0.12, 0.3], size: [r * 1.2, r * 2], aspect: 0.6, color: c.tint, color2: WHITE, glow: 2.8, sprite: SP.BOLT, core: 1, radius: r * 0.4 }); }
+    for (let i = 0; i < (last ? 7 : 4); i++) { _b.set(rnd(-1, 1), rnd(-0.1, 1), rnd(-1, 1)).normalize(); fx.emit(_a, { count: 1, dir: _b, align: true, speed: [0, 0], life: [0.1, 0.2], size: [r * 1.0, r * 1.6], aspect: 0.45, color: c.tint, color2: WHITE, glow: 1.9, sprite: SP.BOLT, core: 0.8, radius: r * 0.9 }); }
     if (last) {
       // the shield comes off in its cells
       fx.emit(_a, { count: 16, speed: [5, 12], up: 3, life: [0.5, 0.9], size: [0.3, 0.55], grow: 0.6, color: c.tint, color2: WHITE, glow: 2, gravity: 7, drag: 1.2, spin: 7, sprite: SP.HEX, radius: r * 0.7, erode: 0.8 });
-      fx.emit(_a, { count: 1, speed: [0, 0], life: [0.12, 0.15], size: [r * 1.6, r * 1.9], grow: 1.5, color: c.tint, color2: HOT, glow: 2.4, sprite: SP.FLASH, core: 0.8 });
+      // (a blink of light at its feet, not a sheet over the boss: the player must see what it does next)
+      fx.emit({ x: p.x, y: gy + r * 0.3, z: p.z }, { count: 1, speed: [0, 0], life: [0.07, 0.09], size: [r * 1.0, r * 1.2], grow: 1.4, color: c.tint, color2: HOT, glow: 1.5, sprite: SP.FLASH, core: 0.6 });
       crack(fx, p, gy, r * 2.4, c.tint, 3);
       sparks(fx, _a, undefined, c.tint, 24, 13, Math.PI);
     }
-    fx.flash(_a, c.tint, last ? 70 : 45, 18, 0.35);
+    fx.flash(_a, c.tint, last ? 34 : 30, 18, last ? 0.2 : 0.3);
   },
   /** the two ends of a held laser, every frame (p: emitter, d: where it lands, s: width, k: 1 when something solid stopped it) */
   'laser.ends': (fx, c) => {
@@ -460,8 +465,8 @@ export const RECIPES: Record<string, Recipe> = {
   /** Whirlwind: each turn of the blade paints a full swirl at two heights and throws the ground outward (k: radius) */
   'sk.whirl': (fx, c) => {
     const p = c.p, r = c.k || 4.4;
-    for (let i = 0; i < 2; i++) fx.emit({ x: p.x, y: p.y + 0.35 + i * 0.75, z: p.z }, { count: 1, speed: [0, 0], life: [0.24, 0.28], size: [r * (1.55 + i * 0.4), r * (1.55 + i * 0.4)], grow: 1.22, color: c.tint, glow: i ? 1.0 : 0.7, sprite: SP.ARC, flat: true, turn: -11, erode: 1, core: 0.2 });
-    ringOut(fx, p, r, c.tint, 0.26, 1.2 * c.s);
+    for (let i = 0; i < 2; i++) fx.emit({ x: p.x, y: p.y + 0.35 + i * 0.75, z: p.z }, { count: 1, speed: [0, 0], life: [0.24, 0.28], size: [r * (1.55 + i * 0.4), r * (1.55 + i * 0.4)], grow: 1.22, color: c.tint, glow: i ? 0.62 : 0.44, sprite: SP.ARC, flat: true, turn: -11, erode: 1, core: 0.1 });
+    ringOut(fx, p, r, c.tint, 0.26, 0.7 * c.s);
     dustRing(fx, p, p.y, r * 0.45, 5, 0.8, 4.5);
   },
   /** Dash Strike and Impale: the path of the dash, from p along d for k metres (s > 1.5: the spear's) */
