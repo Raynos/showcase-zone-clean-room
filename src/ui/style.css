@@ -112,16 +112,24 @@
   -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); opacity: 0; transform: translateY(-6px) scale(.96); transform-origin: top right; pointer-events: none; transition: opacity .12s, transform .14s var(--ease); }
 [data-h=l] > .tray { right: auto; left: 0; transform-origin: top left; }
 .tray.on { opacity: 1; transform: none; pointer-events: auto; }
-.tray-g { display: flex; }
-#ui .tray .mbtn { position: relative; width: 56px; height: 54px; border-radius: 11px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--text); }
+/* a count of what waits behind an entry (perk points to spend): on the entry and summed on the menu glyph */
+.cnt { position: absolute; right: 2px; top: 3px; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; display: none; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 900; font-style: normal; letter-spacing: 0; line-height: 1; color: #2a1406; background: var(--amber); box-shadow: 0 0 0 1.5px #14171c; text-shadow: none; }
+.has-n > .cnt { display: inline-flex; } .has-n > .pip { display: none !important; }
+/* the grid: --tc columns (hud.trayCols): one row sideways, two rows on an upright phone past five entries */
+.tray { max-width: calc(100vw - 16px); box-sizing: border-box; }
+.tray-g { display: grid; grid-template-columns: repeat(var(--tc, 4), minmax(64px, 1fr)); gap: 2px; }
+#ui .tray .mbtn { position: relative; width: auto; min-width: 0; height: 56px; border-radius: 11px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--text); }
 #ui .tray .mbtn .mi { display: grid; }
 #ui .tray .mbtn .ml { font-size: 9.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); white-space: nowrap; }
 #ui .tray .mbtn .mk { display: none; }
 #ui .tray .mbtn:active, #ui .tray .mbtn.on { background: rgba(255, 154, 60, .2); color: var(--amber); }
-#ui .tray .mbtn .pip { right: 12px; top: 6px; }
+#ui .tray .mbtn .pip { right: calc(50% - 19px); top: 6px; }
+#ui .tray .mbtn .cnt { right: calc(50% - 24px); top: 4px; }
 .tray-i { margin: 6px 8px 0; padding-top: 7px; border-top: 1px solid var(--stroke); display: grid; gap: 4px; font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--text-2); }
 .tray-i div { display: flex; justify-content: space-between; gap: 12px; white-space: nowrap; }
-.tray-i span { display: inline-flex; align-items: center; gap: 4px; }
+.tray-i span { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.tray-i .zn { display: block; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tray-i .gold { color: var(--gold); }
 .micro { display: flex; gap: 4px; pointer-events: auto; }
 #ui .micro .mbtn { position: relative; width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; color: var(--text-2); background: var(--glass-2); box-shadow: inset 0 0 0 1px var(--hair-2); }
@@ -132,6 +140,7 @@
 #ui .micro .mbtn .ml { position: absolute; bottom: calc(100% + 6px); left: 50%; translate: -50% 0; padding: 3px 7px; border-radius: 6px; background: rgba(8, 10, 13, .92); font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; color: #fff; opacity: 0; pointer-events: none; transition: opacity .1s; }
 #ui .micro .mbtn:hover .ml { opacity: 1; }
 #ui .micro .mbtn .pip { right: -2px; top: -2px; }
+#ui .micro .mbtn .cnt { right: -5px; top: -6px; }
 /* scrip: when it changes (always in the tray, the pack and the shops) */
 .scrip { position: relative; font-size: 13px; font-weight: 800; color: var(--gold); display: flex; gap: 4px; align-items: center; text-shadow: var(--tsh); opacity: 0; transition: opacity .9s; }
 .s-scrip.fresh .scrip { opacity: 1; transition: opacity .15s; }

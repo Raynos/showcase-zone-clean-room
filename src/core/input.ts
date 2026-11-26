@@ -2,7 +2,7 @@ import { clamp } from './util';
 
 export type Btn =
   | 'attack' | 'skill1' | 'skill2' | 'dodge' | 'jump' | 'interact' | 'swap' | 'sprint' | 'mount'
-  | 'potion' | 'target' | 'menu' | 'map' | 'bag' | 'quests' | 'char'
+  | 'potion' | 'target' | 'menu' | 'map' | 'bag' | 'quests' | 'char' | 'tally'
   | 'skill3' | 'overdrive' | 'fire2' | 'aim' | 'reload';
 
 interface BtnState { down: boolean; pressed: boolean; released: boolean; heldFor: number; downAt: number }
@@ -10,7 +10,7 @@ interface BtnState { down: boolean; pressed: boolean; released: boolean; heldFor
 const KEYMAP: Record<string, Btn> = {
   Space: 'jump', ShiftLeft: 'sprint', ShiftRight: 'sprint', KeyE: 'interact', KeyQ: 'skill1', KeyR: 'skill2',
   KeyF: 'swap', Tab: 'target', KeyX: 'mount', KeyH: 'potion', ControlLeft: 'dodge', KeyC: 'dodge',
-  KeyM: 'map', KeyI: 'bag', KeyB: 'bag', KeyL: 'quests', KeyJ: 'quests', KeyP: 'char', Escape: 'menu',
+  KeyM: 'map', KeyI: 'bag', KeyB: 'bag', KeyL: 'quests', KeyJ: 'quests', KeyP: 'char', KeyK: 'tally', Escape: 'menu',
   Digit1: 'skill1', Digit2: 'skill2', Digit3: 'potion', Digit4: 'swap',
   KeyT: 'skill3', KeyG: 'overdrive',
 };

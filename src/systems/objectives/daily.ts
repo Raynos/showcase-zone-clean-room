@@ -80,7 +80,7 @@ export class DailyBoards {
     const grab = (e: Event) => { const el = (e.target as HTMLElement).closest?.('[data-claim]') as HTMLElement | null; if (el) pick = el.dataset.claim ?? null; };
     window.addEventListener('pointerup', grab, true);
     g.sfx('ui_open');
-    const ok = await panels.confirm(`${o.name} Board<small>Today's jobs in ${BANDS[band - 1].name}. New ones at midnight.</small><div style="margin-top:8px">${rows}</div>`, 'Close', '');
+    const ok = await panels.confirm(`${o.name} Board<small>Today's jobs in ${BANDS[band - 1].name}. New ones at midnight.</small><div style="margin-top:8px">${rows}</div>`, 'Close', '', 'quiet');
     window.removeEventListener('pointerup', grab, true);
     if (ok && pick) { this.claim(pick); void this.open(band); }
   }

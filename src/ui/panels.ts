@@ -6,7 +6,7 @@ import './panels.css';
 import { bagPanel } from './panels/bag';
 import { boardPanel, trophiesPanel } from './panels/board';
 import { charPanel } from './panels/char';
-import { applyComfort, type Host, type PanelSpec, type View } from './panels/common';
+import { applyComfort, medalRow, type ChoiceOpt, type Host, type PanelSpec, type View } from './panels/common';
 import { talkPanel } from './panels/dialog';
 import { mapPanel } from './panels/mapPanel';
 import { questsPanel } from './panels/quests';
@@ -14,10 +14,10 @@ import { settingsPanel } from './panels/settings';
 import { shopPanel, tinkerPanel } from './panels/shop';
 import { showTitle } from './panels/title';
 
-export type PanelId = 'bag' | 'char' | 'quests' | 'map' | 'menu' | 'talk' | 'shop' | 'tinker' | 'board' | 'trophies';
-const KEYS: Record<string, PanelId> = { KeyI: 'bag', KeyB: 'bag', KeyL: 'quests', KeyJ: 'quests', KeyM: 'map', KeyP: 'char' };
-/** The five screens behind the menu glyph, in the order of the tray: id, icon, name, key. On a wide screen the head carries them as a switcher. */
-const NAV: Array<[PanelId, string, string, string]> = [['bag', 'bag', 'Pack', 'I'], ['char', 'char', 'Character', 'P'], ['quests', 'quests', 'Quests', 'L'], ['map', 'map', 'Map', 'M'], ['menu', 'gear', 'Settings', 'Esc']];
+export type PanelId = 'bag' | 'char' | 'quests' | 'map' | 'tally' | 'menu' | 'talk' | 'shop' | 'tinker' | 'board' | 'trophies';
+const KEYS: Record<string, PanelId> = { KeyI: 'bag', KeyB: 'bag', KeyL: 'quests', KeyJ: 'quests', KeyM: 'map', KeyP: 'char', KeyK: 'tally' };
+/** The six screens behind the menu glyph, in the order of the tray: id, icon, name, key. On a wide screen the head carries them as a switcher. */
+const NAV: Array<[PanelId, string, string, string]> = [['bag', 'bag', 'Pack', 'I'], ['char', 'char', 'Character', 'P'], ['quests', 'quests', 'Quests', 'L'], ['map', 'map', 'Map', 'M'], ['tally', 'book', 'Tally Book', 'K'], ['menu', 'gear', 'Settings', 'Esc']];
 /** An icon per tab id: the phone's tab bar sits under the thumb and reads by icon first. */
 const TAB_IC: Record<string, string> = { items: 'bag', gear: 'sword', stats: 'char', perks: 'star', records: 'trophy', active: 'quests', avail: 'exclaim', done: 'check', weapons: 'sword', supplies: 'potion', sell: 'coin',
   bounties: 'board', hunts: 'target', wanted: 'skull', controls: 'pad', camera: 'eye', aiming: 'target', display: 'screen', sound: 'sound', comfort: 'shield', game: 'gear' };
@@ -26,7 +26,7 @@ const PHONE_SHEET = '(max-width: 699.98px) and (orientation: portrait)';
 /**
  * Every menu in the game: one frame. A phone held upright gets a bottom sheet (drag its head down or
  * tap outside to close; tabs along the bottom, under the thumb); a phone on its side and a desktop get
- * a window (tabs as a rail on the left, the detail in a column on the right, the five menu screens as
+ * a window (tabs as a rail on the left, the detail in a column on the right, the six menu screens as
  * a switcher in the head, with their keys on a desktop). docs/HUD.md, "Panels".
  */
 export class Panels implements System, Host {
@@ -152,14 +152,16 @@ export class Panels implements System, Host {
   update(_dt: number) {
     const inp = this.game.input;
     if (this.titleOpen) return;
-    if (this.swallow) { this.swallow = false; for (const b of ['menu', 'bag', 'quests', 'map', 'char'] as const) inp.consume(b); }
+    if (this.swallow) { this.swallow = false; for (const b of ['menu', 'bag', 'quests', 'map', 'char', 'tally'] as const) inp.consume(b); }
     if (inp.consume('menu')) { if (this.current) this.close(); else this.open('menu'); }
-    for (const b of ['bag', 'quests', 'map', 'char'] as const) if (inp.consume(b)) this.toggle(b);
+    for (const b of ['bag', 'quests', 'map', 'char', 'tally'] as const) if (inp.consume(b)) this.toggle(b);
     this.pipT -= _dt;
     if (this.pipT <= 0) {
       this.pipT = 0.5;
       const g = this.game, mb = g.hud.menuBtns;
       mb.quests?.classList.toggle('alert', g.quests.active().some((q) => g.quests.status(q.id) === 'ready'));
+      // perk points waiting to be spent: a count on Character and on the menu glyph, until they are spent
+      g.hud.menuBadge('char', g.state.perksFree);
     }
   }
   private tick = (now: number) => {
@@ -210,7 +212,7 @@ export class Panels implements System, Host {
     this.body.innerHTML = ''; this.body.scrollTop = 0;
     this.showScrip(!!spec.scrip); this.scripShown = -1;
     this.backBtn.classList.toggle('on', this.stack.length > 0);
-    // the five menu screens switch among themselves from the head (a window only: the phone sheet has the tray for it)
+    // the six menu screens switch among themselves from the head (a window only: the phone sheet has the tray for it)
     const menu = !this.stack.length && NAV.some((n) => n[0] === id);
     this.navEl.innerHTML = menu ? NAV.map(([nid, ic, name, key]) => `<div class="pn-nb${nid === id ? ' on' : ''}" data-a="nav" data-v="${nid}" aria-label="${name}" title="${name} (${key})">${icon(ic, 18)}<kbd>${key}</kbd></div>`).join('') : '';
     this.sheet.style.transform = ''; this.sheet.style.transition = '';
@@ -266,27 +268,55 @@ export class Panels implements System, Host {
   }
   setFoot(html: string) { this.foot.classList.toggle('on', !!html); if (this.foot.innerHTML !== html) this.foot.innerHTML = html; }
 
-  confirm(text: string, yes = 'Confirm', no = 'Cancel', danger = false): Promise<boolean> {
+  /**
+   * A question over whatever is open. The yes is the sheet's one accent when it commits to something (red when it
+   * destroys); `tone: 'quiet'` is for a sheet that only informs or closes, which has no accent at all.
+   */
+  confirm(text: string, yes = 'Confirm', no = 'Cancel', tone: boolean | 'danger' | 'quiet' = false): Promise<boolean> {
+    const cls = tone === 'quiet' ? 'ghost' : tone ? 'danger' : 'pri';
+    return this.ask(`<div class="pn-mcard${tone === 'quiet' ? ' quiet' : ''}"><div class="pn-mtext">${text}</div><div class="pn-mrow">${no ? `<div class="pn-btn ghost" data-m="0">${no}</div>` : ''}<div class="pn-btn ${cls}" data-m="1">${yes}</div></div></div>`).then((v) => v === '1');
+  }
+  /**
+   * A short choice: a heading, one line, and a button for each answer, stacked. One answer may be the accent (`pri`);
+   * what it means sits above the buttons (the day's rule as a named chip with its one line, par times as a medal row,
+   * the best so far). Putting it off is a bare word under the buttons, never a slab. Resolves to the id, or null.
+   */
+  choose(head: string, line: string, list: ChoiceOpt[], cancel = 'Not now'): Promise<string | null> {
+    const p = list.find((c) => c.pri);
+    let info = '';
+    if (p && (p.chip || p.pars || p.best)) {
+      info = '<div class="pn-cinfo">';
+      if (p.chip) info += `<div class="rule"><div><em>${icon(p.chip.ic ?? 'moon', 12, 2.4)}${p.chip.name}</em>${p.chip.label ? `<i>${p.chip.label}</i>` : ''}</div><span>${p.chip.text}</span></div>`;
+      if (p.pars) info += medalRow(p.pars);
+      if (p.best) info += `<div class="best">${p.best}</div>`;
+      info += '</div>';
+    }
+    const row = (c: ChoiceOpt) => `<div class="pn-btn pn-opt ${c.pri ? 'pri' : 'ghost'}" data-m="${c.id}"><b>${c.title}</b>${c.sub ? `<small>${c.sub}</small>` : ''}</div>`;
+    return this.ask(`<div class="pn-mcard ch"><div class="pn-mtext">${head}<small>${line}</small></div>${info}<div class="pn-opts">${list.map(row).join('')}</div><div class="pn-later" data-m="">${cancel}</div></div>`, p?.id ?? '')
+      .then((v) => v || null);
+  }
+  /** The modal sheet: resolves to the `data-m` of the button tapped ('' for Escape; Enter takes `enter`). */
+  private ask(html: string, enter = '1'): Promise<string> {
     return new Promise((res) => {
       const m = this.modal;
-      m.innerHTML = `<div class="pn-mcard"><div class="pn-mtext">${text}</div><div class="pn-mrow">${no ? `<div class="pn-btn ghost" data-m="0">${no}</div>` : ''}<div class="pn-btn ${danger ? 'danger' : 'pri'}" data-m="1">${yes}</div></div></div>`;
+      m.innerHTML = html;
       m.classList.add('on');
       this.root.classList.add('show');
-      const done = (v: boolean) => {
+      const done = (v: string) => {
         m.classList.remove('on'); m.onpointerup = null; window.removeEventListener('keydown', key, true);
         if (!this.current && !this.titleOpen) this.root.classList.remove('show');
-        this.game.sfx(v ? 'ui_click' : 'ui_close');
-        res(v);
+        this.game.sfx(v && v !== '0' ? 'ui_click' : 'ui_close');
+        res(v === '0' ? '' : v);
       };
-      const key = (e: KeyboardEvent) => { if (e.code === 'Escape') { e.stopPropagation(); done(false); } else if (e.code === 'Enter') { e.stopPropagation(); done(true); } };
+      const key = (e: KeyboardEvent) => { if (e.code === 'Escape') { e.stopPropagation(); done(''); } else if (e.code === 'Enter') { e.stopPropagation(); done(enter); } };
       window.addEventListener('keydown', key, true);
       m.onpointerup = (e) => {
         const b = (e.target as HTMLElement).closest('[data-m]') as HTMLElement | null;
-        if (b) done(b.dataset.m === '1');
+        if (b) done(b.dataset.m ?? '');
       };
     });
   }
-  notice(text: string, sub = ''): Promise<void> { return this.confirm(text + (sub ? `<small>${sub}</small>` : ''), 'OK', '').then(() => {}); }
+  notice(text: string, sub = ''): Promise<void> { return this.confirm(text + (sub ? `<small>${sub}</small>` : ''), 'OK', '', 'quiet').then(() => {}); }
 
   // ------------------------------------------------------------------ shortcuts
   talk(npcId: string) { this.open('talk', { npc: npcId }); }

@@ -72,6 +72,14 @@ const P: Record<string, string> = {
   pad: '<path d="M7.500 8h9a5 5 0 0 1 5 5v1.500a2.500 2.500 0 0 1-4.700 1.200L15.500 13.500h-7l-1.300 2.200A2.500 2.500 0 0 1 2.500 14.500V13a5 5 0 0 1 5-5z"/><path d="M7.500 10v3M6 11.500h3"/><circle cx="16.500" cy="11.500" r=".6"/>',
   screen: '<path d="M3 5h18v11H3zM8.500 20h7M12 16v4"/>',
   broken: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM12 3l-2 6 4 3-3 4 1 5"/>',
+  // the Tally Book (ui/panels/tally.ts): the ledger with its tally marks, a brass cog, a medal, a strongbox, a view
+  book: '<path d="M5 5.500A2.500 2.500 0 0 1 7.500 3H19v15H7.500A2.500 2.500 0 0 0 5 20.500zM5 20.500A2.500 2.500 0 0 0 7.500 21H19M9 7v5.500m3-5.500v5.500m3-5.500v5.500M8 11.500l8-3.500"/>',
+  cog: '<path d="M10.800 2.900h2.400l.6 2.400 1.700.7 2.100-1.300 1.700 1.700-1.300 2.100.7 1.700 2.400.6v2.400l-2.400.6-.7 1.700 1.300 2.100-1.700 1.700-2.100-1.300-1.700.7-.6 2.400h-2.400l-.6-2.400-1.700-.7-2.100 1.300-1.700-1.700 1.300-2.100-.7-1.700-2.400-.6v-2.400l2.400-.6.7-1.700-1.300-2.100 1.700-1.700 2.100 1.300 1.700-.7z"/><circle cx="12" cy="12" r="2.600"/>',
+  medal: '<path d="M8 3l2.500 5.500M16 3l-2.500 5.500M9.500 3h5"/><circle cx="12" cy="14.500" r="6"/><path d="M12 11.500l1 2 2.100.3-1.500 1.500.4 2.200-2-1.100-2 1.100.4-2.200-1.500-1.500 2.100-.3z"/>',
+  chest: '<path d="M4 10a5 5 0 0 1 5-5h6a5 5 0 0 1 5 5v9H4zM4 12h16M12 10.500v3.500"/>',
+  flag: '<path d="M6 21V4m0 1h11l-2.500 3.500L17 12H6"/>',
+  chev: '<path d="M9 5l7 7-7 7"/>',
+  note: '<path d="M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h5"/>',
 };
 export function icon(name: string, size = 24, strokeWidth = 2): string {
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round">${P[name] ?? P.star}</svg>`;

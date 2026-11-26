@@ -45,7 +45,9 @@ export class LongShift {
   private async choose(): Promise<'gauntlet' | 'shift' | null> {
     const g = this.game, s = otSave(g).shift, wk = s.week === weekNo() ? s.weekBest : 0;
     const pick = await choose(g, 'The Gauntlet', 'The Long Shift keeps the first court running: wave after wave of level 20 robots until you drop or walk out.', [
-      { id: 'shift', title: 'The Long Shift', sub: `Best ${s.best} waves · this week ${wk} · medals at ${SHIFT.bronze}, ${SHIFT.silver} and ${SHIFT.gold} waves`, pri: true },
+      { id: 'shift', title: 'Start the Long Shift', sub: 'Wave after wave in the first court', pri: true,
+        pars: { gold: String(SHIFT.gold), silver: String(SHIFT.silver), bronze: String(SHIFT.bronze), unit: 'waves', earned: s.best >= SHIFT.gold ? 3 : s.best >= SHIFT.silver ? 2 : s.best >= SHIFT.bronze ? 1 : 0 },
+        best: s.best ? `Best ${s.best} waves · this week ${wk} of ${SHIFT.weekly}` : `No shift worked yet · ${SHIFT.weekly} waves in one shift pays the week's bonus` },
       { id: 'gauntlet', title: 'The gauntlet', sub: 'Three courts, five waves, as it always is' },
     ]);
     return pick as 'gauntlet' | 'shift' | null;

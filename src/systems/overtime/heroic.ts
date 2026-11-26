@@ -67,9 +67,10 @@ export class Heroic {
   /** The choice at the portal: the normal run, or overtime with today's rule. */
   private async choose(act: OtAct): Promise<'normal' | 'over' | null> {
     const g = this.game, def = OT[act], rec = otSave(g).runs[act], rule = this.rule(act);
-    const best = rec.best ? `best ${fmtTime(rec.best)}, ${MEDALS[rec.medal] || 'no medal'}` : 'no overtime clear yet';
-    const pick = await choose(g, def.place, 'Overtime: level 20 robots with more health and bite, the rule of the day, and a clock. A death or the bronze time ends it.', [
-      { id: 'over', title: `Overtime · ${rule.name}`, sub: `${rule.line} · gold ${fmtPar(def.gold)} · silver ${fmtPar(def.silver)} · bronze ${fmtPar(def.bronze)} · ${best}`, pri: true },
+    const best = rec.best ? `Best ${fmtTime(rec.best)} · ${MEDALS[rec.medal] || 'no medal yet'}` : 'No overtime clear yet';
+    const pick = await choose(g, def.place, 'Overtime: level 20 robots with more health and bite, and a clock. A death or the bronze time ends it.', [
+      { id: 'over', title: 'Start overtime', sub: 'Against the clock, under the rule of the day', pri: true, chip: { name: rule.name, text: rule.line, label: "Today's rule" },
+        pars: { gold: fmtPar(def.gold), silver: fmtPar(def.silver), bronze: fmtPar(def.bronze), earned: rec.medal }, best },
       { id: 'normal', title: 'Normal run', sub: act === 'vault' ? 'The four chambers as they always are' : 'The Titan as it always is' },
     ]);
     return pick as 'normal' | 'over' | null;

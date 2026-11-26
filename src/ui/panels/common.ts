@@ -17,14 +17,27 @@ export interface Host {
   open(id: string, arg?: any, push?: boolean): void;
   close(all?: boolean): void;
   back(): void;
-  confirm(text: string, yes?: string, no?: string, danger?: boolean): Promise<boolean>;
+  /** `tone`: true (or 'danger') for a red yes, 'quiet' where the answer commits to nothing (no accent on the sheet) */
+  confirm(text: string, yes?: string, no?: string, tone?: boolean | 'danger' | 'quiet'): Promise<boolean>;
   notice(text: string, sub?: string): Promise<void>;
+  choose(head: string, line: string, list: ChoiceOpt[], cancel?: string): Promise<string | null>;
   setTabs(tabs: Array<{ id: string; label: string; pip?: boolean; ic?: string }>, active: string): void;
   setTitle(title: string, ic?: string): void;
   setFoot(html: string): void;
   showScrip(on: boolean): void;
   readonly body: HTMLElement;
   readonly foot: HTMLElement;
+}
+/**
+ * One answer on a choice sheet (Host.choose). The `pri` one is the sheet's single accent; what it means goes above the
+ * buttons: the day's rule as a named chip with one line, the par times as a medal row, the best so far.
+ */
+export interface ChoiceOpt {
+  id: string; title: string; sub?: string; pri?: boolean;
+  chip?: { name: string; text: string; ic?: string; label?: string };
+  /** gold, silver and bronze figures, already in words ("5:00", "15"); `earned` 0 to 3 strikes the medals reached */
+  pars?: { gold: string; silver: string; bronze: string; earned?: number; unit?: string };
+  best?: string;
 }
 export interface PanelSpec {
   title: string; icon: string;
@@ -112,6 +125,19 @@ export function weaponTile(id: string, opts: { sel?: boolean; act?: string; leve
 }
 export const scripHtml = (n: number | string, size = 14) => `<span class="pn-scrip">${icon('coin', size)}${typeof n === 'number' ? n.toLocaleString('en-US') : n}</span>`;
 export const btn = (label: string, act: string, v = '', cls = '', extra = '') => `<div class="pn-btn ${cls}" data-a="${act}"${v ? ` data-v="${v}"` : ''} ${extra}>${label}</div>`;
+/**
+ * A medal: a ribbon and a disc with the podium place in it (1 gold, 2 silver, 3 bronze), so the three read apart
+ * without their colours. Earned is struck solid; not yet earned is an empty dashed outline. `tier`: 3 gold, 2 silver, 1 bronze.
+ */
+export function medal(tier: number, on: boolean, size = 22): string {
+  const name = ['', 'Bronze', 'Silver', 'Gold'][tier] ?? '';
+  return `<svg class="md m${tier}${on ? ' on' : ''}" viewBox="0 0 24 24" width="${size}" height="${size}" role="img" aria-label="${name}${on ? ', earned' : ', not yet earned'}"><path class="rb" d="M7 1.500h3.400L12 4.800l1.600-3.300H17l-2.900 6.700H9.900z"/><circle class="dc" cx="12" cy="15" r="7.200"/><text x="12" y="18.700" text-anchor="middle">${4 - tier}</text></svg>`;
+}
+/** Par figures as a medal row: gold, silver, bronze, each medal over its figure. */
+export function medalRow(p: { gold: string; silver: string; bronze: string; earned?: number; unit?: string }): string {
+  const e = p.earned ?? 0, cell = (tier: number, v: string) => `<span class="${e >= tier ? 'on' : ''}">${medal(tier, e >= tier, 20)}<b>${v}</b></span>`;
+  return `<div class="pn-medals">${cell(3, p.gold)}${cell(2, p.silver)}${cell(1, p.bronze)}${p.unit ? `<em>${p.unit}</em>` : ''}</div>`;
+}
 export const pips = (n: number, max: number) => `<span class="pn-pips">${Array.from({ length: max }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</span>`;
 export function playTime(sec: number): string {
   const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);

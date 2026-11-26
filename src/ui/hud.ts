@@ -90,7 +90,7 @@ const ACT_IDS = Object.keys(ACT) as ActionId[];
 const IDX = Object.fromEntries(ACT_IDS.map((k, i) => [k, i])) as Record<ActionId, number>;
 /** status effect id -> icon id */
 const FX_ICON: Record<string, string> = { shock: 'shock', burn: 'burn', jam: 'jam', guard: 'shield', mend: 'kit' };
-const MENUS: Array<[id: string, ic: string, label: string, key: string]> = [['bag', 'bag', 'Pack', 'I'], ['quests', 'quests', 'Quests', 'J'], ['map', 'map', 'Map', 'M'], ['char', 'char', 'Character', 'P'], ['tally', 'trophy', 'Tally', ''], ['menu', 'gear', 'Settings', 'Esc'], ['view', 'eye', 'View', '']];
+const MENUS: Array<[id: string, ic: string, label: string, key: string]> = [['bag', 'bag', 'Pack', 'I'], ['quests', 'quests', 'Quests', 'J'], ['map', 'map', 'Map', 'M'], ['char', 'char', 'Character', 'P'], ['tally', 'book', 'Tally', 'K'], ['menu', 'gear', 'Settings', 'Esc'], ['view', 'eye', 'View', '']];
 export type HudContext = 'explore' | 'fight' | 'ride';
 
 /**
@@ -232,6 +232,7 @@ export class Hud {
     // the panel shortcuts live in the tray on a phone and in the micro menu on a desktop
     const host = form === 'desktop' ? this.micro : this.trayGrid;
     for (const [id] of MENUS) { const b = this.menuBtns[id]; if (b.parentElement !== (id === 'view' ? this.micro : host)) (id === 'view' ? this.micro : host).appendChild(b); }
+    this.trayCols();
     this.setTray(false);
     this.wheel.close();
     this.actsSig = ''; this.freshSig = ''; this.laneT = 0; this.layoutActs();
@@ -321,13 +322,13 @@ export class Hud {
     this.enFill = u.querySelector('.en .fill')!; this.buffs = u.querySelector('.buffs')!;
 
     // menus: one glyph and a tray on a phone, a micro menu row on a desktop. The same buttons serve both.
-    this.hub = el('button', 'hbtn m-hub', icon('menu', 20, 2.1) + '<i class="pip"></i>');
+    this.hub = el('button', 'hbtn m-hub', icon('menu', 20, 2.1) + '<i class="pip"></i><b class="cnt"></b>');
     this.hub.setAttribute('aria-label', 'Menu');
     this.tray = el('div', 'tray'); this.trayGrid = el('div', 'tray-g'); this.trayInfo = el('div', 'tray-i');
     this.tray.append(this.trayGrid, this.trayInfo);
     this.micro = el('div', 'micro');
     for (const [id, ic, label, key] of MENUS) {
-      const b = el('button', 'mbtn m-' + id, `<span class="mi">${icon(ic, 20, 2)}</span><span class="ml">${label}</span>${key ? `<em class="mk">${key}</em>` : ''}<i class="pip"></i>`);
+      const b = el('button', 'mbtn m-' + id, `<span class="mi">${icon(ic, 20, 2)}</span><span class="ml">${label}</span>${key ? `<em class="mk">${key}</em>` : ''}<i class="pip"></i><b class="cnt"></b>`);
       b.setAttribute('aria-label', label);
       b.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); g.sfx('ui_click'); this.setTray(false); if (id === 'view') toggleView(g); else this.onMenu(id); });
       (id === 'view' ? this.micro : this.trayGrid).appendChild(b); this.menuBtns[id] = b;
@@ -416,7 +417,30 @@ export class Hud {
     this.trayOpen = on; this.traySig = '';
     this.tray.classList.toggle('on', on); this.hub.classList.toggle('on', on);
   }
-  /** What is only read in a menu: the clock, scrip, level and experience, the zone. */
+  /**
+   * The tray's grid: one row on a phone held sideways; on an upright phone one row up to five entries and two rows
+   * beyond that (six is three and three, seven or eight is four across), so no label is ever cut by the screen edge.
+   */
+  private trayCols() {
+    const n = this.trayGrid.children.length;
+    this.trayGrid.style.setProperty('--tc', String(this.layout.form === 'portrait' && n > 5 ? Math.ceil(n / 2) : Math.max(1, n)));
+  }
+  /**
+   * A count on a menu entry and on the menu glyph: something waiting behind it (perk points to spend). Zero clears it.
+   * A plain pip (`alert`, set by the panels) says "look here" without a number.
+   */
+  menuBadge(id: string, n: number) {
+    const b = this.menuBtns[id];
+    if (!b || this.badges[id] === n) return;
+    this.badges[id] = n;
+    const c = b.querySelector('.cnt') as HTMLElement;
+    c.textContent = n > 99 ? '99+' : String(n); b.classList.toggle('has-n', n > 0);
+    let sum = 0;
+    for (const k in this.badges) sum += this.badges[k];
+    (this.hub.querySelector('.cnt') as HTMLElement).textContent = sum > 99 ? '99+' : String(sum); this.hub.classList.toggle('has-n', sum > 0);
+  }
+  private badges: Record<string, number> = {};
+  /** What is only read in a menu: the clock, scrip, the zone, level and experience. */
   private drawTray() {
     const g = this.game, st = g.state, d = st.d, max = st.xpNext;
     const sig = g.env.clockText() + '|' + d.scrip + '|' + d.xp + '|' + d.level + '|' + g.zoneName;
@@ -424,7 +448,7 @@ export class Hud {
     this.traySig = sig;
     const wx = g.env.isNight() ? 'moon' : g.env.weather === 'storm' ? 'storm' : g.env.weather === 'rain' ? 'rain' : 'sun';
     this.trayInfo.innerHTML = `<div><span>${icon(wx, 12, 2.2)}${g.env.clockText()}</span><span class="gold">${icon('coin', 12, 2.2)}${fmtNum(d.scrip)}</span></div>` +
-      `<div><span>${g.zoneName}</span><span>LV ${d.level}${isFinite(max) ? ` · ${fmtNum(d.xp)} / ${fmtNum(max)} XP` : ' · MAX'}</span></div>`;
+      `<div><span class="zn">${this.placeName}</span><span>LV ${d.level}${isFinite(max) ? ` · ${fmtNum(d.xp)} / ${fmtNum(max)} XP` : ' · MAX'}</span></div>`;
   }
 
   // ---- messages ----
@@ -432,12 +456,13 @@ export class Hud {
   toast(text: string, kind = 'info', sub = '', ic = '') { this.notices.toast(text, kind, sub, ic); }
   /** A headline: a level, a quest done, a zone's name, an encounter's call-out. */
   banner(b1: string, b2 = '', cls = '') {
-    // a level says what it opened, in the one line under the number
-    if (cls.includes('level')) {
-      const st = this.game.state, lv = st.d.level, got: string[] = [];
+    // a level says what it opened, in the one line under the number. Only the level's own headline: other moments
+    // borrow its gold look (a gauntlet cleared, a boss toppled) and keep their own words. Perk points waiting to be
+    // spent are a count on the menu glyph and on Character (menuBadge), not a headline.
+    if (cls.includes('level') && /^LEVEL \d/.test(b1)) {
+      const lv = this.game.state.d.level, got: string[] = [];
       if (lv === SLOT3_LEVEL) got.push('Third skill open');
       if (lv === OVERDRIVE_LEVEL) got.push('Overdrive open');
-      if (st.perksFree > 0) got.push(st.perksFree === 1 ? '1 perk point to spend' : `${st.perksFree} perk points to spend`);
       if (got.length) b2 = got.join(' · ');
     }
     // a job handed in says what it paid under its name: the headline a level gets
