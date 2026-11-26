@@ -28,11 +28,14 @@ export class FieldRunner implements System {
   private mem: Record<string, Record<string, unknown>> = {};
   /** what happened, for the test driver (tools/field) and the dev console */
   log: FieldLogEntry[] = [];
+  /** headlines held while the player is down */
+  private afterRespawn: Array<() => void> = [];
 
   constructor(private game: Game) {
     const g = game, ev = g.state.events;
     ev.on('kill', (k) => { for (const l of this.live.values()) l.ctl.onKill?.(k); });
     ev.on('playerDeath', () => { for (const l of [...this.live.values()]) l.ctl.onDeath?.(); });
+    ev.on('respawn', () => { const a = this.afterRespawn.splice(0); setTimeout(() => { for (const f of a) f(); }, 900); });
     // a weak point struck by a shot is heard here: the combat system has no event for it, so its
     // one strike entry point is wrapped (the original runs first, unchanged)
     const cb = g.combat as unknown as { strikeTarget: (h: unknown, mult: number, o: { weak?: string; shot?: boolean }) => unknown };
@@ -70,10 +73,15 @@ export class FieldRunner implements System {
         const a = fieldSave(g).pts[q.id + ':' + obj]; if (a && a.length > to) a.length = to;
         this.note(q, obj, 'reset');
       },
-      fail: (text, sub) => {
-        g.hud.toast(text, 'warn', sub); g.sfx('ui_error'); g.hud.log(`${q.name}: ${text}`, 'quest');
+      fail: (text, sub, big = false) => {
         this.note(q, i, 'fail', text);
         st.events.emit('flag', { key: `fq:fail:${q.id}` });
+        g.hud.log(`${q.name}: ${text}. ${sub}`, 'quest');
+        if (!big) { g.hud.toast(text, 'warn', sub); g.sfx('ui_error'); return; }
+        // the attempt is lost: a headline with the reason and what to do, and a sting. While the player is down the
+        // fall owns the screen, so it waits for them to stand up
+        const say = () => { g.hud.banner(`${q.name.toUpperCase()} FAILED`, `${text} · ${sub}`, 'danger'); g.sfx('defeat'); };
+        if (g.player.dead) this.afterRespawn.push(say); else say();
       },
       points: () => { const a = pts(); const p = c.prog(); if (a.length > p) a.length = p; for (let k = 0; a.length < p && k < 32; k++) if (!a.includes(k)) a.push(k); return a; },
       save: () => st.touch(),

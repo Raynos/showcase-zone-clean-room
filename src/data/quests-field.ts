@@ -81,8 +81,8 @@ export const FIELD_QUESTS: FieldQuest[] = [
     steps: [{ t: 'sabotage', pts: [[92, -30], [41, -42], [77, 32]], chan: 2.6, label: 'Seal the burrow', alarm: { kind: 'mite', n: 3, level: 3 } }, { t: 'elite', id: 'gatecrasher' }] }),
   // ------------------------------------------------------------------ Pallet Docks: Dock Boss Marlo Venn
   F({ id: 'b2_freight', band: 2, name: 'Dead Freight', giver: 'quest_b2', level: 4, min: 2.5, scrip: 90, items: [['kit', 2]],
-    intro: ['Berth Nine is the last one still working. Hob has the manifests for the north crane in his pack, and the pallets out there run anything that moves.', 'Walk him up. He keeps a good pace and he will not leave you behind. You do not leave him behind either. If he goes down, he crawls back here and we start over.'],
-    mid: 'Walk Hob up the trail to the north crane. Keep the pallets off him. If he falls back, talk to him at the berth.',
+    intro: ['Berth Nine is the last one still working. Hob has the manifests for the north crane in his pack, and the pallets out there run anything that moves.', 'Walk him up. He keeps a good pace and he will not leave you behind. You do not leave him behind either. If he goes down, he falls back down the trail to the last stretch you got him past, and you go on from there.'],
+    mid: 'Walk Hob up the trail to the north crane. Keep the pallets on you, not on him. If he goes down, talk to him where he falls back to.',
     outro: ['Manifests are at the crane. First time in a month. Hob says you fight like a union rep. That is a compliment out here.'],
     objectives: [{ on: k('b2_freight', 0), n: 1, text: 'Walk Hob to the north crane' }],
     steps: [{ t: 'escort', who: 'Hob', path: [[70, 104], [63, 111], [59, 122], [62, 134], [68, 147], [72, 158]], speed: 3.3, hp: 100,

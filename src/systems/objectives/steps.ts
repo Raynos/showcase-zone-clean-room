@@ -21,8 +21,9 @@ export interface StepCtx {
   bump(): void;
   /** put an objective of this quest back to `to` (default: this one, to 0) */
   reset(to?: number, obj?: number): void;
-  /** the attempt failed: say so; the step itself decides what goes back */
-  fail(text: string, sub: string): void;
+  /** the attempt failed: say so; the step itself decides what goes back. `big`: the attempt is lost (an escort down, a
+   *  defence broken, a clock run out), said as a headline with a sting rather than a warning line */
+  fail(text: string, sub: string, big?: boolean): void;
   /** persisted point list for this objective (which nests, burrows... are done) */
   points(): number[];
   save(): void;
@@ -162,6 +163,14 @@ const ESCORT_LOOKS: Record<string, import('../../entities/humanoid/types').Human
 function poseOf(): HumanPose {
   return { time: 0, locomotion: 'ground', speed: 0, moveX: 0, moveZ: 0, vy: 0, landT: 9, weapon: 'none', drawn: false, action: null, actionT: 0, aimPitch: 0, lean: 0, rollT: 0, lookYaw: 0, lookPitch: 0, climbPhase: 0 };
 }
+/**
+ * Walk someone along a road. They keep a brisk pace with the player beside them; they stop and wait when the
+ * player falls behind (and say how far), and they hold back from a fight rather than walk into it: robots on the
+ * road ahead or on top of them stop them until the way is clear. Attackers go for the player first: a robot only
+ * wears the escort down while nobody is fighting it. If the escort goes down (or the player does), the attempt
+ * fails out loud (a headline and a sting) and the escort falls back to the last quarter of the road passed, not to
+ * the start; talking to them there sets off again.
+ */
 export function escort(c: StepCtx, s: S<'escort'>): Ctl {
   const g = c.g, path = s.path, cum = [0];
   for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + flat(path[i][0], path[i][1], path[i - 1][0], path[i - 1][1]));
@@ -173,7 +182,14 @@ export function escort(c: StepCtx, s: S<'escort'>): Ctl {
   };
   let rig: HumanoidRig | null = null;
   const pose = poseOf(), pos = new THREE.Vector3(), ipos = new THREE.Vector3();
-  let sv = 0, hp = s.hp, state: 'wait' | 'walk' | 'hold' | 'done' = c.prog() >= 1 ? 'done' : 'wait', fired = s.ambush.map(() => false), said = 0, yaw = 0;
+  // the checkpoint: the last quarter of the road passed (kept for the session, so a fall never costs the whole walk)
+  const mem = c.mem as { escCp?: number };
+  let cp = mem.escCp ?? 0;
+  let sv = cp, hp = s.hp, state: 'wait' | 'walk' | 'hold' | 'done' = c.prog() >= 1 ? 'done' : 'wait', said = 0, yaw = 0;
+  let fired = s.ambush.map((a) => a.at * len < cp);
+  // why the escort is stopped, for the line under the name: '' walking
+  let why: '' | 'hurt' | 'fight' | 'ahead' | 'behind' = '', whyT = 0;
+  let blocker: Mob | null = null;
   const place = () => { at(sv, pos); pos.y = ground(g, pos.x, pos.z); };
   if (state === 'done') sv = len;
   place();
@@ -183,13 +199,14 @@ export function escort(c: StepCtx, s: S<'escort'>): Ctl {
   }
   const start = g.interact.add({
     id: `fq_${c.q.id}_go`, pos: ipos, radius: 3, icon: 'chat', priority: 3,
-    label: () => (hp < s.hp ? `Patch ${s.who} up and go again` : `Set off with ${s.who}`), enabled: () => state === 'wait' && !g.player.dead,
-    onUse: () => { state = 'walk'; hp = s.hp; g.sfx('quest_progress'); g.hud.toast(`${s.who}: "Right behind you. Well, in front."`, 'quest'); },
+    label: () => (sv > 0 ? `Go on with ${s.who}` : `Set off with ${s.who}`), enabled: () => state === 'wait' && !g.player.dead,
+    onUse: () => { state = 'walk'; hp = s.hp; g.sfx('quest_progress'); g.hud.toast(`${s.who}: "${sv > 0 ? 'From here, then. Keep them off me.' : 'Right behind you. Well, in front.'}"`, 'quest'); },
   });
-  const threat = () => g.mobs.list.filter((m) => m.alive && m.aggro && flat(m.pos.x, m.pos.z, pos.x, pos.z) < 11);
-  const failEscort = () => {
-    state = 'wait'; sv = 0; hp = s.hp; fired = s.ambush.map(() => false); place();
-    c.fail(`${s.who} is down`, `${s.who} limps back to the start. Talk to them to go again.`);
+  const foes = () => g.mobs.list.filter((m) => m.alive && !m.isBoss);
+  const failEscort = (reason: string) => {
+    state = 'wait'; sv = cp; hp = s.hp; fired = s.ambush.map((a) => a.at * len < cp); why = ''; place();
+    const left = Math.round((1 - cp / len) * 100);
+    c.fail(reason, cp > 0 ? `${s.who} waits at the last stretch, ${left}% to go` : `${s.who} waits at the start`, true);
   };
   return {
     update(dt) {
@@ -197,19 +214,43 @@ export function escort(c: StepCtx, s: S<'escort'>): Ctl {
       ipos.set(pos.x, pos.y + 0.9, pos.z);
       let moving = false;
       if (state === 'walk' || state === 'hold') {
-        const near = threat();
-        // robots on top of the escort wear it down
-        for (const m of near) if (flat(m.pos.x, m.pos.z, pos.x, pos.z) < 3.4 + m.radius) hp -= (4 + m.level * 0.25) * dt;
-        if (hp <= 0) { failEscort(); return; }
-        // the escort's health rides in the HUD's timer slot, where it can be read with the escort off screen
-        g.hud.setTimer(s.who, `${Math.ceil((hp / s.hp) * 100)}%`, near.length ? 'Under attack' : dp > 16 ? 'Waiting for you' : 'Escort', hp / s.hp);
-        // keeps a brisk pace, but waits for the player and ducks while a fight is on top of it
-        const wantHold = dp > 16 || near.length > 0;
-        if (wantHold && state === 'walk') { state = 'hold'; if (dp > 16 && said <= 0) { said = 8; g.hud.toast(`${s.who}: "Not without you."`, 'quest'); } }
-        if (!wantHold && state === 'hold') state = 'walk';
+        const all = foes();
+        // attackers go for the player first: a robot on top of the escort hurts it only while nobody is fighting it
+        let hurting = 0;
+        for (const m of all) {
+          if (!m.aggro || flat(m.pos.x, m.pos.z, pos.x, pos.z) > 3.4 + m.radius) continue;
+          if (flat(m.pos.x, m.pos.z, p.x, p.z) < 9 && !g.player.dead) continue;
+          hp -= (4 + m.level * 0.25) * dt; hurting++;
+        }
+        if (hp <= 0) { failEscort(`${s.who} is down`); return; }
+        // a fight close by, or robots on the road ahead: the escort does not walk into it
+        at(Math.min(len, sv + 7), _b);
+        // (a fight is one by the escort, or the player's own within sight of it: never "waiting for you" while the
+        // player is fighting the escort's attackers)
+        const fight = all.some((m) => m.aggro && m.state !== 'return' && (flat(m.pos.x, m.pos.z, pos.x, pos.z) < 14 || (dp < 30 && flat(m.pos.x, m.pos.z, p.x, p.z) < 10)));
+        // (robots standing on the road a few steps on: the waypoint goes to the nearest of them)
+        blocker = null;
+        if (!fight) { let bd = 6.5; for (const m of all) { const d = flat(m.pos.x, m.pos.z, _b.x, _b.z); if (d < bd) { bd = d; blocker = m; } } }
+        const ahead = !!blocker;
+        const behind = dp > (state === 'hold' && why === 'behind' ? 9 : 12);
+        const now = hurting ? 'hurt' : fight ? 'fight' : ahead ? 'ahead' : behind ? 'behind' : '';
+        // a reason holds for a moment before a lesser one replaces it, so the line does not flicker
+        const rank = { hurt: 4, fight: 3, ahead: 2, behind: 1, '': 0 } as const;
+        whyT -= dt;
+        if (rank[now] >= rank[why] || whyT <= 0) { if (now !== why) whyT = 1.5; why = now; }
+        // the escort's health rides in the HUD's timer slot, where it can be read with the escort off screen; the
+        // line under it says what the escort is doing and why
+        const line = why === 'hurt' ? 'Under attack: get them off' : why === 'fight' ? 'Holding back while you fight' : why === 'ahead' ? 'Waiting: robots on the road ahead'
+          : why === 'behind' ? `Waiting for you: ${Math.round(dp)} m away` : 'Moving';
+        g.hud.setTimer(s.who, `${Math.ceil((hp / s.hp) * 100)}%`, line, hp / s.hp);
+        if (why && state === 'walk') { state = 'hold'; if (why === 'behind' && said <= 0) { said = 8; g.hud.toast(`${s.who}: "Not without you."`, 'quest'); } }
+        if (!why && state === 'hold') state = 'walk';
         said -= dt;
         if (state === 'walk') {
           sv = Math.min(len, sv + s.speed * dt); moving = true;
+          // every quarter of the road passed is a checkpoint
+          const q = Math.floor((sv / len) * 4) / 4 * len;
+          if (q > cp && sv < len) { cp = mem.escCp = q; g.hud.log(`${s.who} is ${Math.round((q / len) * 100)}% of the way. A fall from here starts from this stretch.`, 'quest'); }
           at(Math.min(len, sv + 1), _b); const want = Math.atan2(_b.x - pos.x, _b.z - pos.z);
           yaw += Math.atan2(Math.sin(want - yaw), Math.cos(want - yaw)) * Math.min(1, dt * 6);
           place();
@@ -217,9 +258,9 @@ export function escort(c: StepCtx, s: S<'escort'>): Ctl {
             if (fired[k] || sv / len < a.at) return;
             fired[k] = true;
             for (let n = 0; n < a.wave.n; n++) c.spawn(a.wave, a.from[0] + n * 2.2, a.from[1] + (n % 2) * 2, true);
-            g.hud.toast('Ambush', 'warn', `Keep them off ${s.who}`); g.sfx('enemy_alert');
+            g.hud.toast('Ambush', 'warn', `They are coming for you. Keep them off ${s.who}.`); g.sfx('enemy_alert');
           });
-          if (sv >= len) { state = 'done'; g.sfx('quest_progress'); c.bump(); }
+          if (sv >= len) { state = 'done'; mem.escCp = 0; g.sfx('quest_progress'); c.bump(); }
         } else yaw += Math.atan2(Math.sin(Math.atan2(p.x - pos.x, p.z - pos.z) - yaw), Math.cos(Math.atan2(p.x - pos.x, p.z - pos.z) - yaw)) * Math.min(1, dt * 3);
       } else if (state === 'wait' || state === 'done') {
         const want = Math.atan2(p.x - pos.x, p.z - pos.z);
@@ -238,14 +279,15 @@ export function escort(c: StepCtx, s: S<'escort'>): Ctl {
     target() {
       if (state === 'wait') return { x: pos.x, z: pos.z, y: pos.y + 2.3, label: `Talk to ${s.who}` };
       if (state === 'done') return null;
-      return { x: pos.x, z: pos.z, y: pos.y + 2.3, label: s.who };
+      if (why === 'ahead' && blocker?.alive) return { x: blocker.pos.x, z: blocker.pos.z, label: 'Clear the road' };
+      return { x: pos.x, z: pos.z, y: pos.y + 2.3, label: why === 'hurt' || why === 'fight' ? `Keep them off ${s.who}` : s.who };
     },
     plates() {
       const p = pl(g), d = flat(p.x, p.z, pos.x, pos.z);
       if (d > 40 || !rig || g.interior) return;
       g.hud.plate('fq_esc_' + c.q.id, _c.set(pos.x, pos.y + 2.05, pos.z), { name: s.who, title: state === 'wait' ? 'Escort' : undefined, hp: state === 'wait' ? undefined : Math.max(0, hp / s.hp), cls: 'npc', mark: state === 'wait' ? 'y' : '', markText: '!' });
     },
-    onDeath() { if (state === 'walk' || state === 'hold') failEscort(); },
+    onDeath() { if (state === 'walk' || state === 'hold') failEscort(`You went down`); },
     busy: () => state === 'walk' || state === 'hold',
     linger: () => state === 'done' && flat(pl(g).x, pl(g).z, pos.x, pos.z) < 45,
     dispose() { g.interact.remove(start); if (rig) { g.scene.remove(rig.root); rig.root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) m.geometry?.dispose?.(); }); } },
@@ -258,13 +300,14 @@ export function defend(c: StepCtx, s: S<'defend'>): Ctl {
   let state: 'idle' | 'gap' | 'wave' = 'idle', wave = c.prog(), live: Mob[] = [], hp = s.hp, away = 0, gap = 0;
   const begin = g.interact.add({
     id: `fq_${c.q.id}_def`, pos: new THREE.Vector3(x, ground(g, x, z) + 0.8, z), radius: 3.4, icon: 'shield', priority: 3,
-    label: () => `Hold the ${s.label.toLowerCase()}`, enabled: () => state === 'idle' && !g.player.dead,
+    label: () => (c.prog() > 0 ? `Hold the ${s.label.toLowerCase()} · from wave ${c.prog() + 1}` : `Hold the ${s.label.toLowerCase()}`), enabled: () => state === 'idle' && !g.player.dead,
     onUse: () => { state = 'gap'; gap = 2.5; hp = s.hp; wave = c.prog(); g.sfx('gauntlet_start'); g.hud.banner('HOLD THE LINE', `${s.label} · ${s.waves.length} waves`, ''); },
   });
+  // a failed hold keeps the waves already beaten: the next try starts at the wave that broke it
   const fail = (why: string) => {
     state = 'idle'; for (const m of live) if (m.alive) m.aggro = false; live = []; hp = s.hp; away = 0;
-    c.reset(); wave = 0;
-    c.fail(why, `Talk to the ${s.label.toLowerCase()} to start again`);
+    wave = c.prog();
+    c.fail(why, wave > 0 ? `${wave} of ${s.waves.length} waves held. Use the ${s.label.toLowerCase()} to go again from wave ${wave + 1}.` : `Use the ${s.label.toLowerCase()} to start again`, true);
   };
   return {
     update(dt) {
@@ -321,7 +364,7 @@ export function run(c: StepCtx, s: S<'run'>): Ctl {
       go();
     },
   });
-  const fail = (why: string, sub: string) => { on = false; c.fail(why, sub); };
+  const fail = (why: string, sub: string) => { on = false; c.fail(why, sub, true); };
   return {
     update(dt) {
       if (!on) {
@@ -391,7 +434,7 @@ export function rare(c: StepCtx, s: S<'rare'>): Ctl {
         g.mobs.remove(mob); mob = null; t = 0;
         // it got away: the trail picks up again at its last sign
         c.reset(Math.max(0, (c.q.objectives[c.i - 1]?.n ?? 1) - 1), c.i - 1);
-        c.fail(`${s.name} got away`, 'Pick the trail up again at the last sign');
+        c.fail(`${s.name} got away`, 'Pick the trail up again at the last sign', true);
         gone = true;
       }
     },
@@ -567,7 +610,7 @@ export function drop(c: StepCtx, s: S<'drop'>, boardAt: [number, number]): Ctl {
   if (z0) {
     offs.push(z0.on.on('land', (e) => { mem.landed = { x: e.x, z: e.z }; mem.t = T; }));
     offs.push(z0.on.on('open', () => { mem.opened = true; }));
-    offs.push(z0.on.on('expire', () => { if (mem.landed && !mem.opened) { mem.landed = null; c.reset(0, 2); c.reset(0, 1); c.reset(0, 0); c.fail('The freighter took the drop back', 'Signal another from the board'); } }));
+    offs.push(z0.on.on('expire', () => { if (mem.landed && !mem.opened) { mem.landed = null; c.reset(0, 2); c.reset(0, 1); c.reset(0, 0); c.fail('The freighter took the drop back', 'Signal another from the board', true); } }));
   }
   let it: ReturnType<Game['interact']['add']> | null = null;
   const cells: Array<{ x: number; z: number; it: ReturnType<Game['interact']['add']> | null }> = [];
@@ -615,7 +658,7 @@ export function drop(c: StepCtx, s: S<'drop'>, boardAt: [number, number]): Ctl {
         mem.t = (mem.t ?? T) - playDt(g, dt);
         g.hud.setTimer('Cells burning out', `${Math.max(0, mem.t).toFixed(0)}s`, `${c.prog()}/3 grabbed`);
         for (const cl of cells) if (cl.it && Math.random() < dt * 5) g.fx.emit({ x: cl.x, y: ground(g, cl.x, cl.z) + 0.5, z: cl.z }, { count: 1, speed: [0.3, 0.8], up: 2.5, life: [0.5, 0.9], size: [0.1, 0.16], color: 0x7dffb0, glow: 4, gravity: -1, radius: 0.2 });
-        if (mem.t <= 0) { mem.landed = null; c.reset(0, 1); c.reset(0, 0); c.fail('The cells burned out', 'Signal another drop from the board'); }
+        if (mem.t <= 0) { mem.landed = null; c.reset(0, 1); c.reset(0, 0); c.fail('The cells burned out', 'Signal another drop from the board', true); }
       }
       if (s.part === 'open' && mem.opened) { mem.opened = false; c.bump(); }
     },
