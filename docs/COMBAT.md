@@ -272,6 +272,28 @@ Rules the tricks share:
   a melee weapon they hold 4.5–7 m instead of 7–12 m, and every dive
   ends GROUNDED for 1.6 s (×1.25 damage) beside the player.
 
+Tells every robot shares are drawn on the body, in the effects kit's
+own batches (`systems/warn.ts` `bodyTells`, `gfx/vfx/tells.ts`), so a
+five-elite fight adds no draw call (measured: 202 calls, 678k
+triangles at the phone tier):
+
+- **Open to a blow.** A gold arc over the head runs down with the
+  window, on a dark track; a stun adds stars round the head.
+- **An aim taken.** Plumb Line Prime's lock is a line that fattens
+  from the emitter with brackets closing on the hero; its laser is a
+  beam with an edge, a body and a white core, never under a few pixels
+  wide. An elite's or a boss's charge puts the brackets on the hero.
+- **A dive.** A line down to where it lands and brackets on the floor
+  there; dust and a ring when it comes down.
+- **A summon.** Rings rise off the caller; each arrival comes down a
+  column of light. Mending robots shed crosses.
+
+Reduced motion stops the tells turning and the Flashes slider stops
+them beating. Each mechanic can be staged and shot at noon and night,
+near and from 15 m, with `tools/vfx/mech.sh`. The per-mechanic tells
+(Hot Mess's heat on its body, shield states, the Warden's lamps, the
+Titan's planted fist) are not built yet: those read as before.
+
 ### Vault Warden, phase 3: "Exam: Final"
 
 `src/systems/mechanics/exam.ts`. Below a third of its health:

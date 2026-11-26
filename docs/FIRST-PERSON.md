@@ -131,7 +131,7 @@ after, then the scene and frame).
 |    |   | arm's length                             |                  |       |
 | 41 | C | Crossbow aimed: the sight sat 12 degrees | p-ranged         | fixed |
 |    |   | under the crosshair                      |                  |       |
-| 42 | m | No hands in view when unarmed            | p-carry          | open  |
+| 42 | m | No hands in view when unarmed            | p-carry          | impr  |
 | 43 | C | The weapon has no weight: a static carry | p-carry          | impr  |
 |    |   | and a kick that only decays              |                  |       |
 | 44 | X | Mounting: the hero's own back and pack   | p-rides-swap     | fixed |
@@ -140,7 +140,7 @@ after, then the scene and frame).
 |    |   | eyes (playtest round two, finding 14)    |                  |       |
 | 46 | m | Reticle and ammo shown in the saddle     | p-grass          | fixed |
 |    |   | (playtest round two, finding 14)         |                  |       |
-| 47 | m | Swap: the old weapon is never seen       | p-rides-swap     | open  |
+| 47 | m | Swap: the old weapon is never seen       | p-rides-swap     | fixed |
 |    |   | leaving the hand                         |                  |       |
 | 48 | C | Dash Strike, Impale, Skewer Leap end     | p-sword, p-spear | open  |
 |    |   | with the target behind the view          |                  |       |
@@ -177,14 +177,40 @@ desktop.
 
 After round two: 14 fixed, 9 improved, 11 open (34 rows). After round three:
 29 fixed, 14 improved, 6 open (49 rows). No row from rounds one and two is
-still open.
+still open. The wrap-up after round three fixed #47 and improved #42: 30
+fixed, 15 improved, 4 open (the table below counts it).
+
+Wrap-up, verified frame by frame at 402x874 and 874x402:
+
+- **A swap is seen** (`rig.ts` `FP_SWAP`, `viewmodel.ts`). The old weapon
+  stays in the hand 0.15 s while it sinks under the picture; the new one
+  comes up in 0.3 s. The picture is empty for about 0.07 s. Under reduced
+  motion it is a plain dip. A blade or spear swapped to stays in the hand
+  6 s out of a fight (`view.ts` `FP_READY`). Put away at the end of a
+  fight is still the old cut.
+- **Empty hands** (`fpview.ts`). A reach when something is used, the
+  cheer, wave and point emotes, a pickup, hand over hand on a climb, a
+  fist on the grapple's line. Standing idle, unarmed, still shows none.
+  The climb and grapple poses were not shot.
+- **A soft lunge** (`player.ts`). From the eyes a melee step-in eases in
+  and out: 3.8, 6.0, 3.3 m/s over its frames, the same distance.
+- **A settling aim** (`fpmotion.ts` `hold`). Aimed, the sights drift
+  about the mark: 7 mrad when fresh, 0.3 mrad settled at the rifle's
+  steady time, 0 under reduced motion. Through the scope the dark ring
+  moves about the cross.
+- **Grass at the eyes** (`grass.ts` `EYE`). Blades are 30% of their
+  height within 4 m, full at 13 m, and a robot's parting runs toward the
+  lens: a mite at 6 m in tall grass is in plain view.
+
+Still open from the brief: the hoverboard (#21), the rein hands (#49).
+The view model added no mesh: two calls, at most 7,798 triangles.
 
 | Severity | Rows | Fixed | Improved | Open | After round two |
 |----------|------|-------|----------|------|-----------------|
 | B        | 4    | 4     | 0        | 0    | 4 / 0 / 0       |
 | X        | 9    | 8     | 1        | 0    | 5 / 0 / 2       |
 | C        | 23   | 10    | 12       | 1    | 4 / 8 / 4       |
-| m        | 13   | 7     | 1        | 5    | 1 / 1 / 5       |
+| m        | 13   | 8     | 2        | 3    | 1 / 1 / 5       |
 
 ### Hand share of the screen
 
@@ -308,8 +334,8 @@ Before round two the rifle's own receiver and flash filled the scope.
   leans 0.075 rad into a full carve (none under reduced motion) and the
   eyes sink 7 cm at top speed.
 - **Grass stands lower round the eyes** (`world/grass.ts` `EYE`). From the
-  eyes blades are 40% of their height within 2 m, full at 8 m, and the
-  ring a robot tramples is 1.4 m wider.
+  eyes blades were 40% of their height within 2 m, full at 8 m, and the
+  ring a robot tramples is 1.4 m wider (the wrap-up lowered them more).
 - **Field of view, chosen.** Portrait 72 degrees vertical (37 across);
   landscape 50 vertical (91 across). Portrait is as wide as it can go
   before the top and bottom of the frame, where the HUD sits, stretch;
