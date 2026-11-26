@@ -12,6 +12,7 @@ import { FX, SP } from './gfx/fx';
 import { ContactShadows } from './gfx/contact';
 import { GU, installFog } from './gfx/material';
 import { FarCull } from './gfx/farcull';
+import { FloorMirror } from './gfx/mirror';
 import { QUALITY, Renderer } from './gfx/renderer';
 import { buildNoiseTexture, buildTextureArrays, loadStagedArrays } from './gfx/textures';
 import { BOOT_MODELS, LATE_MODELS, loadModels } from './gfx/models';
@@ -53,6 +54,7 @@ export class Game {
   contact = new ContactShadows();
   chunks!: Chunks;
   farCull = new FarCull();
+  mirror = new FloorMirror();
   physics!: Physics;
   input!: Input;
   cameraRig!: CameraRig;
@@ -546,6 +548,7 @@ export class Game {
     this.updateAmbience(rdt);
 
     this.chunks.update(this.camera, this.renderer.height * this.renderer.pixelRatio, this.renderer.quality.viewDist);
+    this.mirror.render(this.renderer.gl, this.scene, this.camera, Math.floor(this.renderer.width * this.renderer.pixelRatio), Math.floor(this.renderer.height * this.renderer.pixelRatio));
     this.farCull.hide(this.scene, this.camera, this.renderer.height * this.renderer.pixelRatio);
     this.renderer.render(this.scene, this.camera, rdt);
     this.farCull.show();
