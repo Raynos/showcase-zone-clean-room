@@ -312,7 +312,7 @@
         G._waiters.push(() => {
           const i = g.renderer.gl.info.render, f = fxCalls(g);
           // who else is on screen at the worst frame: the effects layer is only ever a handful of these calls
-          if (i.calls > r.calls) { r.calls = i.calls; r.fxAtWorst = f; r.robots = g.mobs.list.filter((m) => m.alive).length; r.frame = H.frame; r.who = Object.entries(tally).sort((x, y) => y[1] - x[1]).slice(0, 16).map((e) => e[0] + ':' + e[1] + ' @' + where[e[0]]).join(', '); r.hero = Math.round(g.player.pos.x) + ' ' + Math.round(g.player.pos.z); }
+          if (i.calls > r.calls) { r.calls = i.calls; r.fxAtWorst = f; r.robots = g.mobs.list.filter((m) => m.alive).length; r.frame = H.frame; r.who = Object.entries(tally).sort((x, y) => y[1] - x[1]).slice(0, 16).map((e) => e[0] + ':' + e[1] + ' @' + where[e[0]]).join(', '); r.hero = Math.round(g.player.pos.x) + ' ' + Math.round(g.player.pos.z); const e = g.camera.matrixWorld.elements; r.looks = (-e[8]).toFixed(2) + ' ' + (-e[10]).toFixed(2); r.far = Object.entries(tally).filter((x) => x[0].includes(' far') && !x[0].includes('shadow')).reduce((n, x) => n + x[1], 0); }
           r.tris = Math.max(r.tris, i.triangles); r.fx = Math.max(r.fx, f);
           tally = {};
           return H.frame >= end;

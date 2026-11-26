@@ -460,7 +460,7 @@ export const RECIPES: Record<string, Recipe> = {
   /** Whirlwind: each turn of the blade paints a full swirl at two heights and throws the ground outward (k: radius) */
   'sk.whirl': (fx, c) => {
     const p = c.p, r = c.k || 4.4;
-    for (let i = 0; i < 2; i++) fx.emit({ x: p.x, y: p.y + 0.35 + i * 0.75, z: p.z }, { count: 1, speed: [0, 0], life: [0.24, 0.28], size: [r * (1.55 + i * 0.4), r * (1.55 + i * 0.4)], grow: 1.22, color: c.tint, glow: i ? 1.3 : 0.9, sprite: SP.ARC, flat: true, turn: -11, erode: 1, core: 0.35 });
+    for (let i = 0; i < 2; i++) fx.emit({ x: p.x, y: p.y + 0.35 + i * 0.75, z: p.z }, { count: 1, speed: [0, 0], life: [0.24, 0.28], size: [r * (1.55 + i * 0.4), r * (1.55 + i * 0.4)], grow: 1.22, color: c.tint, glow: i ? 1.0 : 0.7, sprite: SP.ARC, flat: true, turn: -11, erode: 1, core: 0.2 });
     ringOut(fx, p, r, c.tint, 0.26, 1.2 * c.s);
     dustRing(fx, p, p.y, r * 0.45, 5, 0.8, 4.5);
   },
