@@ -34,17 +34,21 @@ interface Note {
   at?: string;
   /** write it to the feed if it never gets the lane */
   feed: boolean;
+  /** a moment: a row under the lines (what it paid, as chips), the word that invites the tap, and what the tap does */
+  extra?: string; tapWord?: string; tap?: () => void;
 }
+/** A small celebration on the lane (a set completed): the headline, what it is, what it paid, and one tap to see it. */
+export interface MomentOpts { title: string; sub: string; chips?: string; tapWord?: string; tap?: () => void; feed?: string }
 export interface TipOpts { title: string; text: string; at?: string; secs?: number }
 
-const PRI: Record<string, number> = { info: 1, good: 2, loot: 2, pb: 2, secret: 3, quest: 3, level: 3, warn: 5 };
+const PRI: Record<string, number> = { info: 1, good: 2, loot: 2, pb: 2, secret: 3, find: 3, quest: 3, level: 3, warn: 5 };
 const QUEUE = 4;
 const keyOf = (s: string) => s.replace(/[\d/.,×+:-]+/g, '#').trim().toLowerCase();
 const plain = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, '');
 
 export class Notices {
   readonly el: HTMLElement;
-  private tEl: HTMLElement; private sEl: HTMLElement;
+  private tEl: HTMLElement; private sEl: HTMLElement; private xEl: HTMLElement;
   private q: Note[] = [];
   private cur: Note | null = null; private t = 0; private shown = 0; private gap = 0;
   private pend: Array<{ text: string; title: string; kind: string }> = [];
@@ -54,8 +58,8 @@ export class Notices {
   constructor(private game: Game, private hud: Hud) {
     this.el = document.createElement('div');
     this.el.className = 'note';
-    this.el.innerHTML = '<div class="n-t"></div><div class="n-s"></div>';
-    this.tEl = this.el.children[0] as HTMLElement; this.sEl = this.el.children[1] as HTMLElement;
+    this.el.innerHTML = '<div class="n-t"></div><div class="n-s"></div><div class="n-x"></div>';
+    this.tEl = this.el.children[0] as HTMLElement; this.sEl = this.el.children[1] as HTMLElement; this.xEl = this.el.children[2] as HTMLElement;
   }
 
   /** A fight the lane must stay out of. A cinematic is not one: it owns the screen. */
@@ -93,6 +97,23 @@ export class Notices {
     const fight = !zone && (danger || level || this.encounter());
     const hold = zone ? 8 : cls.includes('level') ? 90 : cls.includes('small') ? 10 : cls.includes('lz-crate') ? 20 : 45;
     this.push({ key: 'h:' + keyOf(b1), title: b1, sub: b2, ic: '', kind: 'head', cls: cls + (zone ? ' zone' : ''), pri: fight ? 5 : 4, secs: 3, fight, hold, age: 0, feed: false });
+  }
+
+  /**
+   * A moment: a headline that shows what was won and takes one tap (a set completed opens the book at its sets).
+   * It waits for calm like any headline, holds a little longer, and writes its line to the feed either way.
+   */
+  moment(o: MomentOpts) {
+    if (o.feed) this.hud.log(o.feed, 'quest');
+    this.push({ key: 'm:' + keyOf(o.title + o.sub), title: o.title, sub: o.sub, ic: '', kind: 'head', cls: 'reward moment' + (o.tap ? ' tap' : ''), pri: 4, secs: 5.5, fight: false, hold: 90, age: 0, feed: false,
+      extra: o.chips ?? '', tapWord: o.tapWord, tap: o.tap });
+  }
+  /** A tap on the lane: a tip goes away; a moment does what it offers. */
+  tapped() {
+    const c = this.cur;
+    if (!c) return;
+    if (c.kind === 'tip') { this.dismissTip(); return; }
+    if (c.tap) { const f = c.tap; this.hide(); f(); }
   }
 
   /**
@@ -137,7 +158,7 @@ export class Notices {
   private drop(n: Note, unseen: boolean) { if (unseen && n.feed) this.toFeed(n.title, n.sub, n.kind); }
   /** One feed line, written on the next frame so a twin line from the same system can land first. */
   private toFeed(title: string, sub: string, kind: string) {
-    this.pend.push({ title, text: sub ? `${title} · ${sub}` : title, kind: kind === 'good' || kind === 'info' || kind === 'pb' ? 'sys' : kind === 'secret' || kind === 'level' ? 'quest' : kind });
+    this.pend.push({ title, text: sub ? `${title} · ${sub}` : title, kind: kind === 'good' || kind === 'info' || kind === 'pb' ? 'sys' : kind === 'secret' || kind === 'level' || kind === 'find' ? 'quest' : kind });
   }
   private flushFeed() {
     if (!this.pend.length) return;
@@ -155,6 +176,8 @@ export class Notices {
     this.tEl.innerHTML = (n.ic ? icon(n.ic, 13, 2.3) : '') + '<span></span>';
     this.tEl.lastElementChild!.textContent = n.title;
     if (n.kind === 'tip') this.sEl.innerHTML = n.sub; else this.sEl.textContent = n.sub;
+    const x = n.extra || n.tapWord ? `${n.extra ? `<div class="n-chips">${n.extra}</div>` : ''}${n.tapWord ? `<div class="n-tap">${n.tapWord}${icon('chev', 11, 3)}</div>` : ''}` : '';
+    if (this.xEl.innerHTML !== x) this.xEl.innerHTML = x;
   }
   private show(n: Note) {
     this.cur = n; this.t = n.secs; this.shown = 0;

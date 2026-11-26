@@ -43,7 +43,7 @@ export class Mech {
    * `kind` is a gate elite's own mechanic (null for everyone else); `tricks` are the signature tricks of
    * night elites, rares, champions and the named elites of the gauntlet and the vault (mechanics/tricks.ts).
    */
-  constructor(public m: Mob, public kind: MechDef | null, public tricks: Trick[] = [], private hint = '') {
+  constructor(public m: Mob, public kind: MechDef | null, public tricks: Trick[] = [], readonly hint = '') {
     if (kind === 'bulwark') { this.turnMul = 0.4; this.baseSpeed = 0.75; }
     if (kind === 'ram') m.poiseMul = 0.25;
     this.extra = [...(kind ? MECH_ATTACKS[kind] ?? [] : []), ...tricks.flatMap((t) => t.attacks)];

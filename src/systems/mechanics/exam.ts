@@ -51,6 +51,9 @@ export class WardenExam {
   }
   get asking() { return this.state === 'ask' || this.state === 'show'; }
   /** the pillar to strike next, if a question is open (the bot's handler reads it) */
+  /** seconds left to answer, of `WardenExam.ASK` (0 when no question is open): the boss bar's clock (ui/mechRead.ts) */
+  get left() { return this.state === 'ask' ? Math.max(0, this.t) : 0; }
+  static ASK = 14;
   get next(): Pillar | null { return this.state === 'ask' ? this.pillars[this.seq[this.step]] : null; }
   start(m: Mob) { this.m = m; this.state = 'rest'; this.t = 4; this.laneT = 7; this.answered = 0; }
   stop() {

@@ -117,7 +117,7 @@
   font-size: 10px; font-weight: 900; font-style: normal; letter-spacing: 0; line-height: 1; color: #2a1406; background: var(--amber); box-shadow: 0 0 0 1.5px #14171c; text-shadow: none; }
 .has-n > .cnt { display: inline-flex; } .has-n > .pip { display: none !important; }
 /* the grid: --tc columns (hud.trayCols): one row sideways, two rows on an upright phone past five entries */
-.tray { max-width: calc(100vw - 16px); box-sizing: border-box; }
+.tray { max-width: calc(100vw - 16px); box-sizing: border-box; translate: var(--tx, 0px) 0; }
 .tray-g { display: grid; grid-template-columns: repeat(var(--tc, 4), minmax(64px, 1fr)); gap: 2px; }
 #ui .tray .mbtn { position: relative; width: auto; min-width: 0; height: 56px; border-radius: 11px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--text); }
 #ui .tray .mbtn .mi { display: grid; }
@@ -164,7 +164,9 @@
 .tframe .tsub { font-size: 9.5px; font-weight: 700; color: var(--dim); letter-spacing: .1em; text-transform: uppercase; text-shadow: var(--tsh); }
 .tframe .trow { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 3px; min-height: 12px; }
 /* nothing to say under the bar: no row is kept for it */
-.tframe .trow:has(.tsub:empty):has(.tfx:empty) { display: none; }
+.tframe .trow:has(.tsub:empty):has(.tfx:empty):has(.tm:empty) { display: none; }
+/* an elite with a signature mechanic: its state and the answer take the line "Elite" had, so the frame grows no taller */
+.tframe .trow:has(.tm:not(:empty)) .tsub { display: none; }
 .tframe.boss { display: none; }
 /* stagger under health, the broken state and status effects: only when combat supplies them (hud.setTargetState) */
 .stg { display: none; height: 3px; margin-top: 2px; border-radius: 2px; background: rgba(5, 7, 11, .7); overflow: hidden; }
@@ -173,6 +175,28 @@
 .broken .stg i { background: linear-gradient(180deg, #fff, #9ff6ff); animation: brk .5s steps(2) infinite; }
 .broken .bar .fill { filter: brightness(1.35) saturate(.7); }
 @keyframes brk { 50% { opacity: .45; } }
+/* an elite's or a boss's signature mechanic (hud.drawMech, ui/mechRead.ts): one row under the bar. A chip says the state with a glyph
+   and a word, never colour alone (shield: an outline; weak: struck solid; rage: red; timer: with its clock); then the answer. */
+.tm { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 3px; min-width: 0; }
+.tm:empty { display: none; }
+.tm .mc { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 17px; padding: 0 7px 0 5px; border-radius: 9px; font-size: 9.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap;
+  color: #cfe9ff; background: rgba(8, 10, 14, .72); box-shadow: inset 0 0 0 1.25px currentColor; }
+.tm .mc b { font-weight: 800; }
+.tm .mc.weak { color: #1a1408; background: linear-gradient(180deg, #fff3c4, var(--gold)); box-shadow: 0 0 10px rgba(255, 207, 90, .55); animation: mcweak .7s ease-in-out infinite alternate; }
+@keyframes mcweak { to { box-shadow: 0 0 3px rgba(255, 207, 90, .3); } }
+.tm .mc.rage { color: #ffb3a3; background: rgba(60, 10, 6, .8); }
+.tm .mc.timer { color: var(--amber); }
+.tm .mc i { width: 30px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .16); overflow: hidden; }
+.tm .mc i u { display: block; height: 100%; background: currentColor; transform-origin: 0 50%; transition: transform .2s linear; }
+.tm .mc em { display: inline-flex; gap: 2px; }
+.tm .mc em s { width: 5px; height: 8px; border-radius: 1px; box-shadow: inset 0 0 0 1px currentColor; }
+.tm .mc em s.on { background: currentColor; }
+.tm .ma { min-width: 0; font-size: 10.5px; font-weight: 700; letter-spacing: .02em; color: #ece6da; text-shadow: var(--tsh); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tframe .tm { flex: 1 1 auto; justify-content: flex-start; margin-top: 0; }
+/* a desktop hangs the target frame under the boss bar: one row lower when the boss bar carries a mechanic row */
+.hud.boss-on[data-form=desktop]:has(.bossbar .tm:not(:empty)) :is(.s-target, .s-timer) { translate: 0 calc(84px * var(--ku, 1)); }
+#ui[data-form=desktop] .tm .mc { height: 20px; font-size: 11px; } #ui[data-form=desktop] .tm .ma { font-size: 12.5px; }
+html[data-motion=reduced] .tm .mc.weak { animation: none; }
 .tfx { display: flex; gap: 4px; align-items: center; }
 .tfx .fx { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--glass-2); box-shadow: inset 0 0 0 1.25px currentColor; }
 .tfx .fx.shock { color: var(--cyan); } .tfx .fx.burn { color: #ff8a3c; } .tfx .fx.jam { color: var(--purple); }
@@ -212,6 +236,12 @@
 .tracker .q { position: relative; margin-bottom: 7px; padding-left: 11px; }
 .tracker .q::before { content: ''; position: absolute; left: 1px; top: 4px; width: 5px; height: 5px; transform: rotate(45deg); background: var(--amber); box-shadow: 0 0 0 1px #000a; }
 .tracker .q.ready::before { background: var(--gold); box-shadow: 0 0 6px var(--gold); }
+/* a line that becomes about something else: the new words fade in once over the old, which fade out in place (hud.setTracker) */
+.tracker .q.in { animation: qin .45s ease-out both; }
+.tracker .q.out { position: absolute; left: 0; right: 0; margin: 0; pointer-events: none; animation: qout .3s ease-in both; }
+@keyframes qin { from { opacity: 0; transform: translateY(3px); } }
+@keyframes qout { to { opacity: 0; transform: translateY(-3px); } }
+html[data-motion=reduced] .tracker .q.in, html[data-motion=reduced] .tracker .q.out { animation-duration: .01s; }
 [data-h=r] > .tracker .q { text-align: right; padding: 0 11px 0 0; }
 [data-h=r] > .tracker .q::before { left: auto; right: 1px; }
 .s-tracker.k-one .q:nth-child(n+2), .s-tracker.k-two .q:nth-child(n+3), .s-tracker.k-three .q:nth-child(n+4) { display: none; }
@@ -424,6 +454,25 @@ body.desktop .ibtn small { display: block; }
 .note.head.lz-crate .n-t { color: var(--gold); } .note.head.lz-crate .n-s { color: #ffe9bf; }
 .note.head.on { animation: notehead .5s cubic-bezier(.2, .9, .3, 1); }
 @keyframes notehead { 0% { transform: scale(1.14); opacity: 0; } 100% { transform: none; opacity: 1; } }
+/* a find entered in the Tally Book (a brass cog): the name in gold, the cog turning once as it lands */
+.note.find .n-t { color: var(--gold); }
+.note.find.on .n-t svg { animation: cogturn .9s cubic-bezier(.2, .8, .3, 1); }
+@keyframes cogturn { from { transform: rotate(-200deg) scale(.6); } }
+/* a moment (a set completed): what it paid as chips under the lines, and the word that invites the one tap */
+.note .n-x:empty { display: none; }
+.note .n-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; margin-top: 8px; }
+.note .n-chips > span { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 9px 0 7px; border-radius: 11px; font-size: 11.5px; font-weight: 800; letter-spacing: .02em; color: #fff; white-space: nowrap;
+  background: rgba(8, 10, 14, .78); box-shadow: inset 0 0 0 1px rgba(255, 207, 90, .45); text-shadow: none; }
+.note .n-chips > .pn-scrip { color: var(--gold); } .note .n-chips > .pk { color: var(--cyan); } .note .n-chips > .ttl { color: #dcd3ff; } .note .n-chips > .tn { color: var(--amber); }
+.note .n-chips .pn-it { width: 16px; border-width: 1px; border-radius: 4px; box-shadow: none; }
+.note .n-tap { display: inline-flex; align-items: center; gap: 3px; margin-top: 7px; min-height: 20px; font-size: 10px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: #fff; text-shadow: var(--tsh); }
+.note.tap.on { pointer-events: auto; }
+.note.moment::before { inset: -10px 2% -12px; background: radial-gradient(closest-side, rgba(8, 10, 14, .62), rgba(8, 10, 14, 0)); }
+/* a phone on its side keeps the middle clear: the chips and the tap word share one row, the headline is a size smaller */
+#ui[data-form=landscape] .note.moment .n-x { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 10px; margin-top: 5px; }
+#ui[data-form=landscape] .note.moment .n-chips, #ui[data-form=landscape] .note.moment .n-tap { margin-top: 0; }
+#ui[data-form=landscape] .note.moment .n-t { font-size: 15px; padding-bottom: 2px; } #ui[data-form=landscape] .note.moment .n-s { margin-top: 2px; }
+#ui[data-form=desktop] .note .n-chips > span { height: 24px; font-size: 12.5px; } #ui[data-form=desktop] .note .n-tap { font-size: 11px; }
 /* a tip: what to do in a sentence; the control it is about pulses (.teach). A tap puts it away. */
 .note.tip.on { pointer-events: auto; }
 .note.tip .n-t { font-size: 9.5px; letter-spacing: .22em; color: var(--cyan); }

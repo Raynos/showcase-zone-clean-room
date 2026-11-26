@@ -253,7 +253,8 @@ export class Quests {
       html += '</div>';
     }
     html += this.game.grind?.trackerLine() ?? '';
-    if (html !== this.trackerSig) { this.trackerSig = html; this.game.hud.tracker.innerHTML = html; }
+    // (the HUD owns how a changing line appears: one cross-fade, then it holds: hud.setTracker)
+    if (html !== this.trackerSig) { this.trackerSig = html; this.game.hud.setTracker(html); }
     void ITEMS;
   }
 }

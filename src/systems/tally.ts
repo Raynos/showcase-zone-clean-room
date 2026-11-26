@@ -4,7 +4,7 @@ import { NAMED_RARES } from '../data/grind';
 import { COURSE_PARS, medalOf } from '../data/overtime';
 import { AREAS, CATS, CAT_BY_ID, ENTRIES, EXCHANGE, EXCHANGE_NPC, PLACED_COGS, SETS, type CatId, type Reward, type TallyEntry, type TallySet } from '../data/tally';
 import type { Game } from '../game';
-import { tallyPanel } from '../ui/panels/tally';
+import { rewardChips, tallyPanel } from '../ui/panels/tally';
 import type { PanelSpec } from '../ui/panels/common';
 import { kit } from '../world/west/kitA';
 import { fieldSave } from './objectives/save';
@@ -175,7 +175,8 @@ export class Tally {
     this.seen.add(e.key); t.seen.push(e.key); g.state.touch();
     const c = this.cat(e.cat), n = this.count(c), area = this.entries.filter((x) => x.area === e.area && x.cat === e.cat), an = this.count(area);
     if (e.cat === 'cog') {
-      g.hud.toast(this.name(e), 'secret', `Cog ${n} of ${c.length} · ${AREAS[e.area]} ${an}/${area.length}`, 'star');
+      // a cog is the book's own find: its own look on the notice lane (ui/notices.ts, kind `find`)
+      g.hud.toast(this.name(e), 'find', `Cog ${n} of ${c.length} · ${AREAS[e.area]} ${an}/${area.length}`, 'cog');
     } else if (e.cat === 'after') {
       g.hud.toast(this.name(e), 'pb', `After-hours trophy · ${n} of ${c.length}`, 'trophy');
       g.sfx('course_pb');
@@ -190,9 +191,9 @@ export class Tally {
     const g = this.game, t = tallySave(g);
     t.sets.push(s.id); g.state.touch();
     const words = this.grant(s.reward, s.name, false);
-    g.hud.banner('SET COMPLETE', `${s.name} · ${words}`, 'reward');
+    // a small celebration on the notice lane: the set, what it paid as chips, and one tap to the book's sets
+    g.hud.moment({ title: 'SET COMPLETE', sub: s.name, chips: rewardChips(s.reward), tapWord: 'Open the book', tap: () => g.panels?.open('tally', { tab: 'sets' }), feed: `Tally Book: ${s.name} complete. ${words}.` });
     g.sfx('victory_sting'); g.fx.levelUp(g.player.pos); g.haptic(40);
-    g.hud.log(`Tally Book: ${s.name} complete. ${words}.`, 'quest');
     g.state.save();
   }
 
@@ -241,7 +242,7 @@ export class Tally {
     const yaw = n.baseYaw ?? n.yaw, px = n.x + Math.sin(yaw) * 1.9, pz = n.z + Math.cos(yaw) * 1.9;
     this.bram = { x: px, y: g.terrain.h(px, pz), z: pz };
     g.interact.add({
-      id: 'cog_exchange', pos: new THREE.Vector3(px, this.bram.y + 0.6, pz), radius: 2.2, icon: 'coin', priority: 0.6,
+      id: 'cog_exchange', pos: new THREE.Vector3(px, this.bram.y + 0.6, pz), radius: 2.2, icon: 'cog', priority: 0.6,
       label: () => `Trade cogs with ${n.name}`,
       enabled: () => !g.interior && !!g.panels,
       onUse: () => g.panels?.open('tally', { tab: 'trade', at: 'bram' }),
@@ -264,7 +265,7 @@ export class Tally {
     const t = tallySave(g); t.bought[id] = (t.bought[id] ?? 0) + 1;
     const words = this.grant(tr.give, 'Old Bram');
     g.sfx('ui_buy'); g.haptic(14);
-    g.hud.toast(tr.name, 'loot', `${tr.cost} cogs to Old Bram · ${words}`, 'coin');
+    g.hud.toast(tr.name, 'loot', `${tr.cost} cogs to Old Bram · ${words}`, 'cog');
     g.state.save();
     return true;
   }

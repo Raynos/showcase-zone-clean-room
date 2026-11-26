@@ -9,7 +9,9 @@ import { BLAST_WALL } from '../world/layout';
 import { toggleView } from '../systems/view';
 import { icon } from './icons';
 import { formFor, OUTSIDE, pickLayout, SLOT_IDS, type Form, type Layout, type Place, type SlotId, type Stance } from './layout';
-import { Notices, type TipOpts } from './notices';
+import { Notices, type MomentOpts, type TipOpts } from './notices';
+import { readMech } from './mechRead';
+import type { Mob } from '../systems/mobs';
 import { QuickWheel, type QuickItem } from './quick';
 import './style.css';
 
@@ -342,11 +344,11 @@ export class Hud {
     this.scripEl = el('div', 'scrip', `${icon('coin', 13)}<span>0</span>`); S.scrip.appendChild(this.scripEl);
 
     // target + boss. The target frame is the target control: tap for the next one, hold to let go.
-    this.tframe = el('div', 'tframe', `<div class="tname shadow-text"></div><div class="bar"><i class="lag"></i><i class="fill"></i></div><div class="stg"><i></i></div><div class="trow"><div class="tsub"></div><div class="tfx"></div></div>`);
+    this.tframe = el('div', 'tframe', `<div class="tname shadow-text"></div><div class="bar"><i class="lag"></i><i class="fill"></i></div><div class="stg"><i></i></div><div class="trow"><div class="tsub"></div><div class="tm"></div><div class="tfx"></div></div>`);
     S.target.appendChild(this.tframe);
     this.tName = this.tframe.querySelector('.tname')!; this.tFill = this.tframe.querySelector('.fill')!; this.tLag = this.tframe.querySelector('.lag')!; this.tSub = this.tframe.querySelector('.tsub')!;
     this.tStg = this.tframe.querySelector('.stg i')!; this.tFx = this.tframe.querySelector('.tfx')!;
-    this.boss = el('div', 'bossbar', `<div class="bn"></div><div class="bar"><i class="lag"></i><i class="fill"></i><div class="ticks"></div></div><div class="stg"><i></i></div><div class="bs"></div><div class="tfx"></div>`);
+    this.boss = el('div', 'bossbar', `<div class="bn"></div><div class="bar"><i class="lag"></i><i class="fill"></i><div class="ticks"></div></div><div class="stg"><i></i></div><div class="bs"></div><div class="tfx"></div><div class="tm"></div>`);
     S.boss.appendChild(this.boss);
     this.bossName = this.boss.querySelector('.bn')!; this.bossFill = this.boss.querySelector('.fill')!; this.bossLag = this.boss.querySelector('.lag')!; this.bossSub = this.boss.querySelector('.bs')!;
     this.bStg = this.boss.querySelector('.stg i')!; this.bFx = this.boss.querySelector('.tfx')!;
@@ -406,7 +408,7 @@ export class Hud {
     this.timerEl = el('div', 'ctimer', '<div class="cl"></div><div class="ct"></div><div class="cs"></div><div class="cw"><i></i></div>'); S.timer.appendChild(this.timerEl);
     // the notice lane: one toast, headline or tip at a time (notices.ts). A tap puts a tip away.
     S.banner.appendChild(this.notices.el);
-    this.notices.el.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.notices.dismissTip(); });
+    this.notices.el.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.notices.tapped(); });
   }
 
   setVisible(v: boolean) { if (v !== this.visible) { this.visible = v; this.hud.classList.toggle('hidden', !v); if (!v) { this.setTray(false); this.wheel.close(); } } }
@@ -416,6 +418,14 @@ export class Hud {
     if (on === this.trayOpen) return;
     this.trayOpen = on; this.traySig = '';
     this.tray.classList.toggle('on', on); this.hub.classList.toggle('on', on);
+    if (on) this.trayFit();
+  }
+  /** The tray hangs from the menu glyph, and is held inside the safe area whatever its width and wherever the glyph sits. */
+  private trayFit() {
+    const t = this.tray, slot = this.slots.menu.getBoundingClientRect(), w = t.offsetWidth, pad = 8;
+    const left = this.slots.menu.dataset.h === 'l' ? slot.left : slot.right - w;
+    const lo = this.safe.l + pad, hi = Math.max(lo, this.w - this.safe.r - pad - w);
+    t.style.setProperty('--tx', `${Math.round(clamp(left, lo, hi) - left)}px`);
   }
   /**
    * The tray's grid: one row on a phone held sideways; on an upright phone one row up to five entries and two rows
@@ -454,6 +464,8 @@ export class Hud {
   // ---- messages ----
   /** News for a moment. Where it shows, and whether it shows now, is the notice lane's call (notices.ts). */
   toast(text: string, kind = 'info', sub = '', ic = '') { this.notices.toast(text, kind, sub, ic); }
+  /** A small celebration that takes one tap: a set completed, with what it paid as chips (notices.ts, `moment`). */
+  moment(o: MomentOpts) { this.notices.moment(o); }
   /** A headline: a level, a quest done, a zone's name, an encounter's call-out. */
   banner(b1: string, b2 = '', cls = '') {
     // a level says what it opened, in the one line under the number. Only the level's own headline: other moments
@@ -574,15 +586,14 @@ export class Hud {
     const ty = this.layout.form !== 'desktop' && tm && bottom > 0 ? Math.max(0, Math.round(bottom + 3 - ts.offsetTop)) : 0;
     if (ty !== this.timerY) { this.timerY = ty; ts.style.translate = ty ? `0 ${ty}px` : ''; }
     let y = this.laneY;
+    // the timer's lines as they stand: wherever the lane ends up, it is not across them
+    let r0 = 1e9, r1 = 0;
+    if (tm) for (let i = 0; i < kids.length; i++) if (kids[i].classList.contains('on')) { const r = kids[i].getBoundingClientRect(); if (r.height > 0) { r0 = Math.min(r0, r.top); r1 = Math.max(r1, r.bottom); } }
+    const laneH = Math.max(34, this.notices.el.offsetHeight), laneTop = s.offsetTop;
+    const pastTimer = (v: number) => (r1 > 0 && laneTop + v < r1 + 2 && laneTop + v + laneH > r0 - 2 ? Math.max(0, Math.round(r1 + 4 - laneTop)) : v);
     if (up) {
-      const top = s.offsetTop;
-      y = bottom > 0 ? Math.max(0, Math.round(bottom + 4 - top)) : 0;
-      if (tm) {
-        let r0 = 1e9, r1 = 0;
-        for (let i = 0; i < kids.length; i++) if (kids[i].classList.contains('on')) { const r = kids[i].getBoundingClientRect(); if (r.height > 0) { r0 = Math.min(r0, r.top); r1 = Math.max(r1, r.bottom); } }
-        const hgt = Math.max(34, this.notices.el.offsetHeight);
-        if (r1 > 0 && top + y < r1 + 2 && top + y + hgt > r0 - 2) y = Math.max(0, Math.round(r1 + 4 - top));
-      }
+      y = bottom > 0 ? Math.max(0, Math.round(bottom + 4 - laneTop)) : 0;
+      y = pastTimer(y);
     } else if (this.laneHold <= 0) y = 0;
     // An upright phone: the lane shares the top of the screen with the left column. The quest line keeps its
     // place and the lane hangs under it; the feed (chat and loot lines, which pass) gives way while a notice is lit.
@@ -595,8 +606,9 @@ export class Hud {
         if (c === log || !c.offsetHeight || getComputedStyle(c).opacity === '0') continue;
         cb = Math.max(cb, c.getBoundingClientRect().bottom);
       }
-      if (cb > top + y - 4) y = Math.round(cb + 6 - top);
-      const lr = log.getBoundingClientRect(), hgt = Math.max(34, this.notices.el.offsetHeight);
+      // (the column pushes the lane down; a wave or course timer may be the next thing below it)
+      if (cb > top + y - 4) y = pastTimer(Math.round(cb + 6 - top));
+      const lr = log.getBoundingClientRect(), hgt = laneH;
       give = lr.height > 0 && lr.top < top + y + hgt + 4 && lr.bottom > top + y + 1;
     }
     if (this.slots.log.classList.contains('yield') !== give) this.slots.log.classList.toggle('yield', give);
@@ -1018,7 +1030,69 @@ export class Hud {
     if (this.bossName.textContent !== name) this.bossName.textContent = name;
     const s = `scaleX(${clamp01(frac)})`;
     this.bossFill.style.transform = s; this.bossLag.style.transform = s;
+    // a boss with phases says which it is in, unless its own script already does (the Titan names its phases)
+    const b = this.game.bossMob;
+    if (b && b.def.boss && b.kind !== 'foreman' && !/phase/i.test(sub)) sub = `Phase ${b.phase} of 3 · ${sub}`;
     if (this.bossSub.textContent !== sub) this.bossSub.textContent = sub;
+  }
+  private trkHtml = ''; private trkKeys = ''; private trkHold = 0; private trkPend: string | null = null;
+  /** what a line of the quest column is about: its title, and for a bounty its words without the count */
+  private static lineKey(q: Element) { return (q.querySelector('.qt')?.textContent ?? '') + (q.classList.contains('gr-bq') ? '|' + (q.querySelector('.qo')?.textContent ?? '').replace(/[\d/]+/g, '#') : ''); }
+  /**
+   * The quest column's lines (systems/quests.ts writes them). A count on a line that stays changes at once. A line
+   * that becomes about something else cross-fades once (the old words fade out under the new) and then holds: nothing
+   * replaces it for two and a half seconds, so a line that flips back and forth is read, not flickered.
+   */
+  setTracker(html: string) {
+    if (html === this.trkHtml) { this.trkPend = null; return; }
+    const tpl = document.createElement('div');
+    tpl.innerHTML = html;
+    const now = Array.from(tpl.children).map(Hud.lineKey), keys = now.join('\n');
+    if (keys !== this.trkKeys && this.trkHold > 0) { this.trkPend = html; return; }
+    const t = this.tracker, old = Array.from(t.children).filter((c) => !c.classList.contains('out')) as HTMLElement[], oldKeys = old.map(Hud.lineKey), tops = old.map((o) => o.offsetTop);
+    this.trkHtml = html; this.trkPend = null;
+    t.innerHTML = html;
+    if (keys === this.trkKeys) return;
+    const first = this.trkKeys === '' && !old.length;
+    this.trkKeys = keys; this.trkHold = 2.5;
+    if (first) return;
+    Array.from(t.children).forEach((n, i) => {
+      if (oldKeys.includes(now[i])) return;
+      n.classList.add('in');
+      // the line it replaces fades out in place, once
+      const o = old[i];
+      if (o && !now.includes(oldKeys[i])) {
+        o.classList.add('out'); o.style.top = `${tops[i]}px`;
+        o.addEventListener('animationend', () => o.remove(), { once: true });
+        t.appendChild(o);
+      }
+    });
+  }
+  private mechSig = '';
+  /**
+   * The signature mechanic of what the target frame or the boss bar shows (ui/mechRead.ts), as one row under the bar:
+   * a chip for its state (a glyph and a word; a clock or pips when it counts), then the answer in a few words.
+   */
+  private drawMech() {
+    const g = this.game, t = g.combat.target, boss = this.bossOn ? g.bossMob : null;
+    const m = boss ?? (t && t.alive && t.cls !== 'boss' && this.tframe.classList.contains('on') ? t : null);
+    const r = m && 'mech' in m ? readMech(g, m as Mob) : null;
+    const sig = r ? (boss ? 'B' : 'T') + r.kind + '|' + r.word + '|' + (r.frac === undefined ? '' : Math.round(r.frac * 40)) + '|' + (r.pips ?? '') + '|' + r.answer : '';
+    if (sig === this.mechSig) return;
+    this.mechSig = sig;
+    let html = '';
+    if (r) {
+      if (r.word) {
+        html += `<span class="mc ${r.kind}">${icon(r.ic, 11, 2.4)}<b>${r.word}</b>`;
+        if (r.frac !== undefined) html += `<i><u style="transform:scaleX(${clamp01(r.frac).toFixed(3)})"></u></i>`;
+        if (r.pips !== undefined) html += `<em>${'<s class="on"></s>'.repeat(r.pips)}${'<s></s>'.repeat(Math.max(0, 3 - r.pips))}</em>`;
+        html += '</span>';
+      }
+      if (r.answer) html += `<span class="ma">${r.answer}</span>`;
+    }
+    const mine = boss ? this.boss : this.tframe, other = boss ? this.tframe : this.boss;
+    (mine.querySelector('.tm') as HTMLElement).innerHTML = html;
+    (other.querySelector('.tm') as HTMLElement).innerHTML = '';
   }
   setTarget(info: { name: string; level: number; frac: number; cls: string; sub: string } | null) {
     this.tframe.classList.toggle('on', !!info);
@@ -1117,9 +1191,12 @@ export class Hud {
     L.length = 0; B.length = 0;
     for (const [k, p] of this.plates) { if (!p.used) { p.root.remove(); this.plates.delete(k); } else L.push(p); }
     L.sort((a, b) => b.pri - a.pri);
+    const K = this.keepOut();
     for (const p of L) {
       const w = p.w * p.sc + 6, h = p.h * p.sc + 3;
       let y = p.y, ok = p.op > 0.02;
+      // a name in the world never runs through the HUD's own words (the quest line, chat, the lane): it waits out of sight
+      for (let i = 0; ok && i < K.length; i += 4) if (p.x + w / 2 > K[i] && p.x - w / 2 < K[i + 2] && y > K[i + 1] && y - h < K[i + 3]) ok = false;
       for (let n = 0; ok && n < 4; n++) {
         let hit = -1;
         for (let i = 0; i < B.length; i += 4) if (Math.abs(B[i] - p.x) < (B[i + 2] + w) / 2 && y > B[i + 1] - B[i + 3] && y - h < B[i + 1]) { hit = i; break; }
@@ -1134,6 +1211,33 @@ export class Hud {
       p.root.style.transform = `translate(${p.x.toFixed(1)}px,${y.toFixed(1)}px) scale(${p.sc.toFixed(3)}) translate(-50%,-100%)`;
       p.root.style.opacity = p.op >= 1 ? '1' : p.op.toFixed(2);
     }
+  }
+  private keep: number[] = []; private keepAt = -1;
+  /**
+   * Where the HUD is showing words right now (left, top, right, bottom for each): the left column's lines, the
+   * notice lane, the timer, the target frame, the boss bar. Measured four times a second.
+   */
+  private keepOut(): number[] {
+    const now = performance.now(), K = this.keep;
+    if (now - this.keepAt < 250) return K;
+    this.keepAt = now; K.length = 0;
+    const add = (e: Element | null) => {
+      if (!e) return;
+      const r = e.getBoundingClientRect();
+      if (r.width > 4 && r.height > 4 && getComputedStyle(e).opacity !== '0') K.push(r.left - 2, r.top - 2, r.right + 2, r.bottom + 2);
+    };
+    const col = this.slots.tracker.children;
+    for (let i = 0; i < col.length; i++) {
+      // the feed's box is the column's width: its lines are what must stay clear
+      const c = col[i], lines = c === this.slots.log ? c.querySelectorAll('.lz-feed-lines > *') : null;
+      if (lines && lines.length) lines.forEach(add); else add(c);
+    }
+    if (this.notices.lit) add(this.notices.el);
+    const ts = this.slots.timer.children;
+    for (let i = 0; i < ts.length; i++) if (ts[i].classList.contains('on')) add(ts[i]);
+    if (this.tframe.classList.contains('on')) add(this.tframe);
+    if (this.bossOn) add(this.boss);
+    return K;
   }
   setReticle(pos: { x: number; y: number; z: number } | null, size = 1) {
     if (!pos || !this.project(pos, this.scr)) { this.reticle.classList.remove('on'); return; }
@@ -1205,6 +1309,8 @@ export class Hud {
     const cur = g.panels?.current as string | null | undefined, veil = !!cur && (cur === 'talk' || this.layout.form !== 'desktop');
     if (veil !== this.veiled) { this.veiled = veil; this.hud.classList.toggle('veiled', veil); if (veil) { this.setTray(false); this.wheel.close(); this.releaseAll(); } }
     if (this.trayOpen) this.drawTray();
+    this.drawMech();
+    if (this.trkHold > 0 && (this.trkHold -= dt) <= 0 && this.trkPend !== null) this.setTracker(this.trkPend);
     if (this.capT > 0) { this.capT -= dt; if (this.capT <= 0) this.capEl.classList.remove('on'); }
     // stick
     const sk = g.input.stick;

@@ -357,6 +357,8 @@ export class Cling extends Trick {
   private t = 3; private on = -1;
   constructor(m: Mob) { super(m, 'cling'); }
   override onHit(h: HitInfo) { if (this.on >= 0 && (h.heavy || (h.poise ?? 1) >= 2 || h.weak === 'COIL' || h.weak === 'LENS')) this.snap('SNAPPED'); }
+  /** how far the tether has charged, 0 to 1, or -1 when there is none (ui/mechRead.ts) */
+  get charge() { return this.on < 0 ? -1 : clamp01(this.on / 3.6); }
   private snap(w: string) { this.on = -1; this.word(w, 'miss'); this.g.sfx('arc_zap', { pos: this.m.pos, pitch: 1.4 }); }
   update(dt: number) {
     const g = this.g, m = this.m, pl = g.player;
@@ -433,6 +435,8 @@ export class Guard extends Trick {
     ];
   }
   get guarding() { return this.guardT > 0; }
+  /** the guard has dropped and it is open to a blow (ui/mechRead.ts) */
+  get open() { return this.openT > 0; }
   override takenMul() { return this.guardT > 0 ? 0.1 : this.openT > 0 ? 1.35 : 1; }
   override poiseMul() { return this.guardT > 0 ? 0 : this.openT > 0 ? 1.5 : 1; }
   override onHit(h: HitInfo) {
@@ -477,6 +481,8 @@ export class Link extends Trick {
   private links: Array<{ o: Mob; cutT: number }> = []; private scanT = 0; private tick = 0;
   constructor(m: Mob) { super(m, 'link'); }
   private live() { let n = 0; for (const l of this.links) if (l.cutT <= 0 && l.o.alive) n++; return n; }
+  /** at least one line is up (the target frame shows the shield: ui/mechRead.ts) */
+  get linked() { return this.live() > 0; }
   override takenMul() { return this.live() > 0 ? 0.3 : 1; }
   override poiseMul() { return this.live() > 0 ? 0.3 : 1; }
   override onHit() { if (this.live() > 0) { const g = this.g; if (g.time - this.tick > 0.6) { this.tick = g.time; this.word('LINKED', 'miss'); } } }
