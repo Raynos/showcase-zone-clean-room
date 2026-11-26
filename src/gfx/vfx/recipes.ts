@@ -100,11 +100,11 @@ export const RECIPES: Record<string, Recipe> = {
       _a.y = gy + 0.42;
       fx.emit(_a, { additive: false, count: hoof ? 5 : run ? 4 : 3, speed: [0.6, 2], up: hoof ? 4 : run ? 3.5 : 2.9, life: [0.45, 0.75], size: [0.2, 0.34], grow: 1, colors: KICKED, gravity: 10, drag: 0.8, spin: 12, sprite: SP.BLADE, aspect: 0.5, radius: 0.12 });
       // and the pale dust of a dry meadow
-      fx.emit(_a, { additive: false, count: 1, speed: [0.3, 0.9], up: 0.5, life: [0.45, 0.75], size: [(hoof ? 0.38 : run ? 0.34 : 0.3) * s, (hoof ? 0.54 : run ? 0.46 : 0.42) * s], grow: 2, color: 0xefe4c2, alpha: hoof ? 0.55 : run ? 0.5 : 0.42, drag: 2.3, sprite: SP.PUFF, spin: 2, ground: gy });
+      fx.emit(_a, { additive: false, count: 1, speed: [0.3, 0.9], up: 0.5, life: [0.45, 0.75], size: [(hoof ? 0.38 : run ? 0.34 : 0.3) * s, (hoof ? 0.54 : run ? 0.46 : 0.42) * s], grow: 2, color: 0xdccfa8, alpha: hoof ? 0.34 : run ? 0.34 : 0.3, drag: 2.3, sprite: SP.PUFF, spin: 2, ground: gy });
       return;
     }
     if (surf === 'dirt') {
-      fx.emit(_a, { additive: false, count: 1, speed: [0.2, 0.7], up: 0.3, life: [0.4, 0.7], size: [(run ? 0.32 : 0.24) * s, (run ? 0.44 : 0.34) * s], grow: 2, color: 0xe6dcc0, alpha: run ? 0.46 : 0.36, drag: 2.3, sprite: SP.PUFF, spin: 2, ground: gy });
+      fx.emit(_a, { additive: false, count: 1, speed: [0.2, 0.7], up: 0.3, life: [0.4, 0.7], size: [(run ? 0.32 : 0.24) * s, (run ? 0.44 : 0.34) * s], grow: 2, color: 0xd8caa6, alpha: run ? (hoof ? 0.3 : 0.36) : 0.3, drag: 2.3, sprite: SP.PUFF, spin: 2, ground: gy });
       if (run) fx.emit(_a, { additive: false, count: hoof ? 4 : 2, speed: [0.8, 2.6], up: hoof ? 2.6 : 1.8, life: [0.35, 0.6], size: [0.04, 0.08], grow: 1, color: 0x8a6f4e, color2: 0xb39a74, gravity: 13, sprite: SP.DOT, spread: 1.3 });
       return;
     }
