@@ -7,6 +7,10 @@ const _v = new THREE.Vector3(), _dir = new THREE.Vector3(), _t = new THREE.Vecto
 const _fq = new THREE.Quaternion(), _fe = new THREE.Euler(0, 0, 0, 'YXZ'), _fp = new THREE.Vector3(), _fd = new THREE.Vector3();
 /** radius of the ball swept for camera collision, metres */
 const LENS_R = 0.3;
+/** under this much free distance behind the hero the third-person lens swings round or rises (cramped) */
+const CRAMP = 1.5;
+/** the high three-quarter pitch a cramped lens rises to when no side has room */
+const HIGH_34 = 0.85;
 /** how far under the lens the drawn world must also be clear, metres (the bottom edge of the picture) */
 const DROP = 0.9;
 
@@ -250,6 +254,44 @@ export class CameraRig {
     return wrapAngle(held + angleDiff(held, wrapAngle(m)) * u - psi);
   }
 
+  /**
+   * Third person in a tight spot (a wall, a stall, a post or a crate stack right behind the hero, under
+   * CRAMP of free distance for a moment): the lens would sit on the hero's head. Rather, it swings round the
+   * obstacle to the nearest side with room, or where no side has room rises to a high three-quarter view;
+   * the hero's upper body dissolves near the lens as before (game.ts). Only while the player is not steering
+   * the camera; never in a cutscene, over the shoulder or in first person.
+   */
+  private crampT = 0;
+  /** where a cramped lens is going, held for a moment so an edge it brushes on the way does not undo it */
+  private crampYaw = 0; private crampHold = 0; private crampHigh = 0;
+  private cramped(pivot: THREE.Vector3, free: number, sh: number, dt: number) {
+    if (this.cine || sh > 0.05 || this.fpK > 0.05 || this.idleLook < 0.8 || this.distWant < CRAMP + 0.3) { this.crampT = 0; this.crampHold = 0; this.crampHigh = 0; return; }
+    this.crampHold -= dt; this.crampHigh -= dt;
+    if (this.crampHold > 0) { this.autoYaw(this.crampYaw, 2.4, dt, true); return; }
+    if (this.crampHigh > 0) { this.pitch = damp(this.pitch, HIGH_34, 2.2, dt); return; }
+    this.crampT = free < CRAMP ? this.crampT + dt : 0;
+    if (this.crampT < 0.3) return;
+    const room = (yaw: number, pitch: number) => {
+      const c = Math.cos(pitch);
+      _v.set(Math.sin(yaw) * c, Math.sin(pitch), Math.cos(yaw) * c);
+      const s = this.physics.spherecast(pivot, _v, this.distWant, LENS_R, RAY_WORLD);
+      // (a pivot already touching something sweeps nothing: a thin ray instead, as the orbit does)
+      let d = s === null ? this.distWant : s > 0.02 ? s : (this.physics.raycast(pivot, _v, this.distWant, RAY_WORLD)?.dist ?? this.distWant) - 0.35;
+      const o = this.occ ? this.occ.sweep(pivot, _v, this.distWant, LENS_R) : null;
+      if (o !== null) d = Math.min(d, o);
+      return d;
+    };
+    // the side with the most room (a little extra turn past the edge, so the line clears it), the nearer on a tie
+    let bestYaw = this.yaw, best = free;
+    for (const a of [0.45, -0.45, 0.9, -0.9, 1.35, -1.35]) {
+      const d = room(this.yaw + a, this.pitch);
+      if (d > best + 0.4) { best = d; bestYaw = this.yaw + a + Math.sign(a) * 0.15; }
+    }
+    this.crampT = 0;
+    if (best >= CRAMP) { this.crampYaw = bestYaw; this.crampHold = 1.4; }
+    else if (room(this.yaw, HIGH_34) > free + 0.4) this.crampHigh = 1.4;
+  }
+
   /** Turn toward a yaw by itself; with `latch`, a held stick keeps its world direction through the turn. */
   private autoYaw(want: number, rate: number, dt: number, latch: boolean) {
     const before = this.yaw;
@@ -439,6 +481,7 @@ export class CameraRig {
     // right down to the pivot if it must: the hero dissolves near the lens, a wall would not
     if (sweep !== null || drawn !== null) maxD = clamp(maxD, 0.08, this.distWant);
     const blocked = maxD < this.distWant - 0.05;
+    this.cramped(pivot, maxD, sh, dt);
     // in at once (a wall is never seen through); out again over about a second, so a post or an edge
     // the line brushes past does not pump the lens in and out
     if (maxD < this.distCur) this.distCur = damp(this.distCur, maxD, 40, dt);
