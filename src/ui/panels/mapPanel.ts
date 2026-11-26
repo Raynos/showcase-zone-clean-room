@@ -395,7 +395,8 @@ export const mapPanel: PanelSpec = {
     return {
       render,
       update(dt) {
-        t += dt;
+        // the map's own clock never runs backwards: a negative step made the pulsing rings' radii negative and the canvas threw
+        if (dt > 0) t += dt;
         fit();
         if (follow && !g.interior) { cx = p.x; cz = p.z; limit(); }
         draw();

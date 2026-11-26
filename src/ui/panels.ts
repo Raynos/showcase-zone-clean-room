@@ -167,7 +167,8 @@ export class Panels implements System, Host {
   private tick = (now: number) => {
     this.raf = 0;
     if (!this.current && !this.titleOpen) return;
-    const dt = Math.min(0.1, (now - this.last) / 1000);
+    // a frame's timestamp can predate the open that set `last`, so the first step may come out negative
+    const dt = Math.min(0.1, Math.max(0, (now - this.last) / 1000));
     this.last = now;
     this.view?.update?.(dt);
     if (this.spec?.scrip) {
