@@ -1266,7 +1266,9 @@ function dressing(c: Ctx) {
   const put = (x: number, z: number, ry: number, f: (g: Geo) => void) => { const g = c.chunks.solid(x, z); g.at(x, 0, z, ry, () => f(g)); };
   // East Gate yard
   put(-0.2, -8.2, 0.2, (g) => crateStack(g, r, 5, { stripe: true }));
-  put(0.6, 8.0, 0, (g) => { barrel(g, 1, { color: PAL.orangeDeep }); barrel(g, 1, { x: -0.95, z: 0.2, color: PAL.teal }); barrel(g, 0.9, { x: -0.4, z: 1.0 }); });
+  // a clear lane between these and the gate tower's footing (its face is at x 1.5): with a hand's gap
+  // the hero walked into the pocket on the way to the gate and could not leave it southward
+  put(-0.6, 8.0, 0, (g) => { barrel(g, 1, { color: PAL.orangeDeep }); barrel(g, 1, { x: -0.95, z: 0.2, color: PAL.teal }); barrel(g, 0.9, { x: -0.4, z: 1.0 }); });
   put(-13.8, 18.4, -0.4, (g) => cart(g, r, { load: 'crates' }));
   put(-15.6, -20.2, 0, (g) => planter(g, r, 2.6, 0.8));
   put(-1.6, -19.6, 0, (g) => planter(g, r, 2.6, 0.8, { tall: true }));
