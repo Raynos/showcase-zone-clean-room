@@ -403,7 +403,7 @@ export class Game {
   private updateHudButtons() {
     const c = this.combat, hud = this.hud;
     const t = c.target;
-    hud.setTarget(t && t.alive && t.cls !== 'boss' ? { name: t.name, level: t.level, frac: t.hpFrac, cls: t.cls, sub: t.cls === 'elite' ? 'Elite' : t.cls === 'rare' ? 'Rare' : t.cls === 'night' ? 'Night shift' : '' } : null);
+    hud.setTarget(t && t.alive && t.cls !== 'boss' ? { name: t.name, level: t.level, frac: t.hpFrac, cls: t.cls, sub: t.cls === 'elite' ? 'Elite' : t.cls === 'rare' ? 'Rare' : t.cls === 'practice' ? 'Practice · cannot fall' : t.cls === 'night' ? 'Night shift' : '' } : null);
     // the shooter stance's crosshair is the reticle (systems/shooter.ts)
     if (t && t.alive && c.stance !== 'shooter') { t.center(_v); hud.setReticle(_v, clamp(t.radius * 1.4, 0.7, 4)); } else hud.setReticle(null);
   }

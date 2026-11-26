@@ -41,6 +41,12 @@ export interface HitInfo {
 export interface Hittable {
   pos: THREE.Vector3; radius: number; height: number; alive: boolean; targetable: boolean;
   name: string; level: number; hpFrac: number; cls: string;
+  /**
+   * A practice prop that cannot be knocked down and counts for no objective (the range's Damage Meter
+   * Dummy). Targeting passes over it while anything else is in reach, and gives it up as soon as
+   * something that can fall comes into reach.
+   */
+  practice?: boolean;
   center(out: THREE.Vector3): THREE.Vector3;
   /** returns damage actually dealt */
   takeHit(h: HitInfo): number;
@@ -226,14 +232,20 @@ export class Combat {
   }
 
   // ------------------------------------------------------------------ targeting
-  private acquire(range: number, preferYaw: number): Hittable | null {
+  /**
+   * The best thing to hit within `range`, weighing distance against how far it lies off `preferYaw`.
+   * A practice prop is picked only when nothing else is in reach. With `cone`, only what lies within
+   * that many radians of `preferYaw` is considered.
+   */
+  private acquire(range: number, preferYaw: number, cone = Infinity): Hittable | null {
     const p = this.game.player.pos;
     let best: Hittable | null = null, bs = 1e9;
     for (const h of this.candidates()) {
       const dx = h.pos.x - p.x, dz = h.pos.z - p.z, d = Math.hypot(dx, dz) - h.radius;
       if (d > range || Math.abs(h.pos.y - p.y) > 14) continue;
       const a = Math.abs(angleDiff(preferYaw, Math.atan2(dx, dz)));
-      const s = d + a * (d < 4 ? 2.5 : 9);
+      if (a > cone) continue;
+      const s = d + a * (d < 4 ? 2.5 : 9) + (h.practice ? 1e5 : 0);
       if (s < bs) { bs = s; best = h; }
     }
     return best;
@@ -251,7 +263,9 @@ export class Combat {
   }
   private cycle() {
     const p = this.game.player.pos;
-    const list = [...this.candidates()].filter((h) => Math.hypot(h.pos.x - p.x, h.pos.z - p.z) < 40).sort((a, b) => a.pos.distanceToSquared(p) - b.pos.distanceToSquared(p));
+    // nearest first; a practice prop comes after everything that can fall
+    const list = [...this.candidates()].filter((h) => Math.hypot(h.pos.x - p.x, h.pos.z - p.z) < 40)
+      .sort((a, b) => (a.practice ? 1e6 : 0) + a.pos.distanceToSquared(p) - (b.practice ? 1e6 : 0) - b.pos.distanceToSquared(p));
     if (!list.length) { this.target = null; return; }
     const i = this.target ? list.indexOf(this.target) : -1;
     this.target = list[(i + 1) % list.length];
@@ -262,10 +276,20 @@ export class Combat {
     // the shooter stance has no target to turn to: the crosshair is the aim
     if (this.stance === 'shooter') return null;
     const t = this.target;
-    if (t && t.alive && Math.hypot(t.pos.x - p.x, t.pos.z - p.z) - t.radius < range + 2) return t;
     // prefer where the stick points, else where the camera looks
     // first person: where the view looks, not where the stick strafes
     const yaw = g.cameraRig.fp ? g.cameraRig.yaw + Math.PI : pl.moveHeading ?? g.cameraRig.yaw + Math.PI;
+    if (t && t.alive && Math.hypot(t.pos.x - p.x, t.pos.z - p.z) - t.radius < range + 2) {
+      // a practice prop gives way to anything in reach that can fall
+      if (t.practice) { const n = this.acquire(range, yaw); if (n && !n.practice) { this.target = n; return n; } return t; }
+      // the stick points well away from the target and straight at something else: the attack goes
+      // where the player turned (a strafe round the target keeps it)
+      if (pl.moveHeading !== null && !g.cameraRig.fp && Math.abs(angleDiff(pl.moveHeading, Math.atan2(t.pos.x - p.x, t.pos.z - p.z))) > 1.2) {
+        const n = this.acquire(range, pl.moveHeading, 0.55);
+        if (n && n !== t && !n.practice) { this.target = n; return n; }
+      }
+      return t;
+    }
     const n = this.acquire(range, yaw);
     if (n) this.target = n;
     return n;

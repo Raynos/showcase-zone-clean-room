@@ -314,7 +314,8 @@ const TIERS = [
   { name: 'Straw Dummy', hp: 0.5, cls: 'normal', scale: 0.92 },
   { name: 'Training Dummy', hp: 1.0, cls: 'normal', scale: 1.0 },
   { name: 'Plated Dummy', hp: 3.2, cls: 'elite', scale: 1.14 },
-  { name: 'Damage Meter Dummy', hp: 0, cls: 'rare', scale: 1.08 },
+  // the meter dummy only reads damage: a plain practice plate, never a rare, and targeting passes it over
+  { name: 'Damage Meter Dummy', hp: 0, cls: 'practice', scale: 1.08 },
 ] as const;
 
 function dummyMesh(tier: number): THREE.Mesh {
@@ -354,13 +355,13 @@ function dummyMesh(tier: number): THREE.Mesh {
 
 class Dummy implements Hittable {
   pos = new THREE.Vector3(); radius = 0.55; height = 2.1; alive = true; targetable = true;
-  name: string; cls: string; hp = 1; maxHp = 1;
+  name: string; cls: string; hp = 1; maxHp = 1; practice = false;
   mesh: THREE.Mesh;
   private ax = 0; private az = 0; private vx = 0; private vz = 0;   // tilt angles (local) and velocities
   private downT = 0; private dx = 0; private dz = 1;
   constructor(private game: Game, x: number, y: number, z: number, public yaw: number, public tier: number, private onDmg: (n: number, crit: boolean) => void) {
     const tr = TIERS[tier];
-    this.name = tr.name; this.cls = tr.cls;
+    this.name = tr.name; this.cls = tr.cls; this.practice = tier === 3;
     this.pos.set(x, y, z);
     this.mesh = dummyMesh(tier);
     this.mesh.scale.setScalar(tr.scale);
@@ -528,7 +529,7 @@ export function start(game: Game) {
   });
   game.plateFns.push(() => {
     if (!near(game, RING.x, RING.z, 26)) return;
-    dummies.forEach((d, i) => { if (d.alive) game.hud.plate('dummy' + i, d.center(_v).setY(d.pos.y + 2.55), { name: d.name, level: d.level, hp: d.tier === 3 ? undefined : d.hp < d.maxHp ? d.hpFrac : undefined, cls: d.cls }); });
+    dummies.forEach((d, i) => { if (d.alive) game.hud.plate('dummy' + i, d.center(_v).setY(d.pos.y + 2.55), { name: d.name, level: d.level, hp: d.tier === 3 ? undefined : d.hp < d.maxHp ? d.hpFrac : undefined, cls: d.cls, title: d.tier === 3 ? 'Practice · reads damage' : undefined }); });
   });
 
   // secrets
