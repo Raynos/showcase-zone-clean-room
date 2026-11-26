@@ -3,6 +3,7 @@ import type { Game } from '../../game';
 import { GAUNTLET } from '../../world/layout';
 import type { Mob } from '../mobs';
 import type { Tally } from '../tally';
+import { playDt } from '../playclock';
 import { choose } from './choose';
 import { otSave, weekNo } from './save';
 
@@ -117,7 +118,8 @@ export class LongShift {
     // walking out of the court (or being carried off by a portal or the menu's way home) ends the shift
     if (!this.inCourt(0.4)) { this.out += dt; if (this.out > 2 || g.interior || !this.inCourt(40)) { this.end('Walked off the floor'); return; } }
     else this.out = 0;
-    this.delay -= dt;
+    // the breaks between waves are a play clock: they wait out a menu that stops play (systems/playclock.ts)
+    this.delay -= playDt(g, dt);
     const alive = this.mobs.filter((m) => m.alive).length;
     g.hud.setTimer('The Long Shift', this.wave ? `WAVE ${this.wave}` : 'READY', this.out > 0 ? 'Back in the court!' : this.state === 'fight' ? `${alive} left · best ${otSave(g).shift.best}` : `${this.cleared} cleared`);
     if (this.state === 'pre' && this.delay <= 0) { this.wave = 1; this.spawn(1); this.state = 'fight'; }

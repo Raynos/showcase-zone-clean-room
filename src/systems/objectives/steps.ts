@@ -7,6 +7,7 @@ import type { RobotKind } from '../../entities/robots/types';
 import type { Game } from '../../game';
 import { PAL } from '../../world/layout';
 import type { Mob, MobOpts } from '../mobs';
+import { playDt } from '../playclock';
 
 /** A waypoint for the guide: a point, a moving point (re-read twice a second), or an area (r). */
 export interface Target { x: number; z: number; y?: number; label: string; r?: number }
@@ -274,7 +275,7 @@ export function defend(c: StepCtx, s: S<'defend'>): Ctl {
       for (const m of live) if (m.alive && flat(m.pos.x, m.pos.z, x, z) < 3.6 + m.radius) hp -= (5 + m.level * 0.3) * dt;
       if (hp <= 0) { fail(`The ${s.label.toLowerCase()} is scattered`); return; }
       if (state === 'gap') {
-        gap -= dt;
+        gap -= playDt(g, dt);
         g.hud.setTimer(`Wave ${wave + 1}/${s.waves.length}`, `${Math.max(0, gap).toFixed(0)}s`, away > 0 ? `Back to the stack: ${Math.ceil(8 - away)}s` : `${s.label} ${Math.round((hp / s.hp) * 100)}%`, hp / s.hp);
         if (gap <= 0) {
           const w = s.waves[wave]; state = 'wave'; live = [];
@@ -330,7 +331,8 @@ export function run(c: StepCtx, s: S<'run'>): Ctl {
         if (horse && mount() === 'horse' && !g.player.dead && flat(p.x, p.z, sx, sz) < 4.5) go();
         return;
       }
-      t += dt;
+      // the run's clock is a play clock (systems/playclock.ts): it waits out a cutscene or a menu that stops play
+      t += playDt(g, dt);
       const left = s.time - t, p = pl(g), [gx, gz] = s.gates[gate];
       g.hud.setTimer(s.label, `${Math.max(0, left).toFixed(1)}`, `Gate ${gate + 1}/${s.gates.length}`);
       if (Math.random() < dt * 10) g.fx.ring({ x: gx, y: ground(g, gx, gz) + 0.15, z: gz }, horse ? 4.5 : 3.2, horse ? 0x5ef0ff : 0xff7a3a, 0.5, 3);
@@ -382,7 +384,7 @@ export function rare(c: StepCtx, s: S<'rare'>): Ctl {
       const p = pl(g);
       if (!mob && !gone && flat(p.x, p.z, x, z) < 70) { mob = c.spawn({ kind: s.kind, n: 1, level: s.level }, x, z, false, { variant: 'rare', name: s.name }); g.hud.toast(s.name, 'warn', 'It knows you are following'); }
       if (!mob) return;
-      if (mob.aggro || flat(p.x, p.z, mob.pos.x, mob.pos.z) < 40) t += dt;
+      if (mob.aggro || flat(p.x, p.z, mob.pos.x, mob.pos.z) < 40) t += playDt(g, dt);
       if (t > 0 && mob.alive) g.hud.setTimer(s.name, `${Math.max(0, s.time - t).toFixed(0)}s`, 'before it gets away');
       if (mob.alive && t > s.time) {
         g.fx.ring({ x: mob.pos.x, y: mob.pos.y + 0.5, z: mob.pos.z }, 3, 0x7ff0ff, 0.5, 3); g.sfx('teleport', { pos: mob.pos });
@@ -610,7 +612,7 @@ export function drop(c: StepCtx, s: S<'drop'>, boardAt: [number, number]): Ctl {
           }
           g.scene.add(mesh);
         }
-        mem.t = (mem.t ?? T) - dt;
+        mem.t = (mem.t ?? T) - playDt(g, dt);
         g.hud.setTimer('Cells burning out', `${Math.max(0, mem.t).toFixed(0)}s`, `${c.prog()}/3 grabbed`);
         for (const cl of cells) if (cl.it && Math.random() < dt * 5) g.fx.emit({ x: cl.x, y: ground(g, cl.x, cl.z) + 0.5, z: cl.z }, { count: 1, speed: [0.3, 0.8], up: 2.5, life: [0.5, 0.9], size: [0.1, 0.16], color: 0x7dffb0, glow: 4, gravity: -1, radius: 0.2 });
         if (mem.t <= 0) { mem.landed = null; c.reset(0, 1); c.reset(0, 0); c.fail('The cells burned out', 'Signal another drop from the board'); }

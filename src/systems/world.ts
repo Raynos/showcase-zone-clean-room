@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { G_WORLD, type Physics, RAPIER } from '../core/physics';
 import { fmtTime } from '../core/util';
 import type { Game } from '../game';
+import { playDt } from './playclock';
 
 const _p = new THREE.Vector3(), _q = new THREE.Quaternion();
 
@@ -127,7 +128,8 @@ export class Course {
   }
   update(dt: number) {
     if (!this.running) return;
-    this.time += dt;
+    // a play clock: from the first frame of control, never through a cutscene or a menu that stops play
+    this.time += playDt(this.game, dt);
     this.game.hud.setTimer(this.name, fmtTime(this.time), this.total ? `${this.marks}/${this.total}` : isFinite(this.pb) ? `best ${fmtTime(this.pb)}` : '');
   }
 }

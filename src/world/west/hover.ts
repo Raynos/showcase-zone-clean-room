@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { Rng, fmtTime } from '../../core/util';
 import type { Game } from '../../game';
+import { playDt } from '../../systems/playclock';
 import type { Geo } from '../../gfx/geo';
 import { T } from '../../gfx/textures';
 import { PADS, PAL } from '../layout';
@@ -302,7 +303,8 @@ export function start(game: Game) {
   g.addSystem({
     update: (dt: number) => {
       if (!running) return;
-      left -= dt;
+      // a play clock (systems/playclock.ts): it waits out a cutscene, a conversation or Settings
+      left -= playDt(g, dt);
       g.hud.setTimer('Trick Session', fmtTime(Math.max(0, left)), `${score.toLocaleString()} pts`);
       if (left <= 10 && Math.floor(left + dt) !== Math.floor(left) && left > 0) g.sfx('ui_tab', { pitch: 1.4 });
       if (left <= 0) endSession(false);

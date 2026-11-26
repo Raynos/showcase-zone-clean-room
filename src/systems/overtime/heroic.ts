@@ -4,6 +4,7 @@ import type { Game } from '../../game';
 import type { MobOpts, Mob } from '../mobs';
 import type { RobotKind } from '../../entities/robots/types';
 import type { Tally } from '../tally';
+import { playDt } from '../playclock';
 import { choose } from './choose';
 import { dayNo, fmtPar, otSave, weekNo } from './save';
 
@@ -152,8 +153,8 @@ export class Heroic {
     if (!r || r.done || r.failed) { if (r && g.interior !== INTERIOR[r.act] && !g.travelling) this.run = null; return; }
     if (g.interior !== INTERIOR[r.act]) { if (!g.travelling) { this.fail(r, 'Left the floor'); this.run = null; } return; }
     const def = OT[r.act];
-    // the clock runs with the world (it stops for Settings and the title, as the fight does)
-    if (g.player.controllable || g.cameraRig.cine) r.t += dt;
+    // the par clock starts on the first frame of control and stands still through the boss's intro (systems/playclock.ts)
+    r.t += playDt(g, dt);
     if (r.t > def.bronze) { this.fail(r, 'Out of time'); return; }
     // the vault's combat chamber has the timer line for its waves; the clock gives way to it there
     const vaultWaves = r.act === 'vault' && (g as unknown as { vault?: { stage?: string } }).vault?.stage === 'combat';
