@@ -29,6 +29,11 @@ const SPLIT_TRIS = 9000, SPARSE_TRIS = 1200;
  * squares, not every cell of the zone, for the price of a second copy of the indices.
  */
 const FAR_KEY = 0.6, FAR_SPLIT = 9000, FAR_SPARSE = 1500, FAR_AT = 100;
+/**
+ * A far square drawn whole is 62 m across and picks one level of detail for all of it. Chosen for its nearest
+ * point, most of it is drawn finer than its distance asks; this many metres further in is nearer the truth.
+ */
+const FAR_BIAS = 20;
 /** A primitive longer than this (walls, cables, rails) would stretch its cell's bounds over its neighbours; those are kept apart. */
 const LONG = 44;
 
@@ -38,6 +43,12 @@ export const CASTER = {
   mapSize: 2048,
   /** primitives smaller than this many shadow texels are left out of that cascade */
   texels: 2,
+  /**
+   * and so are primitives whose shadow would be a few pixels of the frame: a thing casts from this many times the
+   * size at which it is drawn at all. A cell with nothing that big is not a draw call in the cascades
+   * (`frusta`: theirs, which world/environment.ts keeps here)
+   */
+  rel: 3.5, frusta: [] as unknown[],
   /** gather casters only where they can shade something in view, rather than over the whole cascade map */
   fit: true,
   /** how far from the camera sun shadows reach, metres */
@@ -172,6 +183,10 @@ interface Cell {
   tSizes: Float32Array; tCounts: Uint32Array;
   /** index range the colour pass draws this frame: [start, main) */
   main: number; start: number;
+  /** the least a primitive here must span to cast a shadow this frame, metres */
+  cast: number;
+  /** metres added to the distance its detail is chosen for (a far square: see FAR_BIAS) */
+  bias: number;
   uploaded: boolean; force: boolean;
   /** the other way of drawing this square is in use (see FAR_AT) */
   off: boolean;
@@ -486,6 +501,7 @@ export class Chunks {
           };
           const whole = add();
           whole.off = true;
+          whole.bias = FAR_BIAS;
           this.blocks.push({ whole, kids: groups.map((g) => add(g)) });
           tris += block.ni / 3; meshes += groups.length;
           continue;
@@ -717,7 +733,7 @@ export class Chunks {
     const cell: Cell = {
       mesh: null!, box, flat, always, total: ni, sizes: new Float32Array(sizes), counts: new Uint32Array(counts),
       tSizes: new Float32Array(tSizes), tCounts: new Uint32Array(tCounts),
-      main: ni, start: 0, uploaded: false, force: false, off: false, name,
+      main: ni, start: 0, cast: 0, bias: 0, uploaded: false, force: false, off: false, name,
     };
     const a = shared ?? this.attributes(st);
     geo.setAttribute('position', a.position);
@@ -741,11 +757,15 @@ export class Chunks {
     if (st.leaf) mesh.customDepthMaterial = foliageDepthMaterial();
     mesh.matrixAutoUpdate = false;
     // a box fits a cell of tall, thin things far better than the default bounding sphere
-    mesh.intersectsFrustum = (f) => cell.force || (f as THREE.Frustum).intersectsBox(box);
+    mesh.intersectsFrustum = (f) => {
+      if (cell.force) return true;
+      if (!(f as THREE.Frustum).intersectsBox(box)) return false;
+      return !!name || (f !== CASTER.frusta[0] && f !== CASTER.frusta[1]) || countFor(cell, Math.max(cell.cast, st.leaf ? LEAF_CAST : 0)) > cell.flat;
+    };
     mesh.onBeforeShadow = (_r, _o, _cam, shadowCam) => {
       const sc = shadowCam as THREE.OrthographicCamera;
       const texel = sc.isOrthographicCamera ? (sc.right - sc.left) / CASTER.mapSize : 0;
-      const n = name ? cell.total : countFor(cell, Math.max(texel * CASTER.texels, st.leaf ? LEAF_CAST : 0));
+      const n = name ? cell.total : countFor(cell, Math.max(texel * CASTER.texels, st.leaf ? LEAF_CAST : 0, cell.cast));
       geo.setDrawRange(cell.flat, n - cell.flat);
     };
     mesh.onAfterShadow = () => { geo.setDrawRange(cell.start, cell.main - cell.start); };
@@ -774,7 +794,8 @@ export class Chunks {
     }
     if (!this.interior) for (const c of this.cells) {
       if (c.name) continue;
-      const size = c.box.distanceToPoint(eye) * k;
+      const size = (c.box.distanceToPoint(eye) + c.bias) * k;
+      c.cast = size * CASTER.rel;
       const n = countFor(c, size), s = startFor(c, size);
       if (n !== c.main || s !== c.start) { c.main = n; c.start = s; c.mesh.geometry.setDrawRange(s, n - s); }
       // a cell with nothing left to draw at this distance is not a draw call either

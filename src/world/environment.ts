@@ -5,6 +5,7 @@ import { setCloudNoise, YARD, YARDW } from '../gfx/lighting';
 import { FOGX, GU } from '../gfx/material';
 import type { Renderer } from '../gfx/renderer';
 import { Sky } from '../gfx/sky';
+import { CAST } from '../gfx/farcull';
 import { CASTER } from './chunks';
 
 type Key = {
@@ -163,7 +164,7 @@ export class Environment {
     this.sun.shadow.mapSize.set(size, size);
     this.sun.shadow.camera.far = dist; this.sun.shadow.camera.updateProjectionMatrix();
     if (this.sun.shadow.map) { this.sun.shadow.map.dispose(); (this.sun.shadow as any).map = null; }
-    CASTER.mapSize = size; CASTER.dist = dist;
+    CASTER.mapSize = size; CASTER.dist = dist; CAST.reach = dist;
     this.farFresh = false;
   }
 
@@ -240,6 +241,10 @@ export class Environment {
         && dir.dot(heldDir) > 0.999 && cam.position.distanceToSquared(heldPos) < 1;
       if (hold) this.farMatrix.copy(sh._matrices[1]);
       fit(light, cam);
+      // what is drawn into the far cascade is thinned by size (world/chunks.ts) and by where it stands (gfx/farcull.ts)
+      CASTER.frusta = sh._frustums; CAST.farFrustum = sh._frustums[1];
+      CAST.split = (sh._cascadeData[0] as THREE.Vector4).z;
+      { const up = Math.max(0, this.lightDir.y) / (this.lightDir.length() || 1); CAST.slope = Math.min(8, Math.sqrt(Math.max(0, 1 - up * up)) / Math.max(0.05, up)); }
       if (CASTER.fit) cullToSlice(0, cam, 0.5);
       if (hold) {
         sh._matrices[1].copy(this.farMatrix);
