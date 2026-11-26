@@ -168,6 +168,22 @@ export function buildEast(game: Game) {
         const seg = (x: number, z: number, w: number, d: number) => {
           g.box(w, wallH, d, { at: [x, wallH / 2 + 0.6, z], color: PAL.slate, layer: T.PANEL, col: true, bevel: 0.08, grad: 0.7, uvScale: 0.3 });
           g.box(w + 0.2, 0.5, d + 0.2, { at: [x, wallH + 0.85, z], color: PAL.orange, layer: T.STRIPE, uv: 'world', uvScale: 0.5 });
+          // both faces (a wall between two courts is fought against from either side): a dark kick plate, a
+          // rail, ribs every few metres with a lamp strip on every other one
+          const alongX = w > d, L = alongX ? w : d, n = Math.max(1, Math.round(L / 3.3)), f = 0.5;
+          for (const side of [-1, 1]) {
+            const face = (u: number, out: number, y: number, bw: number, bh: number, bd: number, o: Record<string, unknown>) =>
+              g.box(alongX ? bw : bd, bh, alongX ? bd : bw, { at: [x + (alongX ? u : side * (f + out)), y + 0.6, z + (alongX ? side * (f + out) : u)], col: 'none', ...o });
+            face(0, 0.04, 0.6, L - 0.2, 1.2, 0.08, { color: PAL.slateDeep, layer: T.PLATE, uv: 'world', uvScale: 0.4 });
+            face(0, 0.08, 1.3, L - 0.2, 0.12, 0.16, { color: PAL.orange, layer: T.METAL });
+            for (let i = 0; i < n; i++) {
+              const u = (i + 0.5 - n / 2) * (L / n);
+              face(u, 0.14, wallH / 2, 0.5, wallH, 0.28, { color: PAL.slateDark, layer: T.METAL, grad: 0.7 });
+              face(u, 0.2, 0.3, 0.8, 0.6, 0.4, { color: PAL.concrete, layer: T.CONCRETE });
+              face(u, 0.2, wallH - 0.25, 0.7, 0.3, 0.4, { color: PAL.orange, layer: T.METAL });
+              if ((i + n) % 2 === 0) face(u, 0.3, wallH / 2 + 0.5, 0.12, wallH - 3.2, 0.05, { color: ci === 1 ? PAL.red : PAL.amber, emit: 1.6 });
+            }
+          }
         };
         const door = 5; // door half-width 2.5
         const split = (axis: 'x' | 'z', pos: number, hasDoor: boolean) => {

@@ -40,7 +40,7 @@ export function barrierMat(color: number, size: [number, number]): THREE.ShaderM
         float scan = smoothstep(0.8, 1.0, sin(p.y * 1.4 - uTime * 2.2) * 0.5 + 0.5);
         vec2 e = min(vUv, 1.0 - vUv) * uSize;
         float edge = smoothstep(0.22, 0.0, min(e.x, e.y));
-        float a = line * (0.5 + 0.3 * n + 0.5 * scan) + line2 * (0.14 + 0.1 * n) + edge * 0.9 + uHit * (0.1 + 0.6 * max(line, line2));
+        float a = line * (0.5 + 0.3 * n + 0.5 * scan) + line2 * (0.14 + 0.1 * n) + edge * 0.9 + uHit * 0.6;
         // dissolve from the bottom up
         float d = texture2D(uNoise, p * 0.11).r * 0.35 + vUv.y * 0.65;
         float cut = smoothstep(uOpen * 1.25 - 0.15, uOpen * 1.25, d);
