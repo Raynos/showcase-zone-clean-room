@@ -27,6 +27,9 @@ export function iconPath(name: string): Path2D {
 }
 
 /** Pre-rendered zone map (terrain colour + hillshade + roads + landmarks) shared by the minimap and the map panel. */
+/** A colour per band (by band id): the wash on the chart, the outline and the legend swatch on the zone map. */
+export const BAND_TINT = ['', '#ffb35c', '#e0c06a', '#ff7a3a', '#c79bff', '#8ab8e0', '#5ef0ff'];
+
 export class ZoneMap {
   canvas: HTMLCanvasElement;
   fixed: MapPoi[] = [];
@@ -96,9 +99,8 @@ export class ZoneMap {
     const P = ZoneMap.px;
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     // band washes: a faint danger tint over the whole east
-    const tints = ['', '#ffb35c', '#d9a86a', '#ff7a3a', '#5a4a5a', '#8aa0b8', '#5ef0ff'];
     for (const b of BANDS) {
-      ctx.fillStyle = tints[b.id]; ctx.globalAlpha = 0.07;
+      ctx.fillStyle = BAND_TINT[b.id]; ctx.globalAlpha = 0.07;
       ctx.fillRect(P(b.x0), P(b.z0), (b.x1 - b.x0) * MS, (b.z1 - b.z0) * MS);
     }
     ctx.globalAlpha = 1;

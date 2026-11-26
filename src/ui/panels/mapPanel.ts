@@ -1,6 +1,6 @@
 import { BANDS, HALF, LAKE, PADS, ROCK, TOWN, bandAt, inTown } from '../../world/layout';
 import { icon } from '../icons';
-import { MAP_FONT, ZoneMap, iconPath, type MapPoi } from '../map';
+import { BAND_TINT, MAP_FONT, ZoneMap, iconPath, type MapPoi } from '../map';
 import type { PanelSpec } from './common';
 
 const TAU = Math.PI * 2;
@@ -42,11 +42,18 @@ export const mapPanel: PanelSpec = {
       if (first) zoom = Math.max(minZoom, Math.min(w, h) / 230);
       limit();
     };
-    const text = (s: string, x: number, y: number, size: number, col: string, weight = 800, spacing = 0.08) => {
+    // every name drawn this frame keeps its box: a later, lesser name that would cross one is left out, so
+    // the chart never prints one word over another (zoom in and the rest appear)
+    const taken: number[] = [];
+    const text = (s: string, x: number, y: number, size: number, col: string, weight = 800, spacing = 0.08, must = true): boolean => {
       ctx.font = `${weight} ${size}px ${MAP_FONT}`;
       (ctx as any).letterSpacing = `${(size * spacing).toFixed(1)}px`;
+      const tw = ctx.measureText(s).width + 8, th = size * 1.15;
+      if (!must) for (let i = 0; i < taken.length; i += 4) if (Math.abs(taken[i] - x) < (taken[i + 2] + tw) / 2 && Math.abs(taken[i + 1] - y) < (taken[i + 3] + th) / 2) return false;
+      taken.push(x, y, tw, th);
       ctx.lineWidth = Math.max(2.5, size * 0.28); ctx.strokeStyle = 'rgba(16,18,22,0.85)'; ctx.lineJoin = 'round';
       ctx.strokeText(s, x, y); ctx.fillStyle = col; ctx.fillText(s, x, y);
+      return true;
     };
     const marker = (poi: MapPoi, big: boolean) => {
       const x = sx(poi.x), y = sz(poi.z);
@@ -61,7 +68,13 @@ export const mapPanel: PanelSpec = {
       ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = col;
       ctx.stroke(iconPath(poi.icon));
       ctx.restore();
-      if (poi.label && zoom > (poi.minor ? 2.2 : big ? 1.05 : 1.3)) text(poi.label.toUpperCase(), x, y + r + 11, poi.minor ? 9 : 10.5, poi.minor ? '#e9dfcf' : col, 800, 0.06);
+      taken.push(x, y, r * 2 + 2, r * 2 + 2);
+    };
+    const markerName = (poi: MapPoi, big: boolean) => {
+      if (!poi.label || zoom <= (poi.minor ? 2.2 : big ? 1.05 : 1.3)) return;
+      const x = sx(poi.x), y = sz(poi.z), r = poi.minor ? 8 : big ? 13 : 11;
+      if (x < -30 || y < -30 || x > w + 30 || y > h + 30) return;
+      text(poi.label.toUpperCase(), x, y + r + 11, poi.minor ? 11 : 11.5, poi.minor ? '#e9dfcf' : poi.color ?? '#ffd9a8', 800, 0.06, false);
     };
     const draw = () => {
       if (!w) return;
@@ -70,14 +83,28 @@ export const mapPanel: PanelSpec = {
       ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(zm.canvas, sx(-HALF), sz(-HALF), HALF * 2 * zoom, HALF * 2 * zoom);
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      // region names
+      taken.length = 0;
+      // the bands, each in its colour: a wash, an outline, then its name and levels
+      for (const b of BANDS) {
+        const x0 = sx(b.x0), y0 = sz(b.z0), bw = (b.x1 - b.x0) * zoom, bh = (b.z1 - b.z0) * zoom;
+        ctx.globalAlpha = 0.13; ctx.fillStyle = BAND_TINT[b.id]; ctx.fillRect(x0, y0, bw, bh);
+        ctx.globalAlpha = 0.6; ctx.lineWidth = 1.5; ctx.strokeStyle = BAND_TINT[b.id]; ctx.strokeRect(x0 + 1.5, y0 + 1.5, bw - 3, bh - 3);
+        ctx.globalAlpha = 1;
+      }
       for (const b of BANDS) {
         const x = sx((b.x0 + b.x1) / 2), y = sz((b.z0 + b.z1) / 2);
-        const fs = clamp(6 + zoom * 4.6, 9, 20);
+        const fs = clamp(6 + zoom * 4.6, 12, 20);
         text(b.name.toUpperCase(), x, y - fs * 0.55, fs, '#fff4e2', 800, zoom < 1.2 ? 0.03 : 0.1);
-        text(`LV ${b.lo}-${b.hi}`, x, y + fs * 0.6, fs * 0.74, '#ffb07a', 800, 0.12);
+        text(`LV ${b.lo}-${b.hi}`, x, y + fs * 0.6, Math.max(11, fs * 0.74), BAND_TINT[b.id], 800, 0.12);
       }
-      const ps = clamp(7.5 + zoom * 1.6, 8.5, 13);
+      const ts = clamp(9 + zoom * 3, 12, 18);
+      text('BRASSWICK', sx((TOWN.x0 + TOWN.x1) / 2 - 22), sz(TOWN.z0 + 12), ts, '#ffcf5a', 800, 0.14);
+      // markers first (their discs keep names off them), then names in order of weight
+      for (const poi of zm.pois()) if (poi.minor) marker(poi, false);
+      for (const poi of zm.pois()) if (!poi.minor) marker(poi, !!poi.big);
+      for (const poi of zm.pois()) if (!poi.minor && poi.big) markerName(poi, true);
+      for (const poi of zm.pois()) if (!poi.minor && !poi.big) markerName(poi, false);
+      const ps = clamp(7.5 + zoom * 1.6, 11, 13);
       const named = new Set<string>();
       for (const poi of zm.pois()) named.add(poi.label.toLowerCase());
       for (const k in PADS) {
@@ -85,16 +112,13 @@ export const mapPanel: PanelSpec = {
         if (named.has(PADS[k].name.toLowerCase())) continue; // a live marker already carries this name
         const r = PADS[k], x = sx((r.x0 + r.x1) / 2), y = sz((r.z0 + r.z1) / 2);
         const words = (r.x1 - r.x0) * zoom < r.name.length * ps * 0.5 ? r.name.toUpperCase().split(' ') : [r.name.toUpperCase()];
-        words.forEach((wd, i) => text(wd, x, y + (i - (words.length - 1) / 2) * ps * 1.1, ps, '#ffe6c2', 800, 0.06));
+        if (words.length > 1 && zoom < 1.5) continue;
+        words.forEach((wd, i) => text(wd, x, y + (i - (words.length - 1) / 2) * ps * 1.1, ps, '#ffe6c2', 800, 0.06, false));
       }
-      const ts = clamp(9 + zoom * 3, 10, 18);
-      text('BRASSWICK', sx((TOWN.x0 + TOWN.x1) / 2 - 22), sz(TOWN.z0 + 12), ts, '#ffcf5a', 800, 0.14);
-      text('THE ROCK', sx(ROCK.x), sz(ROCK.z), ps + 1, '#e3e8ee', 800, 0.1);
-      text('MIRROR LAKE', sx(LAKE.x), sz(LAKE.z), ps, '#d8fbff', 700, 0.14);
-      if (zoom > 1.2) { text('SAFE', sx(-125), sz(-232), ps, 'rgba(184,255,214,0.85)', 800, 0.3); text('HOSTILE', sx(130), sz(-232), ps, 'rgba(255,150,120,0.9)', 800, 0.3); }
-      // markers
-      for (const poi of zm.pois()) if (poi.minor) marker(poi, false);
-      for (const poi of zm.pois()) if (!poi.minor) marker(poi, !!poi.big);
+      text('THE ROCK', sx(ROCK.x), sz(ROCK.z), ps + 1, '#e3e8ee', 800, 0.1, false);
+      text('MIRROR LAKE', sx(LAKE.x), sz(LAKE.z), ps, '#d8fbff', 700, 0.14, false);
+      if (zoom > 1.2) { text('SAFE', sx(-125), sz(-232), ps, 'rgba(184,255,214,0.85)', 800, 0.3, false); text('HOSTILE', sx(130), sz(-232), ps, 'rgba(255,150,120,0.9)', 800, 0.3, false); }
+      for (const poi of zm.pois()) if (poi.minor) markerName(poi, false);
       for (const m of g.mobs.list) {
         if (!m.alive || !m.rig.root.visible) continue;
         const x = sx(m.pos.x), y = sz(m.pos.z), big = m.cls === 'elite' || m.cls === 'boss';
@@ -112,7 +136,7 @@ export const mapPanel: PanelSpec = {
       ctx.save(); ctx.translate(w - 26, 28);
       ctx.beginPath(); ctx.arc(0, 0, 16, 0, TAU); ctx.fillStyle = 'rgba(20,23,28,0.82)'; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.stroke();
       ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(4, -2); ctx.lineTo(-4, -2); ctx.closePath(); ctx.fillStyle = '#5ef0ff'; ctx.fill();
-      ctx.font = `800 9px ${MAP_FONT}`; (ctx as any).letterSpacing = '0px'; ctx.fillStyle = '#fff'; ctx.fillText('N', 0, 6);
+      ctx.font = `800 11px ${MAP_FONT}`; (ctx as any).letterSpacing = '0px'; ctx.fillStyle = '#fff'; ctx.fillText('N', 0, 6.5);
       ctx.restore();
     };
     const where = () => {
@@ -136,12 +160,12 @@ export const mapPanel: PanelSpec = {
       host.body.innerHTML = `<canvas class="pn-mapcv"></canvas>
         <div class="pn-maploc"></div>
         <div class="pn-mapbtns"><div class="pn-rb" data-a="zin" aria-label="Zoom in"><span>+</span></div><div class="pn-rb" data-a="zout" aria-label="Zoom out"><span>−</span></div><div class="pn-rb cy" data-a="me" aria-label="Centre on me">${icon('target', 20)}</div></div>
-        <div class="pn-mapleg"><div class="pn-btn sm" data-a="legend">${icon('map', 16)}Legend</div></div>
+        <div class="pn-mapleg"><div class="pn-btn sm" data-a="legend">${icon('map', 16)}Legend</div><div class="pn-btn sm" data-a="town" title="Return to the town square">${icon('dash', 16)}Brasswick</div></div>
         ${questChip()}
         <div class="pn-legend bev${legend ? ' on' : ''}" data-a="legend"><h4>Legend</h4><div class="lg">
           <div><i class="you"></i>You</div><div><i class="obj">${icon('star', 12, 2.4)}</i>Quest objective</div><div><i class="dot q"></i>Place of interest</div><div><i class="dot r"></i>Robot</div><div><i class="dot e"></i>Elite or boss</div>
           <div><i class="ln road"></i>Road</div><div><i class="ln trail"></i>Trail</div><div><i class="ln track"></i>Riding track</div><div><i class="bx"></i>Test course</div><div><i class="wall"></i>Blast wall</div></div>
-          <div class="lb">${BANDS.map((b) => `<div>${b.name}<em>Lv ${b.lo}-${b.hi}</em></div>`).join('')}</div></div>`;
+          <div class="lb">${BANDS.map((b) => `<div><i style="background:${BAND_TINT[b.id]}"></i><span>${b.name}</span><em>Lv ${b.lo}-${b.hi}</em></div>`).join('')}</div></div>`;
       cv = host.body.querySelector('canvas')!; ctx = cv.getContext('2d')!;
       locEl = host.body.querySelector('.pn-maploc'); lastLoc = '';
       w = 0; h = 0;
@@ -184,6 +208,13 @@ export const mapPanel: PanelSpec = {
         else if (a === 'zout') zoomAt(1 / 1.5, w / 2, h / 2);
         else if (a === 'me') { follow = true; cx = p.x; cz = p.z; zoom = Math.max(zoom, Math.min(w, h) / 230); limit(); g.sfx('ui_click'); }
         else if (a === 'quest') host.open('quests', null, true);
+        else if (a === 'town') {
+          // the zone's one fast travel: the same way home Settings offers, here where travel belongs
+          const why = g.returnBlocked();
+          if (why) { void host.notice('Not from here', why); return; }
+          void host.confirm('Return to Brasswick?<small>You will be taken to the town square. Anything you are in the middle of out there is abandoned.</small>', 'Return', 'Stay')
+            .then((ok) => { if (ok && !g.returnBlocked()) { host.close(true); void g.returnToTown(); } });
+        }
         else if (a === 'legend') { legend = !legend; host.body.querySelector('.pn-legend')?.classList.toggle('on', legend); g.sfx('ui_click'); }
       },
     };
